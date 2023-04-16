@@ -13,7 +13,7 @@ namespace rod
 {
 	/** Alias for `T::callback_type<CB>`. */
 	template<typename T, typename CB>
-	using stop_callback_for_t = typename T::template callback_type<CB>;
+	using stop_callback_for_t = std::conditional_t<std::same_as<T, std::stop_token>, std::stop_callback<CB>, typename T::template callback_type<CB>>;
 
 	/** Concept used to define a stoppable token type. */
 	template<typename T>
@@ -22,6 +22,7 @@ namespace rod
 		{ T(t) } noexcept;
 		{ t.stop_possible() } noexcept -> std::same_as<bool>;
 		{ t.stop_requested() } noexcept -> std::same_as<bool>;
+		typename stop_callback_for_t<T, decltype([]() noexcept {})>;
 	};
 
 	/** Concept used to define a stoppable token type that can accept a callback type `CB` initialized from `Init`. */
