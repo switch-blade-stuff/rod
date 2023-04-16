@@ -52,7 +52,7 @@ namespace rod
 					else
 						set_value(std::move(rcv));
 				}
-				catch (...) { set_error(rcv, std::current_exception()); }
+				catch (...) { set_error(std::move(rcv), std::current_exception()); }
 			}
 
 			constexpr operation(run_loop *loop, R &&rcv) : operation<>(loop, invoke), detail::ebo_helper<R>(std::forward<R>(rcv)) {}
