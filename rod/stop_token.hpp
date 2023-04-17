@@ -7,7 +7,7 @@
 #include <stop_token>
 #include <atomic>
 
-#include "sender.hpp"
+#include "rod/detail/algorithm/read.hpp"
 
 namespace rod
 {
@@ -34,23 +34,8 @@ namespace rod
 	template<class T>
 	concept unstoppable_token = stoppable_token<T> && requires(T t) { requires(!t.stop_possible()); };
 
-	namespace detail
+	inline namespace _get_stop_token
 	{
-		class get_allocator_t
-		{
-			template<typename T, typename U = decltype(std::as_const(std::declval<T>()))>
-			static constexpr bool is_invocable = tag_invocable<get_allocator_t, U>;
-
-		public:
-			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_allocator_t) noexcept { return true; }
-
-			[[nodiscard]] constexpr auto operator()() const noexcept { return read(*this); }
-			template<typename R>
-			[[nodiscard]] constexpr decltype(auto) operator()(R &&r) const noexcept requires is_invocable<R>
-			{
-				return tag_invoke(*this, std::as_const(r));
-			}
-		};
 		class get_stop_token_t
 		{
 			template<typename T, typename U = decltype(std::as_const(std::declval<T>()))>
@@ -69,15 +54,6 @@ namespace rod
 			}
 		};
 	}
-
-	using detail::get_allocator_t;
-	using detail::get_stop_token_t;
-
-	/** Customization point object used to obtain allocator associated with the passed object. */
-	inline constexpr auto get_allocator = get_allocator_t{};
-	/** Alias for `decltype(get_allocator(std::declval<T>()))` */
-	template<typename T>
-	using allocator_of_t = std::remove_cvref_t<decltype(get_allocator(std::declval<T>()))>;
 
 	/** Customization point object used to obtain stop token associated with the passed object. */
 	inline constexpr auto get_stop_token = get_stop_token_t{};

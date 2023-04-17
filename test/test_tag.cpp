@@ -13,7 +13,7 @@ inline constexpr struct bar_t
 } bar = {};
 
 template<typename T>
-constexpr bool bar_t::operator()(T &&obj) const noexcept { return rod::tag_invoke(rod::tag<bar>, std::forward<T>(obj)); }
+constexpr bool bar_t::operator()(T &&obj) const noexcept { return rod::tag_invoke(bar, std::forward<T>(obj)); }
 
 struct foo
 {

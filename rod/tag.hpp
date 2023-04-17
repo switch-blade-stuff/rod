@@ -27,7 +27,7 @@ namespace rod
 		};
 	}
 
-	inline namespace tag_invoke_ns
+	inline namespace _tag_invoke
 	{
 		/** Utility function used to invoke an implementation of `tag_invoke` with tag \a tag and arguments \a args selected via ADL. */
 		inline constexpr auto tag_invoke = detail::impl_tag_invoke{};
@@ -52,12 +52,9 @@ namespace rod
 	 * `tag_t` is primarily used to define tag types for invocable query objects
 	 * in order to enable CPO via `tag_invoke`. */
 	template<auto &Tag>
-	struct tag_t { using type = decltype(Tag); };
-	/** Instance of `tag_t<Tag>`. */
-	template<auto &Tag>
-	inline constexpr auto tag = tag_t<Tag>{};
+	using tag_t = std::remove_cvref_t<decltype(Tag)>;
 
-	namespace detail
+	inline namespace _forwarding_query
 	{
 		struct forwarding_query_t
 		{
@@ -70,8 +67,6 @@ namespace rod
 			[[nodiscard]] constexpr bool operator()(Q &&) const noexcept { return std::derived_from<Q, forwarding_query_t>; }
 		};
 	}
-
-	using detail::forwarding_query_t;
 
 	/**  Customization point object used to check if a query object should be forwarded through queryable adaptors. */
 	inline constexpr auto forwarding_query = forwarding_query_t{};

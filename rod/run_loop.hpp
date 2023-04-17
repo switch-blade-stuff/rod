@@ -6,7 +6,7 @@
 
 #include <condition_variable>
 
-#include "detail/stop_token.hpp"
+#include "stop_token.hpp"
 #include "scheduling.hpp"
 
 namespace rod

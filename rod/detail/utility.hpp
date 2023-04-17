@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <exception>
 #include <variant>
 #include <tuple>
 
@@ -11,6 +12,17 @@
 
 namespace rod::detail
 {
+	template<typename Err>
+	[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept
+	{
+		if constexpr (std::same_as<std::decay_t<Err>, std::exception_ptr>)
+			return std::forward<Err>(err);
+		else if constexpr (std::same_as<std::decay_t<Err>, std::error_code>)
+			return std::make_exception_ptr(std::system_error(std::forward<Err>(err)));
+		else
+			return std::make_exception_ptr(std::forward<Err>(err));
+	}
+
 	template<typename T>
 	concept ebo_candidate = std::conjunction<std::is_empty<T>, std::negation<std::is_final<T>>>::value;
 
