@@ -6,9 +6,9 @@
 
 #include <coroutine>
 
-#include "algorithm/connect.hpp"
-#include "algorithm/opstate.hpp"
-#include "query/signatures.hpp"
+#include "algorithms/connect.hpp"
+#include "algorithms/opstate.hpp"
+#include "queries/signatures.hpp"
 
 namespace rod
 {

@@ -61,7 +61,7 @@ namespace rod
 	}
 
 	/** Metaprogramming utility used to group multiple completion signatures as one type. */
-	template<detail::completion_signature... Fs>
+	template<detail::completion_signature...>
 	struct completion_signatures {};
 
 	/** Concept used to define a generic receiver type. */

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "../algorithm/read.hpp"
+#include "../algorithms/read.hpp"
 
 namespace rod
 {

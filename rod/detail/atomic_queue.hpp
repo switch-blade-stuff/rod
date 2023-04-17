@@ -20,20 +20,16 @@ namespace rod::detail
 	template<typename Node>
 	struct atomic_queue
 	{
-		void notify_one() noexcept { head.notify_one(); }
-		void notify_all() noexcept { head.notify_all(); }
-		void wait(void *old = nullptr) noexcept { head.wait(old); }
-
 		void terminate() noexcept
 		{
-			head = this;
+			head = sentinel();
 			notify_all();
 		}
 		bool push(Node *node) noexcept
 		{
 			for (auto candidate = head.load(std::memory_order_relaxed);;)
 			{
-				if (candidate == this) return false;
+				if (candidate == sentinel()) return false;
 
 				node_next(*node, static_cast<Node *>(candidate));
 				if (head.compare_exchange_weak(candidate, node, std::memory_order_acq_rel))
@@ -47,7 +43,7 @@ namespace rod::detail
 		{
 			for (auto candidate = head.load(std::memory_order_relaxed);;)
 			{
-				if (candidate == this)
+				if (candidate == sentinel())
 					return nullptr;
 				else if (!candidate)
 				{
@@ -60,6 +56,11 @@ namespace rod::detail
 					return static_cast<Node *>(candidate);
 			}
 		}
+
+		void notify_one() noexcept { head.notify_one(); }
+		void notify_all() noexcept { head.notify_all(); }
+		void wait(void *old = nullptr) noexcept { head.wait(old); }
+		[[nodiscard]] void *sentinel() const noexcept { return const_cast<atomic_queue *>(this); }
 
 		std::atomic<void *> head = {};
 	};

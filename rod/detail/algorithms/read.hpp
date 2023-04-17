@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "../query/signatures.hpp"
+#include "../queries/signatures.hpp"
 #include "opstate.hpp"
 #include "connect.hpp"
 

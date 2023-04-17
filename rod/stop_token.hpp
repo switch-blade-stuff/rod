@@ -7,7 +7,7 @@
 #include <stop_token>
 #include <atomic>
 
-#include "detail/algorithm/read.hpp"
+#include "detail/algorithms/read.hpp"
 
 namespace rod
 {
@@ -17,14 +17,13 @@ namespace rod
 
 	/** Concept used to define a stoppable token type. */
 	template<typename T>
-	concept stoppable_token = std::copyable<T> && std::equality_comparable<T> &&
-	                          requires(const T t)
-	                          {
-		                          { T(t) } noexcept;
-		                          { t.stop_possible() } noexcept -> std::same_as<bool>;
-		                          { t.stop_requested() } noexcept -> std::same_as<bool>;
-		                          typename stop_callback_for_t<T, decltype([]() noexcept {})>;
-	                          };
+	concept stoppable_token = std::copyable<T> && std::equality_comparable<T> && requires(const T t)
+	{
+	    { T(t) } noexcept;
+	    { t.stop_possible() } noexcept -> std::same_as<bool>;
+	    { t.stop_requested() } noexcept -> std::same_as<bool>;
+	    typename stop_callback_for_t<T, decltype([]() noexcept {})>;
+	};
 
 	/** Concept used to define a stoppable token type that can accept a callback type `CB` initialized from `Init`. */
 	template<typename T, typename CB, typename Init = CB>
