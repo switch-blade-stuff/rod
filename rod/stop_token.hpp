@@ -7,7 +7,7 @@
 #include <stop_token>
 #include <atomic>
 
-#include "rod/detail/algorithm/read.hpp"
+#include "detail/algorithm/read.hpp"
 
 namespace rod
 {
@@ -17,13 +17,14 @@ namespace rod
 
 	/** Concept used to define a stoppable token type. */
 	template<typename T>
-	concept stoppable_token = std::copyable<T> && std::equality_comparable<T> && requires(const T t)
-	{
-		{ T(t) } noexcept;
-		{ t.stop_possible() } noexcept -> std::same_as<bool>;
-		{ t.stop_requested() } noexcept -> std::same_as<bool>;
-		typename stop_callback_for_t<T, decltype([]() noexcept {})>;
-	};
+	concept stoppable_token = std::copyable<T> && std::equality_comparable<T> &&
+	                          requires(const T t)
+	                          {
+		                          { T(t) } noexcept;
+		                          { t.stop_possible() } noexcept -> std::same_as<bool>;
+		                          { t.stop_requested() } noexcept -> std::same_as<bool>;
+		                          typename stop_callback_for_t<T, decltype([]() noexcept {})>;
+	                          };
 
 	/** Concept used to define a stoppable token type that can accept a callback type `CB` initialized from `Init`. */
 	template<typename T, typename CB, typename Init = CB>
@@ -86,30 +87,34 @@ namespace rod
 		template<typename>
 		friend class in_place_stop_callback;
 
+		enum status_t { is_busy = 1, has_req = 2, };
+
 		struct node_t
 		{
 			node_t() = delete;
 			node_t(node_t &&) = delete;
 
-			constexpr node_t(void (*invoke)(node_t *) noexcept) noexcept : invoke_func(invoke) {}
+			node_t(in_place_stop_source *src, void (*invoke)(node_t *) noexcept) noexcept : src(src), invoke_func(invoke) { if (src) src->insert(this); }
+			~node_t() noexcept { if (src) src->erase(this); }
 
 			void invoke() noexcept { invoke_func(this); }
 
-			void link(node_t *&ptr) noexcept
-			{
-				if (ptr) ptr->this_ptr = &next_node;
-				next_node = std::exchange(ptr, this);
-				this_ptr = &ptr;
-			}
 			node_t *unlink() noexcept
 			{
-				if (next_node) next_node->this_ptr = this_ptr;
-				if (this_ptr) *this_ptr = next_node;
+				if (next_node) std::exchange(next_node, nullptr)->this_ptr = this_ptr;
+				if (this_ptr) *std::exchange(this_ptr, nullptr) = next_node;
 				return this;
 			}
+			void link(node_t *&list) noexcept
+			{
+				if (list) list->this_ptr = &next_node;
+				next_node = std::exchange(list, this);
+				this_ptr = &list;
+			}
 
-			node_t *next_node = nullptr;
-			node_t **this_ptr = nullptr;
+			node_t *next_node = {};
+			node_t **this_ptr = {};
+			in_place_stop_source *src;
 			void (*invoke_func)(node_t *) noexcept;
 		};
 
@@ -125,52 +130,77 @@ namespace rod
 		/** Returns a stop token associated with this stop source. */
 		[[nodiscard]] constexpr in_place_stop_token get_token() const noexcept;
 		/** Checks if stop has been requested. */
-		[[nodiscard]] bool stop_requested() const noexcept { return m_stop.test(); }
+		[[nodiscard]] bool stop_requested() const noexcept { return m_flags & status_t::has_req; }
 
 		/** Sends a stop request via this stop source. */
 		bool request_stop() noexcept
 		{
-			if (m_stop.test_and_set())
+			if (!try_lock(status_t::has_req))
 				return false;
 
-			while (auto *node = pop_node())
-				node->invoke();
-			return true;
+			while (m_nodes) m_nodes->unlink()->invoke();
+			return (unlock(status_t::has_req), true);
 		}
 
 	private:
-		void lock() noexcept
+		auto lock() noexcept
 		{
-			while (m_busy.test_and_set())
-				m_busy.wait(true);
+			for (auto flags = m_flags.load(std::memory_order_relaxed);;)
+			{
+				while (flags & status_t::is_busy)
+				{
+					m_flags.wait(flags);
+					flags = m_flags.load(std::memory_order_relaxed);
+				}
+
+				if (m_flags.compare_exchange_weak(
+						flags, static_cast<status_t>(flags | status_t::is_busy),
+						std::memory_order_acq_rel, std::memory_order_relaxed))
+					return flags;
+			}
 		}
-		void unlock() noexcept
+		void unlock(status_t val = {}) noexcept
 		{
-			m_busy.clear();
-			m_busy.notify_one();
+			m_flags.store(val, std::memory_order_release);
+			m_flags.notify_one();
+		}
+		bool try_lock(status_t val = {}) noexcept
+		{
+			for (auto flags = m_flags.load(std::memory_order_relaxed);;)
+			{
+				for (; flags; flags = m_flags.load(std::memory_order_relaxed))
+				{
+					if (flags & status_t::has_req) return false;
+					if (flags & status_t::is_busy) m_flags.wait(flags);
+				}
+
+				if (m_flags.compare_exchange_weak(
+						flags, static_cast<status_t>(val | status_t::is_busy),
+						std::memory_order_acq_rel, std::memory_order_relaxed))
+					return true;
+			}
 		}
 
-		void push_node(node_t *node) noexcept
+		void insert(node_t *node) noexcept
 		{
-			if (stop_requested())
+			if (!try_lock())
 			{
 				node->invoke();
 				return;
 			}
 
-			lock();
 			node->link(m_nodes);
 			unlock();
 		}
-		[[nodiscard]] node_t *pop_node() noexcept
+		void erase(node_t *node) noexcept
 		{
-			auto result = (lock(), m_nodes ? m_nodes->unlink() : nullptr);
-			return (unlock(), result);
+			auto old = lock();
+			node->unlink();
+			unlock(old);
 		}
 
 		node_t *m_nodes = {};
-		std::atomic_flag m_busy = {};
-		std::atomic_flag m_stop = {};
+		std::atomic<status_t> m_flags = {};
 	};
 
 	/** Stop token used to query for stop requests of the associated `in_place_stop_source`. */
@@ -222,11 +252,8 @@ namespace rod
 
 	public:
 		/** Adds a stop callback function \a fn to the stop source associated with stop token \a st. */
-		template<typename F>
-		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) requires std::constructible_from<CB, F>
-				: node_base(invoke), func_base(std::forward<F>(fn)) { if (st.m_src) st.m_src->push_node(this); }
-		/** Removes the callback from the associated stop token. */
-		~in_place_stop_callback() { node_base::unlink(); }
+		template<typename F> requires std::constructible_from<CB, F>
+		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st.m_src, invoke), func_base(std::forward<F>(fn)) {}
 	};
 
 	template<typename F>

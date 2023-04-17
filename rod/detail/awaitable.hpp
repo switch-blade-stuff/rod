@@ -264,7 +264,6 @@ namespace rod
 				return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
 		}
 	};
-
 	/* `connect` overload for awaitable types. */
 	template<typename A, typename R> requires detail::is_awaitable<A, detail::awaitable_promise<R>> && receiver_of<R, detail::awaitable_sigs_t<A, R>>
 	struct connect_t::_overload_hook<A, R>

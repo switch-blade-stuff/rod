@@ -6,7 +6,7 @@
 
 #include <condition_variable>
 
-#include "stop_token.hpp"
+#include "detail/atomic_queue.hpp"
 #include "scheduling.hpp"
 
 namespace rod
@@ -28,11 +28,14 @@ namespace rod
 		public:
 			constexpr operation(run_loop *loop, void (*invoke)(operation *) noexcept) noexcept : loop(loop), invoke_func(invoke) {}
 
+			friend constexpr void tag_invoke(detail::next_t, operation &node, operation *ptr) noexcept { node.next = ptr; }
+			friend constexpr auto tag_invoke(detail::next_t, operation &node) noexcept { return node.next; }
+
 			void invoke() noexcept { invoke_func(this); }
 
 			union
 			{
-				operation *next_node;
+				operation *next;
 				run_loop *loop;
 			};
 			void (*invoke_func)(operation *) noexcept;
@@ -111,7 +114,7 @@ namespace rod
 		{
 			friend class run_loop;
 
-			scheduler(run_loop *loop) noexcept : m_loop(loop) { }
+			scheduler(run_loop *loop) noexcept : m_loop(loop) {}
 
 		public:
 			[[nodiscard]] friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
@@ -138,46 +141,24 @@ namespace rod
 		/** Returns a scheduler used to schedule work to be executed on the run loop. */
 		[[nodiscard]] scheduler get_scheduler() noexcept { return {this}; }
 
-		/** Waits until work is available, then runs all scheduled work until the queue is empty or the run loop is cancelled. */
-		void run()
-		{
-			while (auto node = pop_node())
-				node->invoke();
-		}
+		/** Blocks until work is available (or finish is called), then runs all scheduled work until the queue is empty or the run loop is cancelled. */
+		void run() { while (auto node = pop_node()) node->invoke(); }
 		/** Changes the internal state to stopped. Any in-progress work will run to completion. */
-		void finish()
-		{
-			m_finish.test_and_set();
-			m_cnd.notify_all();
-		}
+		void finish() { m_queue.terminate(); }
 
 		/** Returns copy of the stop source associated with the run loop. */
-		[[nodiscard]] in_place_stop_source &get_stop_source() { return m_stop; }
+		[[nodiscard]] in_place_stop_source &get_stop_source() { return m_stop_source; }
 		/** Returns a stop token of the stop source associated with the run loop. */
-		[[nodiscard]] in_place_stop_token get_stop_token() const { return m_stop.get_token(); }
+		[[nodiscard]] in_place_stop_token get_stop_token() const { return m_stop_source.get_token(); }
 		/** Sends a stop request to the stop source associated with the run loop. */
-		void request_stop() { m_stop.request_stop(); }
+		void request_stop() { m_stop_source.request_stop(); }
 
 	private:
-		void push_node(operation<> &node)
-		{
-			const auto g = std::unique_lock{m_mtx};
-			node.next_node = std::exchange(m_nodes, &node);
-			m_cnd.notify_one();
-		}
-		[[nodiscard]] operation<> *pop_node()
-		{
-			auto g = std::unique_lock{m_mtx};
-			m_cnd.wait(g, [&]() { return m_nodes || m_finish.test(); });
-			return m_nodes ? std::exchange(m_nodes, m_nodes->next_node) : nullptr;
-		}
+		void push_node(operation<> &node) { m_queue.push(&node); }
+		[[nodiscard]] operation<> *pop_node() { return m_queue.pop(); }
 
-		std::mutex m_mtx;
-		std::condition_variable m_cnd;
-
-		in_place_stop_source m_stop;
-		std::atomic_flag m_finish;
-		operation<> *m_nodes = {};
+		in_place_stop_source m_stop_source;
+		detail::atomic_queue<operation<>> m_queue;
 	};
 
 	static_assert(scheduler<decltype(std::declval<run_loop>().get_scheduler())>);

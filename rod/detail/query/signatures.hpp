@@ -12,7 +12,6 @@ namespace rod
 	{
 		struct get_completion_signatures_t
 		{
-			/* Use a member invocable to enable awaitable overloads */
 			template<typename S, typename E>
 			struct _overload_hook
 			{

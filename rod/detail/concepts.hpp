@@ -73,8 +73,8 @@ namespace rod
 
 	/** Concept used to define a generic sender type. */
 	template<typename S, typename U = std::remove_cvref_t<S>>
-	concept sender = requires (const U &s) { { get_env(s) } -> queryable; } && std::move_constructible<U> && std::constructible_from<U, S>;
+	concept sender = requires(const U &s) {{ get_env(s) } -> queryable; } && std::move_constructible<U> && std::constructible_from<U, S>;
 	/** Concept used to define a sender type who's environment specializes the `get_completion_signatures` customization point. */
 	template<typename S, typename E = detail::empty_env_t>
-	concept sender_in = sender<S> && requires (S &&s, E &&e) { { get_completion_signatures(std::forward<S>(s), std::forward<E>(e)) } -> detail::instance_of<completion_signatures>; };
+	concept sender_in = sender<S> && requires(S &&s, E &&e) {{ get_completion_signatures(std::forward<S>(s), std::forward<E>(e)) } -> detail::instance_of<completion_signatures>; };
 }
