@@ -9,4 +9,10 @@
 int main()
 {
 	rod::run_loop loop;
+
+	auto sch = loop.get_scheduler();
+	auto snd = rod::transfer_just(sch, 1);
+
+	loop.run();
+	/*rod::sync_wait(snd);*/
 }

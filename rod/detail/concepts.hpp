@@ -10,7 +10,7 @@
 
 namespace rod
 {
-	inline namespace _signals
+	inline namespace _channels
 	{
 		struct set_value_t
 		{
@@ -38,12 +38,27 @@ namespace rod
 		};
 	}
 
+	/** Customization point object used to send a set of values through the value completion channel. */
 	inline constexpr auto set_value = set_value_t{};
+	/** Customization point object used to send an error through the error completion channel. */
 	inline constexpr auto set_error = set_error_t{};
+	/** Customization point object used to send a stop signal through the stop completion channel. */
 	inline constexpr auto set_stopped = set_stopped_t{};
 
 	namespace detail
 	{
+		template<typename R, typename F, typename... Args> requires std::invocable<F, Args...>
+		constexpr void rcv_try_invoke(R &&rcv, F &&f, Args &&...args) noexcept
+		{
+			if constexpr (std::is_nothrow_invocable_v<F, Args...>)
+				f(std::forward<Args>(args)...);
+			else
+			{
+				try { f(std::forward<Args>(args)...); }
+				catch (...) { set_error(std::forward<R>(rcv), std::current_exception()); }
+			}
+		}
+
 		template<typename S, typename R, typename U = std::remove_cvref_t<R>>
 		concept valid_completion_for = requires(S *s) { []<typename Tag, typename... Args>(Tag (*)(Args...)) requires nothrow_tag_invocable<Tag, U, Args...> {}(s); };
 

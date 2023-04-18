@@ -79,7 +79,7 @@ namespace rod
 
 				struct receiver
 				{
-					[[nodiscard]] friend constexpr decltype(auto) tag_invoke(get_env_t, const receiver &cr) noexcept
+					friend constexpr decltype(auto) tag_invoke(get_env_t, const receiver &cr) noexcept
 					{
 						return get_env(std::as_const(cr.continuation.promise()));
 					}
@@ -167,7 +167,15 @@ namespace rod
 		};
 	}
 
-	/** Utility used to transform an object into a form awaitable within a coroutine. */
+	/** @brief Utility used to transform a sender into a form awaitable within a coroutine.
+	 *
+	 * Given awaitable `a` resulting from expression `as_awaitable(snd, prm)`, if \a snd completes via the value channel, `a.await_resume()`
+	 * will return the stored result; otherwise, if \a snd completes via the error channel, it will re-throw the stored exception.
+	 * `a.await_suspend()` invokes `start` CBO on the internal connection state, and `a.await_ready()` always returns `false`.
+	 *
+	 * @param snd Sender to transform into an awaitable.
+	 * @param prm Coroutine promise to use for the sender awaitable.
+	 * @return Awaitable object used to suspend execution until completion of \a snd. */
 	inline constexpr auto as_awaitable = as_awaitable_t{};
 
 	namespace detail
@@ -256,7 +264,7 @@ namespace rod
 	{
 		using result_t = detail::await_result_t<S, detail::env_promise<E>>;
 
-		[[nodiscard]] constexpr auto operator()(S &&, E &&) noexcept
+		[[nodiscard]] constexpr auto operator()(S &&, E &&) const noexcept
 		{
 			if constexpr (!std::is_void_v<std::remove_cv_t<result_t>>)
 				return completion_signatures<set_value_t(result_t), set_error_t(std::exception_ptr), set_stopped_t()>{};
@@ -265,10 +273,10 @@ namespace rod
 		}
 	};
 	/* `connect` overload for awaitable types. */
-	template<typename A, typename R> requires detail::is_awaitable<A, detail::awaitable_promise<R>> && receiver_of<R, detail::awaitable_sigs_t<A, R>>
+	template<typename A, typename R> requires detail::is_awaitable<A, detail::awaitable_promise<R>>
 	struct connect_t::_overload_hook<A, R>
 	{
-		[[nodiscard]] detail::awaitable_operation<R> operator()(auto a, auto r)
+		[[nodiscard]] detail::awaitable_operation<R> operator()(auto a, auto r) const requires receiver_of<R, detail::awaitable_sigs_t<A, R>>
 		{
 			constexpr auto invoke = []<typename F, typename... Args>(F f, Args &&...args) noexcept
 			{

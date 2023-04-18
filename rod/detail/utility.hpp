@@ -23,6 +23,27 @@ namespace rod::detail
 			return std::make_exception_ptr(std::forward<Err>(err));
 	}
 
+	template<typename From, typename To>
+	struct copy_cvref { using type = To; };
+
+	template<typename From, typename To>
+	struct copy_cvref<const From, To> { using type = std::add_const_t<To>; };
+	template<typename From, typename To>
+	struct copy_cvref<volatile From, To> { using type = std::add_volatile_t<To>; };
+	template<typename From, typename To>
+	struct copy_cvref<const volatile From, To> { using type = std::add_cv_t<To>; };
+
+	template<typename From, typename To>
+	struct copy_cvref<From &, To> { using type = std::add_lvalue_reference<copy_cvref<From, To>>; };
+	template<typename From, typename To>
+	struct copy_cvref<From &&, To> { using type = std::add_rvalue_reference<copy_cvref<From, To>>; };
+
+	template<typename From, typename To>
+	using copy_cvref_t = typename copy_cvref<From, To>::type;
+
+	template<typename T>
+	concept movable_value = std::move_constructible<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>;
+
 	template<typename T>
 	concept ebo_candidate = std::conjunction<std::is_empty<T>, std::negation<std::is_final<T>>>::value;
 
@@ -122,4 +143,32 @@ namespace rod::detail
 	inline auto deduce_variant_or_empty(type_list_t<Ts...>) -> std::variant<Ts...>;
 	template<typename... Ts>
 	using variant_or_empty = decltype(deduce_variant_or_empty(unique_list<std::decay_t<Ts>...>));
+
+	template<template<typename...> typename T, typename... Ts>
+	struct bind_front { template<typename... Us> using type = T<Ts..., Us...>; };
+	template<template<typename...> typename T, typename... Ts>
+	struct bind_back { template<typename... Us> using type = T<Us..., Ts...>; };
+
+	template<typename, typename>
+	struct push_front;
+	template<template<typename...> typename T, typename... Ts, typename U>
+	struct push_front<T<Ts...>, U> { using type = T<U, Ts...>; };
+	template<typename T, typename U>
+	using push_front_t = typename push_front<T, U>::type;
+
+	template<typename, typename>
+	struct push_back;
+	template<template<typename...> typename T, typename... Ts, typename U>
+	struct push_back<T<Ts...>, U> { using type = T<Ts..., U>; };
+	template<typename T, typename U>
+	using push_back_t = typename push_back<T, U>::type;
+
+	template<template<typename...> typename, typename...>
+	struct concat_on;
+	template<template<typename...> typename V, template<typename...> typename T0, template<typename...> typename T1, typename... Ts, typename... Us, typename... Vs>
+	struct concat_on<V, T0<Ts...>, T1<Us...>, Vs...> : concat_on<V, V<Ts..., Us...>, Vs...> {};
+	template<template<typename...> typename V, template<typename...> typename T, typename... Ts>
+	struct concat_on<V, T<Ts...>> { using type = V<Ts...>; };
+	template<template<typename...> typename V, typename... Ts>
+	using concat_on_t = typename bind_back<V, Ts...>::type;
 }

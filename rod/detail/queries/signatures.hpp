@@ -56,21 +56,54 @@ namespace rod
 
 		template<typename Tag, typename S, typename E, template<typename...> typename Tuple, template<typename...> typename Variant> requires sender_in<S, E>
 		using gather_signatures_t = typename gather_signatures<Tag, Tuple, Variant<>, completion_signatures_of_t<S, E>>::type;
+
+		template<typename T>
+		using identity_t = T;
 	}
 
 	/** Concept used to check if sender type \a S can be connected to receiver \a R. */
 	template<typename S, typename R>
 	concept sender_to = sender_in<S, env_of_t<R>> && receiver_of<R, completion_signatures_of_t<S, env_of_t<R>>> && requires(S &&s, R &&r) { connect(std::forward<S>(s), std::forward<R>(r)); };
-	/** Concept used to check if sender type \a S has advertises a completion signature returning for the `set_stopped_t` signal given an execution environment \a E. */
+	/** Concept used to check if sender type \a S has advertises a completion signature returning for the stop channel given an execution environment \a E. */
 	template<typename S, typename E = detail::empty_env_t>
 	concept sends_stopped = sender_in<S, E> && !std::same_as<detail::type_list_t<>, detail::gather_signatures_t<set_stopped_t, S, E, detail::type_list_t, detail::type_list_t>>;
 
 	/** Given completion signatures `Ts` obtained via `completion_signatures_of_t<S, E>`, defines an alias for
-	 * `Variant<Tuple<Args0...>, ..., Tuple<ArgsN...>>` where `ArgsN` is a template pack of the `N`th completion signature returning `set_value_t`. */
+	 * `Variant<Tuple<Args0...>, ..., Tuple<ArgsN...>>` where `ArgsN` is a template pack of the `N`th completion signature of the value channel. */
 	template<typename S, typename E = detail::empty_env_t, template<typename...> typename Tuple = detail::decayed_tuple, template<typename...> typename Variant = detail::variant_or_empty> requires sender_in<S, E>
 	using value_types_of_t = detail::gather_signatures_t<set_value_t, S, E, Tuple, Variant>;
 	/** Given completion signatures `Ts` obtained via `completion_signatures_of_t<S, E>`, defines an alias for
-	 * `Variant<Tuple<Args0...>, ..., Tuple<ArgsN...>>` where `ArgsN` is a template pack of the `N`th completion signature returning `set_error_t`. */
-	template<typename S, typename E = detail::empty_env_t, template<typename...> typename Tuple = detail::decayed_tuple, template<typename...> typename Variant = detail::variant_or_empty> requires sender_in<S, E>
-	using error_types_of_t = detail::gather_signatures_t<set_error_t, S, E, Tuple, Variant>;
+	 * `Variant<Err0, ..., ErrN...>` where `ErrN` is the error type of the `N`th completion signature of the error channel. */
+	template<typename S, typename E = detail::empty_env_t, template<typename...> typename Variant = detail::variant_or_empty> requires sender_in<S, E>
+	using error_types_of_t = detail::gather_signatures_t<set_error_t, S, E, detail::identity_t, Variant>;
+
+	namespace detail
+	{
+		template<typename... Ts>
+		using default_set_value = completion_signatures<set_value_t(Ts...)>;
+		template<typename Err>
+		using default_set_error = completion_signatures<set_error_t(Err)>;
+
+		template<typename...>
+		struct impl_make_completion_signatures;
+		template<typename... Ts>
+		struct impl_make_completion_signatures<type_list_t<Ts...>>
+		{
+			using type = completion_signatures<Ts...>;
+		};
+		template<typename... AddSigs, typename... Vs, typename... Es, typename Ss>
+		struct impl_make_completion_signatures<completion_signatures<AddSigs...>, type_list_t<Vs...>, type_list_t<Es...>, completion_signatures<Ss>>
+		{
+			using type = typename impl_make_completion_signatures<unique_list_t<AddSigs..., Vs..., Es..., Ss>>::type;
+		};
+	}
+
+	/** Alias template used to adapt completion signatures of a sender. */
+	template<typename Snd, typename Env = detail::empty_env_t, detail::instance_of<completion_signatures> AddSigs = completion_signatures<>,
+	         template<typename...> typename SetVal = detail::default_set_value, template<typename> typename SetErr = detail::default_set_error,
+	         detail::instance_of<completion_signatures> SetStop = completion_signatures<set_stopped_t()>> requires sender_in<Snd, Env>
+	using make_completion_signatures = typename detail::impl_make_completion_signatures<
+	        AddSigs, detail::gather_signatures_t<set_error_t, Snd, Env, SetVal, detail::type_list_t>,
+	        detail::gather_signatures_t<set_error_t, Snd, Env, SetErr, detail::type_list_t>,
+	        std::conditional_t<sends_stopped<Snd, Env>, SetStop, completion_signatures<>>>::type;
 }

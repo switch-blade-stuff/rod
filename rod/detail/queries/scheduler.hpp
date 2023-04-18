@@ -57,7 +57,7 @@ namespace rod
 		};
 	}
 
-	/** Customization point object used to obtain the completion scheduler for signal \a T from the passed sender. */
+	/** Customization point object used to obtain the completion scheduler for channel \a T from the passed sender. */
 	template<typename T>
 	inline constexpr auto get_completion_scheduler = get_completion_scheduler_t<T>{};
 }

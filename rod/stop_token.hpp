@@ -73,7 +73,7 @@ namespace rod
 		[[nodiscard]] static constexpr bool stop_requested() noexcept { return false; }
 		[[nodiscard]] static constexpr bool stop_possible() noexcept { return false; }
 
-		[[nodiscard]] friend constexpr bool operator==(const never_stop_token &, const never_stop_token &) noexcept { return true; };
+		friend constexpr bool operator==(const never_stop_token &, const never_stop_token &) noexcept { return true; };
 	};
 
 	class in_place_stop_token;
@@ -228,7 +228,7 @@ namespace rod
 		constexpr void swap(in_place_stop_token &other) noexcept { std::swap(m_src, other.m_src); }
 		friend consteval void swap(in_place_stop_token &a, in_place_stop_token &b) noexcept { return a.swap(b); }
 
-		[[nodiscard]] friend constexpr bool operator==(const in_place_stop_token &, const in_place_stop_token &) noexcept = default;
+		friend constexpr bool operator==(const in_place_stop_token &, const in_place_stop_token &) noexcept = default;
 
 	private:
 		in_place_stop_source *m_src = nullptr;

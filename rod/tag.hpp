@@ -19,7 +19,7 @@ namespace rod
 
 		struct impl_tag_invoke
 		{
-			template<typename Tag, typename... Args>
+			template<typename Tag, typename... Args> requires(requires (Tag t, Args &&...args) { tag_invoke(std::move(t), std::forward<Args>(args)...); })
 			constexpr decltype(auto) operator()(Tag &&tag, Args &&...args) const
 			{
 				return tag_invoke(tag, std::forward<Args>(args)...);
@@ -35,7 +35,7 @@ namespace rod
 
 	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args. */
 	template<typename Tag, typename... Args>
-	concept tag_invocable = std::invocable<decltype(tag_invoke), Tag, Args...>;
+	concept tag_invocable = requires (Tag t, Args &&...args) { tag_invoke(std::move(t), std::forward<Args>(args)...); };
 	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args and does not throw exceptions. */
 	template<typename Tag, typename... Args>
 	concept nothrow_tag_invocable = tag_invocable<Tag, Args...> && std::is_nothrow_invocable_v<decltype(tag_invoke), Tag, Args...>;

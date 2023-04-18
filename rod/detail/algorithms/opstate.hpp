@@ -12,12 +12,16 @@ namespace rod
 	{
 		struct start_t
 		{
-			template<typename O>
-			constexpr decltype(auto) operator()(O &&o) noexcept requires tag_invocable<start_t, O> { return tag_invoke(*this, std::forward<O>(o)); }
+			template<typename O> requires tag_invocable<start_t, O>
+			constexpr decltype(auto) operator()(O &&op) const noexcept(nothrow_tag_invocable<start_t, O>)
+			{
+				return tag_invoke(*this, std::forward<O>(op));
+			}
 		};
 	}
 
-	/** Customization point object used to start work represented by an operation state. */
+	/** Customization point object used to start work represented by an operation state.
+	 * @param op Operation state used to start the scheduled work. */
 	inline constexpr auto start = start_t{};
 
 	/** Concept used to define an operation state object type that can be used to start execution of work. */

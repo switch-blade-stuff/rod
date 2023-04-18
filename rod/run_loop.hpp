@@ -47,15 +47,13 @@ namespace rod
 
 			static void invoke(operation<> *p) noexcept
 			{
-				auto &rcv = static_cast<operation<R> *>(p)->receiver();
-				try
+				rcv_try_invoke(std::move(static_cast<operation<R> *>(p)->receiver()), [](R &&rcv)
 				{
 					if (rod::get_stop_token(get_env(rcv)).stop_requested())
-						set_stopped(std::move(rcv));
+						set_stopped(std::forward<R>(rcv));
 					else
-						set_value(std::move(rcv));
-				}
-				catch (...) { set_error(std::move(rcv), std::current_exception()); }
+						set_value(std::forward<R>(rcv));
+				});
 			}
 
 			constexpr operation(run_loop *loop, R &&rcv) : operation<>(loop, invoke), detail::ebo_helper<R>(std::forward<R>(rcv)) {}
@@ -93,7 +91,6 @@ namespace rod
 			};
 
 		public:
-			using is_sender = std::true_type;
 			using completion_signatures = completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>;
 
 		private:
@@ -117,8 +114,8 @@ namespace rod
 			scheduler(run_loop *loop) noexcept : m_loop(loop) {}
 
 		public:
-			[[nodiscard]] friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
-			[[nodiscard]] friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
+			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
+			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 
 			[[nodiscard]] friend in_place_stop_token tag_invoke(get_stop_token_t, const scheduler &s) noexcept { return s.get_stop_token(); }
 			[[nodiscard]] friend sender tag_invoke(schedule_t, const scheduler &s) noexcept { return s.schedule(); }
