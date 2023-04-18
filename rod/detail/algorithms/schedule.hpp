@@ -13,16 +13,17 @@ namespace rod
 	{
 		struct schedule_t
 		{
-			template<typename S>
-			requires tag_invocable<schedule_t, S> && sender<tag_invoke_result_t<schedule_t, S>>
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&s) const noexcept(nothrow_tag_invocable<schedule_t, S>)
+			template<typename S> requires tag_invocable<schedule_t, S> && sender<tag_invoke_result_t<schedule_t, S>>
+			[[nodiscard]] constexpr decltype(auto) operator()(S &&sch) const noexcept(nothrow_tag_invocable<schedule_t, S>)
 			{
-				return tag_invoke(*this, std::forward<S>(s));
+				return tag_invoke(*this, std::forward<S>(sch));
 			}
 		};
 	}
 
-	/** Customization point object used to obtain a sender from the passed scheduler. */
+	/** Customization point object used to obtain a sender from the passed scheduler.
+	 * @param sch Scheduler to create a sender from.
+	 * @return Sender created from \a sch. */
 	inline constexpr auto schedule = schedule_t{};
 	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule(S)`. */
 	template<typename S>

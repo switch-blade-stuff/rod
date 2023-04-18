@@ -31,13 +31,10 @@ namespace rod
 		};
 	}
 
-	/** @brief Customization point object used to connect a sender with a receiver.
-	 *
-	 * Expression `connect(s, r)` for sub-expressions `s` and `r` where `r` satisfies the `receiver` concept is equivalent to one of the following:
-	 * <ul>
-	 * <li>If expression `tag_invoke(connect, s, r)` is well-formed, equivalent to the result of the expression (note: type of the expression must satisfy `operation_state`).</li>
-	 * <li>Operation state task resulting from invocation of an exposition-only coroutine `connect-awaitable(s, r)` if `s` is awaitable using the `connect-awaitable-promise` promise type.</li>
-	 * </ul> */
+	/** Customization point object used to connect a sender with a receiver.
+	 * @param snd Sender or an awaitable to connect with \a rcv.
+	 * @param rcv Receiver to connect \a snd to.
+	 * @return Operation state used to represent the sender-receiver connection. */
 	inline constexpr auto connect = connect_t{};
 	/** Alias for `decltype(connect(std::declval<S>(), std::declval<R>()))`. */
 	template<typename S, typename R>

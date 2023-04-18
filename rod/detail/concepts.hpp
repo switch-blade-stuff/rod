@@ -15,34 +15,39 @@ namespace rod
 		struct set_value_t
 		{
 			template<typename R, typename... Vs>
-			constexpr void operator()(R &&r, Vs &&...vs) noexcept(nothrow_tag_invocable<set_value_t, R, Vs...>) requires tag_invocable<set_value_t, R, Vs...>
+			constexpr void operator()(R &&rcv, Vs &&...vals) noexcept(nothrow_tag_invocable<set_value_t, R, Vs...>) requires tag_invocable<set_value_t, R, Vs...>
 			{
-				tag_invoke(*this, std::forward<R>(r), std::forward<Vs>(vs)...);
+				tag_invoke(*this, std::forward<R>(rcv), std::forward<Vs>(vals)...);
 			}
 		};
 		struct set_error_t
 		{
 			template<typename R, typename Err>
-			constexpr void operator()(R &&r, Err &&err) noexcept(nothrow_tag_invocable<set_error_t, R, Err>) requires tag_invocable<set_error_t, R, Err>
+			constexpr void operator()(R &&rcv, Err &&err) noexcept(nothrow_tag_invocable<set_error_t, R, Err>) requires tag_invocable<set_error_t, R, Err>
 			{
-				tag_invoke(*this, std::forward<R>(r), std::forward<Err>(err));
+				tag_invoke(*this, std::forward<R>(rcv), std::forward<Err>(err));
 			}
 		};
 		struct set_stopped_t
 		{
 			template<typename R>
-			constexpr void operator()(R &&r) noexcept(nothrow_tag_invocable<set_stopped_t, R>) requires tag_invocable<set_stopped_t, R>
+			constexpr void operator()(R &&rcv) noexcept(nothrow_tag_invocable<set_stopped_t, R>) requires tag_invocable<set_stopped_t, R>
 			{
-				tag_invoke(*this, std::forward<R>(r));
+				tag_invoke(*this, std::forward<R>(rcv));
 			}
 		};
 	}
 
-	/** Customization point object used to send a set of values through the value completion channel. */
+	/** Customization point object used to send a set of values through the value completion channel.
+	 * @param rcv Receiver used to handle the value completion channel.
+	 * @param vals Values sent through the value completion channel. */
 	inline constexpr auto set_value = set_value_t{};
-	/** Customization point object used to send an error through the error completion channel. */
+	/** Customization point object used to send an error through the error completion channel.
+	 * @param rcv Receiver used to handle the error completion channel.
+	 * @param err Error sent through the error completion channel. */
 	inline constexpr auto set_error = set_error_t{};
-	/** Customization point object used to send a stop signal through the stop completion channel. */
+	/** Customization point object used to send a stop signal through the stop completion channel.
+	 * @param rcv Receiver used to handle the stop completion channel. */
 	inline constexpr auto set_stopped = set_stopped_t{};
 
 	namespace detail

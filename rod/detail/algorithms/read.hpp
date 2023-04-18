@@ -28,8 +28,7 @@ namespace rod
 				friend constexpr void tag_invoke(start_t, operation &op) noexcept
 				{
 					auto &rcv = op.receiver();
-					try { set_value(std::move(rcv), T{}(get_env(rcv))); }
-					catch(...) { set_error(std::move(rcv), std::current_exception()); }
+					detail::rcv_try_invoke(std::move(rcv), set_value, std::move(rcv), T{}(get_env(rcv)));
 				}
 
 			private:
@@ -57,7 +56,9 @@ namespace rod
 		};
 	}
 
-	/** Customization point object used to create a sender that returns a value from the associated environment through the value channel. */
+	/** Customization point object used to create a sender that returns a value from the associated environment through the value channel.
+	 * @param query Query tag invoked on the associated execution environment via `tag_invoke(query, env)`.
+	 * @return Sender that completes via `set_value(tag_invoke(query, env))` or `set_error(std::current_exception())` if the former throws an exception. */
 	inline constexpr auto read = read_t{};
 
 }

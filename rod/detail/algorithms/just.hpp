@@ -68,10 +68,12 @@ namespace rod
 	struct _just::just_t
 	{
 		template<typename... Vs>
-		[[nodiscard]] constexpr detail::just_sender<set_value_t, std::decay_t<Vs>...> operator()(Vs &&...vs) const { return {std::forward<Vs>(vs)...}; }
+		[[nodiscard]] constexpr detail::just_sender<set_value_t, std::decay_t<Vs>...> operator()(Vs &&...vals) const { return {std::forward<Vs>(vals)...}; }
 	};
 
-	/** Customization point object returning a sender that passes a set of values through the value channel. */
+	/** Customization point object returning a sender that passes a set of values through the value channel.
+	 * @param vals Values to be sent through the value channel.
+	 * @return Sender that completes via `set_value(vals...)`. */
 	inline constexpr auto just = just_t{};
 
 	struct _just::just_error_t
@@ -80,11 +82,14 @@ namespace rod
 		[[nodiscard]] constexpr detail::just_sender<set_error_t, std::decay_t<Err>> operator()(Err &&err) const { return {std::forward<Err>(err)}; }
 	};
 
-	/** Customization point object returning a sender that passes an error through the error channel. */
+	/** Customization point object returning a sender that passes an error through the error channel.
+	 * @param err Error to be sent through the error channel.
+	 * @return Sender that completes via `set_error(err)`. */
 	inline constexpr auto just_error = just_error_t{};
 
 	struct _just::just_stopped_t { [[nodiscard]] constexpr detail::just_sender<set_stopped_t> operator()() const { return {}; }};
 
-	/** Customization point object returning a sender that completes immediately through the stopped. */
+	/** Customization point object returning a sender that completes immediately through the stopped.
+	 * @return Sender that completes via `set_stopped()`. */
 	inline constexpr auto just_stopped = just_stopped_t{};
 }
