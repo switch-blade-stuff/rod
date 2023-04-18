@@ -35,8 +35,8 @@ namespace rod
 		};
 	}
 
-	/** Customization point object used to query an object for it's advertised completion signatures either
-	 * through an overload of `tag_invoke` or a member `completion_signatures` type.
+	/** Customization point object used to query a sender & execution environment objects for their advertised
+	 * completion signatures either through an overload of `tag_invoke` or a member `completion_signatures` type.
 	 * @note A separate overload exists for all awaitable types. */
 	inline constexpr auto get_completion_signatures = get_completion_signatures_t{};
 	/** Alias for `decltype(get_completion_signatures(std::declval<S>(), std::declval<E>()))`. */

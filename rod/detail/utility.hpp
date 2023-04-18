@@ -120,6 +120,13 @@ namespace rod::detail
 	struct is_in_impl<T> : std::false_type {};
 
 	template<typename, typename>
+	struct is_in_list_impl;
+	template<typename T, template<typename...> typename L, typename... Ts>
+	struct is_in_list_impl<T, L<Ts...>> : is_in_impl<T, Ts...> {};
+	template<typename T, typename L>
+	using is_in_list = is_in_list_impl<T, L>;
+
+	template<typename, typename>
 	struct make_unique_list;
 	template<typename... Ts, typename U, typename... Us> requires(is_in_impl<U, Ts...>::value)
 	struct make_unique_list<type_list_t<Ts...>, type_list_t<U, Us...>> : make_unique_list<type_list_t<Ts...>, type_list_t<Us...>> {};

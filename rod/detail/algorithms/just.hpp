@@ -10,68 +10,70 @@
 
 namespace rod
 {
-	inline namespace _just
+	namespace _just
 	{
 		struct just_t;
 		struct just_error_t;
 		struct just_stopped_t;
-	}
 
-	namespace detail
-	{
-		template<typename Signal, movable_value... Ts>
-		class just_sender : std::tuple<Ts...>
+		template<typename, typename, detail::movable_value...>
+		struct operation { class type; };
+		template<typename, detail::movable_value...>
+		struct sender { class type; };
+
+		template<typename R, typename C, detail::movable_value... Ts>
+		class operation<R, C, Ts...>::type : std::tuple<Ts...>, detail::ebo_helper<R>
 		{
-			friend struct _just::just_t;
-			friend struct _just::just_error_t;
-			friend struct _just::just_stopped_t;
+			friend class sender<C, Ts...>::type;
+
+			template<typename T0, typename T1>
+			constexpr type(T0 &&v, T1 &&r ) : std::tuple<Ts...> (std::forward<T0>(v)), detail::ebo_helper<R>(std::forward<T1>(r)) {}
 
 		public:
-			using completion_signatures = completion_signatures<Signal(Ts...)>;
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op.receiver()), std::move(vals)...); }, op.values()); }
 
 		private:
+			[[nodiscard]] constexpr auto &receiver() noexcept { return detail::ebo_helper<R>::value(); }
+			[[nodiscard]] constexpr auto &values() noexcept { return *static_cast<std::tuple<Ts...> *>(this); }
+		};
+		template<typename C, detail::movable_value... Ts>
+		class sender<C, Ts...>::type : std::tuple<Ts...>
+		{
+			friend struct just_t;
+			friend struct just_error_t;
+			friend struct just_stopped_t;
+
 			template<typename R>
-			class operation : std::tuple<Ts...>, ebo_helper<R>
-			{
-				friend class just_sender;
+			using operation_t = typename operation<std::decay_t<R>, C, Ts...>::type;
 
-				template<typename T0, typename T1>
-				constexpr operation(T0 &&v, T1 &&r) : std::tuple<Ts...>(std::forward<T0>(v)), ebo_helper<R>(std::forward<T1>(r)) {}
+		public:
+			using completion_signatures = completion_signatures<C(Ts...)>;
 
-			public:
-				friend constexpr void tag_invoke(start_t, operation &op) noexcept { std::apply([&op](Ts &...vals) { Signal{}(std::move(op.receiver()), std::move(vals)...); }, op.values()); }
-
-			private:
-				[[nodiscard]] constexpr auto &receiver() noexcept { return ebo_helper<R>::value(); }
-				[[nodiscard]] constexpr auto &values() noexcept { return *static_cast<std::tuple<Ts...> *>(this); }
-			};
-
+		private:
 			template<typename... Vs>
-			constexpr just_sender(Vs &&...vals) : std::tuple<Ts...>{std::forward<Vs>(vals)...} {}
+			constexpr type(Vs &&...vals) : std::tuple<Ts...>{ std::forward<Vs>(vals)... } {}
 
 		public:
 			template<receiver_of<completion_signatures> R> requires (std::copy_constructible<Ts> && ...)
-			friend constexpr operation<std::decay_t<R>> tag_invoke(connect_t, const just_sender &s, R &&r)
-			{
-				return {s.vs_, std::forward<R>(r)};
-			}
+			friend constexpr operation_t<R> tag_invoke(connect_t, const type &s, R &&r) { return {s.vs_, std::forward<R>(r)}; }
 			template<receiver_of<completion_signatures> R>
-			friend constexpr operation<std::decay_t<R>> tag_invoke(connect_t, just_sender &&s, R &&r)
-			{
-				return {std::move(s.vs_), std::forward<R>(r)};
-			}
+			friend constexpr operation_t<R> tag_invoke(connect_t, type &&s, R &&r) { return {std::move(s.vs_), std::forward<R>(r)}; }
 
-			friend constexpr empty_env_t tag_invoke(get_env_t, const just_sender &) noexcept { return {}; }
+			friend constexpr detail::empty_env_t tag_invoke(get_env_t, const type &) noexcept { return {}; }
 		};
 	}
+
+	using _just::just_t;
+	using _just::just_error_t;
+	using _just::just_stopped_t;
 
 	struct _just::just_t
 	{
 		template<typename... Vs>
-		[[nodiscard]] constexpr detail::just_sender<set_value_t, std::decay_t<Vs>...> operator()(Vs &&...vals) const { return {std::forward<Vs>(vals)...}; }
+		[[nodiscard]] constexpr typename sender<set_value_t, std::decay_t<Vs>...>::type operator()(Vs &&...vals) const { return {std::forward<Vs>(vals)...}; }
 	};
 
-	/** Customization point object returning a sender that passes a set of values through the value channel.
+	/** Returns a sender that passes a set of values through the value channel.
 	 * @param vals Values to be sent through the value channel.
 	 * @return Sender that completes via `set_value(vals...)`. */
 	inline constexpr auto just = just_t{};
@@ -79,15 +81,15 @@ namespace rod
 	struct _just::just_error_t
 	{
 		template<typename Err>
-		[[nodiscard]] constexpr detail::just_sender<set_error_t, std::decay_t<Err>> operator()(Err &&err) const { return {std::forward<Err>(err)}; }
+		[[nodiscard]] constexpr typename sender<set_error_t, std::decay_t<Err>>::type operator()(Err &&err) const { return {std::forward<Err>(err)}; }
 	};
 
-	/** Customization point object returning a sender that passes an error through the error channel.
+	/** Returns a sender a sender that passes an error through the error channel.
 	 * @param err Error to be sent through the error channel.
 	 * @return Sender that completes via `set_error(err)`. */
 	inline constexpr auto just_error = just_error_t{};
 
-	struct _just::just_stopped_t { [[nodiscard]] constexpr detail::just_sender<set_stopped_t> operator()() const { return {}; }};
+	struct _just::just_stopped_t { [[nodiscard]] constexpr typename sender<set_stopped_t>::type operator()() const { return {}; }};
 
 	/** Customization point object returning a sender that completes immediately through the stopped.
 	 * @return Sender that completes via `set_stopped()`. */

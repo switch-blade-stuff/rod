@@ -64,76 +64,95 @@ namespace rod
 		using single_sender_value_type = typename deduce_single_sender_value_type<value_types_of_t<S, E>>::type;
 	}
 
-	inline namespace _as_awaitable
+	namespace _as_awaitable
 	{
+		struct unit {};
+		template<typename S, typename P>
+		using value_t = detail::single_sender_value_type<S, detail::deduce_env_of<P>>;
+		template<typename S, typename P>
+		using result_t = std::conditional_t<std::is_void_v<value_t<S, P>>, unit, value_t<S, P>>;
+
+		template<typename, typename>
+		struct awaitable { class type; };
+		template<typename, typename>
+		struct receiver { class type; };
+
+		template<typename S, typename P>
+		class receiver<S, P>::type
+		{
+			friend class awaitable<S, P>::type;
+
+			using result_t = std::variant<std::monostate, result_t<S, P>, std::exception_ptr>;
+			using handle_t = std::coroutine_handle<P>;
+
+			constexpr type(result_t *result, handle_t handle) : m_result_ptr(result), m_coro_handle(handle) {}
+
+		public:
+			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &cr) noexcept
+			{
+				return get_env(std::as_const(cr.m_coro_handle.promise()));
+			}
+			template<typename T, typename Env, typename... Args>
+			friend constexpr decltype(auto) tag_invoke(T tag, Env &&env, Args &&...args) noexcept requires(std::same_as<std::decay_t<Env>, std::decay_t<env_of_t<type>>>)
+			{
+				return tag(std::forward<Env>(env), std::forward<Args>(args)...);
+			}
+
+			template<typename... Vs>
+			friend constexpr void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept requires std::constructible_from<_as_awaitable::result_t<S, P>, Vs...>
+			{
+				try { r.m_result_ptr->template emplace<1>(std::forward<Vs>(vs)...); }
+				catch (...) { r.m_result_ptr->emplace<2>(std::current_exception()); }
+				r.m_coro_handle.resume();
+			}
+			template<typename Err>
+			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
+			{
+				r.m_result_ptr->emplace<2>(as_except_ptr(std::forward<Err>(err)));
+				r.m_coro_handle.resume();
+			}
+			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept
+			{
+				static_cast<std::coroutine_handle<>>(r.m_coro_handle.promise().unhandled_stopped()).resume();
+			}
+
+		private:
+			result_t *m_result_ptr;
+			handle_t m_coro_handle;
+		};
+		template<typename S, typename P>
+		class awaitable<S, P>::type
+		{
+			static_assert(detail::has_env<P>, "Awaitable promise type must provide a specialization of the `get_env` query object");
+
+			using result_t = std::variant<std::monostate, result_t<S, P>, std::exception_ptr>;
+			using receiver_t = typename receiver<S, P>::type;
+
+		public:
+			constexpr type(S &&s, P &p) : m_state(connect(std::forward<S>(s), receiver_t{&m_result, std::coroutine_handle<P>::from_promise(p)})) {}
+
+			constexpr bool await_ready() const noexcept { return false; }
+			void await_suspend(std::coroutine_handle<P>) noexcept { start(m_state); }
+
+			constexpr value_t<S, P> await_resume()
+			{
+				if (m_result.index() == 2)
+					std::rethrow_exception(std::get<2>(m_result));
+				else if constexpr (!std::is_void_v<value_t<S, P>>)
+					return std::forward<value_t<S, P>>(std::get<1>(m_result));
+			}
+
+		private:
+			connect_result_t<S, receiver_t> m_state;
+			result_t m_result = {};
+		};
+
 		class as_awaitable_t
 		{
-			template<typename S, typename P>
-			class awaitable
-			{
-				static_assert(detail::has_env<P>, "Awaitable promise type must provide a specialization of the `get_env` query object");
-
-				struct unit {};
-				using value_t = detail::single_sender_value_type<S, detail::deduce_env_of<P>>;
-				using result_t = std::conditional_t<std::is_void_v<value_t>, unit, value_t>;
-
-				struct receiver
-				{
-					friend constexpr decltype(auto) tag_invoke(get_env_t, const receiver &cr) noexcept
-					{
-						return get_env(std::as_const(cr.continuation.promise()));
-					}
-					template<typename T, typename Env, typename... Args>
-					friend constexpr decltype(auto) tag_invoke(T tag, Env &&env, Args &&...args) noexcept requires(std::same_as<std::decay_t<Env>, std::decay_t<env_of_t<receiver>>>)
-					{
-						return tag(std::forward<Env>(env), std::forward<Args>(args)...);
-					}
-
-					template<typename... Vs>
-					friend constexpr void tag_invoke(set_value_t, receiver &&r, Vs &&...vs) noexcept requires std::constructible_from<result_t, Vs...>
-					{
-						try { r.result_ptr->template emplace<1>(std::forward<Vs>(vs)...); }
-						catch (...) { r.result_ptr->emplace<2>(std::current_exception()); }
-						r.continuation.resume();
-					}
-					template<typename Err>
-					friend constexpr void tag_invoke(set_error_t, receiver &&r, Err &&err) noexcept
-					{
-						r.result_ptr->emplace<2>(as_except_ptr(std::forward<Err>(err)));
-						r.continuation.resume();
-					}
-					friend constexpr void tag_invoke(set_stopped_t, receiver &&r) noexcept
-					{
-						static_cast<std::coroutine_handle<>>(r.continuation.promise().unhandled_stopped()).resume();
-					}
-
-					std::variant<std::monostate, result_t, std::exception_ptr> *result_ptr;
-					std::coroutine_handle<P> continuation;
-				};
-
-			public:
-				constexpr awaitable(S &&s, P &p) : m_state(connect(std::forward<S>(s), receiver{&m_result, std::coroutine_handle<P>::from_promise(p)})) {}
-
-				constexpr bool await_ready() const noexcept { return false; }
-				void await_suspend(std::coroutine_handle<P>) noexcept { start(m_state); }
-
-				constexpr value_t await_resume()
-				{
-					if (m_result.index() == 2)
-						std::rethrow_exception(std::get<2>(m_result));
-					else if constexpr (!std::is_void_v<value_t>)
-						return std::forward<value_t>(std::get<1>(m_result));
-				}
-
-			private:
-				std::variant<std::monostate, result_t, std::exception_ptr> m_result = {};
-				connect_result_t<S, receiver> m_state;
-			};
-
 			template<typename S, typename E>
 			constexpr static bool single_sender = sender_in<S, E> && requires { typename detail::single_sender_value_type<S, E>; };
 			template<typename S, typename P>
-			constexpr static bool awaitable_sender = single_sender<S, detail::deduce_env_of<P>> && sender_to<S, typename awaitable<S, P>::receiver> && requires(P &p)
+			constexpr static bool awaitable_sender = single_sender<S, detail::deduce_env_of<P>> && sender_to<S, typename receiver<S, P>::type> && requires(P &p)
 			{
 				{ p.unhandled_stopped() } -> std::convertible_to<std::coroutine_handle<>>;
 			};
@@ -144,7 +163,7 @@ namespace rod
 				if constexpr (tag_invocable<as_awaitable_t, T, P &>)
 					return nothrow_tag_invocable<as_awaitable_t, T, P &>;
 				else if constexpr (detail::is_awaitable<T, P>)
-					return std::is_nothrow_constructible_v<awaitable<T, P>, T, std::coroutine_handle<P>>;
+					return std::is_nothrow_constructible_v<typename awaitable<T, P>::type, T, std::coroutine_handle<P>>;
 				else
 					return true;
 			}
@@ -160,12 +179,14 @@ namespace rod
 					return tag_invoke(*this, std::forward<T>(t), p);
 				}
 				else if constexpr (!detail::is_awaitable<T> && awaitable_sender<T, P>)
-					return awaitable<T, P>{std::forward<T>(t), std::coroutine_handle<P>::from_promise(p)};
+					return typename awaitable<T, P>::type{std::forward<T>(t), std::coroutine_handle<P>::from_promise(p)};
 				else
 					return std::forward<T>(t);
 			}
 		};
 	}
+
+	using _as_awaitable::as_awaitable_t;
 
 	/** @brief Utility used to transform a sender into a form awaitable within a coroutine.
 	 *
@@ -204,6 +225,7 @@ namespace rod
 		template<>
 		class awaitable_promise<void>
 		{
+		public:
 			std::suspend_always initial_suspend() noexcept { return {}; }
 
 			[[noreturn]] std::suspend_always final_suspend() noexcept { std::terminate(); }

@@ -13,10 +13,7 @@ namespace rod
 		struct start_t
 		{
 			template<typename O> requires tag_invocable<start_t, O>
-			constexpr decltype(auto) operator()(O &&op) const noexcept(nothrow_tag_invocable<start_t, O>)
-			{
-				return tag_invoke(*this, std::forward<O>(op));
-			}
+			constexpr decltype(auto) operator()(O &&op) const noexcept(nothrow_tag_invocable<start_t, O>) { return tag_invoke(*this, std::forward<O>(op)); }
 		};
 	}
 

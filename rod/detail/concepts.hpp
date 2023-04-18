@@ -15,7 +15,7 @@ namespace rod
 		struct set_value_t
 		{
 			template<typename R, typename... Vs>
-			constexpr void operator()(R &&rcv, Vs &&...vals) noexcept(nothrow_tag_invocable<set_value_t, R, Vs...>) requires tag_invocable<set_value_t, R, Vs...>
+			constexpr void operator()(R &&rcv, Vs &&...vals) const noexcept(nothrow_tag_invocable<set_value_t, R, Vs...>) requires tag_invocable<set_value_t, R, Vs...>
 			{
 				tag_invoke(*this, std::forward<R>(rcv), std::forward<Vs>(vals)...);
 			}
@@ -23,7 +23,7 @@ namespace rod
 		struct set_error_t
 		{
 			template<typename R, typename Err>
-			constexpr void operator()(R &&rcv, Err &&err) noexcept(nothrow_tag_invocable<set_error_t, R, Err>) requires tag_invocable<set_error_t, R, Err>
+			constexpr void operator()(R &&rcv, Err &&err) const noexcept(nothrow_tag_invocable<set_error_t, R, Err>) requires tag_invocable<set_error_t, R, Err>
 			{
 				tag_invoke(*this, std::forward<R>(rcv), std::forward<Err>(err));
 			}
@@ -31,7 +31,7 @@ namespace rod
 		struct set_stopped_t
 		{
 			template<typename R>
-			constexpr void operator()(R &&rcv) noexcept(nothrow_tag_invocable<set_stopped_t, R>) requires tag_invocable<set_stopped_t, R>
+			constexpr void operator()(R &&rcv) const noexcept(nothrow_tag_invocable<set_stopped_t, R>) requires tag_invocable<set_stopped_t, R>
 			{
 				tag_invoke(*this, std::forward<R>(rcv));
 			}

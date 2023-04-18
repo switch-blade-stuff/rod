@@ -10,51 +10,48 @@
 
 namespace rod
 {
-	inline namespace _read
+	namespace _read
 	{
-		class read_t
+		template<typename, typename>
+		struct operation { struct type; };
+		template<typename>
+		struct sender { struct type; };
+
+		template<typename T, typename R>
+		struct operation<T, R>::type : detail::ebo_helper<R>
 		{
-			template<typename>
-			class sender;
+			friend class sender<T>::type;
 
-			template<typename T, typename R>
-			class operation : detail::ebo_helper<R>
+			using detail::ebo_helper<R>::ebo_helper;
+
+			friend constexpr void tag_invoke(start_t, type &op) noexcept
 			{
-				friend class sender<T>;
+				auto &rcv = op.detail::template ebo_helper<T>::value();
+				detail::rcv_try_invoke(std::move(rcv), set_value, std::move(rcv), T{}(get_env(rcv)));
+			}
+		};
+		template<typename T>
+		struct sender<T>::type
+		{
+			template<typename R>
+			[[nodiscard]] constexpr friend operation<T, std::decay_t<R>> tag_invoke(connect_t, type, R &&r) { return {std::forward<R>(r)}; }
 
-			public:
-				using detail::ebo_helper<R>::ebo_helper;
+			template<typename Env> requires tag_invocable<T, Env>
+			friend constexpr auto tag_invoke(get_completion_signatures_t, type, Env) -> completion_signatures<set_value_t(tag_invoke_result_t<T, Env>), set_error_t(std::exception_ptr)> { return {}; }
+			template<typename Env> requires nothrow_tag_invocable<T, Env>
+			friend constexpr auto tag_invoke(get_completion_signatures_t, type, Env) -> completion_signatures<set_value_t(tag_invoke_result_t<T, Env>)> { return {}; }
 
-				friend constexpr void tag_invoke(start_t, operation &op) noexcept
-				{
-					auto &rcv = op.receiver();
-					detail::rcv_try_invoke(std::move(rcv), set_value, std::move(rcv), T{}(get_env(rcv)));
-				}
+			friend constexpr detail::empty_env_t tag_invoke(get_env_t, const type &) noexcept { return {}; }
+		};
 
-			private:
-				[[nodiscard]] constexpr auto &receiver() noexcept { detail::ebo_helper<T>::value(); }
-			};
-
+		struct read_t
+		{
 			template<typename T>
-			class sender
-			{
-			public:
-				template<typename R>
-				[[nodiscard]] constexpr friend operation<T, std::decay_t<R>> tag_invoke(connect_t, sender, R &&r) { return {std::forward<R>(r)}; }
-
-				template<typename Env> requires tag_invocable<T, Env>
-				friend auto tag_invoke(get_completion_signatures_t, sender, Env) -> completion_signatures<set_value_t(tag_invoke_result_t<T, Env>), set_error_t(std::exception_ptr)>;
-				template<typename Env> requires nothrow_tag_invocable<T, Env>
-				friend auto tag_invoke(get_completion_signatures_t, sender, Env) -> completion_signatures<set_value_t(tag_invoke_result_t<T, Env>)>;
-
-				friend constexpr detail::empty_env_t tag_invoke(get_env_t, const sender &) noexcept { return {}; }
-			};
-
-		public:
-			template<typename T>
-			[[nodiscard]] constexpr sender<T> operator()(T) const noexcept { return {}; }
+			[[nodiscard]] constexpr typename sender<T>::type operator()(T) const noexcept { return {}; }
 		};
 	}
+
+	using _read::read_t;
 
 	/** Customization point object used to create a sender that returns a value from the associated environment through the value channel.
 	 * @param query Query tag invoked on the associated execution environment via `tag_invoke(query, env)`.

@@ -13,7 +13,7 @@ namespace rod
 		struct execute_may_block_caller_t
 		{
 			template<typename S>
-			[[nodiscard]] constexpr bool operator()(S &&s) noexcept
+			[[nodiscard]] constexpr bool operator()(S &&s) const noexcept
 			{
 				if constexpr (tag_invocable<execute_may_block_caller_t, const std::remove_cvref_t<S> &>)
 					return tag_invoke(*this, std::as_const(s));
