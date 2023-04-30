@@ -4,16 +4,16 @@
 
 #pragma once
 
-#include <functional>
 #include <list>
 
-#include "detail/utility.hpp"
+#include "generator.hpp"
+#include "delegate.hpp"
 
 namespace rod
 {
 	template<std::move_constructible, typename>
 	class basic_signal;
-	template<detail::instance_of<basic_signal>>
+	template<instance_of<basic_signal>>
 	class sink;
 
 	namespace detail
@@ -24,11 +24,7 @@ namespace rod
 		struct is_valid_listener<F, std::void_t<decltype(&F::operator())>> : std::true_type {};
 	}
 
-	/** @brief Ordered list of listeners of type \a Func, representing the private half of the signal-sink interface.
-	 *
-	 * Signals represent an ordered sequence of type-erased listener objects and can be
-	 * used as an execution environment. Unlike `run_loop`, signals control the lifetime
-	 * of listeners and do not discard them after they have been dispatched.
+	/** Ordered list of listeners of type \a Func, representing the private half of the signal-sink interface.
 	 *
 	 * @tparam Func Underlying invocable type of the listener.
 	 * @tparam Alloc Allocator type used to allocate internal storage. */
@@ -37,7 +33,7 @@ namespace rod
 	{
 		static_assert(detail::is_valid_listener<Func>::value, "Listener must be an invocable object type");
 
-		template<detail::instance_of<basic_signal>>
+		template<instance_of<basic_signal>>
 		friend class sink;
 
 		using storage_t = std::list<Func, Alloc>;
@@ -67,9 +63,15 @@ namespace rod
 		{
 			for (auto &&target: m_data) std::invoke(target, std::forward<Args>(args)...);
 		}
+		/** Returns a generator coroutine used to invoke & yield results of the associated listeners using arguments \a Args. */
+		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
+		[[nodiscard]] generator<R> generate(Args ...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...>)
+		{
+			for (auto &&target: m_data) co_yield std::invoke(target, args...);
+		}
 		/** Invokes all associated listeners with \a args, and accumulates results using functor \a acc. */
-		template<typename A, typename... Args>
-		constexpr void accumulate(A &&acc, Args &&...args) requires std::invocable<Func, Args...> && std::invocable<A, std::invoke_result_t<Func, Args...>>
+		template<typename A, typename... Args, typename R = std::invoke_result_t<Func, Args...>>
+		constexpr void accumulate(A &&acc, Args &&...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
 		{
 			for (auto &&target: m_data) std::invoke(std::forward<A>(acc), std::invoke(target, std::forward<Args>(args)...));
 		}
@@ -81,6 +83,9 @@ namespace rod
 		storage_t m_data = {};
 	};
 
+	/** Alias of `basic_signal` that uses `delegate` as it's listener type. */
+	template<typename Sign>
+	using delegate_signal = basic_signal<delegate<Sign>>;
 	/** Alias of `basic_signal` that uses `std::function` as it's listener type. */
 	template<typename Sign>
 	using function_signal = basic_signal<std::function<Sign>>;
@@ -92,7 +97,7 @@ namespace rod
 	 * the associated signal's listener queue.
 	 *
 	 * @tparam Signal Signal type associated with the sink. */
-	template<detail::instance_of<basic_signal> Signal>
+	template<instance_of<basic_signal> Signal>
 	class sink
 	{
 		using storage_t = typename Signal::storage_t;

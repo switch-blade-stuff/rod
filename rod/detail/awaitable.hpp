@@ -10,6 +10,11 @@
 #include "algorithms/opstate.hpp"
 #include "queries/signatures.hpp"
 
+/* MSVC does not support resuming coroutine handles returned from await_suspend. */
+#if !(defined(_MSC_VER) && !defined(__clang__))
+#define ROD_HAS_INLINE_RESUME
+#endif
+
 namespace rod
 {
 	namespace detail
@@ -23,7 +28,8 @@ namespace rod
 			void unhandled_exception() {}
 			std::suspend_never final_suspend() noexcept { return {}; }
 			std::suspend_never initial_suspend() noexcept { return {}; }
-			awaitable_coro<> get_return_object() { return {awaitable_coro<>::from_promise(*this)}; }
+
+			[[nodiscard]] awaitable_coro<> get_return_object() { return {awaitable_coro<>::from_promise(*this)}; }
 		};
 
 		template<typename P, typename T>
@@ -35,7 +41,11 @@ namespace rod
 		concept is_awaitable = !has_await_transform<P> && requires(T t) { is_awaitable_test<P>(t); };
 
 		template<typename P, typename E>
-		using promise_awaitable_t = std::conditional_t<has_await_transform<P>, decltype(std::declval<P>().await_transform(std::declval<E>())), E>;
+		struct promise_awaitable { using type = E; };
+		template<has_await_transform P, typename E>
+		struct promise_awaitable<P, E> { using type = decltype(std::declval<P>().await_transform(std::declval<E>())); };
+		template<typename P, typename E>
+		using promise_awaitable_t = typename promise_awaitable<P, E>::type;
 
 		template<typename T>
 		inline decltype(auto) deduce_awaiter(T &&awaitable)
@@ -129,6 +139,9 @@ namespace rod
 			using receiver_t = typename receiver<S, P>::type;
 
 		public:
+			using promise_type = P;
+
+		public:
 			constexpr type(S &&s, P &p) : m_state(connect(std::forward<S>(s), receiver_t{&m_result, std::coroutine_handle<P>::from_promise(p)})) {}
 
 			constexpr bool await_ready() const noexcept { return false; }
@@ -201,27 +214,39 @@ namespace rod
 
 	namespace detail
 	{
-		template<typename P>
+		template<typename = void>
+		class awaitable_promise;
+		template<typename R>
 		class awaitable_operation
 		{
+			friend class awaitable_promise<R>;
+
 		public:
-			using promise_type = P;
+			using promise_type = awaitable_promise<R>;
+
+		private:
+			explicit awaitable_operation(std::coroutine_handle<> handle) noexcept : m_handle(handle) {}
 
 		public:
 			awaitable_operation() = delete;
+			awaitable_operation(const awaitable_operation &) = delete;
+			awaitable_operation &operator=(const awaitable_operation &) = delete;
 
-			awaitable_operation(std::coroutine_handle<> handle) noexcept : m_handle(handle) {}
-			awaitable_operation(awaitable_operation &&other) noexcept : m_handle(std::exchange(other.coro, {})) {}
+			awaitable_operation(awaitable_operation &&other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+			awaitable_operation &operator=(awaitable_operation &&other) noexcept
+			{
+				if (&other != this) std::exchange(m_handle, other.m_handle).destroy();
+				return *this;
+			}
+
 			~awaitable_operation() { if (m_handle) m_handle.destroy(); }
 
-			friend void tag_invoke(start_t, awaitable_operation &op) noexcept { op.coro.resume(); }
+			friend void tag_invoke(start_t, awaitable_operation &op) noexcept { op.m_handle.resume(); }
 
 		private:
-			std::coroutine_handle<> m_handle;
+			std::coroutine_handle<> m_handle = {};
 		};
 
-		template<typename = void>
-		class awaitable_promise;
 		template<>
 		class awaitable_promise<void>
 		{
@@ -236,7 +261,7 @@ namespace rod
 		class awaitable_promise : awaitable_promise<>
 		{
 		public:
-			friend auto tag_invoke(get_env_t, const awaitable_promise &p) -> env_of_t<R> { return get_env(p.m_rcv); }
+			friend constexpr decltype(auto) tag_invoke(get_env_t, const awaitable_promise &p) { return get_env(p.m_rcv); }
 
 		public:
 			awaitable_promise(auto &, R &r) noexcept : m_rcv(r) {}
@@ -246,8 +271,7 @@ namespace rod
 
 			template<typename A>
 			decltype(auto) await_transform(A &&a) noexcept { return std::forward<A>(a); }
-			template<typename A>
-			requires tag_invocable<as_awaitable_t, A, awaitable_promise &>
+			template<typename A> requires tag_invocable<as_awaitable_t, A, awaitable_promise &>
 			decltype(auto) await_transform(A &&a) noexcept(nothrow_tag_invocable<as_awaitable_t, A, awaitable_promise &>)
 			{
 				return tag_invoke(as_awaitable, std::forward<A>(a), *this);
@@ -260,9 +284,9 @@ namespace rod
 		template<typename>
 		struct deduce_awaitable_sigs;
 		template<typename... Vs>
-		struct deduce_awaitable_sigs<detail::type_list_t<Vs...>> { using type = completion_signatures<set_value_t(Vs...), set_error_t(std::exception_ptr), set_stopped_t()>; };
+		struct deduce_awaitable_sigs<type_list_t<Vs...>> { using type = completion_signatures<set_value_t(Vs...), set_error_t(std::exception_ptr), set_stopped_t()>; };
 		template<typename A, typename R, typename Res = detail::await_result_t<A, awaitable_promise<R>>>
-		using awaitable_sigs_t = typename deduce_awaitable_sigs<std::conditional_t<std::is_void_v<Res>, detail::type_list_t<>, detail::type_list_t<Res>>>::type;
+		using awaitable_sigs_t = typename deduce_awaitable_sigs<std::conditional_t<std::is_void_v<Res>, type_list_t<>, type_list_t<Res>>>::type;
 
 		template<typename T>
 		struct env_promise
@@ -282,7 +306,7 @@ namespace rod
 
 	/* `get_completion_signatures` overload for awaitable types. */
 	template<typename S, typename E> requires detail::is_awaitable<S, detail::env_promise<E>>
-	struct get_completion_signatures_t::_overload_hook<S, E>
+	struct _get_completion_signatures::awaitable_signatures_t<S, E>
 	{
 		using result_t = detail::await_result_t<S, detail::env_promise<E>>;
 
@@ -296,7 +320,7 @@ namespace rod
 	};
 	/* `connect` overload for awaitable types. */
 	template<typename A, typename R> requires detail::is_awaitable<A, detail::awaitable_promise<R>>
-	struct connect_t::_overload_hook<A, R>
+	struct _connect::connect_awaitable_t<A, R>
 	{
 		[[nodiscard]] detail::awaitable_operation<R> operator()(auto a, auto r) const requires receiver_of<R, detail::awaitable_sigs_t<A, R>>
 		{
@@ -307,8 +331,9 @@ namespace rod
 					using detail::ebo_helper<F>::ebo_helper;
 
 					static constexpr bool await_ready() noexcept { return false; }
-					void await_suspend(std::coroutine_handle<>) noexcept { detail::ebo_helper<F>::value()(); }
+
 					[[noreturn]] void await_resume() noexcept { std::terminate(); }
+					void await_suspend(std::coroutine_handle<>) noexcept { detail::ebo_helper<F>::value()(); }
 				};
 				return awaiter{[&, f]() noexcept { f(std::forward<Args>(args)...); }};
 			};

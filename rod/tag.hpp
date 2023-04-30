@@ -12,40 +12,39 @@ namespace rod
 	template<typename T>
 	concept queryable = std::destructible<T>;
 
-	namespace detail
+	template<typename Tag, typename... Args>
+	struct tag_invoke_result;
+
+	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args. */
+	template<typename Tag, typename... Args>
+	concept tag_invocable = requires(Tag tag, Args &&...args) { tag_invoke(std::move(tag), std::forward<Args>(args)...); };
+	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args and does not throw exceptions. */
+	template<typename Tag, typename... Args>
+	concept nothrow_tag_invocable = tag_invocable<Tag, Args...> && requires(Tag tag, Args &&...args) { { tag_invoke(std::move(tag), std::forward<Args>(args)...) } noexcept; };
+
+	/** Metaprogramming utility used to obtain the result of a call to `tag_invoke` for tag type \a Tag and arguments \a Args. */
+	template<typename Tag, typename... Args> requires tag_invocable<Tag, Args...>
+	struct tag_invoke_result<Tag, Args...> { using type = decltype(tag_invoke(std::declval<Tag>(), std::declval<Args>()...)); };
+	/** Alias for `typename tag_invoke_result<Tag, Args...>::type`. */
+	template<typename Tag, typename... Args>
+	using tag_invoke_result_t = typename tag_invoke_result<Tag, Args...>::type;
+
+	namespace _tag_invoke
 	{
-		/* Exposition-only. */
 		inline void tag_invoke();
 
-		struct impl_tag_invoke
+		struct tag_invoke_t
 		{
-			template<typename Tag, typename... Args> requires(requires (Tag t, Args &&...args) { tag_invoke(std::move(t), std::forward<Args>(args)...); })
-			constexpr decltype(auto) operator()(Tag &&tag, Args &&...args) const
+			template<typename Tag, typename... Args> requires tag_invocable<Tag, Args...>
+			constexpr decltype(auto) operator()(Tag tag, Args &&...args) const noexcept(nothrow_tag_invocable<Tag, Args...>)
 			{
-				return tag_invoke(tag, std::forward<Args>(args)...);
+				return tag_invoke(std::move(tag), std::forward<Args>(args)...);
 			}
 		};
 	}
 
-	inline namespace _tag_invoke
-	{
-		/** Utility function used to invoke an implementation of `tag_invoke` with tag \a tag and arguments \a args selected via ADL. */
-		inline constexpr auto tag_invoke = detail::impl_tag_invoke{};
-	}
-
-	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args. */
-	template<typename Tag, typename... Args>
-	concept tag_invocable = requires (Tag t, Args &&...args) { tag_invoke(std::move(t), std::forward<Args>(args)...); };
-	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args and does not throw exceptions. */
-	template<typename Tag, typename... Args>
-	concept nothrow_tag_invocable = tag_invocable<Tag, Args...> && std::is_nothrow_invocable_v<decltype(tag_invoke), Tag, Args...>;
-
-	/** Metaprogramming utility used to obtain the result of a call to `tag_invoke` for tag type \a Tag and arguments \a Args. */
-	template<typename Tag, typename... Args>
-	using tag_invoke_result = std::invoke_result<decltype(tag_invoke), Tag, Args...>;
-	/** Alias for `typename tag_invoke_result<Tag, Args...>::type`. */
-	template<typename Tag, typename... Args>
-	using tag_invoke_result_t = typename tag_invoke_result<Tag, Args...>::type;
+	/** Utility function used to invoke an implementation of `tag_invoke` with tag \a tag and arguments \a args selected via ADL. */
+	inline constexpr auto tag_invoke = _tag_invoke::tag_invoke_t{};
 
 	/** @brief Metaprogramming utility used define a tag type for object \a V.
 	 *
