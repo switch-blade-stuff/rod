@@ -25,7 +25,6 @@ namespace rod
 			using reference = std::conditional_t<std::is_reference_v<T>, T, T &>;
 
 		public:
-			/** `co_await` is not allowed for generator coroutines. */
 			std::suspend_never await_transform(auto &&) = delete;
 
 			[[nodiscard]] inline generator<T> get_return_object() noexcept;

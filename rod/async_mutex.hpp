@@ -1,0 +1,145 @@
+/*
+ * Created by switchblade on 2023-04-30.
+ */
+
+#pragma once
+
+#include <coroutine>
+#include <utility>
+#include <atomic>
+#include <mutex>
+
+namespace rod
+{
+	class async_mutex;
+	class async_lock_guard;
+
+	/** Coroutine mutex used to suspend a coroutine until the lock is acquired. */
+	class async_mutex
+	{
+		class awaiter
+		{
+			friend class async_mutex;
+
+		public:
+			explicit awaiter(async_mutex &mtx) noexcept : m_mtx(mtx) {}
+
+			constexpr void await_resume() const noexcept {}
+			constexpr bool await_ready() const noexcept { return false; }
+			bool await_suspend(std::coroutine_handle<> cont) noexcept
+			{
+				m_cont = cont;
+				for (auto state = m_mtx.m_state.load(std::memory_order_acquire);;)
+				{
+					if (!state)
+					{
+						if (m_mtx.m_state.compare_exchange_weak(
+								state, &m_mtx.m_state,
+								std::memory_order_acquire,
+								std::memory_order_relaxed))
+							return false;
+						continue;
+					}
+
+					m_next = static_cast<awaiter *>(state);
+					if (m_mtx.m_state.compare_exchange_weak(
+							state, this,
+							std::memory_order_release,
+							std::memory_order_relaxed))
+						return true;
+				}
+			}
+
+		private:
+			std::coroutine_handle<> m_cont = {};
+			awaiter *m_next = {};
+
+		protected:
+			async_mutex &m_mtx;
+		};
+		class guard_awaiter : public awaiter
+		{
+		public:
+			using awaiter::awaiter;
+
+			[[nodiscard]] inline async_lock_guard await_resume() const noexcept;
+		};
+
+	public:
+		async_mutex(const async_mutex &) = delete;
+		async_mutex &operator=(const async_mutex &) = delete;
+		async_mutex(async_mutex &&) = delete;
+		async_mutex &operator=(async_mutex &&) = delete;
+
+		constexpr async_mutex() noexcept = default;
+
+		/** Asynchronously locks the mutex and returns an awaiter suspended until the lock is acquired. */
+		[[nodiscard]] awaiter async_lock() noexcept { return awaiter{*this}; }
+		/** @brief Asynchronously locks the mutex and returns a lock guard awaiter suspended until the lock is acquired.
+		 *
+		 * Expression `co_await mtx.async_scoped_lock()` evaluates to an RAII lock guard
+		 * for the locked mutex, where `mtx` is an instance of `async_mutex`. */
+		[[nodiscard]] guard_awaiter async_scoped_lock() noexcept { return guard_awaiter{*this}; }
+
+		/** Attempts to lock the mutex.
+		 * @return `true` is locked successfully, `false` if the mutex is already locked. */
+		bool try_lock() noexcept
+		{
+			void *old = nullptr;
+			return m_state.compare_exchange_strong(old, &m_state, std::memory_order_acquire, std::memory_order_relaxed);
+		}
+		/** Unlocks the mutex and resumes the next waiting coroutine inside this call. */
+		void unlock()
+		{
+			auto front = m_queue;
+			if (!front)
+			{
+				void *state = &m_state;
+				if (m_state.compare_exchange_strong(
+						state, nullptr,
+						std::memory_order_release,
+						std::memory_order_relaxed))
+					return;
+
+				state = m_state.exchange(&m_state, std::memory_order_acquire);
+				for (auto node = static_cast<awaiter *>(state);;)
+				{
+					const auto next = node->m_next;
+					node->m_next = std::exchange(front, node);
+					if (!(node = next))
+						break;
+				}
+			}
+
+			/* Un-link & resume the blocked coroutine. */
+			m_queue = front->m_next;
+			front->m_cont.resume();
+		}
+
+	private:
+		/* m_state == &m_state - locked with no waiters.
+		 * m_state == nullptr - not locked. */
+		std::atomic<void *> m_state = {};
+		awaiter *m_queue = {};
+	};
+
+	/** RAII lock guard for the `async_mutex` mutex type. */
+	class async_lock_guard
+	{
+	public:
+		async_lock_guard(const async_lock_guard &) = delete;
+		async_lock_guard &operator=(const async_lock_guard &) = delete;
+
+		async_lock_guard(async_lock_guard &&other) noexcept : m_mtx(std::exchange(other.m_mtx, {})) {}
+		async_lock_guard(async_mutex &mtx, std::adopt_lock_t) noexcept : m_mtx(&mtx) {}
+		~async_lock_guard() { if (m_mtx) m_mtx->unlock(); }
+
+	private:
+		async_mutex *m_mtx;
+	};
+
+	async_lock_guard async_mutex::guard_awaiter::await_resume() const noexcept
+	{
+		return {m_mtx, std::adopt_lock};
+	}
+}
