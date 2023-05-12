@@ -96,7 +96,7 @@ namespace rod
 
 			using _state_t = connect_result_t<S, _receiver_t>;
 
-			constexpr type(S &&snd, R rcv, F fn) : _storage_t(std::move(rcv), std::move(fn)), _state(connect(std::forward<S>(snd), _receiver_t{this})) {}
+			constexpr type(S &&snd, R rcv, F fn) : _storage_t{std::move(rcv), std::move(fn)}, _state(connect(std::forward<S>(snd), _receiver_t{this})) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 

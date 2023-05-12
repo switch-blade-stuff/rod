@@ -9,11 +9,10 @@ function(make_test NAME FILE)
     target_link_libraries(${TEST_PROJECT} PRIVATE rod)
 
     # Enable max error reporting
-    # Enable max error reporting
     if (MSVC)
         target_compile_options(${TEST_PROJECT} PRIVATE /W3 /WX)
     else ()
-        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes -fconcepts-diagnostics-depth=10000 -ftemplate-backtrace-limit=0)
+        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes -ftemplate-backtrace-limit=0)
     endif ()
 
     # Add as test

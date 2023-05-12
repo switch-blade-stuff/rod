@@ -194,7 +194,7 @@ namespace rod
 
 	/** Sender adaptor used to adapt an input sender into a sender that will start on associated execution context belonging to a scheduler.
 	 * @param sch Scheduler to adapt the input sender to.
-	 * @param snd Sender to adapt to \a sch scheduler.
+	 * @param snd Sender to adapt to \a sch scheduler. If omitted, creates a pipe-able sender adaptor.
 	 * @return Sender adaptor for \a snd that starts on \a sch. */
 	inline constexpr auto on = _on::on_t{};
 }

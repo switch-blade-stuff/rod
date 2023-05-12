@@ -14,7 +14,7 @@ int main()
 	{
 		TEST_ASSERT(i == 1);
 		throw test_error{};
-	}) | rod::upon_error([&](std::exception_ptr e)
+	}) | rod::upon_error([&](const std::exception_ptr &e)
 	{
 		TEST_ASSERT(e);
 		try { std::rethrow_exception(e); }
