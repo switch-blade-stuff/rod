@@ -6,18 +6,22 @@
 
 #include "detail/concepts.hpp"
 
-#include "detail/queries/signatures.hpp"
-#include "detail/queries/allocator.hpp"
+#include "detail/factories/read.hpp"
+#include "detail/factories/just.hpp"
+
+#include "detail/queries/completion.hpp"
 #include "detail/queries/scheduler.hpp"
+#include "detail/queries/allocator.hpp"
 #include "detail/queries/may_block.hpp"
 #include "detail/queries/progress.hpp"
 
-#include "detail/algorithms/transfer.hpp"
-#include "detail/algorithms/schedule.hpp"
-#include "detail/algorithms/connect.hpp"
-#include "detail/algorithms/opstate.hpp"
-#include "detail/algorithms/just.hpp"
-#include "detail/algorithms/read.hpp"
+#include "detail/adaptors/closure.hpp"
+#include "detail/adaptors/schedule_from.hpp"
+#include "detail/adaptors/transfer.hpp"
+#include "detail/adaptors/then.hpp"
+#include "detail/adaptors/on.hpp"
 
+#include "detail/sync_wait.hpp"
 #include "detail/awaitable.hpp"
+#include "detail/run_loop.hpp"
 #include "stop_token.hpp"

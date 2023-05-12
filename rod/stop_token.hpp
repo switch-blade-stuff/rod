@@ -7,23 +7,21 @@
 #include <stop_token>
 #include <atomic>
 
-#include "detail/algorithms/read.hpp"
+#include "detail/factories/read.hpp"
 
 namespace rod
 {
-	/** Alias for `T::callback_type<CB>`. */
-	template<typename T, typename CB>
-	using stop_callback_for_t = std::conditional_t<std::same_as<T, std::stop_token>, std::stop_callback<CB>, typename T::template callback_type<CB>>;
-
 	/** Concept used to define a stoppable token type. */
 	template<typename T>
 	concept stoppable_token = std::copyable<T> && std::equality_comparable<T> && requires(const T t)
 	{
-	    { T(t) } noexcept;
-	    { t.stop_possible() } noexcept -> std::same_as<bool>;
-	    { t.stop_requested() } noexcept -> std::same_as<bool>;
-	    typename stop_callback_for_t<T, decltype([]() noexcept {})>;
+		{ T(t) } noexcept;
+		{ t.stop_possible() } noexcept -> std::same_as<bool>;
+		{ t.stop_requested() } noexcept -> std::same_as<bool>;
 	};
+	/** Alias for `T::callback_type<CB>`. */
+	template<typename T, typename CB>
+	using stop_callback_for_t = std::conditional_t<std::same_as<T, std::stop_token>, std::stop_callback<CB>, typename T::template callback_type<CB>>;
 
 	/** Concept used to define a stoppable token type that can accept a callback type `CB` initialized from `Init`. */
 	template<typename T, typename CB, typename Init = CB>
@@ -33,33 +31,6 @@ namespace rod
 	/** Concept used to define a stoppable token type for which `T::stop_possible()` always returns `false`. */
 	template<class T>
 	concept unstoppable_token = stoppable_token<T> && requires(T t) { requires(!t.stop_possible()); };
-
-	inline namespace _get_stop_token
-	{
-		class get_stop_token_t
-		{
-			template<typename T, typename U = decltype(std::as_const(std::declval<T>()))>
-			static constexpr bool is_invocable = tag_invocable<get_stop_token_t, U>;
-			template<typename T, typename U = decltype(std::as_const(std::declval<T>()))>
-			using result_t = tag_invoke_result_t<get_stop_token_t, U>;
-
-		public:
-			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_stop_token_t) noexcept { return true; }
-
-			[[nodiscard]] constexpr auto operator()() const noexcept { return read(*this); }
-			template<typename Env>
-			[[nodiscard]] constexpr decltype(auto) operator()(Env &&env) const noexcept requires(is_invocable<Env> && stoppable_token<result_t<Env>>)
-			{
-				return tag_invoke(*this, std::as_const(env));
-			}
-		};
-	}
-
-	/** Customization point object used to obtain stop token associated with the passed object. */
-	inline constexpr auto get_stop_token = get_stop_token_t{};
-	/** Alias for `decltype(get_stop_token(std::declval<T>()))` */
-	template<typename T>
-	using stop_token_of_t = std::remove_cvref_t<decltype(get_stop_token(std::declval<T>()))>;
 
 	/** Structure used to define a never-stop stop token. */
 	class never_stop_token
@@ -75,6 +46,32 @@ namespace rod
 
 		friend constexpr bool operator==(const never_stop_token &, const never_stop_token &) noexcept { return true; };
 	};
+
+	inline namespace _get_stop_token
+	{
+		class get_stop_token_t
+		{
+			template<typename E>
+			static constexpr bool is_stoppable = stoppable_token<tag_invoke_result_t<get_stop_token_t, const E &>>;
+			template<typename E>
+			static constexpr bool has_tag_invoke = nothrow_tag_invocable<get_stop_token_t, const E &>;
+
+		public:
+			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_stop_token_t) noexcept { return true; }
+
+			template<typename E, typename U = std::remove_cvref_t<E>> requires has_tag_invoke<U> && is_stoppable<U>
+			[[nodiscard]] constexpr decltype(auto) operator()(E &&e) const noexcept { return tag_invoke(*this, std::as_const(e)); }
+			template<typename E>
+			[[nodiscard]] constexpr never_stop_token operator()(E &&) const noexcept { return {}; }
+			[[nodiscard]] constexpr auto operator()() const noexcept { return read(*this); }
+		};
+	}
+
+	/** Customization point object used to obtain stop token associated with the passed object. */
+	inline constexpr auto get_stop_token = get_stop_token_t{};
+	/** Alias for `decltype(get_stop_token(std::declval<T>()))` */
+	template<typename T>
+	using stop_token_of_t = std::remove_cvref_t<decltype(get_stop_token(std::declval<T>()))>;
 
 	class in_place_stop_token;
 	template<typename CB>
@@ -129,7 +126,7 @@ namespace rod
 		/** Returns a stop token associated with this stop source. */
 		[[nodiscard]] constexpr in_place_stop_token get_token() const noexcept;
 		/** Checks if stop has been requested. */
-		[[nodiscard]] bool stop_requested() const noexcept { return m_flags & status_t::has_req; }
+		[[nodiscard]] bool stop_requested() const noexcept { return m_flags.load(std::memory_order_acquire) & status_t::has_req; }
 
 		/** Sends a stop request via this stop source. */
 		bool request_stop() noexcept
@@ -238,23 +235,27 @@ namespace rod
 
 	/** Structure used to associate callback `CB` with an `in_place_stop_source`. */
 	template<typename CB>
-	class in_place_stop_callback : in_place_stop_source::node_t, detail::ebo_helper<CB>
+	class in_place_stop_callback : in_place_stop_source::node_t
 	{
 		using node_base = in_place_stop_source::node_t;
-		using func_base = detail::ebo_helper<CB>;
 
 	public:
 		using callback_type = CB;
 
 	private:
-		static void invoke(node_base *node) noexcept { static_cast<in_place_stop_callback *>(node)->func_base::value()(); }
+		static void invoke(node_base *node) noexcept { static_cast<in_place_stop_callback *>(node)->m_cb(); }
 
 	public:
 		/** Adds a stop callback function \a fn to the stop source associated with stop token \a st. */
 		template<typename F> requires std::constructible_from<CB, F>
-		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st.m_src, invoke), func_base(std::forward<F>(fn)) {}
+		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st.m_src, invoke), m_cb(std::forward<F>(fn)) {}
+
+	private:
+		[[ROD_NO_UNIQUE_ADDRESS]] CB m_cb;
 	};
 
 	template<typename F>
 	in_place_stop_callback(in_place_stop_token, F) -> in_place_stop_callback<F>;
+
+	static_assert(stoppable_token<in_place_stop_token>);
 }

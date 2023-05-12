@@ -4,6 +4,10 @@
 
 #pragma once
 
+#include "detail/config.hpp"
+
+#ifdef ROD_HAS_COROUTINES
+
 #include <coroutine>
 #include <utility>
 #include <atomic>
@@ -143,3 +147,5 @@ namespace rod
 		return {m_mtx, std::adopt_lock};
 	}
 }
+
+#endif

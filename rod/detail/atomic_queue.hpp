@@ -6,7 +6,7 @@
 
 #include <atomic>
 
-#include "utility.hpp"
+#include "../utility.hpp"
 
 namespace rod::detail
 {
@@ -22,7 +22,7 @@ namespace rod::detail
 	{
 		void terminate() noexcept
 		{
-			head = sentinel();
+			head.store(sentinel(), std::memory_order_release);
 			notify_all();
 		}
 		bool push(Node *node) noexcept
@@ -32,7 +32,7 @@ namespace rod::detail
 				if (candidate == sentinel()) return false;
 
 				node_next(*node, static_cast<Node *>(candidate));
-				if (head.compare_exchange_weak(candidate, node, std::memory_order_acq_rel))
+				if (head.compare_exchange_weak(candidate, node, std::memory_order_acq_rel, std::memory_order_relaxed))
 				{
 					notify_one();
 					return true;
@@ -52,7 +52,7 @@ namespace rod::detail
 				}
 
 				const auto next = node_next(*static_cast<Node *>(candidate));
-				if (head.compare_exchange_weak(candidate, next, std::memory_order_acq_rel))
+				if (head.compare_exchange_weak(candidate, next, std::memory_order_acq_rel, std::memory_order_relaxed))
 					return static_cast<Node *>(candidate);
 			}
 		}

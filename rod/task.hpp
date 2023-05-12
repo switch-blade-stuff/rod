@@ -4,6 +4,10 @@
 
 #pragma once
 
+#include "detail/config.hpp"
+
+#ifdef ROD_HAS_COROUTINES
+
 #include <atomic>
 
 #include "scheduling.hpp"
@@ -33,6 +37,12 @@ namespace rod
 			[[nodiscard]] lvalue_result result() & { return (Base::rethrow_exception(), *m_state); }
 			[[nodiscard]] rvalue_result result() && { return (Base::rethrow_exception(), std::move(*m_state)); }
 
+			template<typename U>
+			[[nodiscard]] decltype(auto) await_transform(U &&value)
+			{
+				return as_awaitable(std::forward<U>(value), *this);
+			}
+
 		private:
 			state_t m_state;
 		};
@@ -48,6 +58,12 @@ namespace rod
 			constexpr void return_value(T &ref) noexcept { m_result = &ref; }
 			result_type result() { return (Base::rethrow_exception(), *m_result); }
 
+			template<typename U>
+			[[nodiscard]] decltype(auto) await_transform(U &&value)
+			{
+				return as_awaitable(std::forward<U>(value), *this);
+			}
+
 		private:
 			T *m_result = nullptr;
 		};
@@ -62,13 +78,21 @@ namespace rod
 
 			constexpr void return_void() noexcept {}
 			result_type result() { Base::rethrow_exception(); }
+
+			template<typename U>
+			[[nodiscard]] decltype(auto) await_transform(U &&value)
+			{
+				return as_awaitable(std::forward<U>(value), *this);
+			}
 		};
 
 		template<typename T>
 		class task
 		{
-			class promise_base
+			class promise_base : public with_awaitable_senders<promise_base>
 			{
+				using sender_base = with_awaitable_senders<promise_base>;
+
 				struct final_awaiter
 				{
 					constexpr void await_resume() noexcept {}
@@ -76,13 +100,13 @@ namespace rod
 
 #ifdef ROD_HAS_INLINE_RESUME
 					template<typename P>
-					auto await_suspend(std::coroutine_handle<P> h) noexcept { return h.promise().m_cont; }
+					auto await_suspend(std::coroutine_handle<P> h) noexcept { return h.promise().continuation(); }
 #else
 					template<typename P>
 					__declspec(noinline) void await_suspend(std::coroutine_handle<P> h) noexcept
 					{
 						if (auto &p = h.promise(); p.m_has_cont.test_and_set())
-							h.promise().m_cont.resume();
+							h.promise().continuation().resume();
 					}
 #endif
 				};
@@ -94,25 +118,16 @@ namespace rod
 				void unhandled_exception() noexcept { m_err = std::current_exception(); }
 				void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
 
-				template<typename A>
-				constexpr decltype(auto) await_transform(A &&a)
+				template<typename P>
+				auto next(std::coroutine_handle<P> next) noexcept
 				{
-					if constexpr (tag_invocable<as_awaitable_t, A, promise_base>)
-						return tag_invoke(as_awaitable, std::forward<A>(a), *this);
-					else
-						return std::forward<A>(a);
-				}
-
-				auto next(std::coroutine_handle<> next) noexcept
-				{
-					m_cont = next;
+					sender_base::set_continuation(next);
 #ifndef ROD_HAS_INLINE_RESUME
 					return !m_has_cont.test_and_set();
 #endif
 				}
 
 			private:
-				std::coroutine_handle<> m_cont = {};
 				std::exception_ptr m_err = {};
 
 #ifndef ROD_HAS_INLINE_RESUME
@@ -179,7 +194,24 @@ namespace rod
 		{
 			struct task_node
 			{
+				using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
+
+				template<typename P>
+				explicit task_node(std::coroutine_handle<P> h, task_node *next = {}) noexcept : m_cont(h), m_next(next) { bind(h); }
+
+				[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return m_stop_func(m_cont.address()); }
+
+				template<typename P>
+				void bind(std::coroutine_handle<P> h) noexcept
+				{
+					if constexpr (requires { h.unhandled_stopped(); })
+						m_stop_func = [](void *p) noexcept { return std::coroutine_handle<P>::from_address(p).promise().unhandled_stopped(); };
+					else
+						m_stop_func = {};
+				}
+
 				std::coroutine_handle<> m_cont = {};
+				stop_func m_stop_func = {};
 				task_node *m_next = {};
 			};
 
@@ -206,14 +238,7 @@ namespace rod
 				void unhandled_exception() noexcept { m_err = std::current_exception(); }
 				void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
 
-				template<typename A>
-				constexpr decltype(auto) await_transform(A &&a)
-				{
-					if constexpr (tag_invocable<as_awaitable_t, A, promise_base>)
-						return tag_invoke(as_awaitable, std::forward<A>(a), *this);
-					else
-						return std::forward<A>(a);
-				}
+				[[nodiscard]] inline std::coroutine_handle<> unhandled_stopped() noexcept;
 
 				bool ready() const noexcept { return m_queue.load(std::memory_order_acquire) == this; }
 				bool release() noexcept { return m_refs.fetch_sub(1, std::memory_order_acq_rel) == 1; }
@@ -239,6 +264,25 @@ namespace rod
 				}
 
 			private:
+				template<std::invocable<task_node *> F>
+				void for_each(F &&func) noexcept
+				{
+					if (const auto queue = m_queue.exchange(this, std::memory_order_acq_rel); queue)
+					{
+						auto node = static_cast<task_node *>(queue);
+						for (;;)
+						{
+							const auto next = node->m_next;
+							if (next == nullptr) break;
+
+							func(node);
+							node = next;
+						}
+						/* Enable tailcall optimization. */
+						func(node);
+					}
+				}
+
 				std::atomic<std::size_t> m_refs = 1;
 				std::atomic<void *> m_queue = &m_queue;
 				std::exception_ptr m_err;
@@ -317,24 +361,17 @@ namespace rod
 		};
 
 		template<typename T>
+		std::coroutine_handle<> shared_task<T>::promise_base::unhandled_stopped() noexcept
+		{
+			for_each([](task_node *node) { node->unhandled_stopped(); });
+			return std::noop_coroutine();
+		}
+
+		template<typename T>
 		template<typename P>
 		void shared_task<T>::promise_base::final_awaiter::await_suspend(std::coroutine_handle<P> h) noexcept
 		{
-			auto promise = &h.promise();
-			if (const auto queue = promise->m_queue.exchange(promise, std::memory_order_acq_rel); queue)
-			{
-				auto node = static_cast<task_node *>(queue);
-				for (;;)
-				{
-					const auto next = node->m_next;
-					if (next == nullptr) break;
-
-					node->m_cont.resume();
-					node = next;
-				}
-				/* Enable tailcall optimization. */
-				node->m_cont.resume();
-			}
+			h.promise().for_each([](task_node *node) { node->m_cont.resume(); });
 		}
 
 		template<template<typename> typename Task, typename Base, typename T>
@@ -352,3 +389,5 @@ namespace rod
 	template<typename T = void>
 	using shared_task = _task::shared_task<T>;
 }
+
+#endif

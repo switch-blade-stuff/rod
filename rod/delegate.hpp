@@ -60,22 +60,11 @@ namespace rod
 		struct deduce_signature;
 		template<typename R, typename T>
 		struct deduce_signature<R T::*> { using type = R(); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...)> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) &> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) const> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) const &> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) noexcept> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) &noexcept> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) const noexcept> { using type = R(Args...); };
-		template<typename R, typename T, typename... Args>
-		struct deduce_signature<R (T::*)(Args...) const &noexcept> { using type = R(Args...); };
+		template<typename F, typename T> requires std::is_function_v<F>
+		struct deduce_signature<F T::*> { using type = F; };
+
+		template<typename T>
+		using deduce_signature_t = deduce_signature<std::remove_cv_t<T>>;
 
 		template<typename, typename, auto>
 		struct check_member : std::false_type {};
@@ -150,7 +139,7 @@ namespace rod
 				};
 			}
 
-			T value;
+			[[ROD_NO_UNIQUE_ADDRESS]] T value;
 		};
 
 	public:
@@ -178,7 +167,7 @@ namespace rod
 
 		/** Initializes the delegate with a reference to a functor. */
 		template<typename T>
-		delegate(T &func) requires (!std::same_as<std::decay_t<T>, delegate> && !std::is_function_v<T>) { init_ref(typename traits_t::arg_types{}, func); }
+		delegate(T &func) requires (!detail::decays_to<T, delegate> && !std::is_function_v<T>) { init_ref(typename traits_t::arg_types{}, func); }
 		/** Initializes the delegate with an in-place constructed functor. */
 		template<typename T, typename U = std::decay_t<T>>
 		delegate(T &&func) requires (!std::same_as<U, delegate> && !std::is_function_v<U>) { init_value<U>(typename traits_t::arg_types{}, std::forward<T>(func)); }
@@ -342,13 +331,13 @@ namespace rod
 	delegate(R (*)(void *, Args...), void *) -> delegate<R(Args...)>;
 
 	template<typename F>
-	delegate(F &&) -> delegate<typename detail::deduce_signature<decltype(&std::decay_t<F>::operator())>::type>;
+	delegate(F &&) -> delegate<typename detail::deduce_signature_t<decltype(&std::decay_t<F>::operator())>>;
 	template<auto Mem, typename T>
-	delegate(bind_member_t<Mem>, T &&) -> delegate<typename detail::deduce_signature<decltype(Mem)>::type>;
+	delegate(bind_member_t<Mem>, T &&) -> delegate<typename detail::deduce_signature_t<decltype(Mem)>>;
 
 	/** Creates a delegate from a member pointer and an object instance pointer. */
 	template<auto Mem, std::size_t LocalBytes = sizeof(std::uintptr_t) * 2, typename T>
-	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<typename detail::deduce_signature<decltype(Mem)>::type, LocalBytes>
+	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<typename detail::deduce_signature_t<decltype(Mem)>, LocalBytes>
 	{
 		return {bind_member<Mem>, std::forward<T>(instance)};
 	}

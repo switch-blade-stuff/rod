@@ -2,17 +2,24 @@
  * Created by switchblade on 2023-04-09.
  */
 
-#include <rod/run_loop.hpp>
+#include <rod/scheduling.hpp>
 
 #include "common.hpp"
 
 int main()
 {
-	rod::run_loop loop;
+	struct test_error : std::exception {};
 
-	auto sch = loop.get_scheduler();
-	auto snd = rod::transfer_just(sch, 1);
+	auto snd = rod::just(1) | rod::then([&](int i)
+	{
+		TEST_ASSERT(i == 1);
+		throw test_error{};
+	}) | rod::upon_error([&](std::exception_ptr e)
+	{
+		TEST_ASSERT(e);
+		try { std::rethrow_exception(e); }
+		catch (test_error &) {}
+	});
 
-	loop.run();
-	/*rod::sync_wait(snd);*/
+	rod::sync_wait(snd);
 }

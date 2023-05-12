@@ -8,185 +8,89 @@
 #include <exception>
 #include <variant>
 
+#include "detail/config.hpp"
 #include "tag.hpp"
 
 namespace rod
 {
 	namespace detail
 	{
+		template<typename T, typename... Args>
+		concept callable = requires(T t, Args &&...args) { t(std::forward<Args>(args)...); };
+		template<typename T, typename... Args>
+		concept nothrow_callable = callable<T, Args...> && requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } noexcept; };
+
+		template<typename T>
+		using nothrow_decay_copyable = std::is_nothrow_constructible<std::decay_t<T>, T>;
+		template<typename... Ts>
+		using all_nothrow_decay_copyable = std::conjunction<nothrow_decay_copyable<Ts>...>;
+
+		template<typename T>
+		concept movable_value = std::move_constructible<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>;
+		template<typename From, typename To>
+		concept decays_to = std::same_as<std::decay_t<From>, To>;
+		template<typename T>
+		concept class_type = decays_to<T, T> && std::is_class_v<T>;
+
+		template<typename, typename>
+		struct matching_sig_impl : std::false_type {};
+		template<typename R0, typename... Args0, typename R1, typename... Args1>
+		struct matching_sig_impl<R0(Args0...), R1(Args1...)> : std::is_same<R0(Args0&&...), R0(Args1&&...)> {};
+		template<typename F0, typename F1>
+		concept matching_sig = matching_sig_impl<F0, F1>::value;
+
+		template<typename...>
+		inline constexpr bool always_true = true;
+
+		template<bool>
+		struct apply_tuple { template<template<typename...> typename T, typename... Ts> using type = T<Ts...>; };
+		template<template<typename...> typename T, typename... Ts>
+		using apply_tuple_t = typename apply_tuple<always_true<Ts...>>::template type<T, Ts...>;
+
+		template<template<typename...> typename, typename>
+		struct apply_tuple_list;
+		template<template<typename...> typename T, template<typename...> typename L, typename... Ts>
+		struct apply_tuple_list<T, L<Ts...>> { using type = apply_tuple_t<T, Ts...>; };
+		template<template<typename...> typename T, typename L>
+		using apply_tuple_list_t = typename apply_tuple_list<T, L>::type;
+
+		template<typename...>
+		struct concat_tuples;
+		template<template<typename...> typename T, typename... Ts, typename... Us, typename... Vs>
+		struct concat_tuples<T<Ts...>, T<Us...>, Vs...> : concat_tuples<apply_tuple_t<T, Ts..., Us...>, Vs...> {};
+		template<template<typename...> typename T, typename... Ts>
+		struct concat_tuples<T<Ts...>> { using type = apply_tuple_t<T, Ts...>; };
+		template<typename... Ts>
+		using concat_tuples_t = typename concat_tuples<Ts...>::type;
+
+		template<typename F>
+		struct implicit_eval
+		{
+			using type = decltype(F{}());
+
+			operator type() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
+			type operator()() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
+
+			[[ROD_NO_UNIQUE_ADDRESS]] F func;
+		};
+		template<typename F>
+		implicit_eval(F) -> implicit_eval<F>;
+
 		template<typename Err>
 		[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept
 		{
-			if constexpr (std::same_as<std::decay_t<Err>, std::exception_ptr>)
+			if constexpr (detail::decays_to<Err, std::exception_ptr>)
 				return std::forward<Err>(err);
-			else if constexpr (std::same_as<std::decay_t<Err>, std::error_code>)
+			else if constexpr (detail::decays_to<Err, std::error_code>)
 				return std::make_exception_ptr(std::system_error(std::forward<Err>(err)));
 			else
 				return std::make_exception_ptr(std::forward<Err>(err));
 		}
 
-		template<typename T>
-		concept movable_value = std::move_constructible<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>;
-		template<typename T>
-		concept ebo_candidate = std::conjunction<std::is_empty<T>, std::negation<std::is_final<T>>>::value;
-
-		template<typename T>
-		class ebo_helper
-		{
-		public:
-			constexpr ebo_helper() noexcept(std::is_nothrow_default_constructible_v<T>) = default;
-			constexpr ebo_helper(const ebo_helper &other) noexcept(std::is_nothrow_copy_constructible_v<T>) = default;
-			constexpr ebo_helper(ebo_helper &&other) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
-
-			template<typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-			constexpr ebo_helper(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : m_value(std::forward<Args>(args)...) {}
-
-			constexpr ebo_helper &operator=(const ebo_helper &other) noexcept(std::is_nothrow_copy_assignable_v<T>) = default;
-			constexpr ebo_helper &operator=(ebo_helper &&other) noexcept(std::is_nothrow_move_assignable_v<T>) = default;
-
-			template<typename U = T> requires std::assignable_from<T, const U &>
-			constexpr ebo_helper &operator=(const U &other) noexcept(std::is_nothrow_assignable_v<T, const U &>)
-			{
-				m_value = other;
-				return *this;
-			}
-			template<typename U = T> requires std::assignable_from<T, U>
-			constexpr ebo_helper &operator=(U &&other) noexcept(std::is_nothrow_assignable_v<T, U>)
-			{
-				m_value = std::forward<U>(other);
-				return *this;
-			}
-
-			constexpr const ebo_helper &operator=(const ebo_helper &other) const noexcept(std::is_nothrow_assignable_v<const T &, const T &>)
-			{
-				m_value = other.m_value;
-				return *this;
-			}
-			constexpr const ebo_helper &operator=(ebo_helper &&other) const noexcept(std::is_nothrow_assignable_v<const T &, T>)
-			{
-				m_value = std::move(other.m_value);
-				return *this;
-			}
-
-			template<typename U = T> requires std::assignable_from<const T &, const U &>
-			constexpr const ebo_helper &operator=(const U &other) const noexcept(std::is_nothrow_assignable_v<const T &, const U &>)
-			{
-				m_value = other;
-				return *this;
-			}
-			template<typename U = T> requires std::assignable_from<const T &, U>
-			constexpr const ebo_helper &operator=(U &&other) const noexcept(std::is_nothrow_assignable_v<const T &, U>)
-			{
-				m_value = std::forward<U>(other);
-				return *this;
-			}
-
-			[[nodiscard]] constexpr T &value() & noexcept { return m_value; }
-			[[nodiscard]] constexpr const T &value() const & noexcept { return m_value; }
-			[[nodiscard]] constexpr T &&value() && noexcept { return std::move(m_value); }
-			[[nodiscard]] constexpr const T &&value() const && noexcept { return std::move(m_value); }
-
-			constexpr void swap(ebo_helper &other) noexcept(std::is_nothrow_swappable_v<T>)
-			{
-				using std::swap;
-				swap(value(), other.value());
-			}
-
-		private:
-			T m_value;
-		};
-		template<ebo_candidate T>
-		class ebo_helper<T> : T
-		{
-		public:
-			constexpr ebo_helper() noexcept(std::is_nothrow_default_constructible_v<T>) = default;
-			constexpr ebo_helper(const ebo_helper &other) noexcept(std::is_nothrow_copy_constructible_v<T>) = default;
-			constexpr ebo_helper(ebo_helper &&other) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
-
-			template<typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-			constexpr ebo_helper(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : T(std::forward<Args>(args)...) {}
-
-			constexpr ebo_helper &operator=(const ebo_helper &other) noexcept(std::is_nothrow_copy_assignable_v<T>) = default;
-			constexpr ebo_helper &operator=(ebo_helper &&other) noexcept(std::is_nothrow_move_assignable_v<T>) = default;
-
-			template<typename U = T> requires std::assignable_from<T, const U &>
-			constexpr ebo_helper &operator=(const U &other) noexcept(std::is_nothrow_assignable_v<T, const U &>)
-			{
-				value() = other;
-				return *this;
-			}
-			template<typename U = T> requires std::assignable_from<T, U>
-			constexpr ebo_helper &operator=(U &&other) noexcept(std::is_nothrow_assignable_v<T, U>)
-			{
-				value() = std::forward<U>(other);
-				return *this;
-			}
-
-			constexpr const ebo_helper &operator=(const ebo_helper &other) const noexcept(std::is_nothrow_assignable_v<const T &, const T &>)
-			{
-				value() = other.value();
-				return *this;
-			}
-			constexpr const ebo_helper &operator=(ebo_helper &&other) const noexcept(std::is_nothrow_assignable_v<const T &, T>)
-			{
-				value() = std::move(other.value());
-				return *this;
-			}
-			template<typename U = T> requires std::assignable_from<const T &, const U &>
-			constexpr const ebo_helper &operator=(const U &other) const noexcept(std::is_nothrow_assignable_v<const T &, const U &>)
-			{
-				value() = other;
-				return *this;
-			}
-			template<typename U = T> requires std::assignable_from<const T &, U>
-			constexpr const ebo_helper &operator=(U &&other) const noexcept(std::is_nothrow_assignable_v<const T &, U>)
-			{
-				value() = std::forward<U>(other);
-				return *this;
-			}
-
-			[[nodiscard]] constexpr T &value() & noexcept { return static_cast<T &>(*this); }
-			[[nodiscard]] constexpr const T &value() const & noexcept { return static_cast<const T &>(*this); }
-			[[nodiscard]] constexpr T &&value() && noexcept { return std::move(static_cast<T &>(*this)); }
-			[[nodiscard]] constexpr const T &&value() const && noexcept { return std::move(static_cast<const T &>(*this)); }
-
-			constexpr void swap(ebo_helper &other) noexcept(std::is_nothrow_swappable_v<T>)
-			{
-				using std::swap;
-				swap(value(), other.value());
-			}
-		};
-
 		template<template<typename...> typename T, typename... Ts>
 		struct bind_front { template<typename... Us> using type = T<Ts..., Us...>; };
 		template<template<typename...> typename T, typename... Ts>
 		struct bind_back { template<typename... Us> using type = T<Us..., Ts...>; };
-
-		template<typename, typename>
-		struct push_front;
-		template<template<typename...> typename T, typename... Ts, typename U>
-		struct push_front<T<Ts...>, U> { using type = T<U, Ts...>; };
-		template<typename T, typename U>
-		using push_front_t = typename push_front<T, U>::type;
-
-		template<typename, typename>
-		struct push_back;
-		template<template<typename...> typename T, typename... Ts, typename U>
-		struct push_back<T<Ts...>, U> { using type = T<Ts..., U>; };
-		template<typename T, typename U>
-		using push_back_t = typename push_back<T, U>::type;
-
-		template<template<typename...> typename, typename...>
-		struct concat_on;
-		template<template<typename...> typename V, template<typename...> typename T, typename... Ts,
-				template<typename...> typename U, typename... Us, typename... Vs>
-		struct concat_on<V, T<Ts...>, U<Us...>, Vs...> : concat_on<V, V<Ts..., Us...>, Vs...> {};
-		template<template<typename...> typename V, template<typename...> typename T, typename... Ts>
-		struct concat_on<V, T<Ts...>> { using type = V<Ts...>; };
-		template<template<typename...> typename V>
-		struct concat_on<V> { using type = V<>; };
-		template<template<typename...> typename V, typename... Ts>
-		using concat_on_t = typename concat_on<V, Ts...>::type;
 
 		template<typename From, typename To>
 		struct copy_cvref_impl { using type = To; };
@@ -238,13 +142,6 @@ namespace rod
 
 	namespace detail
 	{
-		template<template<typename...> typename T, typename U>
-		struct apply_types { using type = T<U>; };
-		template<template<typename...> typename T, typename... Ts>
-		struct apply_types<T, type_list_t<Ts...>> { using type = T<Ts...>; };
-		template<template<typename...> typename T, typename U>
-		using apply_types_t = typename apply_types<T, U>::type;
-
 		template<typename, typename...>
 		struct is_in_impl;
 		template<typename U, typename T, typename... Ts>
@@ -276,19 +173,10 @@ namespace rod
 
 	namespace detail
 	{
-		template<typename...>
-		struct is_single_value_tuple : std::false_type {};
-		template<template<typename...> typename V, typename T>
-		struct is_single_value_tuple<V<T>> : std::true_type {};
-		template<template<typename...> typename V>
-		struct is_single_value_tuple<V<>> : std::true_type {};
-		template<typename T>
-		inline constexpr bool is_single_value_tuple_v = is_single_value_tuple<T>::value;
-
 		template<typename>
 		struct tuple_of;
 		template<template <typename...> typename T, typename... Ts>
-		struct tuple_of<T<Ts...>> { template <typename... Us> using type = T<Us...>; };
+		struct tuple_of<T<Ts...>> { template <typename... Us> using type = apply_tuple_t<T, Us...>; };
 
 		template<typename, typename>
 		struct make_unique_list;

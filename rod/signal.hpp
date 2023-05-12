@@ -4,8 +4,10 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 
+#include "packed_pair.hpp"
 #include "generator.hpp"
 #include "delegate.hpp"
 
@@ -18,15 +20,15 @@ namespace rod
 
 	namespace detail
 	{
-		template<typename, typename = void>
-		struct is_valid_listener : std::false_type {};
+		template<typename F, typename = void>
+		struct is_valid_listener : std::conjunction<std::is_pointer<F>, std::is_function<std::remove_pointer_t<F>>> {};
 		template<typename F>
 		struct is_valid_listener<F, std::void_t<decltype(&F::operator())>> : std::true_type {};
 	}
 
 	/** Ordered list of listeners of type \a Func, representing the private half of the signal-sink interface.
 	 *
-	 * @tparam Func Underlying invocable type of the listener.
+	 * @tparam Func Underlying invocable type of the signal's listeners.
 	 * @tparam Alloc Allocator type used to allocate internal storage. */
 	template<std::move_constructible Func, typename Alloc = std::allocator<Func>>
 	class basic_signal
@@ -43,13 +45,6 @@ namespace rod
 		using size_type = typename storage_t::size_type;
 
 	public:
-		basic_signal(const basic_signal &) = delete;
-		basic_signal &operator=(const basic_signal &) = delete;
-
-		constexpr basic_signal() noexcept(std::is_nothrow_default_constructible_v<storage_t>) = default;
-		constexpr basic_signal(basic_signal &&) noexcept(std::is_nothrow_move_constructible_v<storage_t>) = default;
-		constexpr basic_signal &operator=(basic_signal &&) noexcept(std::is_nothrow_move_assignable_v<storage_t>) = default;
-
 		/** Checks if the signal's listener queue is empty. */
 		[[nodiscard]] constexpr bool empty() const noexcept { return m_data.empty(); }
 		/** Returns the current size of the signal's listener queue. */
@@ -59,21 +54,36 @@ namespace rod
 
 		/** Invokes all associated listeners with \a args. */
 		template<typename... Args>
-		constexpr void emit(Args &&...args) requires std::invocable<Func, Args...>
+		constexpr void emit(Args ...args) requires std::invocable<Func, Args...>
 		{
-			for (auto &&target: m_data) std::invoke(target, std::forward<Args>(args)...);
+			for (auto &&target: m_data) std::invoke(target, args...);
 		}
+
+#ifdef ROD_HAS_COROUTINES
 		/** Returns a generator coroutine used to invoke & yield results of the associated listeners using arguments \a Args. */
 		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
 		[[nodiscard]] generator<R> generate(Args ...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...>)
 		{
 			for (auto &&target: m_data) co_yield std::invoke(target, args...);
 		}
-		/** Invokes all associated listeners with \a args, and accumulates results using functor \a acc. */
+#endif
+
+		/** Invokes all associated listeners with \a args, and accumulates results using functor \a acc.
+		 * If \a acc returns a `non-void` value convertible to `bool`, stops execution when the result evaluates to `false`. */
 		template<typename A, typename... Args, typename R = std::invoke_result_t<Func, Args...>>
-		constexpr void accumulate(A &&acc, Args &&...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
+		constexpr void accumulate(A acc, Args ...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
 		{
-			for (auto &&target: m_data) std::invoke(std::forward<A>(acc), std::invoke(target, std::forward<Args>(args)...));
+			for (auto &&target: m_data)
+			{
+				const auto next = [&]() -> decltype(auto) { return std::invoke(acc, std::invoke(target, args...)); };
+				if constexpr (std::convertible_to<std::invoke_result_t<A, R>, bool>)
+				{
+					const auto do_continue = static_cast<bool>(next());
+					if (!do_continue) break;
+				}
+				else
+					next();
+			}
 		}
 
 		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>) { m_data.swap(other.m_data); }
@@ -95,6 +105,9 @@ namespace rod
 	 * Sinks provide access to the range-like API of a signal, enabling the user to
 	 * iterate over listeners, insert listeners into, and erase listeners from from
 	 * the associated signal's listener queue.
+	 *
+	 * Iterators pointing to listener objects are guaranteed to always remain valid until the listener is
+	 * erased from the signal queue. Stability of pointers and references to listeners is unspecified.
 	 *
 	 * @tparam Signal Signal type associated with the sink. */
 	template<instance_of<basic_signal> Signal>

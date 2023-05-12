@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "../utility.hpp"
+#include "../factories/read.hpp"
 
 namespace rod
 {
@@ -12,14 +12,10 @@ namespace rod
 	{
 		struct execute_may_block_caller_t
 		{
-			template<typename S>
-			[[nodiscard]] constexpr bool operator()(S &&s) const noexcept
-			{
-				if constexpr (tag_invocable<execute_may_block_caller_t, const std::remove_cvref_t<S> &>)
-					return tag_invoke(*this, std::as_const(s));
-				else
-					return true;
-			}
+			template<scheduler S> requires tag_invocable<execute_may_block_caller_t, const std::remove_cvref_t<S> &>
+			[[nodiscard]] constexpr bool operator()(S &&s) const noexcept { return tag_invoke(*this, std::as_const(s)); }
+			template<scheduler S>
+			[[nodiscard]] constexpr auto operator()(S &&) const noexcept { return true; }
 		};
 	}
 

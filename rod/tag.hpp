@@ -12,36 +12,37 @@ namespace rod
 	template<typename T>
 	concept queryable = std::destructible<T>;
 
-	template<typename Tag, typename... Args>
-	struct tag_invoke_result;
-
-	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args. */
-	template<typename Tag, typename... Args>
-	concept tag_invocable = requires(Tag tag, Args &&...args) { tag_invoke(std::move(tag), std::forward<Args>(args)...); };
-	/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args and does not throw exceptions. */
-	template<typename Tag, typename... Args>
-	concept nothrow_tag_invocable = tag_invocable<Tag, Args...> && requires(Tag tag, Args &&...args) { { tag_invoke(std::move(tag), std::forward<Args>(args)...) } noexcept; };
-
-	/** Metaprogramming utility used to obtain the result of a call to `tag_invoke` for tag type \a Tag and arguments \a Args. */
-	template<typename Tag, typename... Args> requires tag_invocable<Tag, Args...>
-	struct tag_invoke_result<Tag, Args...> { using type = decltype(tag_invoke(std::declval<Tag>(), std::declval<Args>()...)); };
-	/** Alias for `typename tag_invoke_result<Tag, Args...>::type`. */
-	template<typename Tag, typename... Args>
-	using tag_invoke_result_t = typename tag_invoke_result<Tag, Args...>::type;
-
 	namespace _tag_invoke
 	{
-		inline void tag_invoke();
+		void tag_invoke();
+
+		/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args. */
+		template<typename Tag, typename... Args>
+		concept tag_invocable = requires(Tag tag, Args &&...args) { tag_invoke(tag, std::forward<Args>(args)...); };
+		/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args and does not throw exceptions. */
+		template<typename Tag, typename... Args>
+		concept nothrow_tag_invocable = tag_invocable<Tag, Args...> && requires(Tag tag, Args &&...args) { { tag_invoke(tag, std::forward<Args>(args)...) } noexcept; };
+		/** Alias for `decltype(tag_invoke(std::declval<Tag>(), std::declval<Args>()...))`. */
+		template<typename Tag, typename... Args>
+		using tag_invoke_result_t = decltype(tag_invoke(std::declval<Tag>(), std::declval<Args>()...));
+
+		/** Metaprogramming utility used to obtain the result of a call to `tag_invoke` for tag type \a Tag and arguments \a Args. */
+		template<typename Tag, typename... Args>
+		struct tag_invoke_result;
+		template<typename Tag, typename... Args> requires tag_invocable<Tag, Args...>
+		struct tag_invoke_result<Tag, Args...> { using type = tag_invoke_result_t<Tag, Args...>; };
 
 		struct tag_invoke_t
 		{
 			template<typename Tag, typename... Args> requires tag_invocable<Tag, Args...>
-			constexpr decltype(auto) operator()(Tag tag, Args &&...args) const noexcept(nothrow_tag_invocable<Tag, Args...>)
+			constexpr tag_invoke_result_t<Tag, Args...> operator()(Tag tag, Args &&...args) const noexcept(nothrow_tag_invocable<Tag, Args...>)
 			{
-				return tag_invoke(std::move(tag), std::forward<Args>(args)...);
+				return tag_invoke(tag, std::forward<Args>(args)...);
 			}
 		};
 	}
+
+	using _tag_invoke::tag_invoke_t;
 
 	/** Utility function used to invoke an implementation of `tag_invoke` with tag \a tag and arguments \a args selected via ADL. */
 	inline constexpr auto tag_invoke = _tag_invoke::tag_invoke_t{};
@@ -51,23 +52,28 @@ namespace rod
 	 * `tag_t` is primarily used to define tag types for invocable query objects
 	 * in order to enable CPO via `tag_invoke`. */
 	template<auto &Tag>
-	using tag_t = std::remove_cvref_t<decltype(Tag)>;
+	using tag_t = std::decay_t<decltype(Tag)>;
+
+	using _tag_invoke::tag_invocable;
+	using _tag_invoke::nothrow_tag_invocable;
+	using _tag_invoke::tag_invoke_result_t;
+	using _tag_invoke::tag_invoke_result;
 
 	inline namespace _forwarding_query
 	{
 		struct forwarding_query_t
 		{
-			template<typename Q>
-			[[nodiscard]] constexpr bool operator()(Q &&q) const noexcept(nothrow_tag_invocable<forwarding_query_t, Q>) requires tag_invocable<forwarding_query_t, Q>
-			{
-				return tag_invoke(*this, std::forward<Q>(q));
-			}
+			template<typename Q> requires tag_invocable<forwarding_query_t, Q>
+			[[nodiscard]] constexpr bool operator()(Q &&q) const noexcept { return tag_invoke(*this, std::forward<Q>(q)); }
 			template<typename Q>
 			[[nodiscard]] constexpr bool operator()(Q &&) const noexcept { return std::derived_from<Q, forwarding_query_t>; }
 		};
 	}
 
-	/**  Customization point object used to check if a query object should be forwarded through queryable adaptors. */
+	/** Customization point object used to check if a query object should be forwarded through queryable adaptors. */
 	inline constexpr auto forwarding_query = forwarding_query_t{};
 
+	/** Concept used to check if type \a T is a forwarding query. */
+	template<typename T>
+	concept is_forwarding_query = forwarding_query(T{});
 }

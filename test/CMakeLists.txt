@@ -13,7 +13,7 @@ function(make_test NAME FILE)
     if (MSVC)
         target_compile_options(${TEST_PROJECT} PRIVATE /W3 /WX)
     else ()
-        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes)
+        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes -fconcepts-diagnostics-depth=10000 -ftemplate-backtrace-limit=0)
     endif ()
 
     # Add as test
@@ -21,6 +21,7 @@ function(make_test NAME FILE)
 endfunction()
 
 make_test(tag ${CMAKE_CURRENT_LIST_DIR}/test_tag.cpp)
+make_test(throw ${CMAKE_CURRENT_LIST_DIR}/test_throw.cpp)
 make_test(run-loop ${CMAKE_CURRENT_LIST_DIR}/test_run_loop.cpp)
 make_test(coroutine ${CMAKE_CURRENT_LIST_DIR}/test_coroutine.cpp)
 make_test(stop-token ${CMAKE_CURRENT_LIST_DIR}/test_stop_token.cpp)
