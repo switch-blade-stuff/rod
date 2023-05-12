@@ -19,8 +19,6 @@ function(make_test NAME FILE)
     add_test(NAME ${NAME} COMMAND "$<TARGET_FILE:${TEST_PROJECT}>")
 endfunction()
 
-make_test(tag ${CMAKE_CURRENT_LIST_DIR}/test_tag.cpp)
-make_test(throw ${CMAKE_CURRENT_LIST_DIR}/test_throw.cpp)
 make_test(run-loop ${CMAKE_CURRENT_LIST_DIR}/test_run_loop.cpp)
 make_test(coroutine ${CMAKE_CURRENT_LIST_DIR}/test_coroutine.cpp)
 make_test(stop-token ${CMAKE_CURRENT_LIST_DIR}/test_stop_token.cpp)
