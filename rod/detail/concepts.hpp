@@ -52,8 +52,12 @@ namespace rod
 
 	namespace detail
 	{
+		template<typename T, typename... Ts>
+		struct make_signature { using type = T(Ts...); };
 		template<typename T>
-		using deduce_set_value = std::conditional_t<std::is_void_v<T>, set_value_t(), set_value_t(T)>;
+		struct make_signature<T, void> { using type = T(); };
+		template<typename T, typename... Ts>
+		using make_signature_t = typename make_signature<T, Ts...>::type;
 
 		template<typename R, typename F, typename... Args> requires callable<F, Args...>
 		constexpr void rcv_try_invoke(R &&rcv, F &&f, Args &&...args) noexcept
@@ -121,8 +125,8 @@ namespace rod
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<R>(rcv));
 			}
-//			template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
-//			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, R &&rcv) const;
+			template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
+			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, R &&rcv) const;
 		};
 	}
 

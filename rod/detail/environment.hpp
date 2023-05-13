@@ -18,7 +18,7 @@ namespace rod
 			{
 				return tag_invoke(*this, value);
 			}
-			template<typename T>
+			template<typename T> requires(!tag_invocable<get_env_t, const T &>)
 			[[nodiscard]] constexpr empty_env operator()(const T &) const noexcept { return {}; }
 		};
 	}

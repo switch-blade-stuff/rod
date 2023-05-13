@@ -3,6 +3,7 @@
  */
 
 #include <rod/scheduling.hpp>
+#include <rod/task.hpp>
 
 #include "common.hpp"
 
@@ -10,16 +11,21 @@ int main()
 {
 	struct test_error : std::exception {};
 
-	auto snd = rod::just(1) | rod::then([&](int i)
+	auto coro = []() -> rod::task<>
 	{
-		TEST_ASSERT(i == 1);
-		throw test_error{};
-	}) | rod::upon_error([&](const std::exception_ptr &e)
-	{
-		TEST_ASSERT(e);
-		try { std::rethrow_exception(e); }
-		catch (test_error &) {}
-	});
+		auto snd = rod::just(1) | rod::then([&](int i)
+		{
+			TEST_ASSERT(i == 1);
+			throw test_error{};
+		}) | rod::upon_error([&](const std::exception_ptr &e)
+		{
+			TEST_ASSERT(e);
+			try { std::rethrow_exception(e); }
+			catch (test_error &) {}
+		});
 
-	rod::sync_wait(snd);
+		co_await snd;
+	};
+
+	rod::sync_wait(coro());
 }

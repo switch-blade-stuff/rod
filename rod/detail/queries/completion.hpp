@@ -23,8 +23,8 @@ namespace rod
 				return typename std::remove_cvref_t<S>::completion_signatures{};
 			}
 
-//			template<typename S, typename E> requires (!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
-//			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, E &&env) const;
+			template<typename S, typename E> requires (!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
+			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, E &&env) const;
 		};
 	}
 

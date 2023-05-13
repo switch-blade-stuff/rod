@@ -28,7 +28,7 @@ namespace rod
 			else if constexpr (requires { operator co_await(p->await_transform(std::forward<A>(a))); })
 				return operator co_await(p->await_transform(std::forward<A>(a)));
 			else
-			return p->await_transform(std::forward<A>(a));
+				return p->await_transform(std::forward<A>(a));
 		}
 		template<typename A>
 		constexpr decltype(auto) get_awaiter(A &&a, auto...)
@@ -38,23 +38,28 @@ namespace rod
 			else if constexpr (requires { operator co_await(std::forward<A>(a)); })
 				return operator co_await(std::forward<A>(a));
 			else
-			return std::forward<A>(a);
+				return std::forward<A>(a);
 		}
 
 		template<typename T>
 		concept await_suspend_result = std::is_void_v<T> || std::same_as<T, bool> || instance_of<T, std::coroutine_handle>;
 
 		template<typename A, typename P>
-		concept is_awaiter = requires (A &a, std::coroutine_handle<P> h)
+		concept with_await_suspend = std::same_as<P, void> || requires(A &a, std::coroutine_handle<P> h)
 		{
-			a.await_ready() ? true : false;
 			{ a.await_suspend(h) } -> await_suspend_result;
-			a.await_resume();
 		};
-		template<typename C, typename P = void>
-		concept is_awaitable = requires (C (*c)() noexcept, P *p) { { get_awaiter(c(), p) } -> is_awaiter<P>; };
-		template<typename C, typename P = void>
-		using await_result_type = decltype(get_awaiter(std::declval<C>(), std::declval<P *>()).await_resume());
+		template<typename A, typename P>
+		concept is_awaiter = requires(A &a)
+		{
+			a.await_ready() ? 1 : 0;
+			a.await_resume();
+		} && with_await_suspend<A, P>;
+
+		template<typename A, typename P = void>
+		concept is_awaitable = requires (A &&a, P *p) { { get_awaiter(std::forward<A>(a), p) } -> is_awaiter<P>; };
+		template<typename A, typename P = void>
+		using await_result_type = decltype(get_awaiter(std::declval<A>(), std::declval<P *>()).await_resume());
 
 		struct undefined_promise
 		{
@@ -97,30 +102,27 @@ namespace rod
 		public:
 			using is_receiver = std::true_type;
 
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &cr) noexcept
+			friend decltype(auto) tag_invoke(get_env_t, const type &r) noexcept
 			{
-				return get_env(std::as_const(cr.m_cont_handle.promise()));
+				return get_env(std::as_const(r.m_cont_handle.promise()));
 			}
-			template<typename T, typename Env, typename... Args> requires detail::decays_to<Env, std::decay_t<env_of_t<type>>>
-			friend constexpr decltype(auto) tag_invoke(T tag, Env &&env, Args &&...args) noexcept
+			template<detail::decays_to<type> T, typename... Vs>
+			friend void tag_invoke(set_value_t, T &&r, Vs &&...vs) noexcept
 			{
-				return tag(std::forward<Env>(env), std::forward<Args>(args)...);
-			}
+				static_assert(std::constructible_from<result_or_unit<S, P>, Vs...>);
 
-			template<typename... Vs> requires std::constructible_from<result_or_unit<S, P>, Vs...>
-			friend constexpr void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
-			{
 				try { r.m_result_ptr->template emplace<1>(std::forward<Vs>(vs)...); }
 				catch (...) { r.m_result_ptr->template emplace<2>(std::current_exception()); }
 				r.m_cont_handle.resume();
 			}
-			template<typename Err>
-			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
+			template<detail::decays_to<type> T, typename Err>
+			friend void tag_invoke(set_error_t, T &&r, Err &&err) noexcept
 			{
-				r.m_result_ptr->template emplace<2>(as_except_ptr(std::forward<Err>(err)));
+				r.m_result_ptr->template emplace<2>(detail::as_except_ptr(std::forward<Err>(err)));
 				r.m_cont_handle.resume();
 			}
-			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept
+			template<detail::decays_to<type> T>
+			friend void tag_invoke(set_stopped_t, T &&r) noexcept
 			{
 				static_cast<std::coroutine_handle<>>(r.m_cont_handle.promise().unhandled_stopped()).resume();
 			}
@@ -129,6 +131,7 @@ namespace rod
 			result_t *m_result_ptr;
 			handle_t m_cont_handle;
 		};
+
 		template<typename S, typename P>
 		class awaitable<S, P>::type
 		{
@@ -143,11 +146,16 @@ namespace rod
 
 			constexpr value_t<S, P> await_resume()
 			{
-				if (m_result.index() == 2)
-					std::rethrow_exception(std::get<2>(m_result));
-				else if constexpr (!std::is_void_v<value_t<S, P>>)
-					return std::forward<value_t<S, P>>(std::get<1>(m_result));
-				std::terminate();
+				switch (m_result.index())
+				{
+				case 1:
+					if constexpr (!std::is_void_v<value_t<S, P>>)
+						return std::forward<value_t<S, P>>(std::get<1>(m_result));
+					else
+						return;
+				case 2: std::rethrow_exception(std::get<2>(m_result));
+				default: [[unlikely]] std::terminate();
+				}
 			}
 
 		private:
@@ -174,7 +182,7 @@ namespace rod
 				static_assert(detail::is_awaitable<result_t, P>);
 				return tag_invoke(*this, std::forward<T>(t), p);
 			}
-			template<typename T, typename P> requires (!tag_invocable<as_awaitable_t, T, P &> && !detail::is_awaitable<T, detail::undefined_promise> && awaitable_sender<T, P>)
+			template<typename T, typename P> requires(!tag_invocable<as_awaitable_t, T, P &> && !detail::is_awaitable<T, detail::undefined_promise> && awaitable_sender<T, P>)
 			[[nodiscard]] constexpr awaitable_t<T, P> operator()(T &&t, P &p) const noexcept(std::is_nothrow_constructible_v<awaitable_t<T, P>, T, std::coroutine_handle<P>>)
 			{
 				return awaitable_t<T, P>{std::forward<T>(t), std::coroutine_handle<P>::from_promise(p)};
@@ -225,7 +233,6 @@ namespace rod
 		};
 	}
 
-#if 0
 	template<typename S, typename E> requires (!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
 	constexpr decltype(auto) get_completion_signatures_t::operator()(S &&, E &&) const
 	{
@@ -237,7 +244,6 @@ namespace rod
 		else
 			return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
 	}
-#endif
 
 	namespace detail
 	{
@@ -294,7 +300,7 @@ namespace rod
 			constexpr std::suspend_always initial_suspend() noexcept { return {}; }
 
 			template<typename A>
-			constexpr decltype(auto) await_transform(A &&a) noexcept( noexcept(as_awaitable(std::forward<A>(a), *this)))
+			constexpr decltype(auto) await_transform(A &&a) noexcept(detail::nothrow_callable<as_awaitable_t, A, awaitable_promise &>)
 			{
 				return as_awaitable(std::forward<A>(a), *this);
 			}
@@ -315,9 +321,13 @@ namespace rod
 		template<typename F>
 		connect_awaiter(F &&) -> connect_awaiter<std::decay_t<F>>;
 
-		template<typename S, typename R, typename Res = await_result_type<S, awaitable_promise<R>>, typename Sigs = completion_signatures<deduce_set_value<Res>, set_error_t(std::exception_ptr), set_stopped_t()>>
-		awaitable_operation<R> connect_awaitable(S s, R r) requires receiver_of<R, Sigs>
+		template<typename S, typename R>
+		awaitable_operation<R> connect_awaitable(S s, R r)
 		{
+			using result_t = await_result_type<S, awaitable_promise<R>>;
+			using signs_t = completion_signatures<make_signature_t<set_value_t, result_t>, set_error_t(std::exception_ptr), set_stopped_t()>;
+			static_assert(receiver_of<R, signs_t>);
+
 			constexpr auto complete = []<typename F, typename... Args>(F f, Args &&...args) noexcept
 			{
 				return connect_awaiter{[&, f]() { f(std::forward<Args>(args)...); }};
@@ -326,7 +336,7 @@ namespace rod
 			std::exception_ptr err;
 			try
 			{
-				if constexpr (std::is_void_v<Res>)
+				if constexpr (std::is_void_v<result_t>)
 					co_await (co_await std::move(s), complete(set_value, std::move(r)));
 				else
 					co_await complete(set_value, std::move(r), co_await std::move(s));
@@ -336,7 +346,6 @@ namespace rod
 		}
 	}
 
-#if 0
 	template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
 	constexpr decltype(auto) connect_t::operator()(S &&snd, R &&rcv) const
 	{
@@ -346,7 +355,6 @@ namespace rod
 
 	template<detail::is_awaitable<detail::env_promise<empty_env>> S>
 	inline constexpr bool enable_sender<S> = true;
-#endif
 
 	/** Base type used to make a child coroutine promise type support awaiting on sender objects. */
 	template<detail::class_type P>

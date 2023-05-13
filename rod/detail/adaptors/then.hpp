@@ -13,13 +13,6 @@ namespace rod
 {
 	namespace _then
 	{
-		template<typename T, typename... Ts>
-		struct compl_sign { using type = T(Ts...); };
-		template<typename T>
-		struct compl_sign<T, void> { using type = T(); };
-		template<typename T, typename... Ts>
-		using compl_sign_t = typename compl_sign<T, Ts...>::type;
-
 		template<typename, typename, typename>
 		struct deduce_signs;
 
@@ -34,7 +27,7 @@ namespace rod
 			template<typename T, typename E>
 			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
 			template<typename... Ts>
-			using value_signs = completion_signatures<compl_sign_t<set_value_t, std::invoke_result_t<F, Ts...>>>;
+			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<F, Ts...>>>;
 
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, value_signs>;
@@ -50,7 +43,7 @@ namespace rod
 			template<typename T, typename E>
 			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
 			template<typename T>
-			using value_signs = completion_signatures<compl_sign_t<set_value_t, std::invoke_result_t<F, T>>>;
+			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<F, T>>>;
 
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, detail::default_set_value, value_signs>;
@@ -65,7 +58,7 @@ namespace rod
 
 			template<typename T, typename E>
 			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
-			using value_signs = completion_signatures<compl_sign_t<set_value_t, std::invoke_result_t<F>>>;
+			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<F>>>;
 
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, detail::default_set_value, detail::default_set_error, value_signs>;
