@@ -9,11 +9,10 @@
 
 int main()
 {
-	struct test_error : std::exception {};
-
-	auto coro = []() -> rod::task<>
+	rod::sync_wait([]() -> rod::task<>
 	{
-		auto snd = rod::just(1) | rod::then([&](int i)
+		struct test_error : std::exception {};
+		auto snd = rod::just(1) | rod::then([](int i)
 		{
 			TEST_ASSERT(i == 1);
 			throw test_error{};
@@ -25,7 +24,5 @@ int main()
 		});
 
 		co_await snd;
-	};
-
-	rod::sync_wait(coro());
+	}());
 }
