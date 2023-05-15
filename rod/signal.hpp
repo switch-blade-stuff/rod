@@ -18,14 +18,6 @@ namespace rod
 	template<instance_of<basic_signal>>
 	class sink;
 
-	namespace detail
-	{
-		template<typename F, typename = void>
-		struct is_valid_listener : std::conjunction<std::is_pointer<F>, std::is_function<std::remove_pointer_t<F>>> {};
-		template<typename F>
-		struct is_valid_listener<F, std::void_t<decltype(&F::operator())>> : std::true_type {};
-	}
-
 	/** Ordered list of listeners of type \a Func, representing the private half of the signal-sink interface.
 	 *
 	 * @tparam Func Underlying invocable type of the signal's listeners.
@@ -33,8 +25,6 @@ namespace rod
 	template<std::move_constructible Func, typename Alloc = std::allocator<Func>>
 	class basic_signal
 	{
-		static_assert(detail::is_valid_listener<Func>::value, "Listener must be an invocable object type");
-
 		template<instance_of<basic_signal>>
 		friend class sink;
 
@@ -52,6 +42,9 @@ namespace rod
 		/** Returns copy of the signal's allocator. */
 		[[nodiscard]] constexpr allocator_type get_allocator() noexcept { return m_data.get_allocator(); }
 
+		/** Resets the signal to initial (no listeners) state. */
+		constexpr void reset() { m_data.clear(); }
+
 		/** Invokes all associated listeners with \a args. */
 		template<typename... Args>
 		constexpr void emit(Args ...args) requires std::invocable<Func, Args...>
@@ -62,7 +55,7 @@ namespace rod
 #ifdef ROD_HAS_COROUTINES
 		/** Returns a generator coroutine used to invoke & yield results of the associated listeners using arguments \a Args. */
 		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
-		[[nodiscard]] generator<R> generate(Args ...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...>)
+		[[nodiscard]] generator<R> generate(Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...>)
 		{
 			for (auto &&target: m_data) co_yield std::invoke(target, args...);
 		}
@@ -71,7 +64,7 @@ namespace rod
 		/** Invokes all associated listeners with \a args, and accumulates results using functor \a acc.
 		 * If \a acc returns a `non-void` value convertible to `bool`, stops execution when the result evaluates to `false`. */
 		template<typename A, typename... Args, typename R = std::invoke_result_t<Func, Args...>>
-		constexpr void accumulate(A acc, Args ...args) requires (!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
+		constexpr void accumulate(A acc, Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
 		{
 			for (auto &&target: m_data)
 			{

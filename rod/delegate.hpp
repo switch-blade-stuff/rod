@@ -87,15 +87,15 @@ namespace rod
 	 * and can be used to invoke C-style APIs taking a callback and data pointer.
 	 *
 	 * @tparam F Function signature of the delegate.
-	 * @tparam LocalBytes Size of the in-place storage buffer. If set to `0`, non-empty functors will always be allocated on the heap. */
-	template<typename F, std::size_t LocalBytes = sizeof(std::uintptr_t) * 2> requires detail::delegate_traits<F>::value
-	class delegate : detail::delegate_storage<LocalBytes>
+	 * @tparam Buffer Size of the in-place storage buffer. If set to `0`, non-empty functors will always be allocated on the heap. */
+	template<typename F, std::size_t Buffer = sizeof(std::uintptr_t) * 2> requires detail::delegate_traits<F>::value
+	class delegate : detail::delegate_storage<Buffer>
 	{
-		using storage_t = detail::delegate_storage<LocalBytes>;
+		using storage_t = detail::delegate_storage<Buffer>;
 		using traits_t = detail::delegate_traits<F>;
 
 		template<typename T>
-		constexpr static bool is_by_value = alignof(T) <= alignof(std::uintptr_t) && (std::is_empty_v<T> || sizeof(T) <= LocalBytes) &&
+		constexpr static bool is_by_value = alignof(T) <= alignof(std::uintptr_t) && (std::is_empty_v<T> || sizeof(T) <= Buffer) &&
 		                                    std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
 
 		template<typename T>
@@ -167,10 +167,10 @@ namespace rod
 
 		/** Initializes the delegate with a reference to a functor. */
 		template<typename T>
-		delegate(T &func) requires (!detail::decays_to<T, delegate> && !std::is_function_v<T>) { init_ref(typename traits_t::arg_types{}, func); }
+		delegate(T &func) requires(!detail::decays_to<T, delegate> && !std::is_function_v<T>) { init_ref(typename traits_t::arg_types{}, func); }
 		/** Initializes the delegate with an in-place constructed functor. */
 		template<typename T, typename U = std::decay_t<T>>
-		delegate(T &&func) requires (!std::same_as<U, delegate> && !std::is_function_v<U>) { init_value<U>(typename traits_t::arg_types{}, std::forward<T>(func)); }
+		delegate(T &&func) requires(!std::same_as<U, delegate> && !std::is_function_v<U>) { init_value<U>(typename traits_t::arg_types{}, std::forward<T>(func)); }
 		/** Initializes the delegate with functor of type \a F constructed in-place from \a args. */
 		template<typename T, typename... Args>
 		delegate(std::in_place_type_t<T>, Args &&...args) { init_value<T>(typename traits_t::arg_types{}, std::forward<Args>(args)...); }
@@ -268,7 +268,7 @@ namespace rod
 		}
 
 		template<auto Mem, typename... Args, typename T>
-		void init_obj_mem(type_list_t<Args...>, T *instance) requires (detail::check_member<F, T *, Mem>::value && alignof(T) > flags_bits)
+		void init_obj_mem(type_list_t<Args...>, T *instance) requires(detail::check_member<F, T *, Mem>::value && alignof(T) > flags_bits)
 		{
 			m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, *static_cast<T *>(ptr), args...); };
 			m_data_flags = std::bit_cast<std::uintptr_t>(instance);
@@ -336,8 +336,8 @@ namespace rod
 	delegate(bind_member_t<Mem>, T &&) -> delegate<typename detail::deduce_signature_t<decltype(Mem)>>;
 
 	/** Creates a delegate from a member pointer and an object instance pointer. */
-	template<auto Mem, std::size_t LocalBytes = sizeof(std::uintptr_t) * 2, typename T>
-	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<typename detail::deduce_signature_t<decltype(Mem)>, LocalBytes>
+	template<auto Mem, std::size_t Buffer = sizeof(std::uintptr_t) * 2, typename T>
+	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<typename detail::deduce_signature_t<decltype(Mem)>, Buffer>
 	{
 		return {bind_member<Mem>, std::forward<T>(instance)};
 	}
