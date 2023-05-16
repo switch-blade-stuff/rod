@@ -10,7 +10,6 @@
 
 namespace rod
 {
-
 	namespace _schedule_from
 	{
 		/* Build a variant of form
@@ -54,7 +53,7 @@ namespace rod
 		struct env<Sch>::type
 		{
 			friend constexpr Sch tag_invoke(get_completion_scheduler_t<set_error_t>, const env &) = delete;
-			template<typename T> requires (std::same_as<T, set_value_t> || std::same_as<T, set_stopped_t>)
+			template<typename T> requires(std::same_as<T, set_value_t> || std::same_as<T, set_stopped_t>)
 			friend constexpr Sch tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept(std::is_nothrow_copy_constructible_v<Sch>) { return e._sch; }
 
 			template<detail::decays_to<type> T, is_forwarding_query Q, typename... Args> requires detail::callable<Q, env_of_t<Sch>, Args...>
@@ -72,7 +71,7 @@ namespace rod
 			using is_receiver = std::true_type;
 			using _operation_t = typename operation<Sch, Snd, Rcv>::type;
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) { return get_env(r._op->_rcv); }
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 			template<detail::decays_to<type> T, detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, std::decay_t<Args>...>
 			friend constexpr void tag_invoke(C, T &&r, Args &&...args) noexcept { r.template _complete<C>(std::forward<Args>(args)...); }
 
@@ -95,11 +94,11 @@ namespace rod
 			using is_receiver = std::true_type;
 			using _operation_t = typename operation<Sch, Snd, Rcv>::type;
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) { return get_env(r._op->_rcv); }
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
 			template<detail::decays_to<type> T>
 			friend constexpr void tag_invoke(set_value_t, T &&r) noexcept { r._op->_complete(); }
-			template<detail::decays_to<type> T, typename C, typename... Args> requires (std::same_as<C, set_error_t> || std::same_as<C, set_stopped_t>) && detail::callable<C, Rcv, Args...>
+			template<detail::decays_to<type> T, typename C, typename... Args> requires(std::same_as<C, set_error_t> || std::same_as<C, set_stopped_t>) && detail::callable<C, Rcv, Args...>
 			friend constexpr void tag_invoke(C, T &&r, Args &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Args>(args)...); }
 
 			_operation_t *_op;
@@ -187,7 +186,7 @@ namespace rod
 
 		public:
 			template<scheduler Sch, rod::sender Snd> requires tag_invocable<schedule_from_t, Sch, Snd>
-			[[nodiscard]] constexpr decltype(auto) operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<schedule_from_t, Sch, Snd>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<schedule_from_t, Sch, Snd>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snd>(snd));
 			}

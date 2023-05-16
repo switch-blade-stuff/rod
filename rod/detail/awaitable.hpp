@@ -52,7 +52,8 @@ namespace rod
 		template<typename A, typename P>
 		concept is_awaiter = requires(A &a)
 		{
-			a.await_ready() ? 1 : 0;
+			/* Use ternary here to allow for non-constexpr evaluation. */
+			a.await_ready() ? true : false;
 			a.await_resume();
 		} && with_await_suspend<A, P>;
 
@@ -102,7 +103,7 @@ namespace rod
 		public:
 			using is_receiver = std::true_type;
 
-			friend decltype(auto) tag_invoke(get_env_t, const type &r) noexcept
+			friend decltype(auto) tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>)
 			{
 				return get_env(std::as_const(r.m_cont_handle.promise()));
 			}
@@ -233,7 +234,7 @@ namespace rod
 		};
 	}
 
-	template<typename S, typename E> requires (!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
+	template<typename S, typename E> requires(!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
 	constexpr decltype(auto) get_completion_signatures_t::operator()(S &&, E &&) const
 	{
 		static_assert(detail::is_awaitable<S, detail::env_promise<E>>, "Sender must be an awaitable type");
@@ -283,7 +284,7 @@ namespace rod
 		class awaitable_promise
 		{
 		public:
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const awaitable_promise &p) noexcept(requires { { get_env(p.m_rcv) } noexcept; })
+			friend constexpr decltype(auto) tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>)
 			{
 				return get_env(p.m_rcv);
 			}
@@ -347,7 +348,7 @@ namespace rod
 	}
 
 	template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
-	constexpr decltype(auto) connect_t::operator()(S &&snd, R &&rcv) const
+	constexpr operation_state decltype(auto) connect_t::operator()(S &&snd, R &&rcv) const
 	{
 		static_assert(detail::is_awaitable<S, detail::awaitable_promise<R>>, "Sender must be an awaitable type");
 		return detail::connect_awaitable<std::decay_t<S>, std::decay_t<R>>(std::forward<S>(snd), std::forward<R>(rcv));
@@ -363,7 +364,7 @@ namespace rod
 		using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
 
 	public:
-		template<typename Other> requires (!std::same_as<Other, void>)
+		template<typename Other> requires(!std::same_as<Other, void>)
 		constexpr void set_continuation(std::coroutine_handle<Other> h) noexcept
 		{
 			m_cont = h;

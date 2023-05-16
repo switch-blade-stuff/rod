@@ -19,6 +19,7 @@
 #include "detail/adaptors/schedule_from.hpp"
 #include "detail/adaptors/transfer.hpp"
 #include "detail/adaptors/then.hpp"
+#include "detail/adaptors/let.hpp"
 #include "detail/adaptors/on.hpp"
 
 #include "detail/sync_wait.hpp"

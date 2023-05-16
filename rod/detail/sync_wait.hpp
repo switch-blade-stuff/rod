@@ -6,7 +6,7 @@
 
 #include <optional>
 
-#include "algorithms/into_variant.hpp"
+#include "adaptors/into_variant.hpp"
 #include "run_loop.hpp"
 
 namespace rod
@@ -138,7 +138,7 @@ namespace rod
 			constexpr std::optional<result_t<S>> operator()(S &&snd) const { return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_attrs(std::forward<S>(snd))), std::forward<S>(snd)); }
 			template<sender_in<env> S> requires snd_overload<S>
 			constexpr std::optional<result_t<S>> operator()(S &&snd) const { return tag_invoke(*this, std::forward<S>(snd)); }
-			template<sender_in<env> S> requires (!has_overload<S>)
+			template<sender_in<env> S> requires(!has_overload<S>)
 			std::optional<result_t<S>> operator()(S &&snd) const { return sync_wait_t{}(into_variant(std::forward<S>(snd))); }
 		};
 	}

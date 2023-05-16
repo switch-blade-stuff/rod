@@ -41,7 +41,7 @@ namespace rod
 			template<detail::decays_to<type> T, typename E>
 			friend constexpr _signs tag_invoke(get_completion_signatures_t, T &&, E &&) { return {}; }
 
-			template<receiver_of<_signs> R> requires (std::copy_constructible<Ts> && ...)
+			template<receiver_of<_signs> R> requires(std::copy_constructible<Ts> && ...)
 			friend constexpr auto tag_invoke(connect_t, const type &s, R &&r) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R> && (std::is_nothrow_copy_constructible_v<Ts> && ...))
 			{
 				using operation_t = typename operation<std::decay_t<R>, C, Ts...>::type;
@@ -65,7 +65,7 @@ namespace rod
 	struct _just::just_t
 	{
 		template<typename... Vs>
-		[[nodiscard]] constexpr auto operator()(Vs &&...vals) const noexcept((std::is_nothrow_constructible_v<std::decay_t<Vs>, Vs> && ...))
+		[[nodiscard]] constexpr rod::sender auto operator()(Vs &&...vals) const noexcept((std::is_nothrow_constructible_v<std::decay_t<Vs>, Vs> && ...))
 		{
 			using sender_t = typename sender<set_value_t, std::decay_t<Vs>...>::type;
 			return sender_t{std::forward<Vs>(vals)...};

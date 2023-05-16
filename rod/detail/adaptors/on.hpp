@@ -39,23 +39,23 @@ namespace rod
 		{
 			using _receiver_t = typename receiver<Sch, Snd, Rcv>::type;
 			using _receiver_ref_t = typename receiver_ref<Sch, Snd, Rcv>::type;
-			using _data_t = std::variant<connect_result_t<schedule_result_t<Sch>, _receiver_t>, connect_result_t<Snd, _receiver_ref_t>>;
+			using _state_t = std::variant<connect_result_t<schedule_result_t<Sch>, _receiver_t>, connect_result_t<Snd, _receiver_ref_t>>;
 
 			template<typename Sch2, typename Snd2, typename Rcv2>
 			constexpr type(Sch2 &&sch, Snd2 &&snd, Rcv2 &&rcv) noexcept(std::is_nothrow_constructible_v<Sch, Sch2> &&
 			                                                            std::is_nothrow_constructible_v<Snd, Snd2> &&
 			                                                            std::is_nothrow_constructible_v<Rcv, Rcv2>)
 					: _sch(std::forward<Sch2>(sch)), _snd(std::forward<Snd2>(snd)), _rcv(std::forward<Rcv2>(rcv)),
-					  _data{std::in_place_index<0>, detail::implicit_eval{[this] { return _do_connect(); }}} {}
+					  _state{std::in_place_index<0>, detail::implicit_eval{[this] { return _do_connect(); }}} {}
 
-			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(std::get<0>(op._data)); }
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(std::get<0>(op._state)); }
 
 			[[nodiscard]] constexpr auto _do_connect() { return connect(schedule(_sch), _receiver_t{this}); }
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
 			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
-			_data_t _data;
+			[[ROD_NO_UNIQUE_ADDRESS]] _state_t _state;
 		};
 
 		template<typename Sch, typename Snd, typename Rcv>
@@ -124,7 +124,7 @@ namespace rod
 				{
 					/* Use a conversion wrapper to allow emplacement of non-movable types. */
 					const auto conv = [op]() { return connect(std::move(op->_snd), _receiver_ref_t{op}); };
-					start(op->_data.template emplace<1>(detail::implicit_eval{conv}));
+					start(op->_state.template emplace<1>(detail::implicit_eval{conv}));
 				}
 				catch (...) { set_error(std::move(op->_rcv), std::current_exception()); }
 			}
@@ -165,7 +165,7 @@ namespace rod
 				return _operation_t<Rcv>{std::forward<T>(s)._sch, std::forward<T>(s)._snd, std::forward<Rcv>(rcv)};
 			}
 
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, Snd>) { return get_env(s._snd); }
+			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
 			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
@@ -178,7 +178,7 @@ namespace rod
 
 		public:
 			template<rod::scheduler Sch, rod::sender Snd> requires tag_invocable<on_t, Sch, Snd>
-			[[nodiscard]] constexpr decltype(auto) operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<on_t, Sch, Snd>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<on_t, Sch, Snd>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snd>(snd));
 			}

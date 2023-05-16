@@ -106,7 +106,7 @@ namespace rod
 
 	/** Concept used to define a receiver type with a known set of completion signatures. */
 	template<typename R, typename Cp>
-	concept receiver_of = receiver<R> && requires { []<typename... Sigs>(completion_signatures<Sigs...>) requires (detail::valid_completion_for<Sigs, R> && ...) {}(Cp{}); };
+	concept receiver_of = receiver<R> && requires { []<typename... Sigs>(completion_signatures<Sigs...>) requires(detail::valid_completion_for<Sigs, R> && ...) {}(Cp{}); };
 
 	/** Type trait used to check if type \a S defines a member `is_sender` type. */
 	template<typename S>
@@ -116,17 +116,34 @@ namespace rod
 	template<typename S, typename U = std::remove_cvref_t<S>>
 	concept sender = enable_sender<U> && requires(const U &s) {{ get_env(s) } -> queryable; } && std::move_constructible<U> && std::constructible_from<U, S>;
 
+	inline namespace _start
+	{
+		struct start_t
+		{
+			template<typename O> requires(tag_invocable<start_t, O> && !std::is_rvalue_reference_v<O>)
+			constexpr decltype(auto) operator()(O &&op) const noexcept { return tag_invoke(*this, std::forward<O>(op)); }
+		};
+	}
+
+	/** Customization point object used to start work represented by an operation state.
+	 * @param op Operation state used to start the scheduled work. */
+	inline constexpr auto start = start_t{};
+
+	/** Concept used to define an operation state object type that can be used to start execution of work. */
+	template<typename S>
+	concept operation_state = queryable<S> && std::is_object_v<S> && requires(S &s) { start(s); };
+
 	inline namespace _connect
 	{
 		struct connect_t
 		{
 			template<sender S, receiver R> requires tag_invocable<connect_t, S, R>
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, R &&rcv) const noexcept(nothrow_tag_invocable<connect_t, S, R>)
+			[[nodiscard]] constexpr operation_state decltype(auto) operator()(S &&snd, R &&rcv) const noexcept(nothrow_tag_invocable<connect_t, S, R>)
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<R>(rcv));
 			}
 			template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, R &&rcv) const;
+			[[nodiscard]] constexpr operation_state decltype(auto) operator()(S &&snd, R &&rcv) const;
 		};
 	}
 
@@ -140,29 +157,12 @@ namespace rod
 	template<typename S, typename R>
 	using connect_result_t = decltype(connect(std::declval<S>(), std::declval<R>()));
 
-	inline namespace _start
-	{
-		struct start_t
-		{
-			template<typename O> requires (tag_invocable<start_t, O> && !std::is_rvalue_reference_v<O>)
-			constexpr decltype(auto) operator()(O &&op) const noexcept { return tag_invoke(*this, std::forward<O>(op)); }
-		};
-	}
-
-	/** Customization point object used to start work represented by an operation state.
-	 * @param op Operation state used to start the scheduled work. */
-	inline constexpr auto start = start_t{};
-
-	/** Concept used to define an operation state object type that can be used to start execution of work. */
-	template<typename S>
-	concept operation_state = queryable<S> && std::is_object_v<S> && requires(S &s) { start(s); };
-
 	inline namespace _schedule
 	{
 		struct schedule_t
 		{
 			template<typename S> requires tag_invocable<schedule_t, S> && sender<tag_invoke_result_t<schedule_t, S>>
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&sch) const noexcept(nothrow_tag_invocable<schedule_t, S>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch) const noexcept(nothrow_tag_invocable<schedule_t, S>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch));
 			}

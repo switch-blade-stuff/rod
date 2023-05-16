@@ -16,7 +16,7 @@ namespace rod
 
 			template<typename R> requires tag_invocable<get_allocator_t, const std::remove_cvref_t<R> &>
 			[[nodiscard]] constexpr decltype(auto) operator()(R &&r) const noexcept { return tag_invoke(*this, std::as_const(r)); }
-			[[nodiscard]] constexpr decltype(auto) operator()() const noexcept { return read(*this); }
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()() const noexcept { return read(*this); }
 		};
 	}
 

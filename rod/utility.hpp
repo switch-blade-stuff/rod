@@ -15,6 +15,11 @@ namespace rod
 {
 	namespace detail
 	{
+		template<typename... Ts>
+		using decayed_tuple = std::tuple<std::decay_t<Ts>...>;
+		template<typename T>
+		using decayed_ref = std::decay_t<T> &;
+
 		template<typename T, typename... Args>
 		concept callable = requires(T t, Args &&...args) { t(std::forward<Args>(args)...); };
 		template<typename T, typename... Args>
@@ -66,7 +71,7 @@ namespace rod
 		template<typename F>
 		struct implicit_eval
 		{
-			using type = decltype(F{}());
+			using type = std::invoke_result_t<F>;
 
 			operator type() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
 			type operator()() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
@@ -88,9 +93,9 @@ namespace rod
 		}
 
 		template<template<typename...> typename T, typename... Ts>
-		struct bind_front { template<typename... Us> using type = T<Ts..., Us...>; };
+		struct bind_front { template<typename... Us> using type = apply_tuple_t<T, Ts..., Us...>; };
 		template<template<typename...> typename T, typename... Ts>
-		struct bind_back { template<typename... Us> using type = T<Us..., Ts...>; };
+		struct bind_back { template<typename... Us> using type = apply_tuple_t<T, Us..., Ts...>; };
 
 		template<typename From, typename To>
 		struct copy_cvref_impl { using type = To; };
@@ -182,7 +187,7 @@ namespace rod
 		struct make_unique_list;
 		template<template <typename...> typename T, typename... Ts, typename U, typename... Us> requires(is_in_impl<U, Ts...>::value)
 		struct make_unique_list<T<Ts...>, T<U, Us...>> : make_unique_list<T<Ts...>, T<Us...>> {};
-		template<template <typename...> typename T, typename... Ts, typename U, typename... Us> requires (!is_in_impl<U, Ts...>::value)
+		template<template <typename...> typename T, typename... Ts, typename U, typename... Us> requires(!is_in_impl<U, Ts...>::value)
 		struct make_unique_list<T<Ts...>, T<U, Us...>> : make_unique_list<T<U, Ts...>, T<Us...>> {};
 		template<template <typename...> typename T, typename... Ts>
 		struct make_unique_list<T<Ts...>, T<>> { using type = T<Ts...>; };
@@ -194,9 +199,6 @@ namespace rod
 
 	namespace detail
 	{
-		template<typename... Ts>
-		using decayed_tuple = std::tuple<std::decay_t<Ts>...>;
-
 		template<typename...>
 		struct empty_variant { empty_variant() = delete; };
 

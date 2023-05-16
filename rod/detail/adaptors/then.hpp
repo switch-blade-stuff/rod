@@ -15,9 +15,8 @@ namespace rod
 	{
 		template<typename, typename, typename>
 		struct deduce_signs;
-
 		template<typename S, typename F>
-		struct deduce_signs<set_value_t, S, F>
+		struct deduce_signs<void, S, F>
 		{
 			template<typename... Ts>
 			using is_throwing = std::negation<std::is_nothrow_invocable<F, Ts...>>;
@@ -26,8 +25,14 @@ namespace rod
 
 			template<typename T, typename E>
 			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
+		};
+		template<typename S, typename F>
+		struct deduce_signs<set_value_t, S, F>
+		{
 			template<typename... Ts>
 			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<F, Ts...>>>;
+			template<typename T, typename E>
+			using error_signs = typename deduce_signs<void, S, F>::template error_signs<T, E>;
 
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, value_signs>;
@@ -35,15 +40,10 @@ namespace rod
 		template<typename S, typename F>
 		struct deduce_signs<set_error_t, S, F>
 		{
-			template<typename... Ts>
-			using is_throwing = std::negation<std::is_nothrow_invocable<F, Ts...>>;
-			template<typename T, typename E>
-			using has_throwing = is_in_tuple<std::true_type, value_types_of_t<copy_cvref_t<T, S>, E, is_throwing, type_list_t>>;
-
-			template<typename T, typename E>
-			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
 			template<typename T>
 			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<F, T>>>;
+			template<typename T, typename E>
+			using error_signs = typename deduce_signs<void, S, F>::template error_signs<T, E>;
 
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, detail::default_set_value, value_signs>;
@@ -51,14 +51,9 @@ namespace rod
 		template<typename S, typename F>
 		struct deduce_signs<set_stopped_t, S, F>
 		{
-			template<typename... Ts>
-			using is_throwing = std::negation<std::is_nothrow_invocable<F, Ts...>>;
-			template<typename T, typename E>
-			using has_throwing = is_in_tuple<std::true_type, value_types_of_t<copy_cvref_t<T, S>, E, is_throwing, type_list_t>>;
-
-			template<typename T, typename E>
-			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
 			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<F>>>;
+			template<typename T, typename E>
+			using error_signs = typename deduce_signs<void, S, F>::template error_signs<T, E>;
 
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, detail::default_set_value, detail::default_set_error, value_signs>;
@@ -121,7 +116,7 @@ namespace rod
 				else
 					pass_result();
 			}
-			template<detail::completion_channel T, typename... Args> requires (!std::same_as<T, C> && detail::callable<T, R, Args...>)
+			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, R, Args...>)
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept
 			{
 				T{}(std::move(r._data->_rcv), std::forward<Args>(args)...);
@@ -175,23 +170,23 @@ namespace rod
 			using sender_t = typename sender<C, S, F>::type;
 
 		public:
-			template<rod::sender S, typename F> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F>
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, completion_scheduler<S>, S, F>)
+			template<rod::sender S, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F>
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, completion_scheduler<S>, S, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<C>(get_env(snd)), std::forward<S>(snd), std::forward<F>(fn));
 			}
-			template<rod::sender S, typename F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && tag_invocable<upon_channel<C>, S, F>)
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, S, F>)
+			template<rod::sender S, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && tag_invocable<upon_channel<C>, S, F>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, S, F>)
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<F>(fn));
 			}
-			template<rod::sender S, typename F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && !tag_invocable<upon_channel<C>, S, F>)
+			template<rod::sender S, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && !tag_invocable<upon_channel<C>, S, F>)
 			[[nodiscard]] constexpr sender_t<S, F> operator()(S &&snd, F &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<S, F>, S, F>)
 			{
 				return sender_t<S, F>{std::forward<S>(snd), std::forward<F>(fn)};
 			}
 
-			template<typename F>
+			template<detail::movable_value F>
 			[[nodiscard]] constexpr back_adaptor<F> operator()(F &&fn) const noexcept(std::is_nothrow_constructible_v<back_adaptor<F>, upon_channel<C>, F>)
 			{
 				return {*this, std::forward<F>(fn)};

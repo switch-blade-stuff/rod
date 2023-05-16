@@ -9,20 +9,20 @@
 
 int main()
 {
-	rod::sync_wait([]() -> rod::task<>
+	rod::sync_wait([]() noexcept -> rod::task<>
 	{
 		struct test_error : std::exception {};
 		auto snd = rod::just(1) | rod::then([](int i)
 		{
 			TEST_ASSERT(i == 1);
 			throw test_error{};
-		}) | rod::upon_error([&](const std::exception_ptr &e)
+		}) | rod::upon_error([](const std::exception_ptr &e)
 		{
 			TEST_ASSERT(e);
 			try { std::rethrow_exception(e); }
 			catch (test_error &) {}
-		});
+		}) | rod::let_value([](){ return rod::just(1); });
 
-		co_await snd;
+		TEST_ASSERT(co_await std::move(snd) == 1);
 	}());
 }

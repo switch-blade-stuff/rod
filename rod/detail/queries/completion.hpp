@@ -17,13 +17,13 @@ namespace rod
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<E>(env));
 			}
-			template<typename S, typename E> requires (!tag_invocable<get_completion_signatures_t, S, E> && requires { typename std::remove_cvref_t<S>::completion_signatures; })
+			template<typename S, typename E> requires(!tag_invocable<get_completion_signatures_t, S, E> && requires { typename std::remove_cvref_t<S>::completion_signatures; })
 			[[nodiscard]] constexpr decltype(auto) operator()(S &&, E &&) const noexcept
 			{
 				return typename std::remove_cvref_t<S>::completion_signatures{};
 			}
 
-			template<typename S, typename E> requires (!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
+			template<typename S, typename E> requires(!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
 			[[nodiscard]] constexpr decltype(auto) operator()(S &&snd, E &&env) const;
 		};
 	}

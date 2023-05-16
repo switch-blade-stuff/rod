@@ -20,17 +20,17 @@ namespace rod
 
 		public:
 			template<sender Snd, scheduler Sch> requires detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch>
-			[[nodiscard]] constexpr decltype(auto) operator()(Snd &&snd, Sch &&sch) const noexcept(nothrow_tag_invocable<transfer_t, value_completion<Snd>, Snd, Sch>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Snd &&snd, Sch &&sch) const noexcept(nothrow_tag_invocable<transfer_t, value_completion<Snd>, Snd, Sch>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Sch>(sch));
 			}
 			template<sender Snd, scheduler Sch> requires(!detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch> && tag_invocable<transfer_t, Snd, Sch>)
-			[[nodiscard]] constexpr decltype(auto) operator()(Snd &&snd, Sch &&sch) const noexcept(nothrow_tag_invocable<transfer_t, Snd, Sch>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Snd &&snd, Sch &&sch) const noexcept(nothrow_tag_invocable<transfer_t, Snd, Sch>)
 			{
 				return tag_invoke(transfer_t{}, std::forward<Snd>(snd), std::forward<Sch>(sch));
 			}
 			template<sender Snd, scheduler Sch> requires(!detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch> && !tag_invocable<transfer_t, Snd, Sch>)
-			[[nodiscard]] constexpr auto operator()(Snd &&snd, Sch &&sch) const noexcept(detail::nothrow_callable<schedule_from_t, Snd, Sch>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Sch &&sch) const noexcept(detail::nothrow_callable<schedule_from_t, Snd, Sch>)
 			{
 				return schedule_from(std::forward<Sch>(sch), std::forward<Snd>(snd));
 			}

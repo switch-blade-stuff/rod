@@ -40,7 +40,7 @@ namespace rod
 			void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
 			void return_void() {}
 
-			std::suspend_always yield_value(value_type &value) noexcept requires (!std::is_rvalue_reference_v<T>)
+			std::suspend_always yield_value(value_type &value) noexcept requires(!std::is_rvalue_reference_v<T>)
 			{
 				m_result = std::addressof(value);
 				return {};
@@ -394,7 +394,7 @@ namespace rod
 				return as_awaitable(std::forward<A>(value), *this);
 			}
 
-			yield_awaiter yield_value(value_type &value) noexcept requires (!std::is_rvalue_reference_v<T>)
+			yield_awaiter yield_value(value_type &value) noexcept requires(!std::is_rvalue_reference_v<T>)
 			{
 				m_result = std::addressof(value);
 				return await_yield();

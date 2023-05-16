@@ -17,7 +17,7 @@ int main()
 	TEST_ASSERT(invoked == 1);
 
 	invoked = 0;
-	sink += rod::delegate{[&] { return ++invoked; }};
+	sink += [&] { return ++invoked; };
 	for (auto i : signal.generate())
 		TEST_ASSERT(i == invoked);
 	TEST_ASSERT(invoked == 2);
