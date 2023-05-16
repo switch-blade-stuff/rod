@@ -272,14 +272,12 @@ namespace rod
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd));
 			}
-			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd> && !tag_invocable<split_t, Snd>)
-			[[nodiscard]] rod::sender decltype(auto) operator()(Snd &&snd) const noexcept(std::derived_from<std::decay_t<Snd>, split_sender_tag>)
-			{
-				if constexpr (!std::derived_from<std::decay_t<Snd>, split_sender_tag>)
-					return sender_t<Snd>{std::forward<Snd>(snd)};
-				else
-					return std::forward<Snd>(snd);
-			}
+
+			/* split(_split::sender::type) should not split. */
+			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd> && !tag_invocable<split_t, Snd> && !std::derived_from<std::decay_t<Snd>, split_sender_tag>)
+			[[nodiscard]] sender_t<Snd> operator()(Snd &&snd) const { return sender_t<Snd>{std::forward<Snd>(snd)}; }
+			template<typename Snd> requires(std::derived_from<std::decay_t<Snd>, split_sender_tag>)
+			[[nodiscard]] constexpr auto operator()(Snd &&snd) const noexcept { return std::forward<Snd>(snd); }
 
 			[[nodiscard]] constexpr back_adaptor operator()() const noexcept { return {}; }
 		};

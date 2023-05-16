@@ -25,12 +25,14 @@ int main()
 		   | rod::bulk(5, [](int i, int &j) { j += i; })
 		   | rod::split();
 
+		static_assert(std::same_as<decltype(rod::split(snd_base)), decltype(snd_base)>);
+
 		auto snd0 = snd_base | rod::then([](int i) { TEST_ASSERT(i == 11); });
 		auto snd1 = snd_base | rod::then([](int i) { return i + 1; });
 		auto snd2 = snd_base | rod::then([](int i) { return -i; });
 
-		co_await std::move(snd0);
-		TEST_ASSERT(co_await std::move(snd1) == 12);
-		TEST_ASSERT(co_await std::move(snd2) == -11);
+		co_await snd0;
+		TEST_ASSERT(co_await snd1 == 12);
+		TEST_ASSERT(co_await snd2 == -11);
 	}());
 }
