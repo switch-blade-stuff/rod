@@ -29,7 +29,7 @@ namespace rod
 		};
 		struct set_stopped_t : completion_channel_base
 		{
-			template<completion_receiver R> requires tag_invocable<set_stopped_t>
+			template<completion_receiver R> requires tag_invocable<set_stopped_t, R>
 			constexpr void operator()(R &&rcv) const noexcept { tag_invoke(*this, std::forward<R>(rcv)); }
 		};
 	}
