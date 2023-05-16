@@ -107,8 +107,8 @@ namespace rod
 			{
 				return get_env(std::as_const(r.m_cont_handle.promise()));
 			}
-			template<detail::decays_to<type> T, typename... Vs>
-			friend void tag_invoke(set_value_t, T &&r, Vs &&...vs) noexcept
+			template<typename... Vs>
+			friend void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
 			{
 				static_assert(std::constructible_from<result_or_unit<S, P>, Vs...>);
 
@@ -116,14 +116,13 @@ namespace rod
 				catch (...) { r.m_result_ptr->template emplace<2>(std::current_exception()); }
 				r.m_cont_handle.resume();
 			}
-			template<detail::decays_to<type> T, typename Err>
-			friend void tag_invoke(set_error_t, T &&r, Err &&err) noexcept
+			template<typename Err>
+			friend void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
 			{
 				r.m_result_ptr->template emplace<2>(detail::as_except_ptr(std::forward<Err>(err)));
 				r.m_cont_handle.resume();
 			}
-			template<detail::decays_to<type> T>
-			friend void tag_invoke(set_stopped_t, T &&r) noexcept
+			friend void tag_invoke(set_stopped_t, type &&r) noexcept
 			{
 				static_cast<std::coroutine_handle<>>(r.m_cont_handle.promise().unhandled_stopped()).resume();
 			}

@@ -37,6 +37,8 @@ namespace rod
 		{
 			using is_receiver = std::true_type;
 
+			friend constexpr env tag_invoke(get_env_t, const type &r) noexcept { return {r.loop->get_scheduler()}; }
+
 			template<typename... Args> requires std::constructible_from<std::tuple<Ts...>, Args...>
 			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
 			{
@@ -55,8 +57,6 @@ namespace rod
 				r.state->template emplace<3>();
 				r.loop->finish();
 			}
-
-			friend constexpr env tag_invoke(get_env_t, const type &r) noexcept { return {r.loop->get_scheduler()}; }
 
 			state_t<Ts...> *state;
 			run_loop *loop;

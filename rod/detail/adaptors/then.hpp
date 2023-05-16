@@ -167,7 +167,7 @@ namespace rod
 			template<typename F>
 			using back_adaptor = detail::back_adaptor<upon_channel<C>, std::decay_t<F>>;
 			template<typename S, typename F>
-			using sender_t = typename sender<C, S, F>::type;
+			using sender_t = typename sender<C, S, std::decay_t<F>>::type;
 
 		public:
 			template<rod::sender S, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F>

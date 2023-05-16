@@ -43,16 +43,15 @@ namespace rod
 		{
 			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(r._rcv); }
 
-			template<detail::decays_to<type> T, typename... Vs> requires std::constructible_from<V, std::tuple<Vs &&...>>
-			friend constexpr void tag_invoke(set_value_t, T &&r, Vs &&...vs) noexcept
+			template<typename... Vs> requires std::constructible_from<V, std::tuple<Vs &&...>>
+			friend constexpr void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
 			{
 				try { set_value(std::move(r._rcv), V{std::tuple<Vs &&...>{std::forward<Vs>(vs)...}}); }
 				catch (...) { set_error(std::move(r._rcv), std::current_exception()); }
 			}
-			template<detail::decays_to<type> T, typename Err>
-			friend constexpr void tag_invoke(set_error_t, T &&r, Err &&err) noexcept { set_error(std::move(r._rcv), std::forward<Err>(err)); }
-			template<detail::decays_to<type> T>
-			friend constexpr void tag_invoke(set_stopped_t, T &&r) noexcept { set_stopped(std::move(r._rcv)); }
+			template<typename Err>
+			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept { set_error(std::move(r._rcv), std::forward<Err>(err)); }
+			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept { set_stopped(std::move(r._rcv)); }
 
 			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
 		};

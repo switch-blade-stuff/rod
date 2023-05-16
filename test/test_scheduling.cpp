@@ -21,8 +21,9 @@ int main()
 			TEST_ASSERT(e);
 			try { std::rethrow_exception(e); }
 			catch (test_error &) {}
-		}) | rod::let_value([](){ return rod::just(1); });
+		}) | rod::let_value([](){ return rod::just(1); })
+		   | rod::bulk(5, [](int i, int &j) { j += i; });
 
-		TEST_ASSERT(co_await std::move(snd) == 1);
+		TEST_ASSERT(co_await std::move(snd) == 11);
 	}());
 }

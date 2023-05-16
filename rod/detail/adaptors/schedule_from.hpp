@@ -72,8 +72,8 @@ namespace rod
 			using _operation_t = typename operation<Sch, Snd, Rcv>::type;
 
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
-			template<detail::decays_to<type> T, detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, std::decay_t<Args>...>
-			friend constexpr void tag_invoke(C, T &&r, Args &&...args) noexcept { r.template _complete<C>(std::forward<Args>(args)...); }
+			template<detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv &&, std::decay_t<Args>...>
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r.template _complete<C>(std::forward<Args>(args)...); }
 
 			template<typename C, typename... Args>
 			constexpr void _complete(Args &&...args) noexcept
@@ -96,10 +96,9 @@ namespace rod
 
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
-			template<detail::decays_to<type> T>
-			friend constexpr void tag_invoke(set_value_t, T &&r) noexcept { r._op->_complete(); }
-			template<detail::decays_to<type> T, typename C, typename... Args> requires(std::same_as<C, set_error_t> || std::same_as<C, set_stopped_t>) && detail::callable<C, Rcv, Args...>
-			friend constexpr void tag_invoke(C, T &&r, Args &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Args>(args)...); }
+			friend constexpr void tag_invoke(set_value_t, type &&r) noexcept { r._op->_complete(); }
+			template<typename C, typename... Args> requires(std::same_as<C, set_error_t> || std::same_as<C, set_stopped_t>) && detail::callable<C, Rcv &&, Args...>
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Args>(args)...); }
 
 			_operation_t *_op;
 		};

@@ -144,10 +144,10 @@ namespace rod
 		{
 			template<typename S>
 			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<S>())));
+			template<typename S, typename F>
+			using sender_t = typename sender<C, std::decay_t<S>, std::decay_t<F>>::type;
 			template<typename F>
 			using back_adaptor = detail::back_adaptor<let_channel, std::decay_t<F>>;
-			template<typename S, typename F>
-			using sender_t = typename sender<C, std::decay_t<S>, F>::type;
 
 		public:
 			template<rod::sender Snd, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, F>

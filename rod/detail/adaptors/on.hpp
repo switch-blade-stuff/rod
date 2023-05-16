@@ -72,20 +72,19 @@ namespace rod
 				return {get_env(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv))};
 			}
 
-			template<detail::decays_to<type> T, typename... Args> requires detail::callable<set_value_t, copy_cvref_t<T, Rcv>, Args...>
-			friend constexpr void tag_invoke(set_value_t, T &&r, Args &&...args) noexcept(detail::nothrow_callable<set_value_t, copy_cvref_t<T, Rcv>, Args...>)
+			template<typename... Args> requires detail::callable<set_value_t, Rcv &&, Args...>
+			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept(detail::nothrow_callable<set_value_t, Rcv &&, Args...>)
 			{
-				set_value(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv), std::forward<Args>(args)...);
+				set_value(std::move(r._op->_rcv), std::forward<Args>(args)...);
 			}
-			template<detail::decays_to<type> T, typename Err> requires detail::callable<set_error_t, copy_cvref_t<T, Rcv>, Err>
-			friend constexpr void tag_invoke(set_error_t, T &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, copy_cvref_t<T, Rcv>, Err>)
+			template<typename Err> requires detail::callable<set_error_t, Rcv &&, Err>
+			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, Rcv &&, Err>)
 			{
-				set_error(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv), std::forward<Err>(err));
+				set_error(std::move(r._op->_rcv), std::forward<Err>(err));
 			}
-			template<detail::decays_to<type> T> requires detail::callable<set_stopped_t, copy_cvref_t<T, Rcv>>
-			friend constexpr void tag_invoke(set_stopped_t, T &&r) noexcept(detail::nothrow_callable<set_stopped_t, copy_cvref_t<T, Rcv>>)
+			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept(detail::nothrow_callable<set_stopped_t, Rcv &&>) requires detail::callable<set_stopped_t, Rcv &&>
 			{
-				set_stopped(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv));
+				set_stopped(std::move(r._op->_rcv));
 			}
 
 			_operation_t *_op = {};
@@ -105,19 +104,17 @@ namespace rod
 				return get_env(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv));
 			}
 
-			template<detail::decays_to<type> T, typename Err> requires detail::callable<set_error_t, copy_cvref_t<T, Rcv>, Err>
-			friend constexpr void tag_invoke(set_error_t, T &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, copy_cvref_t<T, Rcv>, Err>)
+			template<typename Err> requires detail::callable<set_error_t, Rcv &&, Err>
+			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, Rcv &&, Err>)
 			{
-				set_error(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv), std::forward<Err>(err));
+				set_error(std::move(r._op->_rcv), std::forward<Err>(err));
 			}
-			template<detail::decays_to<type> T> requires detail::callable<set_stopped_t, copy_cvref_t<T, Rcv>>
-			friend constexpr void tag_invoke(set_stopped_t, T &&r) noexcept(detail::nothrow_callable<set_stopped_t, copy_cvref_t<T, Rcv>>)
+			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept(detail::nothrow_callable<set_stopped_t, Rcv &&>) requires detail::callable<set_stopped_t, Rcv &&>
 			{
-				set_stopped(static_cast<copy_cvref_t<T, Rcv>>(r._op->_rcv));
+				set_stopped(std::move(r._op->_rcv));
 			}
 
-			template<detail::decays_to<type> T>
-			friend constexpr void tag_invoke(set_value_t, T &&r) noexcept
+			friend constexpr void tag_invoke(set_value_t, type &&r) noexcept
 			{
 				auto *op = r._op;
 				try

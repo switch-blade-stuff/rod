@@ -47,24 +47,14 @@ namespace rod
 
 		/** Invokes all associated listeners with \a args. */
 		template<typename... Args>
-		constexpr void emit(Args ...args) requires std::invocable<Func, Args...>
+		constexpr void emit(Args &&...args) requires std::invocable<Func, Args...>
 		{
 			for (auto &&target: m_data) std::invoke(target, args...);
 		}
-
-#ifdef ROD_HAS_COROUTINES
-		/** Returns a generator coroutine used to invoke & yield results of the associated listeners using arguments \a Args. */
-		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
-		[[nodiscard]] generator<R> generate(Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...>)
-		{
-			for (auto &&target: m_data) co_yield std::invoke(target, args...);
-		}
-#endif
-
 		/** Invokes all associated listeners with \a args, and accumulates results using functor \a acc.
 		 * If \a acc returns a `non-void` value convertible to `bool`, stops execution when the result evaluates to `false`. */
 		template<typename A, typename... Args, typename R = std::invoke_result_t<Func, Args...>>
-		constexpr void accumulate(A acc, Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
+		constexpr void accumulate(A acc, Args &&...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
 		{
 			for (auto &&target: m_data)
 			{
@@ -78,6 +68,15 @@ namespace rod
 					next();
 			}
 		}
+
+#ifdef ROD_HAS_COROUTINES
+		/** Returns a generator coroutine used to invoke & yield results of the associated listeners using arguments \a Args. */
+		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
+		[[nodiscard]] generator<R> generate(Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...>)
+		{
+			for (auto &&target: m_data) co_yield std::invoke(target, args...);
+		}
+#endif
 
 		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>) { m_data.swap(other.m_data); }
 		friend constexpr void swap(basic_signal &a, basic_signal &b) noexcept(std::is_nothrow_swappable_v<storage_t>) { a.swap(b); }
