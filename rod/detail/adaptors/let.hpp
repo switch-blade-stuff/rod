@@ -14,20 +14,21 @@ namespace rod
 {
 	namespace _let
 	{
-		template<typename C, typename S>
+		template<typename C, typename E, typename F, typename S>
 		struct filter_signs
 		{
-			template<typename...>
 			using type = completion_signatures<S>;
 		};
-		template<typename C, typename... Args>
-		struct filter_signs<C, C(Args...)>
+		template<typename C, typename E, typename F, typename... Args>
+		struct filter_signs<C, E, F, C(Args...)>
 		{
-			template<typename E, typename F>
 			using type = make_completion_signatures<
 			        std::invoke_result_t<F, detail::decayed_ref<Args>...>, E,
 			        completion_signatures<set_error_t(std::exception_ptr)>>;
 		};
+
+		template<typename C, typename E, typename F, typename S>
+		using filter_signs_t = typename filter_signs<C, E, F, S>::type;
 
 		template<typename, typename, typename>
 		struct deduce_state;
@@ -37,8 +38,8 @@ namespace rod
 			using type = connect_result_t<std::invoke_result_t<F, detail::decayed_ref<Args>...>, R>;
 		};
 
-		template<typename C, typename E, typename F, typename S>
-		using filter_signs_t = typename filter_signs<C, S>::template type<E, F>;
+		template<typename R, typename F, typename T>
+		using deduce_state_t = typename deduce_state<R, F, T>::type;
 
 		template<typename, typename, typename, typename...>
 		struct operation_base { struct type; };
@@ -52,7 +53,7 @@ namespace rod
 		template<typename C, typename R, typename F, typename... Ts>
 		struct operation_base<C, R, F, Ts...>::type
 		{
-			using _state_t = std::variant<std::monostate, typename deduce_state<R, F, Ts>::type...>;
+			using _state_t = std::variant<std::monostate, deduce_state_t<R, F, Ts>...>;
 			using _result_t = std::variant<std::monostate, Ts...>;
 
 			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
@@ -74,7 +75,7 @@ namespace rod
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept try
 			{
 				using tuple_t = detail::decayed_tuple<Args...>;
-				using state_t = typename deduce_state<R, F, tuple_t>::type;
+				using state_t = deduce_state_t<R, F, tuple_t>;
 
 				auto &args_tuple = r._op->_res.template emplace<tuple_t>(std::forward<Args>(args)...);
 				start(r._op->_state.template emplace<state_t>(detail::implicit_eval{[&]()
@@ -92,7 +93,7 @@ namespace rod
 
 		template<typename C, typename S, typename R, typename F>
 		using bind_receiver = typename detail::gather_signatures_t<C, S, env_of_t<R>, detail::decayed_tuple, detail::bind_front<receiver, C, R, F>::template type>::type;
-		template <typename C, typename S, typename R, typename F>
+		template<typename C, typename S, typename R, typename F>
 		using bind_operation = typename bind_receiver<C, S, R, F>::_operation_base_t;
 
 		template<typename C, typename S, typename R, typename F>
