@@ -180,16 +180,25 @@ namespace rod
 
 	using _let::let_value_t;
 
-	/**  */
+	/** Customization point object used to transform a sender’s value completion channel into a new child operation.
+	 * @param snd Sender who's value channel to transform into a new operation. If omitted, creates a pipe-able sender adaptor.
+	 * @param fn Function invoked with results of the value channel of \a snd and returning a new child sender.
+	 * @return Sender who's value completion channel starts a new operation using the sender returned by \a fn. */
 	inline constexpr auto let_value = let_value_t{};
 
 	using _let::let_error_t;
 
-	/**  */
+	/** Customization point object used to transform a sender’s error completion channel into a new child operation.
+	 * @param snd Sender who's error channel to transform into a new operation. If omitted, creates a pipe-able sender adaptor.
+	 * @param fn Function invoked with results of the error channel of \a snd and returning a new child sender.
+	 * @return Sender who's error completion channel starts a new operation using the sender returned by \a fn. */
 	inline constexpr auto let_error = let_error_t{};
 
 	using _let::let_stopped_t;
 
-	/**  */
+	/** Customization point object used to transform a sender’s stop completion channel into a new child operation.
+	 * @param snd Sender who's stop channel to transform into a new operation. If omitted, creates a pipe-able sender adaptor.
+	 * @param fn Function returning a new child sender.
+	 * @return Sender who's stop completion channel starts a new operation using the sender returned by \a fn. */
 	inline constexpr auto let_stopped = let_stopped_t{};
 }

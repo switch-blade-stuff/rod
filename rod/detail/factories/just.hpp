@@ -94,7 +94,7 @@ namespace rod
 
 	struct _just::just_stopped_t { [[nodiscard]] constexpr typename sender<set_stopped_t>::type operator()() const noexcept { return {}; }};
 
-	/** Returns a sender that completes through the stopped channel.
+	/** Returns a sender that completes through the stop channel.
 	 * @return Sender that completes via `set_stopped()`. */
 	inline constexpr auto just_stopped = just_stopped_t{};
 
