@@ -64,11 +64,11 @@ namespace rod
 			template<typename R>
 			using _receiver_t = typename receiver<std::decay_t<R>, into_variant_type<S, std::decay_t<env_of_t<R>>>>::type;
 			template<typename E>
-			using _signs = make_completion_signatures<S, E, typename deduce_set_error<S, E>::type, deduce_set_value<S, E>::template type>;
+			using _signs_t = make_completion_signatures<S, E, typename deduce_set_error<S, E>::type, deduce_set_value<S, E>::template type>;
 
 			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const S &>) { return get_env(s._snd); }
 			template<typename E>
-			friend constexpr _signs<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E &&) noexcept { return {}; }
+			friend constexpr _signs_t<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
 
 			template<detail::decays_to<type> T, rod::receiver R> requires sender_to<S, _receiver_t<R>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, R &&rcv) noexcept(detail::nothrow_callable<connect_t, S, _receiver_t<R>>)

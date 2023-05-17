@@ -31,8 +31,7 @@ int main()
 		auto snd1 = snd_base | rod::then([](int i) { return i + 1; });
 		auto snd2 = snd_base | rod::then([](int i) { return -i; });
 
-		co_await snd0;
-		TEST_ASSERT(co_await snd1 == 12);
-		TEST_ASSERT(co_await snd2 == -11);
+		auto snd_final = rod::when_all(snd0, snd1, snd2) | rod::then([](int i, int j) { TEST_ASSERT(i == 12 && j == -11); });
+		co_await snd_final;
 	}());
 }

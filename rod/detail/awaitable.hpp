@@ -107,11 +107,9 @@ namespace rod
 			{
 				return get_env(std::as_const(r.m_cont_handle.promise()));
 			}
-			template<typename... Vs>
+			template<typename... Vs> requires std::constructible_from<result_or_unit<S, P>, Vs...>
 			friend void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
 			{
-				static_assert(std::constructible_from<result_or_unit<S, P>, Vs...>);
-
 				try { r.m_result_ptr->template emplace<1>(std::forward<Vs>(vs)...); }
 				catch (...) { r.m_result_ptr->template emplace<2>(std::current_exception()); }
 				r.m_cont_handle.resume();

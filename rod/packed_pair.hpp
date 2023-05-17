@@ -63,7 +63,7 @@ namespace rod
 
 		template<typename... Args0, typename... Args1>
 		constexpr packed_pair(std::piecewise_construct_t, std::tuple<Args0...> args0, std::tuple<Args1...> args1) noexcept(nothrow_constructible<type_list_t<Args0...>, type_list_t<Args1...>>)
-			: packed_pair(std::make_index_sequence<sizeof...(Args0)>{}, args0, std::make_index_sequence<sizeof...(Args1)>{}, args1) {}
+			: packed_pair(std::index_sequence_for<Args0...>{}, args0, std::index_sequence_for<Args1...>{}, args1) {}
 
 		constexpr packed_pair &operator=(const packed_pair &) noexcept(std::is_nothrow_copy_assignable_v<T0> && std::is_nothrow_copy_assignable_v<T1>) = default;
 		template<typename U0 = T0, typename U1 = T1>

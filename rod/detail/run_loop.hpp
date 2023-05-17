@@ -106,7 +106,7 @@ namespace rod
 		public:
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return s.get_env(); }
 			template<detail::decays_to<sender> T, typename E>
-			friend constexpr signs tag_invoke(get_completion_signatures_t, T &&, E &&) { return {}; }
+			friend constexpr signs tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
 			template<typename R>
 			friend constexpr operation_t<R> tag_invoke(connect_t, sender &s, R &&rcv) noexcept(std::is_nothrow_constructible_v<operation_t<R>, R>) { return {s.m_loop, std::forward<R>(rcv)};; }

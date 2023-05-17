@@ -142,8 +142,11 @@ namespace rod
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<R>(rcv));
 			}
+
+#ifdef ROD_HAS_COROUTINES
 			template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
 			[[nodiscard]] constexpr operation_state decltype(auto) operator()(S &&snd, R &&rcv) const;
+#endif
 		};
 	}
 

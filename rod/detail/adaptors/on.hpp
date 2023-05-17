@@ -73,16 +73,16 @@ namespace rod
 			}
 
 			template<typename... Args> requires detail::callable<set_value_t, Rcv &&, Args...>
-			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept(detail::nothrow_callable<set_value_t, Rcv &&, Args...>)
+			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
 			{
 				set_value(std::move(r._op->_rcv), std::forward<Args>(args)...);
 			}
 			template<typename Err> requires detail::callable<set_error_t, Rcv &&, Err>
-			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, Rcv &&, Err>)
+			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
 			{
 				set_error(std::move(r._op->_rcv), std::forward<Err>(err));
 			}
-			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept(detail::nothrow_callable<set_stopped_t, Rcv &&>) requires detail::callable<set_stopped_t, Rcv &&>
+			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept requires detail::callable<set_stopped_t, Rcv &&>
 			{
 				set_stopped(std::move(r._op->_rcv));
 			}
@@ -144,15 +144,15 @@ namespace rod
 			using _env_t = typename env<Sch, Env>::type;
 
 			template<typename...>
-			using _empty_signs = completion_signatures<>;
+			using _empty_signs_t = completion_signatures<>;
 			template<typename T, typename Env>
-			using _signs = make_completion_signatures<copy_cvref_t<T, Snd>, _env_t<Env>,
+			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, _env_t<Env>,
 			                                          make_completion_signatures<schedule_result_t<Sch>, Env,
 			                                                                     completion_signatures<set_error_t(std::exception_ptr)>,
-			                                                                     _empty_signs>>;
+			                                                                     _empty_signs_t>>;
 
 			template<detail::decays_to<type> T, typename Env>
-			friend constexpr _signs<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+			friend constexpr _signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
 			template<detail::decays_to<type> T, rod::receiver Rcv>
 			requires std::constructible_from<Sch, copy_cvref_t<T, Sch>> && std::constructible_from<Snd, copy_cvref_t<T, Snd>> &&

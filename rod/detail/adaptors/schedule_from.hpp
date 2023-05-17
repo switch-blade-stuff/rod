@@ -147,26 +147,26 @@ namespace rod
 			using _env_t = typename env<Sch>::type;
 
 			template<typename... Ts>
-			using _value_signs = completion_signatures<set_value_t(std::decay_t<Ts> &&...)>;
+			using _value_signs_t = completion_signatures<set_value_t(std::decay_t<Ts> &&...)>;
 			template<typename T>
-			using _error_signs = completion_signatures<set_error_t(std::decay_t<T> &&)>;
+			using _error_signs_t = completion_signatures<set_error_t(std::decay_t<T> &&)>;
 			template<typename...>
-			using _empty_signs = completion_signatures<>;
+			using _empty_signs_t = completion_signatures<>;
 
 			template<typename T, typename E>
-			using _throwing_signs = std::conditional_t<
+			using _throwing_signs_t = std::conditional_t<
 					value_types_of_t<copy_cvref_t<T, Snd>, E, detail::all_nothrow_decay_copyable, std::conjunction>::value &&
 					error_types_of_t<copy_cvref_t<T, Snd>, E, detail::all_nothrow_decay_copyable>::value,
 					completion_signatures<>, completion_signatures<set_error_t(std::exception_ptr)>>;
 
 			template<typename T, typename E>
-			using _signs = make_completion_signatures<copy_cvref_t<T, Snd>, E,
-							make_completion_signatures<schedule_result_t<Sch>, E, _throwing_signs<T, E>, _empty_signs>,
-							                          _value_signs, _error_signs>;
+			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, E,
+							make_completion_signatures<schedule_result_t<Sch>, E, _throwing_signs_t<T, E>, _empty_signs_t>,
+							                          _value_signs_t, _error_signs_t>;
 
 			friend constexpr const _env_t &tag_invoke(get_env_t, const type &s) noexcept { return s._env; }
 			template<typename T, typename E> requires detail::decays_to<T, type>
-			friend constexpr _signs<T, E> tag_invoke(get_completion_signatures_t, T &&, E &&) noexcept { return {}; }
+			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
 			template<detail::decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, _receiver_t<T, Rcv>>
 			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv)

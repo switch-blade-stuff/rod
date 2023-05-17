@@ -25,4 +25,3 @@
 #elif defined(ROD_HAS_COROUTINES)
 #undef ROD_HAS_COROUTINES
 #endif
-

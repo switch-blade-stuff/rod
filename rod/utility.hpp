@@ -200,7 +200,7 @@ namespace rod
 	namespace detail
 	{
 		template<typename...>
-		struct empty_variant { empty_variant() = delete; };
+		struct empty_variant {};
 
 		inline auto deduce_variant_or_empty(type_list_t<>) -> empty_variant<>;
 		template<typename... Ts>

@@ -8,6 +8,7 @@
 #include <atomic>
 
 #include "../../stop_token.hpp"
+#include "../shared_ref.hpp"
 #include "../concepts.hpp"
 #include "closure.hpp"
 
@@ -17,46 +18,10 @@ namespace rod
 	{
 		struct split_sender_tag {};
 
-		/* Use a custom reference counter instead of shared_ptr to avoid overhead. */
-		struct shared_base
+		struct stop_trigger
 		{
-			auto acquire() noexcept { return (_refs.fetch_add(1, std::memory_order_relaxed), this); }
-			bool release() noexcept { return _refs.fetch_sub(1, std::memory_order_acq_rel) == 1; }
-
-			std::atomic<std::size_t> _refs = 1;
-		};
-		template<typename T>
-		class shared_handle
-		{
-		public:
-			constexpr shared_handle() noexcept = default;
-			constexpr shared_handle(T *ptr) noexcept : m_ptr(ptr) {}
-
-			shared_handle(const shared_handle &other) noexcept : m_ptr(other.acquire()) {}
-			shared_handle &operator=(const shared_handle &other) noexcept
-			{
-				if (this != &other)
-				{
-					release();
-					m_ptr = other.acquire();
-				}
-				return *this;
-			}
-
-			constexpr shared_handle(shared_handle &&other) noexcept { std::swap(m_ptr, other.m_ptr); }
-			constexpr shared_handle &operator=(shared_handle &&other) noexcept { return (std::swap(m_ptr, other.m_ptr), *this); }
-
-			~shared_handle() { release(); }
-
-			[[nodiscard]] constexpr T *get() const noexcept { return m_ptr; }
-			[[nodiscard]] constexpr T *operator->() const noexcept { return get(); }
-			[[nodiscard]] constexpr T &operator*() const noexcept { return *get(); }
-
-		private:
-			auto acquire() const noexcept { return m_ptr ? static_cast<T *>(static_cast<shared_base *>(m_ptr)->acquire()) : m_ptr; }
-			void release() { if (m_ptr && static_cast<shared_base *>(m_ptr)->release()) delete m_ptr; }
-
-			T *m_ptr = {};
+			void operator()() noexcept { _src.request_stop(); }
+			in_place_stop_source &_src;
 		};
 
 		template<typename, typename>
@@ -109,7 +74,7 @@ namespace rod
 		struct sender { struct type; };
 
 		template<typename Snd, typename Env>
-		struct shared_state<Snd, Env>::type : public shared_base
+		struct shared_state<Snd, Env>::type : public detail::shared_base
 		{
 			using _receiver_t = typename receiver<Snd, Env>::type;
 			using _state_t = connect_result_t<Snd, _receiver_t>;
@@ -162,13 +127,7 @@ namespace rod
 		template<typename Snd, typename Env, typename Rcv>
 		struct operation<Snd, Env, Rcv>::type : public operation_base
 		{
-			struct _stop_trigger
-			{
-				void operator()() noexcept { _src.request_stop(); }
-				in_place_stop_source &_src;
-			};
-
-			using _stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, _stop_trigger>>;
+			using _stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
 			using _shared_state_t = typename shared_state<Snd, Env>::type;
 
 			static void _bind_notify(operation_base *ptr) noexcept
@@ -184,7 +143,7 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			constexpr type(Rcv &&rcv, shared_handle<_shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
+			constexpr type(Rcv &&rcv, detail::shared_handle<_shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
 					: operation_base{_bind_notify}, _rcv(std::forward<Rcv>(rcv)), _state(std::move(handle)) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept
@@ -194,7 +153,7 @@ namespace rod
 
 				/* If the queue pointer is not a sentinel, initialize the stop callback. */
 				auto *ptr = queue.load(std::memory_order_acquire);
-				if (ptr != state) op._stop_cb.emplace(get_stop_token(get_env(op._rcv)), _stop_trigger{state->_stop_src});
+				if (ptr != state) op._stop_cb.emplace(get_stop_token(get_env(op._rcv)), stop_trigger{state->_stop_src});
 
 				/* Attempt to enqueue this operation to the shared state queue. */
 				do
@@ -223,7 +182,7 @@ namespace rod
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
 
-			shared_handle<_shared_state_t> _state;
+			detail::shared_handle<_shared_state_t> _state;
 			_stop_cb_t _stop_cb = {};
 		};
 
@@ -237,20 +196,20 @@ namespace rod
 			using _shared_state_t = typename shared_state<Snd, Env>::type;
 
 			template<typename... Ts>
-			using _value_signs = completion_signatures<set_value_t(const std::decay_t<Ts> &...)>;
+			using _value_signs_t = completion_signatures<set_value_t(const std::decay_t<Ts> &...)>;
 			template<typename Err>
-			using _error_signs = completion_signatures<set_error_t(const std::decay_t<Err> &)>;
+			using _error_signs_t = completion_signatures<set_error_t(const std::decay_t<Err> &)>;
 			template<typename T>
-			using _signs = make_completion_signatures<std::remove_cvref_t<Snd>, Env, completion_signatures<set_error_t(const std::exception_ptr &), set_stopped_t()>, _value_signs, _error_signs>;
+			using _signs_t = make_completion_signatures<std::remove_cvref_t<Snd>, Env, completion_signatures<set_error_t(const std::exception_ptr &), set_stopped_t()>, _value_signs_t, _error_signs_t>;
 
 			explicit type(Snd &&snd) : _state(new _shared_state_t{std::forward<Snd>(snd)}) {}
 
 			template<detail::decays_to<type> T, typename E>
-			friend constexpr _signs<T> tag_invoke(get_completion_signatures_t, T &&, E &&) noexcept { return {}; }
-			template<detail::decays_to<type> T, receiver_of<_signs<T>> Rcv>
+			friend constexpr _signs_t<T> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
+			template<detail::decays_to<type> T, receiver_of<_signs_t<T>> Rcv>
 			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) { return _operation_t<Rcv>{std::move(rcv), s._state}; }
 
-			shared_handle<_shared_state_t> _state;
+			detail::shared_handle<_shared_state_t> _state;
 		};
 
 		class split_t
@@ -289,5 +248,5 @@ namespace rod
 	 * @param snd Sender to adapt. If omitted, creates a pipe-able sender adaptor.
 	 * @return Sender wrapper for \a snd that can be connected multiple times.
 	 * @note Splitting a sender requires dynamic allocation of shared state. */
-	constexpr inline auto split = split_t{};
+	inline constexpr auto split = split_t{};
 }

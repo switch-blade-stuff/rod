@@ -18,6 +18,7 @@
 #include "detail/adaptors/closure.hpp"
 #include "detail/adaptors/schedule_from.hpp"
 #include "detail/adaptors/transfer.hpp"
+#include "detail/adaptors/when_all.hpp"
 #include "detail/adaptors/split.hpp"
 #include "detail/adaptors/bulk.hpp"
 #include "detail/adaptors/then.hpp"

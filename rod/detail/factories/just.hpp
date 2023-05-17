@@ -35,19 +35,19 @@ namespace rod
 		struct sender<C, Ts...>::type
 		{
 			using is_sender = std::true_type;
-			using _signs = completion_signatures<C(Ts...)>;
+			using _signs_t = completion_signatures<C(Ts...)>;
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 			template<detail::decays_to<type> T, typename E>
-			friend constexpr _signs tag_invoke(get_completion_signatures_t, T &&, E &&) { return {}; }
+			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<receiver_of<_signs> R> requires(std::copy_constructible<Ts> && ...)
+			template<receiver_of<_signs_t> R> requires(std::copy_constructible<Ts> && ...)
 			friend constexpr auto tag_invoke(connect_t, const type &s, R &&r) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R> && (std::is_nothrow_copy_constructible_v<Ts> && ...))
 			{
 				using operation_t = typename operation<std::decay_t<R>, C, Ts...>::type;
 				return operation_t{s._values, std::forward<R>(r)};
 			}
-			template<receiver_of<_signs> R>
+			template<receiver_of<_signs_t> R>
 			friend constexpr auto tag_invoke(connect_t, type &&s, R &&r) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R> && (std::is_nothrow_move_constructible_v<Ts> && ...))
 			{
 				using operation_t = typename operation<std::decay_t<R>, C, Ts...>::type;
@@ -110,12 +110,12 @@ namespace rod
 
 		public:
 			template<scheduler S, typename... Vs> requires tag_invocable<transfer_just_t, S, Vs...>
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&sch, Vs &&...vals) const noexcept(nothrow_tag_invocable<transfer_just_t, S, Vs...>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, Vs &&...vals) const noexcept(nothrow_tag_invocable<transfer_just_t, S, Vs...>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch), std::forward<Vs>(vals)...);
 			}
 			template<scheduler S, typename... Vs> requires(!tag_invocable<transfer_just_t, S, Vs...>)
-			[[nodiscard]] constexpr decltype(auto) operator()(S &&sch, Vs &&...vals) const noexcept(default_nothrow<S, Vs...>)
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, Vs &&...vals) const noexcept(default_nothrow<S, Vs...>)
 			{
 				return transfer(just(std::forward<Vs>(vals)...), std::forward<S>(sch));
 			}

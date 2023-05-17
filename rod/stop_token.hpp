@@ -49,19 +49,13 @@ namespace rod
 
 	inline namespace _get_stop_token
 	{
-		class get_stop_token_t
+		struct get_stop_token_t
 		{
-			template<typename E>
-			static constexpr bool is_stoppable = stoppable_token<tag_invoke_result_t<get_stop_token_t, const E &>>;
-			template<typename E>
-			static constexpr bool has_tag_invoke = nothrow_tag_invocable<get_stop_token_t, const E &>;
-
-		public:
 			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_stop_token_t) noexcept { return true; }
 
-			template<typename E, typename U = std::remove_cvref_t<E>> requires has_tag_invoke<U> && is_stoppable<U>
+			template<typename E, typename U = std::remove_cvref_t<E>> requires nothrow_tag_invocable<get_stop_token_t, const U &>
 			[[nodiscard]] constexpr decltype(auto) operator()(E &&e) const noexcept { return tag_invoke(*this, std::as_const(e)); }
-			template<typename E>
+			template<typename E, typename U = std::remove_cvref_t<E>> requires(!nothrow_tag_invocable<get_stop_token_t, const U &>)
 			[[nodiscard]] constexpr never_stop_token operator()(E &&) const noexcept { return {}; }
 			[[nodiscard]] constexpr auto operator()() const noexcept { return read(*this); }
 		};

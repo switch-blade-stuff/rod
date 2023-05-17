@@ -121,13 +121,13 @@ namespace rod
 			using _receiver_t = bind_receiver<C, copy_cvref_t<T, S>, R, F>;
 
 			template<typename T, typename E>
-			using _signs = unique_tuple_t<detail::apply_tuple_t<detail::concat_tuples_t,
+			using _signs_t = unique_tuple_t<detail::apply_tuple_t<detail::concat_tuples_t,
 								detail::apply_tuple_list_t<detail::bind_front<filter_signs_t, C, E, F>::template type,
 								completion_signatures_of_t<copy_cvref_t<T, S>, E>>>>;
 
 			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const S &>) { return get_env(s._snd); }
 			template <detail::decays_to<type> T, typename E>
-			friend constexpr _signs<T, E> tag_invoke(get_completion_signatures_t, T &&, E &&) noexcept { return {}; }
+			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
 			template<detail::decays_to<type> T, rod::receiver R> requires sender_to<copy_cvref_t<T, S>, _receiver_t<T, R>>
 			friend constexpr _operation_t<T, R> tag_invoke(connect_t, T &&s, R rcv)
