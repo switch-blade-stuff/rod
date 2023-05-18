@@ -108,8 +108,16 @@ namespace rod
 
 		template<typename S, typename E>
 		using single_sender_value_type = typename single_sender_value_type_impl<value_types_of_t<S, E>>::type;
+
+		template<typename>
+		struct is_single_sender_value : std::false_type {};
+		template<template<typename...> typename T, typename U>
+		struct is_single_sender_value<T<U>> : std::true_type {};
+		template<typename... Ts>
+		inline constexpr auto is_single_sender_value_v = is_single_sender_value<Ts...>::value;
+
 		template<typename S, typename E>
-		concept single_sender = sender_in<S, E> && requires { typename single_sender_value_type<S, E>; };
+		concept single_sender = sender_in<S, E> && is_single_sender_value_v<value_types_of_t<S, E>>;
 
 		template<typename... Ts>
 		using default_set_value = completion_signatures<set_value_t(Ts...)>;

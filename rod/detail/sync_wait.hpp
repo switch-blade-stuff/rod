@@ -79,11 +79,11 @@ namespace rod
 			template<typename S>
 			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<S>())));
 			template<typename S>
-			using receiver_t = typename sync_wait_types<S, receiver>::type;
+			using receiver_t = typename sync_wait_types<std::decay_t<S>, receiver>::type;
 			template<typename S>
-			using result_t = sync_wait_types<S, std::tuple>;
+			using result_t = sync_wait_types<std::decay_t<S>, std::tuple>;
 			template<typename S>
-			using state_t = sync_wait_types<S, state_t>;
+			using state_t = sync_wait_types<std::decay_t<S>, state_t>;
 
 		public:
 			template<detail::single_sender<env> S> requires detail::tag_invocable_with_completion_scheduler<sync_wait_t, set_value_t, S, S>
@@ -100,7 +100,6 @@ namespace rod
 			template<detail::single_sender<env> S> requires(!detail::tag_invocable_with_completion_scheduler<sync_wait_t, set_value_t, S, S> && !tag_invocable<sync_wait_t, S>)
 			std::optional<result_t<S>> operator()(S &&snd) const
 			{
-				static_assert(detail::single_sender<S, env>);
 				static_assert(sender_to<S, receiver_t<S>>);
 
 				state_t<S> state;
@@ -126,19 +125,12 @@ namespace rod
 			template<typename S>
 			using result_t = sync_wait_types<S, std::tuple, std::variant>;
 
-			template<typename S>
-			static constexpr bool sch_overload = requires (const sync_wait_with_variant_t &t, S &&s) { tag_invoke(t, get_completion_scheduler<set_value_t>(get_attrs(s)), std::forward<S>(s)); };
-			template<typename S>
-			static constexpr bool snd_overload = requires (const sync_wait_with_variant_t &t, S &&s) { tag_invoke(t, std::forward<S>(s)); };
-			template<typename S>
-			static constexpr bool has_overload = sch_overload<S> || snd_overload<S>;
-
 		public:
-			template<sender_in<env> S> requires sch_overload<S>
+			template<sender_in<env> S> requires detail::tag_invocable_with_completion_scheduler<sync_wait_with_variant_t, set_value_t, S, S>
 			constexpr std::optional<result_t<S>> operator()(S &&snd) const { return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_attrs(std::forward<S>(snd))), std::forward<S>(snd)); }
-			template<sender_in<env> S> requires snd_overload<S>
+			template<sender_in<env> S> requires(!detail::tag_invocable_with_completion_scheduler<sync_wait_with_variant_t, set_value_t, S, S> && tag_invocable<sync_wait_with_variant_t, S>)
 			constexpr std::optional<result_t<S>> operator()(S &&snd) const { return tag_invoke(*this, std::forward<S>(snd)); }
-			template<sender_in<env> S> requires(!has_overload<S>)
+			template<sender_in<env> S> requires(!detail::tag_invocable_with_completion_scheduler<sync_wait_with_variant_t, set_value_t, S, S> && !tag_invocable<sync_wait_with_variant_t, S> && detail::callable<into_variant_t, S>)
 			std::optional<result_t<S>> operator()(S &&snd) const { return sync_wait_t{}(into_variant(std::forward<S>(snd))); }
 		};
 	}

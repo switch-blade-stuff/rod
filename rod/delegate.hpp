@@ -75,6 +75,37 @@ namespace rod
 			constexpr void copy(const delegate_storage<OtherSize> &) noexcept {}
 		};
 
+		template<typename T>
+		struct delegate_heap_data;
+		template<>
+		struct delegate_heap_data<void>
+		{
+			constexpr delegate_heap_data *copy() const { return copy_func(this); }
+			constexpr void destroy() { delete_func(this); }
+
+			delegate_heap_data *(*copy_func)(const delegate_heap_data *);
+			void (*delete_func)(delegate_heap_data *);
+		};
+		template<typename T>
+		struct delegate_heap_data : delegate_heap_data<void>
+		{
+			template<typename... Args>
+			delegate_heap_data(Args &&...args) : value(std::forward<Args>(args)...)
+			{
+				this->copy_func = [](const delegate_heap_data<void> *ptr) -> delegate_heap_data<void> *
+				{
+					return new delegate_heap_data(static_cast<const delegate_heap_data *>(ptr)->value);
+				};
+				this->delete_func = [](delegate_heap_data<void> *ptr)
+				{
+					delete static_cast<delegate_heap_data *>(ptr);
+				};
+			}
+
+			[[ROD_NO_UNIQUE_ADDRESS]] T value;
+		};
+
+
 		/* Ugly mess to strip instance qualifiers from function signatures. Unfortunately, remove_cvref_t does not work for functions. */
 		template<typename>
 		struct strip_qualifiers;
@@ -187,55 +218,27 @@ namespace rod
 		                                    std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
 
 		template<typename T>
-		struct heap_storage;
-		template<>
-		struct heap_storage<void>
-		{
-			constexpr heap_storage *copy() const { return copy_func(this); }
-			constexpr void destroy() { delete_func(this); }
-
-			heap_storage *(*copy_func)(const heap_storage *);
-			void (*delete_func)(heap_storage *);
-		};
+		using heap_data = detail::delegate_heap_data<T>;
 
 	public:
 		/** Type of the native C-style invoke callback function. */
 		using native_function_t = typename traits_t::native_function;
 
 	private:
-		template<typename T>
-		struct heap_storage : heap_storage<void>
-		{
-			template<typename... Args>
-			heap_storage(Args &&...args) : value(std::forward<Args>(args)...)
-			{
-				this->copy_func = [](const heap_storage<void> *ptr) -> heap_storage<void> *
-				{
-					return new heap_storage(static_cast<const heap_storage *>(ptr)->value);
-				};
-				this->delete_func = [](heap_storage<void> *ptr)
-				{
-					delete static_cast<heap_storage *>(ptr);
-				};
-			}
-
-			[[ROD_NO_UNIQUE_ADDRESS]] T value;
-		};
-
 		template<std::size_t N>
-		using buffer_storage = heap_storage<detail::delegate_storage<N>>;
+		using buffer_data = heap_data<detail::delegate_storage<N>>;
 
 		template<std::size_t Size>
 		[[nodiscard]] static auto *make_heap_buffer()
 		{
-			auto *storage = new buffer_storage<Size>();
-			storage->copy_func = [](const heap_storage<void> *ptr) -> heap_storage<void> *
+			auto *storage = new buffer_data<Size>();
+			storage->copy_func = [](const heap_data<void> *ptr) -> heap_data<void> *
 			{
-				return new buffer_storage<Size>(static_cast<const buffer_storage<Size> *>(ptr)->value);
+				return new buffer_data<Size>(static_cast<const buffer_data<Size> *>(ptr)->value);
 			};
-			storage->delete_func = [](heap_storage<void> *ptr)
+			storage->delete_func = [](heap_data<void> *ptr)
 			{
-				delete static_cast<buffer_storage<Size> *>(ptr);
+				delete static_cast<buffer_data<Size> *>(ptr);
 			};
 			return storage;
 		}
@@ -384,8 +387,8 @@ namespace rod
 			}
 			else
 			{
-				const auto ptr = new heap_storage<T>(std::forward<TArgs>(args)...);
-				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(static_cast<const heap_storage<T> *>(ptr)->value, args...); };
+				const auto ptr = new heap_data<T>(std::forward<TArgs>(args)...);
+				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(static_cast<const heap_data<T> *>(ptr)->value, args...); };
 				m_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned;
 			}
 		}
@@ -409,8 +412,8 @@ namespace rod
 			}
 			else
 			{
-				const auto ptr = new heap_storage<U>(std::forward<T>(instance));
-				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, static_cast<const heap_storage<U> *>(ptr)->value, args...); };
+				const auto ptr = new heap_data<U>(std::forward<T>(instance));
+				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, static_cast<const heap_data<U> *>(ptr)->value, args...); };
 				m_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned;
 			}
 		}
@@ -446,7 +449,7 @@ namespace rod
 				m_data_flags = other.m_data_flags;
 			else if (new_flags == flags_t::is_owned)
 			{
-				auto data = static_cast<heap_storage<void> *>(other.data())->copy();
+				auto data = static_cast<heap_data<void> *>(other.data())->copy();
 				m_data_flags = std::bit_cast<std::uintptr_t>(data) | new_flags;
 			}
 			else if constexpr (OtherBuffer <= Buffer)
@@ -465,7 +468,7 @@ namespace rod
 		{
 			if (flags() == flags_t::is_owned)
 			{
-				static_cast<heap_storage<void> *>(data())->destroy();
+				static_cast<heap_data<void> *>(data())->destroy();
 				m_data_flags = {};
 			}
 		}

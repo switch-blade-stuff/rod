@@ -69,11 +69,17 @@ namespace rod
 
 			using _operation_base_t = typename operation_base<C, R, F, Ts...>::type;
 
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(r._op->_rcv); }
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const R &>)
+			{
+				static_assert(detail::callable<get_env_t, const R &>);
+				return get_env(r._op->_rcv);
+			}
 
-			template<detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<F, detail::decayed_ref<Args>...> && sender_to<std::invoke_result_t<F, detail::decayed_ref<Args>...>, R>
+			template<std::same_as<C> T, typename... Args> requires std::invocable<F, Args...>
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept try
 			{
+				static_assert(sender_to<std::invoke_result_t<F, Args...>, R>);
+
 				using tuple_t = detail::decayed_tuple<Args...>;
 				using state_t = deduce_state_t<R, F, tuple_t>;
 
@@ -85,8 +91,12 @@ namespace rod
 			}
 			catch (...) { set_error(std::move(r._op->_rcv), std::current_exception()); }
 
-			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, R, Args...>)
-			friend constexpr void tag_invoke(T c, type &&r, Args &&...args) noexcept { c(std::move(r._op->_rcv), std::forward<Args>(args)...); }
+			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C>)
+			friend constexpr void tag_invoke(T c, type &&r, Args &&...args) noexcept
+			{
+				static_assert(detail::callable<T, R, Args...>);
+				c(std::move(r._op->_rcv), std::forward<Args>(args)...);
+			}
 
 			_operation_base_t *_op;
 		};
@@ -101,13 +111,17 @@ namespace rod
 		{
 			using _op_base_t = bind_operation<C, S, R, F>;
 			using _receiver_t = bind_receiver<C, S, R, F>;
+			using _state_t = connect_result_t<S, _receiver_t>;
+
+			type(type &&) = delete;
+			type &operator=(type &&) = delete;
 
 			template<typename R2>
-			constexpr type(S &&snd, R2 &&rcv, F fn) : _op_base_t{std::forward<R2>(rcv), std::move(fn)}, _state(connect(std::move(snd), _receiver_t{this})) {}
+			constexpr type(S &&snd, R2 &&rcv, F fn) : _op_base_t{std::forward<R2>(rcv), std::move(fn)}, _state(connect(std::forward<S>(snd), _receiver_t{this})) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] connect_result_t<S, _receiver_t> _state;
+			_state_t _state;
 		};
 
 		template<typename C, typename S, typename F>
@@ -120,12 +134,16 @@ namespace rod
 			template<typename T, typename R>
 			using _receiver_t = bind_receiver<C, copy_cvref_t<T, S>, R, F>;
 
+			template<typename E, typename... Ts>
+			using _apply_filter = unique_tuple_t<detail::concat_tuples_t<filter_signs_t<C, E, F, Ts>...>>;
 			template<typename T, typename E>
-			using _signs_t = unique_tuple_t<detail::apply_tuple_t<detail::concat_tuples_t,
-								detail::apply_tuple_list_t<detail::bind_front<filter_signs_t, C, E, F>::template type,
-								completion_signatures_of_t<copy_cvref_t<T, S>, E>>>>;
+			using _signs_t = detail::apply_tuple_list_t<detail::bind_front<_apply_filter, E>::template type, completion_signatures_of_t<copy_cvref_t<T, S>, E>>;
 
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const S &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<S> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const S &>)
+			{
+				static_assert(detail::callable<get_env_t, const S &>);
+				return get_env(s._snd);
+			}
 			template <detail::decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
@@ -150,17 +168,17 @@ namespace rod
 			using back_adaptor = detail::back_adaptor<let_channel, std::decay_t<F>>;
 
 		public:
-			template<rod::sender Snd, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, F>
+			template<rod::sender Snd, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, F>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, F &&fn) const noexcept(nothrow_tag_invocable<let_channel, value_completion<Snd>, Snd, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<F>(fn));
 			}
-			template<rod::sender Snd, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, F> && tag_invocable<let_channel, Snd, F>)
+			template<rod::sender Snd, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, F> && tag_invocable<let_channel, Snd, F>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, F &&fn) const noexcept(nothrow_tag_invocable<let_channel, Snd, F>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<F>(fn));
 			}
-			template<rod::sender Snd, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, F> && !tag_invocable<let_channel, Snd, F>)
+			template<rod::sender Snd, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, F> && !tag_invocable<let_channel, Snd, F>)
 			[[nodiscard]] constexpr sender_t<Snd, F> operator()(Snd &&snd, F &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, F>, Snd, F>)
 			{
 				return sender_t<Snd, F>{std::forward<Snd>(snd), std::forward<F>(fn)};

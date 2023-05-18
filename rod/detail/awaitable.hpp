@@ -103,8 +103,9 @@ namespace rod
 		public:
 			using is_receiver = std::true_type;
 
-			friend decltype(auto) tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>)
+			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>)
 			{
+				static_assert(detail::callable<get_env_t, const P &>);
 				return get_env(std::as_const(r.m_cont_handle.promise()));
 			}
 			template<typename... Vs> requires std::constructible_from<result_or_unit<S, P>, Vs...>
@@ -219,7 +220,7 @@ namespace rod
 		template<typename E>
 		struct env_promise : with_await_transform<env_promise<E>>
 		{
-			friend constexpr const E &tag_invoke(get_env_t, const env_promise &) noexcept { std::declval<const E &>(); }
+			friend inline const E &tag_invoke(get_env_t, const env_promise &e) noexcept { return e._env; }
 
 			inline undefined_coroutine<> get_return_object() noexcept;
 			inline std::suspend_always initial_suspend() noexcept;
@@ -228,6 +229,8 @@ namespace rod
 			inline std::coroutine_handle<> unhandled_stopped() noexcept;
 			inline void unhandled_exception() noexcept;
 			inline void return_void() noexcept;
+
+			E _env;
 		};
 	}
 
@@ -281,8 +284,9 @@ namespace rod
 		class awaitable_promise
 		{
 		public:
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>)
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>)
 			{
+				static_assert(detail::callable<get_env_t, const R &>);
 				return get_env(p.m_rcv);
 			}
 

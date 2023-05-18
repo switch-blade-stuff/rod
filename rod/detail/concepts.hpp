@@ -54,8 +54,8 @@ namespace rod
 	{
 		template<typename T, typename... Ts>
 		struct make_signature { using type = T(Ts...); };
-		template<typename T>
-		struct make_signature<T, void> { using type = T(); };
+		template<typename T, std::same_as<void>... Ts>
+		struct make_signature<T, Ts...> { using type = T(); };
 		template<typename T, typename... Ts>
 		using make_signature_t = typename make_signature<T, Ts...>::type;
 

@@ -6,6 +6,7 @@
 
 #include <functional>
 
+#include "../queries/completion.hpp"
 #include "../concepts.hpp"
 #include "closure.hpp"
 
@@ -18,11 +19,8 @@ namespace rod
 		template<typename S, typename F>
 		struct deduce_signs<void, S, F>
 		{
-			template<typename... Ts>
-			using is_throwing = std::negation<std::is_nothrow_invocable<F, Ts...>>;
 			template<typename T, typename E>
-			using has_throwing = is_in_tuple<std::true_type, value_types_of_t<copy_cvref_t<T, S>, E, is_throwing, type_list_t>>;
-
+			using has_throwing = std::negation<value_types_of_t<copy_cvref_t<T, S>, E, detail::bind_front<std::is_nothrow_invocable, F>::template type, std::conjunction>>;
 			template<typename T, typename E>
 			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
 		};
@@ -58,7 +56,7 @@ namespace rod
 			template<typename T, typename E>
 			using type = make_completion_signatures<copy_cvref_t<T, S>, E, error_signs<T, E>, detail::default_set_value, detail::default_set_error, value_signs>;
 		};
-		
+
 		template<typename, typename>
 		struct storage { struct type; };
 
@@ -68,7 +66,7 @@ namespace rod
 			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
 			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
 		};
-		
+
 		template<typename, typename, typename, typename>
 		struct operation { struct type; };
 		template<typename, typename, typename>
@@ -84,14 +82,17 @@ namespace rod
 
 			using _state_t = connect_result_t<S, _receiver_t>;
 
+			type(type &&) = delete;
+			type &operator=(type &&) = delete;
+
 			constexpr type(S &&snd, R rcv, F fn) : _storage{std::move(rcv), std::move(fn)}, _state(connect(std::forward<S>(snd), _receiver_t{&_storage})) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
 			[[ROD_NO_UNIQUE_ADDRESS]] _storage_t _storage;
-			[[ROD_NO_UNIQUE_ADDRESS]] _state_t _state;
+			_state_t _state;
 		};
-		
+
 		template<typename C, typename R, typename F>
 		struct receiver<C, R, F>::type
 		{
@@ -99,7 +100,11 @@ namespace rod
 
 			using _storage_t = typename storage<R, F>::type;
 
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const R &>) { return get_env(r._data->_rcv); }
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const R &>)
+			{
+				static_assert(detail::callable<get_env_t, const R &>);
+				return get_env(r._data->_rcv);
+			}
 
 			template<detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<F, Args...>
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept
@@ -109,12 +114,12 @@ namespace rod
 					const auto do_invoke = [&]() { return std::invoke(std::move(r._data->_fn), std::forward<Args>(args)...); };
 					if constexpr (std::same_as<void, std::invoke_result_t<F, Args...>>)
 					{
-						static_assert(detail::callable<set_value_t, R &&>);
+						static_assert(detail::callable<set_value_t, R>);
 						(do_invoke(), set_value(std::move(r._data->_rcv)));
 					}
 					else
 					{
-						static_assert(detail::callable<set_value_t, R &&, std::invoke_result_t<F, Args...>>);
+						static_assert(detail::callable<set_value_t, R, std::invoke_result_t<F, Args...>>);
 						set_value(std::move(r._data->_rcv), do_invoke());
 					}
 				};
@@ -123,19 +128,23 @@ namespace rod
 				else
 					pass_result();
 			}
-			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, R &&, Args...>)
+			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C>)
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept
 			{
+				static_assert(detail::callable<T, R, Args...>);
 				T{}(std::move(r._data->_rcv), std::forward<Args>(args)...);
 			}
 
 			_storage_t *_data;
 		};
-		
+
 		template<typename C, typename S, typename F>
 		struct sender<C, S, F>::type
 		{
 			using is_sender = std::true_type;
+
+			using _assert_invocable_function = detail::gather_signatures_t<C, S, empty_env, detail::bind_front<std::is_invocable, F>::template type, std::conjunction>;
+			static_assert(_assert_invocable_function::value, "Functor passed to rod::then must be invocable with completion results of the upstream sender");
 
 			template<typename... Ts>
 			using _input_tuple = C(Ts...);
@@ -151,15 +160,20 @@ namespace rod
 			template<typename R>
 			using _receiver_t = typename receiver<C, R, F>::type;
 
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const S &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<S> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const S &>)
+			{
+				static_assert(detail::callable<get_env_t, const S &>);
+				return get_env(s._snd);
+			}
 
 			template<detail::decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, rod::receiver R> requires receiver_of<_receiver_t<R>, _input_signs_t<T, env_of_t<R>>>
-			friend constexpr _operation_t<T, R> tag_invoke(connect_t, T &&s, R r) noexcept(std::is_nothrow_constructible_v<_operation_t<T, R>, copy_cvref_t<T, S>, R, copy_cvref_t<T, F>>)
+			template<detail::decays_to<type> T, rod::receiver Rcv>
+			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv r) noexcept(std::is_nothrow_constructible_v<_operation_t<T, Rcv>, copy_cvref_t<T, S>, Rcv, copy_cvref_t<T, F>>)
 			{
-				return {std::forward<T>(s)._snd, std::move(r), std::forward<T>(s)._fn};
+				static_assert(receiver_of<_receiver_t<Rcv>, _input_signs_t<T, env_of_t<Rcv>>>);
+				return _operation_t<T, Rcv>(std::forward<T>(s)._snd, std::move(r), std::forward<T>(s)._fn);
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] S _snd;

@@ -9,29 +9,30 @@
 
 int main()
 {
-	rod::sync_wait([]() noexcept -> rod::task<>
+	struct test_error : std::exception {};
+	auto base_snd = rod::just(1) | rod::then([](int i)
 	{
-		struct test_error : std::exception {};
-		auto snd_base = rod::just(1) | rod::then([](int i)
-		{
-			TEST_ASSERT(i == 1);
-			throw test_error{};
-		}) | rod::upon_error([](const std::exception_ptr &e)
-		{
-			TEST_ASSERT(e);
-			try { std::rethrow_exception(e); }
-			catch (test_error &) {}
-		}) | rod::let_value([](){ return rod::just(1); })
-		   | rod::bulk(5, [](int i, int &j) { j += i; })
-		   | rod::split();
+		TEST_ASSERT(i == 1);
+		throw test_error{};
+	}) | rod::upon_error([](const std::exception_ptr &e)
+	{
+		TEST_ASSERT(e);
+		try { std::rethrow_exception(e); }
+		catch (test_error &) {}
+	}) | rod::let_value([](){ return rod::just(1); })
+	   | rod::bulk(5, [](int i, int &j) { j += i; })
+	   | rod::split();
 
-		static_assert(std::same_as<decltype(rod::split(snd_base)), decltype(snd_base)>);
+	static_assert(std::same_as<decltype(rod::split(base_snd)), decltype(base_snd)>);
 
-		auto snd0 = snd_base | rod::then([](int i) { TEST_ASSERT(i == 11); });
-		auto snd1 = snd_base | rod::then([](int i) { return i + 1; });
-		auto snd2 = snd_base | rod::then([](int i) { return -i; });
+	auto snd0 = base_snd | rod::then([](int i) { TEST_ASSERT(i == 11); });
+	auto snd1 = base_snd | rod::then([](int i) { return i + 1; });
+	auto snd2 = base_snd | rod::then([](int i) { return -i; });
+	auto final_snd = rod::when_all(snd0, snd1, snd2) | rod::then([](int i, int j) { TEST_ASSERT(i == 12 && j == -11); });
 
-		auto snd_final = rod::when_all(snd0, snd1, snd2) | rod::then([](int i, int j) { TEST_ASSERT(i == 12 && j == -11); });
-		co_await snd_final;
-	}());
+#ifdef ROD_HAS_COROUTINES
+	rod::sync_wait([&]() noexcept -> rod::task<> { co_await final_snd; }());
+#else
+	rod::sync_wait(final_snd);
+#endif
 }

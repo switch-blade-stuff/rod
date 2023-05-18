@@ -17,23 +17,21 @@ namespace rod
 {
 	namespace _when_all
 	{
+		struct no_error {};
 		template<typename C, typename Rcv>
 		struct complete_for
 		{
 			constexpr complete_for(C, Rcv &rcv) noexcept : rcv(rcv) {}
 
-			template<typename... Ts>
-			constexpr void operator()(Ts &...ts) const noexcept { C{}(std::move(rcv), std::move(ts)...); }
+			template<typename... Args>
+			constexpr void operator()(Args &...args) const noexcept
+			{
+				static_assert(detail::callable<C, Rcv, Args...>);
+				C{}(std::move(rcv), std::move(args)...);
+			}
 
 			Rcv &rcv;
 		};
-
-		/* To avoid edge cases when a sender's error is std::monostate, errors are stored
-		 * as std::variant<std::monostate, std::tuple<Err0>, ..., std::tuple<ErrN>>
-		 * rather than std::variant<std::monostate, Err0, ..., ErrN>.
-		 *
-		 * Additionally, std::variant<std::monostate> is converted to detail::empty_variant<>
-		 * to avoid an unused variable. */
 
 		constexpr void complete_value(auto &rcv, auto &vals) noexcept
 		{
@@ -51,21 +49,16 @@ namespace rod
 		}
 		constexpr void complete_error(auto &rcv, auto &errs) noexcept
 		{
-			/* detail::empty_variant is used when none of the senders complete via an error. */
-			if constexpr (!std::same_as<std::decay_t<decltype(errs)>, detail::empty_variant<>>)
+			const auto visitor = [&]<typename T>(T &err) noexcept
 			{
-				const auto visitor = [&]<typename T>(T &err) noexcept
-				{
-					/* std::monostate means no error has been set. this should not happen. */
-					if constexpr (!std::same_as<T, std::monostate>)
-						set_error(std::move(rcv), std::get<0>(err));
-					else
-						std::terminate();
-				};
-				std::visit(visitor, errs);
-			}
+				if constexpr (!std::same_as<T, no_error>)
+					complete_for{set_error, rcv}(err);
+				else
+					std::terminate();
+			};
+			std::visit(visitor, errs);
 		}
-		constexpr void complete_stopped(auto &rcv) noexcept { set_stopped(std::move(rcv)); }
+		constexpr void complete_stopped(auto &rcv) noexcept { complete_for{set_stopped, rcv}(); }
 
 		enum class state_t : std::uint8_t
 		{
@@ -90,11 +83,14 @@ namespace rod
 		template<typename Env>
 		struct env<Env>::type
 		{
-			friend constexpr auto tag_invoke(get_stop_token_t, const type &env) noexcept { return env._token; }
-			template<typename T, typename... Args>
-			friend constexpr decltype(auto) tag_invoke(T t, const type &env, Args &&...args) noexcept(detail::nothrow_callable<T, const Env &, Args...>)
+			template<detail::decays_to<type> E>
+			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._token; }
+
+			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
-				return t(env._env, std::forward<Args>(args)...);
+				static_assert(detail::callable<Q, Env, Args...>);
+				return Q{}(e._env, std::forward<Args>(args)...);
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
@@ -174,18 +170,18 @@ namespace rod
 			template<typename Err>
 			constexpr void _emplace_error(Err &&err) noexcept(detail::nothrow_decay_copyable<Err>::value)
 			{
-				static_assert(requires { _errs.template emplace<detail::decayed_tuple<Err>>(std::forward<Err>(err)); });
-				_errs.template emplace<detail::decayed_tuple<Err>>(std::forward<Err>(err));
+				static_assert(requires { _errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err)); });
+				_errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err));
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
-			[[ROD_NO_UNIQUE_ADDRESS]] Vals _vals;
-			[[ROD_NO_UNIQUE_ADDRESS]] Errs _errs;
+			[[ROD_NO_UNIQUE_ADDRESS]] Vals _vals = {};
+			[[ROD_NO_UNIQUE_ADDRESS]] Errs _errs = {};
 
 			std::atomic<std::size_t> _count;
 			std::atomic<state_t> _state;
 
-			in_place_stop_source _stop_src;
+			in_place_stop_source _stop_src = {};
 			_stop_cb_t _stop_cb = {};
 		};
 
@@ -199,22 +195,23 @@ namespace rod
 
 			friend constexpr _env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>)
 			{
+				static_assert(detail::callable<get_env_t, const Rcv &>);
 				return _env_t{get_env(r._op->_rcv), r._op->_stop_src.get_token()};
 			}
 
 			template<typename... Args>
-			friend void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept /*requires detail::callable<set_value_t, Rcv &&, Args...>*/
+			friend void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
 			{
 				r._op->template _set_value<I>(std::forward<Args>(args)...);
 				r._op->_submit();
 			}
 			template<typename Err>
-			friend void tag_invoke(set_error_t, type &&r, Err &&err) noexcept /*requires detail::callable<set_error_t, Rcv &&, Err>*/
+			friend void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
 			{
 				r._op->_set_error(std::forward<Err>(err));
 				r._op->_submit();
 			}
-			friend void tag_invoke(set_stopped_t, type &&r) noexcept /*requires detail::callable<set_stopped_t, Rcv &&>*/
+			friend void tag_invoke(set_stopped_t, type &&r) noexcept
 			{
 				r._op->_set_stopped();
 				r._op->_submit();
@@ -224,19 +221,16 @@ namespace rod
 		};
 
 		template<typename... Ts>
-		using make_err_tuple = type_list_t<detail::decayed_tuple<Ts>...>;
-		template<typename S, typename E>
-		using sender_errors = detail::gather_signatures_t<set_error_t, S, E, make_err_tuple, detail::bind_front<detail::concat_tuples_t, type_list_t<>>::template type>;
-
-		template<typename... Ts>
 		using make_val_tuple = std::optional<detail::decayed_tuple<Ts...>>;
 		template<typename S, typename E>
 		using sender_values = detail::gather_signatures_t<set_value_t, S, E, make_val_tuple, std::tuple>;
+		template<typename S, typename E>
+		using sender_errors = unique_tuple_t<detail::gather_signatures_t<set_error_t, S, E, std::type_identity_t, type_list_t>>;
 
 		template<typename... Ts>
-		using nullable_variant = std::conditional_t<sizeof...(Ts) == 0, detail::empty_variant<>, std::variant<std::monostate, Ts...>>;
+		using nullable_variant = unique_tuple_t<std::variant<no_error, std::decay_t<Ts>...>>;
 		template<typename E, typename... Snds>
-		using error_data = detail::apply_tuple_list_t<nullable_variant, unique_tuple_t<detail::concat_tuples_t<sender_errors<Snds, E>...>>>;
+		using error_data = detail::apply_tuple_list_t<nullable_variant, detail::concat_tuples_t<sender_errors<Snds, E>...>>;
 		template<typename E, typename... Snds>
 		using value_data = detail::concat_tuples_t<sender_values<Snds, E>...>;
 
@@ -292,17 +286,17 @@ namespace rod
 			using is_sender = std::true_type;
 
 			template<typename T, typename Rcv>
-			using _value_data_t = value_data<env_for_t<std::decay_t<Rcv>>, copy_cvref_t<T, Snds>...>;
+			using _value_data_t = value_data<env_for_t<Rcv>, copy_cvref_t<T, Snds>...>;
 			template<typename T, typename Rcv>
-			using _error_data_t = error_data<env_for_t<std::decay_t<Rcv>>, copy_cvref_t<T, Snds>...>;
+			using _error_data_t = error_data<env_for_t<Rcv>, copy_cvref_t<T, Snds>...>;
 
 			template<typename T, typename Rcv>
-			using _operation_t = typename operation<std::index_sequence<Is...>, std::decay_t<Rcv>, copy_cvref_t<T, Snds>...>::type;
+			using _operation_t = typename operation<std::index_sequence<Is...>, Rcv, copy_cvref_t<T, Snds>...>::type;
 			template<std::size_t I, typename T, typename Rcv>
-			using _receiver_t = typename receiver<I, std::decay_t<Rcv>, _value_data_t<T, Rcv>, _error_data_t<T, Rcv>>::type;
+			using _receiver_t = typename receiver<I, Rcv, _value_data_t<T, Rcv>, _error_data_t<T, Rcv>>::type;
 
 			template<typename T, typename E>
-			using _has_throwing = std::negation<std::conjunction<detail::nothrow_decay_copyable<value_data<E, copy_cvref_t<T, Snds>...>>>>;
+			using _has_throwing = std::negation<detail::nothrow_decay_copyable<value_data<E, copy_cvref_t<T, Snds>...>>>;
 			template<typename T, typename E>
 			using _error_signs_t = detail::concat_tuples_t<detail::gather_signatures_t<set_error_t, copy_cvref_t<T, Snds>, E,
 					detail::bind_front<detail::make_signature_t, set_error_t>::template type, completion_signatures>...,
@@ -317,10 +311,11 @@ namespace rod
 			template<detail::decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, typename Rcv> requires(sender_to<copy_cvref_t<T, Snds>, _receiver_t<Is, T, Rcv>> && ...)
-			friend _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv)
+			template<detail::decays_to<type> T, typename Rcv>
+			friend _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv)
 			{
-				return _operation_t<T, Rcv>{std::forward<T>(s)._snds, std::forward<Rcv>(rcv)};
+				static_assert((sender_to<copy_cvref_t<T, Snds>, _receiver_t<Is, T, Rcv>> && ...));
+				return _operation_t<T, Rcv>{std::forward<T>(s)._snds, std::move(rcv)};
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] std::tuple<Snds...> _snds;

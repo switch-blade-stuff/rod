@@ -12,7 +12,7 @@ function(make_test NAME FILE)
     if (MSVC)
         target_compile_options(${TEST_PROJECT} PRIVATE /W3 /WX)
     else ()
-        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes #[[-ftemplate-backtrace-limit=0]])
+        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes -ftemplate-backtrace-limit=0)
     endif ()
 
     # Add as test

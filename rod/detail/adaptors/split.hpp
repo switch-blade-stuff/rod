@@ -41,11 +41,14 @@ namespace rod
 		template<typename Env>
 		struct env<Env>::type
 		{
-			friend constexpr auto tag_invoke(get_stop_token_t, const type &env) noexcept { return env._token; }
-			template<typename T, typename... Args>
-			friend constexpr decltype(auto) tag_invoke(T t, const type &env, Args &&...args) noexcept(detail::nothrow_callable<T, const Env &, Args...>)
+			template<detail::decays_to<type> E>
+			friend constexpr auto tag_invoke(get_stop_token_t, const E &&e) noexcept { return e._token; }
+
+			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
-				return t(*env._env, std::forward<Args>(args)...);
+				static_assert(detail::callable<Q, Env, Args...>);
+				return Q{}(*e._env, std::forward<Args>(args)...);
 			}
 
 			in_place_stop_token _token;
@@ -194,13 +197,14 @@ namespace rod
 			template<typename Rcv>
 			using _operation_t = typename operation<Snd, Env, Rcv>::type;
 			using _shared_state_t = typename shared_state<Snd, Env>::type;
+			using _env_t = typename env<Env>::type;
 
 			template<typename... Ts>
 			using _value_signs_t = completion_signatures<set_value_t(const std::decay_t<Ts> &...)>;
 			template<typename Err>
 			using _error_signs_t = completion_signatures<set_error_t(const std::decay_t<Err> &)>;
 			template<typename T>
-			using _signs_t = make_completion_signatures<std::remove_cvref_t<Snd>, Env, completion_signatures<set_error_t(const std::exception_ptr &), set_stopped_t()>, _value_signs_t, _error_signs_t>;
+			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, _env_t, completion_signatures<set_error_t(const std::exception_ptr &), set_stopped_t()>, _value_signs_t, _error_signs_t>;
 
 			explicit type(Snd &&snd) : _state(new _shared_state_t{std::forward<Snd>(snd)}) {}
 
@@ -221,12 +225,12 @@ namespace rod
 			using back_adaptor = detail::back_adaptor<split_t>;
 
 		public:
-			template<rod::sender Snd> requires detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd>
+			template<rod::sender Snd> requires detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd, Snd>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<split_t, value_completion<Snd>, Snd>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd));
 			}
-			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd> && tag_invocable<split_t, Snd>)
+			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd, Snd> && tag_invocable<split_t, Snd>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<split_t, Snd>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd));
