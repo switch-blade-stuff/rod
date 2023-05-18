@@ -9,6 +9,7 @@
 #include "../queries/completion.hpp"
 #include "../adaptors/transfer.hpp"
 #include "../adaptors/then.hpp"
+#include "../adaptors/bulk.hpp"
 #include "../concepts.hpp"
 
 namespace rod
@@ -139,21 +140,44 @@ namespace rod
 
 	namespace _just
 	{
-		struct invoke_just_t
+		struct just_invoke_t
 		{
 			template<detail::movable_value F, typename... Args> requires std::invocable<F, Args...>
-			[[nodiscard]] constexpr rod::sender auto operator()(F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<then_t, F>)
+			[[nodiscard]] constexpr rod::sender auto operator()(F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<then_t, std::invoke_result_t<just_t, Args...>, F>)
 			{
-				return just(std::forward<Args>(args)...) | then(std::forward<F>(fn));
+				return then(just(std::forward<Args>(args)...), std::forward<F>(fn));
 			}
 		};
 	}
 
-	using _just::invoke_just_t;
+	using _just::just_invoke_t;
 
-	/** Returns a sender that will invoke \a fn with \a args and pass the result via the value channel. Equivalent to `just(args...) | then(fn)`.
+	/** Returns a sender that will execute \a fn with \a args and pass the result via the value channel.
+	 * Equivalent to `just(args...) | then(fn)`.
 	 * @param fn Functor who's result to pass into the value channel.
 	 * @param args Arguments to use for invocation of \a fn.
 	 * @return Sender that completes via `set_value(fn(args...))`. */
-	inline constexpr auto invoke_just = invoke_just_t{};
+	inline constexpr auto just_invoke = just_invoke_t{};
+
+	namespace _just
+	{
+		struct just_bulk_t
+		{
+			template<detail::movable_value F, std::integral Shape, typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...>
+			[[nodiscard]] constexpr rod::sender auto operator()(Shape shape, F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<bulk_t, std::invoke_result_t<just_t, Args...>, Shape, F>)
+			{
+				return bulk(just(std::forward<Args>(args)...), std::move(shape), std::forward<F>(fn));
+			}
+		};
+	}
+
+	using _just::just_bulk_t;
+
+	/** Returns a sender that passes a set of values through the value channel and executes \a fn over an index space specified by \a shape.
+	 * Equivalent to `just(args...) | bulk(shape, fn)`.
+	 * @param shape Integral shape (maximum loop index) of the bulk task.
+	 * @param fn Functor to be executed \a shape times with \a args.
+	 * @param args Values to send through the value channel.
+	 * @return Result of `just(args...) | bulk(shape, fn)`. */
+	inline constexpr auto just_bulk = just_bulk_t{};
 }

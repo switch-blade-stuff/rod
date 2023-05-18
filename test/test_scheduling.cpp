@@ -10,7 +10,7 @@
 int main()
 {
 	struct test_error : std::exception {};
-	auto base_snd = rod::invoke_just([](int i)
+	auto base_snd = rod::just_invoke([](int i)
 	{
 		TEST_ASSERT(i == 1);
 		throw test_error{};

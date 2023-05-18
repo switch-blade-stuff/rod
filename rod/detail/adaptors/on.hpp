@@ -160,19 +160,19 @@ namespace rod
 			template<typename...>
 			using _empty_signs_t = completion_signatures<>;
 			template<typename T, typename Env>
-			using _signs_t = make_completion_signatures<schedule_result_t<Sch>, Env,
-			                     make_completion_signatures<copy_cvref_t<T, Snd>, _env_t<Env>,
-			                         completion_signatures<set_error_t(std::exception_ptr)>>,
-			                     _empty_signs_t>;
+			using _signs_t = make_completion_signatures<schedule_result_t<Sch>, Env, make_completion_signatures<copy_cvref_t<T, Snd>, _env_t<Env>,
+								completion_signatures<set_error_t(std::exception_ptr)>>, _empty_signs_t>;
 
 			template<detail::decays_to<type> T, typename Env>
 			friend constexpr _signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
 			template<detail::decays_to<type> T, rod::receiver Rcv>
-			requires std::constructible_from<Sch, copy_cvref_t<T, Sch>> && std::constructible_from<Snd, copy_cvref_t<T, Snd>> &&
-			         sender_to<schedule_result_t<Sch>, _receiver_t<Rcv>> && sender_to<Snd, _receiver_ref_t<Rcv>>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<_operation_t<Rcv>, copy_cvref_t<T, Sch>, copy_cvref_t<T, Snd>, Rcv>)
 			{
+				static_assert(std::constructible_from<Sch, copy_cvref_t<T, Sch>>);
+				static_assert(std::constructible_from<Snd, copy_cvref_t<T, Snd>>);
+				static_assert(sender_to<schedule_result_t<Sch>, _receiver_t<Rcv>>);
+				static_assert(sender_to<Snd, _receiver_ref_t<Rcv>>);
 				return _operation_t<Rcv>{std::forward<T>(s)._sch, std::forward<T>(s)._snd, std::move(rcv)};
 			}
 
