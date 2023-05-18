@@ -6,6 +6,7 @@
 
 #include "../concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	inline namespace _get_completion_signatures
@@ -146,3 +147,4 @@ namespace rod
 	         instance_of<completion_signatures> SetStop = completion_signatures<set_stopped_t()>> requires sender_in<Snd, Env>
 	using make_completion_signatures = typename detail::impl_make_completion_signatures<Snd, Env, AddSigs, SetVal, SetErr, SetStop>::type;
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

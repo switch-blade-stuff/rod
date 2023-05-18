@@ -7,6 +7,7 @@
 #include "schedule_from.hpp"
 #include "closure.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	inline namespace _transfer
@@ -49,3 +50,4 @@ namespace rod
 	 * @return Sender completing on \a sch via the value & stop channels. */
 	inline constexpr auto transfer = transfer_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

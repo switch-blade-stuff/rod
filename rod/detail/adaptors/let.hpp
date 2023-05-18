@@ -10,6 +10,7 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _let
@@ -220,3 +221,5 @@ namespace rod
 	 * @return Sender who's stop completion channel starts a new operation using the sender returned by \a fn. */
 	inline constexpr auto let_stopped = let_stopped_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE
+

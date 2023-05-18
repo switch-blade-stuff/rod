@@ -4,14 +4,13 @@
 
 #pragma once
 
-#include <tuple>
-
 #include "../queries/completion.hpp"
 #include "../adaptors/transfer.hpp"
 #include "../adaptors/then.hpp"
 #include "../adaptors/bulk.hpp"
 #include "../concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _just
@@ -181,3 +180,4 @@ namespace rod
 	 * @return Result of `just(args...) | bulk(shape, fn)`. */
 	inline constexpr auto just_bulk = just_bulk_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

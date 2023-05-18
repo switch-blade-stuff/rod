@@ -8,6 +8,7 @@
 
 #include "utility.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Pair with support for Empty Base Optimization (EBO). */
@@ -156,3 +157,4 @@ namespace rod
 	template<typename T0, typename T1, typename P = packed_pair<std::decay_t<T0>, std::decay_t<T1>>>
 	[[nodiscard]] constexpr P make_packed_pair(T0 &&v0, T1 &&v1) noexcept(std::is_nothrow_constructible_v<P, T0, T1>) { return P{std::forward<T0>(v0), std::forward<T1>(v1)}; }
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

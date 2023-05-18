@@ -6,6 +6,7 @@
 
 #include "../factories/read.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	inline namespace _get_scheduler
@@ -38,3 +39,4 @@ namespace rod
 	/** Customization point object used to obtain a scheduler that can be used for the purpose of forward progress delegation. */
 	inline constexpr auto get_delegatee_scheduler = get_delegatee_scheduler_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

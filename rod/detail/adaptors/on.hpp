@@ -7,6 +7,7 @@
 #include "../queries/scheduler.hpp"
 #include "../concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _on
@@ -216,3 +217,4 @@ namespace rod
 	 * @return Sender adaptor for \a snd that starts on \a sch. */
 	inline constexpr auto on = _on::on_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

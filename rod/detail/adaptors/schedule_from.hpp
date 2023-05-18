@@ -8,6 +8,7 @@
 
 #include "../concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _schedule_from
@@ -224,3 +225,4 @@ namespace rod
 	 * @warning This CPO is meant for customization of schedulers, use `transfer` instead. */
 	inline constexpr auto schedule_from = schedule_from_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -5,13 +5,13 @@
 #pragma once
 
 #include <optional>
-#include <atomic>
 
 #include "../../stop_token.hpp"
 #include "../shared_ref.hpp"
 #include "../concepts.hpp"
 #include "closure.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _split
@@ -254,3 +254,4 @@ namespace rod
 	 * @note Splitting a sender requires dynamic allocation of shared state. */
 	inline constexpr auto split = split_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

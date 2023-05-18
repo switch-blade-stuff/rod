@@ -9,6 +9,7 @@
 
 #include "detail/factories/read.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Concept used to define a stoppable token type. */
@@ -253,3 +254,4 @@ namespace rod
 
 	static_assert(stoppable_token<in_place_stop_token>);
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

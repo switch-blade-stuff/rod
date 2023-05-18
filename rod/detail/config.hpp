@@ -4,6 +4,14 @@
 
 #pragma once
 
+#ifdef ROD_TOPLEVEL_NAMESPACE
+#define ROD_TOPLEVEL_NAMESPACE_OPEN namespace ROD_TOPLEVEL_NAMESPACE {
+#define ROD_TOPLEVEL_NAMESPACE_CLOSE }
+#else
+#define ROD_TOPLEVEL_NAMESPACE_OPEN
+#define ROD_TOPLEVEL_NAMESPACE_CLOSE
+#endif
+
 /* MSVC does not support standard no_unique_address */
 #ifdef _MSC_VER
 #define ROD_NO_UNIQUE_ADDRESS msvc::no_unique_address

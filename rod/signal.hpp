@@ -7,10 +7,12 @@
 #include <functional>
 #include <list>
 
+#include "detail/config.hpp"
 #include "packed_pair.hpp"
 #include "generator.hpp"
 #include "delegate.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	template<std::move_constructible, typename>
@@ -184,3 +186,4 @@ namespace rod
 	template<typename Signal>
 	sink(Signal &) -> sink<Signal>;
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -13,6 +13,7 @@
 #include "queries/completion.hpp"
 #include "concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -394,5 +395,5 @@ namespace rod
 		stop_func m_stop_func = {};
 	};
 }
-
+ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

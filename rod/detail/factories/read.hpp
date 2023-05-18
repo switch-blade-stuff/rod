@@ -7,6 +7,7 @@
 #include "../queries/completion.hpp"
 #include "../concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _read
@@ -57,3 +58,4 @@ namespace rod
 	 * @return Sender that completes via `set_value(tag_invoke(query, env))` or `set_error(std::current_exception())` if the former throws an exception. */
 	inline constexpr auto read = read_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

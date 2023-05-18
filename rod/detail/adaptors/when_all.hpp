@@ -5,7 +5,6 @@
 #pragma once
 
 #include <optional>
-#include <atomic>
 
 #include "../../stop_token.hpp"
 #include "../concepts.hpp"
@@ -13,6 +12,7 @@
 #include "into_variant.hpp"
 #include "transfer.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _when_all
@@ -405,3 +405,4 @@ namespace rod
 	using _when_all::when_all_with_variant_t;
 	using _when_all::transfer_when_all_with_variant_t;
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

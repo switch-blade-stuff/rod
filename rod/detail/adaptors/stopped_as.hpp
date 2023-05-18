@@ -6,12 +6,12 @@
 
 #include <optional>
 
-#include "../queries/completion.hpp"
 #include "../factories/just.hpp"
 #include "../concepts.hpp"
 #include "closure.hpp"
 #include "let.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _stopped_as
@@ -176,3 +176,4 @@ namespace rod
 	 * @note Resulting sender never completes via the stop channel. */
 	inline constexpr auto stopped_as_error = stopped_as_error_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

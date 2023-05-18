@@ -12,6 +12,7 @@
 #include "../stop_token.hpp"
 #include "atomic_queue.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _run_loop
@@ -185,3 +186,4 @@ namespace rod
 
 	static_assert(scheduler<decltype(std::declval<run_loop>().get_scheduler())>);
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

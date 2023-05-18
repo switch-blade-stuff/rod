@@ -10,6 +10,7 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _then
@@ -246,3 +247,4 @@ namespace rod
 	 * @return Sender completing via the value channel with results of \a fn. */
 	inline constexpr auto upon_stopped = upon_error_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

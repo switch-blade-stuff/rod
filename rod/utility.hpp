@@ -8,9 +8,9 @@
 #include <exception>
 #include <variant>
 
-#include "detail/config.hpp"
 #include "tag.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -209,3 +209,4 @@ namespace rod
 		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
 	}
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -8,6 +8,7 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _into_variant
@@ -106,3 +107,4 @@ namespace rod
 	inline constexpr auto into_variant = into_variant_t{};
 
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

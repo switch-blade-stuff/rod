@@ -9,6 +9,7 @@
 #include "adaptors/into_variant.hpp"
 #include "run_loop.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _sync_wait
@@ -141,3 +142,4 @@ namespace rod
 	inline constexpr auto sync_wait = sync_wait_t{};
 	inline constexpr auto sync_wait_with_variant = sync_wait_with_variant_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

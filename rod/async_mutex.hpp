@@ -13,6 +13,7 @@
 #include <atomic>
 #include <mutex>
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	class async_mutex;
@@ -147,5 +148,5 @@ namespace rod
 		return {m_mtx, std::adopt_lock};
 	}
 }
-
+ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

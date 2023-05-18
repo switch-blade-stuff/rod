@@ -7,6 +7,7 @@
 #include "../../packed_pair.hpp"
 #include "../concepts.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -88,3 +89,4 @@ namespace rod
 
 	using detail::sender_adaptor_closure;
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

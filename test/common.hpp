@@ -7,6 +7,12 @@
 #include <exception>
 #include <utility>
 
+#include <rod/utility.hpp>
+
+#ifdef ROD_TOPLEVEL_NAMESPACE
+using namespace ROD_TOPLEVEL_NAMESPACE;
+#endif
+
 #ifdef NDEBUG
 #define TEST_ASSERT(cnd) do { if (!(cnd)) std::terminate(); } while (false)
 #else

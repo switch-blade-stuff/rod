@@ -6,6 +6,7 @@
 
 #include "../utility.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	inline namespace _get_env
@@ -30,3 +31,4 @@ namespace rod
 	template<typename T>
 	using env_of_t = decltype(get_env(std::declval<T>()));
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

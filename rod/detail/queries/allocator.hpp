@@ -6,6 +6,7 @@
 
 #include "../factories/read.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	inline namespace _get_allocator
@@ -26,3 +27,4 @@ namespace rod
 	template<typename T>
 	using allocator_of_t = std::remove_cvref_t<decltype(get_allocator(std::declval<T>()))>;
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

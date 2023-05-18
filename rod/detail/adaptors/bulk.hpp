@@ -10,6 +10,7 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _bulk
@@ -146,3 +147,4 @@ namespace rod
 	 * @return Sender that invokes \a fn \a shape times with value results of \a snd, then forwards the value channel results to connected receiver. */
 	inline constexpr auto bulk = bulk_t{};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

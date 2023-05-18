@@ -9,6 +9,7 @@
 
 #include "utility.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -497,3 +498,4 @@ namespace rod
 		return {bind_member<Mem>, std::forward<T>(instance)};
 	}
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE

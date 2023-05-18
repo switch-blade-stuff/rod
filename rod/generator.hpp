@@ -8,10 +8,9 @@
 
 #ifdef ROD_HAS_COROUTINES
 
-#include <atomic>
-
 #include "scheduling.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _generator
@@ -552,5 +551,5 @@ namespace rod
 	template<typename T>
 	using generator_task = _generator_task::generator_task<T>;
 }
-
+ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

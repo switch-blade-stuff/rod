@@ -8,6 +8,7 @@
 
 #include "../utility.hpp"
 
+ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	inline constexpr struct next_t
@@ -65,3 +66,4 @@ namespace rod::detail
 		std::atomic<void *> head = {};
 	};
 }
+ROD_TOPLEVEL_NAMESPACE_CLOSE
