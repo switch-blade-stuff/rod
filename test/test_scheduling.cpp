@@ -10,11 +10,11 @@
 int main()
 {
 	struct test_error : std::exception {};
-	auto base_snd = rod::just(1) | rod::then([](int i)
+	auto base_snd = rod::invoke_just([](int i)
 	{
 		TEST_ASSERT(i == 1);
 		throw test_error{};
-	}) | rod::upon_error([](const std::exception_ptr &e)
+	}, 1) | rod::upon_error([](const std::exception_ptr &e)
 	{
 		TEST_ASSERT(e);
 		try { std::rethrow_exception(e); }

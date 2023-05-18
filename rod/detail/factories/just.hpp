@@ -8,6 +8,7 @@
 
 #include "../queries/completion.hpp"
 #include "../adaptors/transfer.hpp"
+#include "../adaptors/then.hpp"
 #include "../concepts.hpp"
 
 namespace rod
@@ -135,4 +136,24 @@ namespace rod
 	 * @param vals Values to send through the value channel.
 	 * @return Sender that completes via `set_value(vals...)` on the \a sch scheduler. */
 	inline constexpr auto transfer_just = transfer_just_t{};
+
+	namespace _just
+	{
+		struct invoke_just_t
+		{
+			template<detail::movable_value F, typename... Args> requires std::invocable<F, Args...>
+			[[nodiscard]] constexpr rod::sender auto operator()(F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<then_t, F>)
+			{
+				return just(std::forward<Args>(args)...) | then(std::forward<F>(fn));
+			}
+		};
+	}
+
+	using _just::invoke_just_t;
+
+	/** Returns a sender that will invoke \a fn with \a args and pass the result via the value channel. Equivalent to `just(args...) | then(fn)`.
+	 * @param fn Functor who's result to pass into the value channel.
+	 * @param args Arguments to use for invocation of \a fn.
+	 * @return Sender that completes via `set_value(fn(args...))`. */
+	inline constexpr auto invoke_just = invoke_just_t{};
 }
