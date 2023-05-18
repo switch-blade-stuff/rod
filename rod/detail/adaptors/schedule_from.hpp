@@ -213,7 +213,7 @@ namespace rod
 			template<scheduler Sch, rod::sender Snd> requires(!tag_invocable<schedule_from_t, Sch, Snd>)
 			[[nodiscard]] constexpr sender_t<Sch, Snd> operator()(Sch &&sch, Snd &&snd) const noexcept(std::is_nothrow_constructible_v<sender_t<Sch, Snd>, Sch, Snd>)
 			{
-				return sender_t<Sch, Snd>{std::forward<Sch>(sch), std::forward<Snd>(snd)};
+				return sender_t<Sch, Snd>{{std::forward<Sch>(sch)}, std::forward<Snd>(snd)};
 			}
 		};
 	}

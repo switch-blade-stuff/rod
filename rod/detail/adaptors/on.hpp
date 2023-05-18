@@ -130,14 +130,21 @@ namespace rod
 			{
 				static_assert(detail::callable<set_value_t, Rcv, std::exception_ptr>);
 
+				constexpr bool nothrow_start = detail::nothrow_callable<start_t, std::add_lvalue_reference<connect_result_t<Snd, _receiver_ref_t>>>;
+				constexpr bool nothrow_connect = detail::nothrow_callable<connect_t, Snd, _receiver_ref_t>;
+
 				auto *op = r._op;
-				try
+				const auto do_start = [&]()
 				{
 					/* Use a conversion wrapper to allow emplacement of non-movable types. */
 					const auto conv = [op]() { return connect(std::move(op->_snd), _receiver_ref_t{op}); };
 					start(op->_state.template emplace<1>(detail::implicit_eval{conv}));
-				}
-				catch (...) { set_error(std::move(op->_rcv), std::current_exception()); }
+				};
+
+				if constexpr (!(nothrow_connect && nothrow_start))
+					try { do_start(); } catch (...) { set_error(std::move(op->_rcv), std::current_exception()); }
+				else
+					do_start();
 			}
 
 			_operation_t *_op = {};
