@@ -217,7 +217,7 @@ namespace rod
 				r._op->_submit();
 			}
 
-			_operation_base_t *_op;
+			_operation_base_t *_op = {};
 		};
 
 		template<typename... Ts>

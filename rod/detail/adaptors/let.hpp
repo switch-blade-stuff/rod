@@ -98,7 +98,7 @@ namespace rod
 				c(std::move(r._op->_rcv), std::forward<Args>(args)...);
 			}
 
-			_operation_base_t *_op;
+			_operation_base_t *_op = {};
 		};
 
 		template<typename C, typename S, typename R, typename F>

@@ -95,7 +95,7 @@ namespace rod
 				detail::rcv_try_invoke(std::move(_op->_rcv), complete_channel, C{}, *this, std::forward<Args>(args)...);
 			}
 
-			_operation_t *_op;
+			_operation_t *_op = {};
 		};
 		template<typename Sch, typename Snd, typename Rcv>
 		struct receiver2<Sch, Snd, Rcv>::type
@@ -117,7 +117,7 @@ namespace rod
 				C{}(std::move(r._op->_rcv), std::forward<Args>(args)...);
 			}
 
-			_operation_t *_op;
+			_operation_t *_op = {};
 		};
 
 		template<typename Sch, typename Snd, typename Rcv>
