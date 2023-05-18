@@ -79,17 +79,17 @@ namespace rod
 		template<typename Snd, typename Env>
 		struct shared_state<Snd, Env>::type : public detail::shared_base
 		{
-			using _receiver_t = typename receiver<Snd, Env>::type;
-			using _state_t = connect_result_t<Snd, _receiver_t>;
-			using _env_t = typename env<Env>::type;
+			using receiver_t = typename receiver<Snd, Env>::type;
+			using state_t = connect_result_t<Snd, receiver_t>;
+			using env_t = typename env<Env>::type;
 
-			using _values_list = detail::gather_signatures_t<set_value_t, Snd, _env_t, detail::bind_front<detail::decayed_tuple, set_value_t>::template type, type_list_t>;
-			using _errors_list = detail::gather_signatures_t<set_error_t, Snd, _env_t, detail::bind_front<detail::decayed_tuple, set_error_t>::template type, type_list_t>;
+			using values_list = detail::gather_signatures_t<set_value_t, Snd, env_t, detail::bind_front<detail::decayed_tuple, set_value_t>::template type, type_list_t>;
+			using errors_list = detail::gather_signatures_t<set_error_t, Snd, env_t, detail::bind_front<detail::decayed_tuple, set_error_t>::template type, type_list_t>;
 			template<typename... Ts>
-			using _bind_data = typename detail::bind_front<std::variant, std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>::template type<Ts...>;
-			using _data_t = unique_tuple_t<detail::apply_tuple_list_t<_bind_data, detail::concat_tuples_t<_values_list, _errors_list>>>;
+			using bind_data = typename detail::bind_front<std::variant, std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>::template type<Ts...>;
+			using data_t = unique_tuple_t<detail::apply_tuple_list_t<bind_data, detail::concat_tuples_t<values_list, errors_list>>>;
 
-			type(Snd &&snd) : _env(get_env(snd)), _state(connect(std::forward<Snd>(snd), _receiver_t{*this})) {}
+			type(Snd &&snd) : _env(get_env(snd)), _state(connect(std::forward<Snd>(snd), receiver_t{*this})) {}
 
 			void notify() noexcept
 			{
@@ -106,10 +106,10 @@ namespace rod
 			in_place_stop_source _stop_src;
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
-			_state_t _state;
+			state_t _state;
 
 			std::atomic<void *> _queue = {};
-			_data_t _data = {};
+			data_t _data = std::tuple<set_stopped_t>{};
 		};
 
 		template<typename Snd, typename Env>
@@ -146,7 +146,7 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			constexpr type(Rcv &&rcv, detail::shared_handle<_shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
+			type(Rcv &&rcv, detail::shared_handle<_shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
 					: operation_base{_bind_notify}, _rcv(std::forward<Rcv>(rcv)), _state(std::move(handle)) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept
@@ -221,7 +221,7 @@ namespace rod
 			template<typename Snd>
 			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Snd>
-			using sender_t = typename sender<std::decay_t<Snd>, std::decay_t<env_of_t<Snd>>>::type;
+			using sender_t = typename sender<std::decay_t<Snd>, env_of_t<std::decay_t<Snd>>>::type;
 			using back_adaptor = detail::back_adaptor<split_t>;
 
 		public:
@@ -240,7 +240,7 @@ namespace rod
 			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd> && !tag_invocable<split_t, Snd> && !std::derived_from<std::decay_t<Snd>, split_sender_tag>)
 			[[nodiscard]] sender_t<Snd> operator()(Snd &&snd) const { return sender_t<Snd>{std::forward<Snd>(snd)}; }
 			template<typename Snd> requires(std::derived_from<std::decay_t<Snd>, split_sender_tag>)
-			[[nodiscard]] constexpr auto operator()(Snd &&snd) const noexcept { return std::forward<Snd>(snd); }
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept { return std::forward<Snd>(snd); }
 
 			[[nodiscard]] constexpr back_adaptor operator()() const noexcept { return {}; }
 		};

@@ -35,4 +35,6 @@ int main()
 #else
 	rod::sync_wait(final_snd);
 #endif
+
+	rod::start_detached(rod::ensure_started(rod::just(1)) | rod::then([](int i) { TEST_ASSERT(i == 1); }));
 }

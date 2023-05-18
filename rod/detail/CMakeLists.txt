@@ -11,4 +11,6 @@ target_sources(${PROJECT_NAME} INTERFACE
         ${CMAKE_CURRENT_LIST_DIR}/concepts.hpp
         ${CMAKE_CURRENT_LIST_DIR}/run_loop.hpp
         ${CMAKE_CURRENT_LIST_DIR}/awaitable.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/sync_wait.hpp)
+        ${CMAKE_CURRENT_LIST_DIR}/sync_wait.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/ensure_started.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/start_detached.hpp)

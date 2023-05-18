@@ -90,7 +90,7 @@ namespace rod
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
 				static_assert(detail::callable<Q, Env, Args...>);
-				return Q{}(e._env, std::forward<Args>(args)...);
+				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
@@ -176,7 +176,7 @@ namespace rod
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
 			[[ROD_NO_UNIQUE_ADDRESS]] Vals _vals = {};
-			[[ROD_NO_UNIQUE_ADDRESS]] Errs _errs = {};
+			[[ROD_NO_UNIQUE_ADDRESS]] Errs _errs = no_error{};
 
 			std::atomic<std::size_t> _count;
 			std::atomic<state_t> _state;

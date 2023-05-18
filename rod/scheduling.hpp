@@ -26,8 +26,11 @@
 #include "detail/adaptors/let.hpp"
 #include "detail/adaptors/on.hpp"
 
-#include "detail/sync_wait.hpp"
-#include "detail/awaitable.hpp"
 #include "detail/run_loop.hpp"
+#include "detail/awaitable.hpp"
+
+#include "detail/sync_wait.hpp"
+#include "detail/ensure_started.hpp"
+#include "detail/start_detached.hpp"
 
 #include "stop_token.hpp"

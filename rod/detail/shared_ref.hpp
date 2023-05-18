@@ -23,7 +23,7 @@ namespace rod::detail
 		std::atomic<std::size_t> _refs = 1;
 	};
 
-	template<std::derived_from<shared_base> T>
+	template<typename T>
 	class shared_handle
 	{
 	public:
@@ -46,9 +46,16 @@ namespace rod::detail
 
 		~shared_handle() { release(); }
 
+		void reset()
+		{
+			release();
+			m_ptr = {};
+		}
+
 		[[nodiscard]] constexpr T *get() const noexcept { return m_ptr; }
 		[[nodiscard]] constexpr T *operator->() const noexcept { return get(); }
 		[[nodiscard]] constexpr T &operator*() const noexcept { return *get(); }
+		[[nodiscard]] constexpr operator bool() const noexcept { return get(); }
 
 	private:
 		auto acquire() const noexcept { return m_ptr ? static_cast<T *>(static_cast<shared_base *>(m_ptr)->acquire()) : m_ptr; }

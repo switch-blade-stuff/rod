@@ -139,7 +139,13 @@ namespace rod
 	using _sync_wait::sync_wait_t;
 	using _sync_wait::sync_wait_with_variant_t;
 
+	/** Synchronously starts the passed sender and blocks until completion. Rethrows any errors.
+	 * @param snd Sender to execute synchronously.
+	 * @return Optional set to the value completion result, or `std::nullopt` on stop completion. */
 	inline constexpr auto sync_wait = sync_wait_t{};
+	/** Synchronously starts the passed sender and blocks until completion. Rethrows any errors.
+	 * @param snd Sender to execute synchronously.
+	 * @return Optional of a variant set to the value completion result, or `std::nullopt` on stop completion. */
 	inline constexpr auto sync_wait_with_variant = sync_wait_with_variant_t{};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

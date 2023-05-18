@@ -33,7 +33,7 @@ namespace rod
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
 				static_assert(detail::callable<Q, Env, Args...>);
-				return Q{}(e._env, std::forward<Args>(args)...);
+				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
