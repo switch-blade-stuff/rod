@@ -65,14 +65,17 @@ namespace rod
 		template<typename, template<typename...> typename, template<typename...> typename, typename, typename...>
 		struct gather_signatures;
 		template<typename Tag, template<typename...> typename T, template<typename...> typename V, typename... Ts, typename... Us, typename... Fs> requires(requires { typename apply_tuple_t<T, Us...>; })
-		struct gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<Tag(Us...), Fs...>> : gather_signatures<Tag, T, V, type_list_t<Ts..., apply_tuple_t<T, Us...>>, completion_signatures<Fs...>> {};
+		struct gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<Tag(Us...), Fs...>> { using type = typename gather_signatures<Tag, T, V, type_list_t<Ts..., apply_tuple_t<T, Us...>>, completion_signatures<Fs...>>::type; };
 		template<typename Tag, template<typename...> typename T, template<typename...> typename V, typename... Ts, typename F, typename... Fs>
-		struct gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<F, Fs...>> : gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<Fs...>> {};
+		struct gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<F, Fs...>> { using type = typename gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<Fs...>>::type; };
 		template<typename Tag, template<typename...> typename T, template<typename...> typename V, typename... Ts>
 		struct gather_signatures<Tag, T, V, type_list_t<Ts...>, completion_signatures<>> { using type = apply_tuple_t<V, Ts...>; };
 
 		template<typename Tag, typename S, typename E, template<typename...> typename Tuple, template<typename...> typename Variant>
 		using gather_signatures_t = typename gather_signatures<Tag, Tuple, Variant, type_list_t<>, completion_signatures_of_t<S, E>>::type;
+
+		template<typename Sig, typename... Ts>
+		using test_signature = std::conjunction<matching_sig<Sig, Ts>...>;
 	}
 
 	/** Concept used to check if sender type \a S can be connected to receiver \a R. */
@@ -81,7 +84,7 @@ namespace rod
 
 	/** Concept used to check if sender type \a S can complete with completion signatures \a Sig using environment \a E. */
 	template<typename S, typename Sig, typename E = empty_env>
-	concept sender_of = sender_in<S, E> && detail::matching_sig<Sig, detail::gather_signatures_t<typename detail::sender_of_helper<Sig>::tag, S, E, detail::sender_of_helper<Sig>::template as, std::type_identity_t>>;
+	concept sender_of = sender_in<S, E> && detail::gather_signatures_t<typename detail::sender_of_helper<Sig>::tag, S, E, detail::sender_of_helper<Sig>::template as, detail::bind_front<detail::test_signature, Sig>::template type>::value;
 
 	/** Concept used to check if sender type \a S has advertises a completion signature returning for the stop channel given an execution environment \a E. */
 	template<typename S, typename E = empty_env>

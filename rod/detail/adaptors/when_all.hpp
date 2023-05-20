@@ -327,14 +327,12 @@ namespace rod
 			using sender_t = typename sender<std::index_sequence_for<Snds...>, std::decay_t<Snds>...>::type;
 
 		public:
-			template<rod::sender... Snds>
-			requires tag_invocable<when_all_t, Snds...>
+			template<rod::sender... Snds> requires tag_invocable<when_all_t, Snds...>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snds &&...snds) const noexcept(nothrow_tag_invocable<when_all_t, Snds...>)
 			{
 				return tag_invoke(*this, std::forward<Snds>(snds)...);
 			}
-			template<rod::sender... Snds>
-			requires(!tag_invocable<when_all_t, Snds...>)
+			template<rod::sender... Snds> requires(!tag_invocable<when_all_t, Snds...>)
 			[[nodiscard]] constexpr sender_t<Snds...> operator()(Snds &&...snds) const noexcept(std::is_nothrow_constructible_v<sender_t<Snds...>, Snds...>)
 			{
 				return sender_t<Snds...>{{std::forward<Snds>(snds)...}};
@@ -343,14 +341,12 @@ namespace rod
 
 		struct when_all_with_variant_t
 		{
-			template<rod::sender... Snds>
-			requires tag_invocable<when_all_with_variant_t, Snds...>
+			template<rod::sender... Snds> requires tag_invocable<when_all_with_variant_t, Snds...>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snds &&...snds) const noexcept(nothrow_tag_invocable<when_all_with_variant_t, Snds...>)
 			{
 				return tag_invoke(*this, std::forward<Snds>(snds)...);
 			}
-			template<rod::sender... Snds>
-			requires(!tag_invocable<when_all_with_variant_t, Snds...> && (detail::callable<into_variant_t, Snds> && ...))
+			template<rod::sender... Snds> requires(!tag_invocable<when_all_with_variant_t, Snds...> && (detail::callable<into_variant_t, Snds> && ...))
 			[[nodiscard]] constexpr rod::sender auto operator()(Snds &&...snds) const noexcept(
 			detail::nothrow_callable<when_all_t, std::invoke_result_t<into_variant_t, Snds>...> && (detail::nothrow_callable<into_variant_t, Snds> && ...))
 			{
@@ -360,14 +356,12 @@ namespace rod
 
 		struct transfer_when_all_t
 		{
-			template<rod::scheduler Sch, rod::sender... Snds>
-			requires tag_invocable<transfer_when_all_t, Sch, Snds...>
+			template<rod::scheduler Sch, rod::sender... Snds> requires tag_invocable<transfer_when_all_t, Sch, Snds...>
 			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(nothrow_tag_invocable<transfer_when_all_t, Sch, Snds...>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snds>(snds)...);
 			}
-			template<rod::scheduler Sch, rod::sender... Snds>
-			requires(!tag_invocable<transfer_when_all_t, Sch, Snds...>)
+			template<rod::scheduler Sch, rod::sender... Snds> requires(!tag_invocable<transfer_when_all_t, Sch, Snds...>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(
 			detail::nothrow_callable<when_all_t, Snds...> && detail::nothrow_callable<transfer_t, std::invoke_result_t<when_all_t, Snds...>, Sch>)
 			{
@@ -377,14 +371,12 @@ namespace rod
 
 		struct transfer_when_all_with_variant_t
 		{
-			template<rod::scheduler Sch, rod::sender... Snds>
-			requires tag_invocable<transfer_when_all_with_variant_t, Sch, Snds...>
+			template<rod::scheduler Sch, rod::sender... Snds> requires tag_invocable<transfer_when_all_with_variant_t, Sch, Snds...>
 			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(nothrow_tag_invocable<transfer_when_all_with_variant_t, Sch, Snds...>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snds>(snds)...);
 			}
-			template<rod::scheduler Sch, rod::sender... Snds>
-			requires(!tag_invocable<transfer_when_all_with_variant_t, Sch, Snds...>)
+			template<rod::scheduler Sch, rod::sender... Snds> requires(!tag_invocable<transfer_when_all_with_variant_t, Sch, Snds...>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(
 			detail::nothrow_callable<transfer_when_all_t, Sch, std::invoke_result_t<into_variant_t, Snds>...> && (detail::nothrow_callable<into_variant_t, Snds> && ...))
 			{

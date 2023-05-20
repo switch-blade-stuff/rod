@@ -28,7 +28,11 @@ int main()
 	auto snd0 = base_snd | rod::then([](int i) { TEST_ASSERT(i == 11); });
 	auto snd1 = base_snd | rod::then([](int i) { return i + 1; });
 	auto snd2 = base_snd | rod::then([](int i) { return -i; });
-	auto final_snd = rod::when_all(snd0, snd1, snd2) | rod::then([](int i, int j) { TEST_ASSERT(i == 12 && j == -11); });
+	auto final_snd = rod::when_all(snd0, snd1, snd2) | rod::then([](int i, int j) { TEST_ASSERT(i == 12 && j == -11); })
+					| rod::let_error([](const auto &e) { return rod::just_error(e); }); /* Copy by-reference errors. */
+
+	static_assert(rod::sender_of<decltype(final_snd), rod::set_value_t()>);
+	static_assert(rod::sender_of<decltype(final_snd), rod::set_error_t(std::exception_ptr)>);
 
 #ifdef ROD_HAS_COROUTINES
 	rod::sync_wait([&]() noexcept -> rod::task<> { co_await final_snd; }());

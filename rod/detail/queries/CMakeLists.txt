@@ -1,5 +1,5 @@
 
-target_sources(${PROJECT_NAME} INTERFACE
+list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/completion.hpp
         ${CMAKE_CURRENT_LIST_DIR}/allocator.hpp
         ${CMAKE_CURRENT_LIST_DIR}/scheduler.hpp

@@ -69,7 +69,7 @@ namespace rod
 		[[nodiscard]] constexpr rod::sender auto operator()(Vs &&...vals) const noexcept((std::is_nothrow_constructible_v<std::decay_t<Vs>, Vs> && ...))
 		{
 			using sender_t = typename sender<set_value_t, std::decay_t<Vs>...>::type;
-			return sender_t{std::forward<Vs>(vals)...};
+			return sender_t{{std::forward<Vs>(vals)...}};
 		}
 	};
 
@@ -83,8 +83,8 @@ namespace rod
 		template<typename Err>
 		[[nodiscard]] constexpr auto operator()(Err &&err) const noexcept(std::is_nothrow_constructible_v<std::decay_t<Err>, Err>)
 		{
-			using sender_t = typename sender<set_value_t, std::decay_t<Err>>::type;
-			return sender_t{std::forward<Err>(err)};
+			using sender_t = typename sender<set_error_t, std::decay_t<Err>>::type;
+			return sender_t{{std::forward<Err>(err)}};
 		}
 	};
 

@@ -53,7 +53,7 @@ namespace rod
 		template<typename A, typename P>
 		concept is_awaiter = requires(A &a)
 		{
-			/* Use ternary here to allow for non-constexpr evaluation. */
+			/* Use a ternary to allow for non-constexpr evaluation. */
 			a.await_ready() ? true : false;
 			a.await_resume();
 		} && with_await_suspend<A, P>;

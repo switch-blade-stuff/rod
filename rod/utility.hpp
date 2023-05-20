@@ -38,11 +38,9 @@ namespace rod
 		concept class_type = decays_to<T, T> && std::is_class_v<T>;
 
 		template<typename, typename>
-		struct matching_sig_impl : std::false_type {};
+		struct matching_sig : std::false_type {};
 		template<typename R0, typename... Args0, typename R1, typename... Args1>
-		struct matching_sig_impl<R0(Args0...), R1(Args1...)> : std::is_same<R0(Args0&&...), R0(Args1&&...)> {};
-		template<typename F0, typename F1>
-		concept matching_sig = matching_sig_impl<F0, F1>::value;
+		struct matching_sig<R0(Args0...), R1(Args1...)> : std::is_same<R0(Args0&&...), R0(Args1&&...)> {};
 
 		template<typename...>
 		inline constexpr bool always_true = true;

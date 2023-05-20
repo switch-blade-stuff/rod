@@ -106,7 +106,6 @@ namespace rod
 			[[ROD_NO_UNIQUE_ADDRESS]] T value;
 		};
 
-
 		/* Ugly mess to strip instance qualifiers from function signatures. Unfortunately, remove_cvref_t does not work for functions. */
 		template<typename>
 		struct strip_qualifiers;
