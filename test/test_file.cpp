@@ -23,27 +23,26 @@ void test_basic_file(auto mode)
 	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode, err);
 	TEST_ASSERT(!err && file);
 
-	auto write_n = rod::io::write(file, data, err);
-	TEST_ASSERT(!err && write_n == data.size());
+	{
+		const auto write_n = rod::io::write(file, data, err);
+		TEST_ASSERT(!err && write_n == data.size());
 
-	auto pos = file.seek(0, basic_file_t::beg, err);
-	TEST_ASSERT(!err && pos == 0);
+		const auto pos = file.seek(0, basic_file_t::beg, err);
+		TEST_ASSERT(!err && pos == 0);
 
-	buff.resize(data.size());
-	auto read_n = rod::io::read(file, buff, err);
-	TEST_ASSERT(!err && read_n == data.size());
-	TEST_ASSERT(buff == data);
+		const auto read_n = rod::io::read(file, buff, err);
+		TEST_ASSERT(!err && read_n == data.size());
+		TEST_ASSERT(buff.find(data) == 0);
+	}
+	{
+		const auto write_n = rod::io::write_at(file, data.size(), data, err);
+		TEST_ASSERT(!err && write_n == data.size());
 
-	write_n = rod::io::write_at(file, data.size(), data, err);
-	TEST_ASSERT(!err && write_n == data.size());
-
-	buff.resize(data.size() * 2);
-	read_n = rod::io::read_at(file, 0, buff, err);
-	TEST_ASSERT(!err && read_n == data.size() * 2);
-
-	buff.resize(read_n);
-	TEST_ASSERT(buff.find(data) != std::string::npos);
-	TEST_ASSERT(buff.find(data) != buff.rfind(data));
+		const auto read_n = rod::io::read_at(file, 0, buff, err);
+		TEST_ASSERT(!err && read_n == data.size() * 2);
+		TEST_ASSERT(buff.find(data) != buff.rfind(data));
+		TEST_ASSERT(buff.find(data) == 0);
+	}
 
 	file.close(err);
 	TEST_ASSERT(!err);

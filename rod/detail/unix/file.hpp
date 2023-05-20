@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <cstdio>
+#include <aio.h>
 
 #include "../file_fwd.hpp"
 

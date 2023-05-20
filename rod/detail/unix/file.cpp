@@ -38,14 +38,24 @@ namespace rod::io::detail
 
 	std::size_t descriptor_handle::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
-		if (const auto res = ::lseek(m_fd, off, dir); res < 0) [[likely]]
+#if PTRDIFF_MAX >= INT64_MAX || SIZE_MAX >= UINT64_MAX
+		const auto res = ::lseek64(m_fd, static_cast<off64_t>(off), dir);
+#else
+		const auto res = ::lseek(m_fd, static_cast<off_t>(off), dir);
+#endif
+		if (res < 0) [[likely]]
 			return (err = std::make_error_code(static_cast<std::errc>(errno)), 0);
 		else
 			return (err = {}, static_cast<std::size_t>(res));
 	}
 	std::size_t descriptor_handle::tell(std::error_code &err) const noexcept
 	{
-		if (const auto res = ::lseek(m_fd, 0, SEEK_CUR); res < 0) [[likely]]
+#if SIZE_MAX >= UINT64_MAX
+		const auto res = ::lseek64(m_fd, 0, SEEK_CUR);
+#else
+		const auto res = ::lseek(m_fd, 0, SEEK_CUR);
+#endif
+		if (res < 0) [[likely]]
 			return (err = std::make_error_code(static_cast<std::errc>(errno)), 0);
 		else
 			return (err = {}, static_cast<std::size_t>(res));
