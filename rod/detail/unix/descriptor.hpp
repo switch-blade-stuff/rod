@@ -4,12 +4,12 @@
 
 #pragma once
 
+#include "../config.hpp"
+
 #ifdef __unix__
 
 #include <system_error>
-#include <aio.h>
-
-#include "../config.hpp"
+#include <utility>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
@@ -30,6 +30,7 @@ namespace rod::detail
 		ROD_PUBLIC ~descriptor_handle();
 
 		ROD_PUBLIC std::error_code close() noexcept;
+		constexpr int release() noexcept { return std::exchange(m_fd, -1); }
 
 		ROD_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;

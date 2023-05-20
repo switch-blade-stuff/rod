@@ -77,7 +77,7 @@ namespace rod::io
 			template<typename Snd>
 			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Src, typename Buff>
-			using back_adaptor = detail::back_adaptor<async_read_t, std::decay_t<Src>, std::decay_t<Buff>>;
+			using back_adaptor = detail::back_adaptor<async_read_t, Src, std::decay_t<Buff>>;
 
 		public:
 			template<sender Snd, typename Src, buffer Buff> requires detail::tag_invocable_with_completion_scheduler<async_read_t, set_value_t, Snd, Snd, Src, Buff>
@@ -88,12 +88,13 @@ namespace rod::io
 			template<sender Snd, typename Src, buffer Buff> requires(!detail::tag_invocable_with_completion_scheduler<async_read_t, set_value_t, Snd, Snd, Src, Buff> && tag_invocable<async_read_t, Snd, Src, Buff>)
 			[[nodiscard]] read_sender decltype(auto) operator()(Snd &&snd, Src &&src, Buff &&buff) const noexcept(nothrow_tag_invocable<async_read_t, Snd, Src, Buff>)
 			{
-				return tag_invoke(transfer_t{}, std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Buff>(buff));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Buff>(buff));
 			}
+
 			template<typename Src, buffer Buff>
 			[[nodiscard]] back_adaptor<Src, Buff> operator()(Src &&src, Buff &&buff) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Src, Buff>, async_read_t, Src, Buff>)
 			{
-				return back_adaptor<Src, Buff>{*this, std::forward<Src>(src), std::forward<Buff>(buff)};
+				return back_adaptor<Src, Buff>{*this, std::forward_as_tuple(std::forward<Src>(src), std::forward<Buff>(buff))};
 			}
 		};
 
@@ -102,7 +103,7 @@ namespace rod::io
 			template<typename Snd>
 			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Src, typename Pos, typename Buff>
-			using back_adaptor = detail::back_adaptor<async_read_t, std::decay_t<Src>, std::decay_t<Pos>, std::decay_t<Buff>>;
+			using back_adaptor = detail::back_adaptor<async_read_t, Src, std::decay_t<Pos>, std::decay_t<Buff>>;
 
 		public:
 			template<sender Snd, typename Src, std::integral Pos, buffer Buff> requires detail::tag_invocable_with_completion_scheduler<async_read_at_t, set_value_t, Snd, Snd, Src, Pos, Buff>
@@ -113,16 +114,17 @@ namespace rod::io
 			template<sender Snd, typename Src, std::integral Pos, buffer Buff> requires(!detail::tag_invocable_with_completion_scheduler<async_read_at_t, set_value_t, Snd, Snd, Src, Pos, Buff> && tag_invocable<async_read_at_t, Snd, Src, Pos, Buff>)
 			[[nodiscard]] read_sender decltype(auto) operator()(Snd &&snd, Src &&src, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<async_read_at_t, Snd, Src, Pos, Buff>)
 			{
-				return tag_invoke(transfer_t{}, std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff));
 			}
+
 			template<typename Src, std::integral Pos, buffer Buff>
 			[[nodiscard]] back_adaptor<Src, Pos, Buff> operator()(Src &&src, Pos &&pos, Buff &&buff) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Src, Pos, Buff>, async_read_t, Src, Pos, Buff>)
 			{
-				return back_adaptor<Src, Pos, Buff>{*this, std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff)};
+				return back_adaptor<Src, Pos, Buff>{*this, std::forward_as_tuple(std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff))};
 			}
 		};
 	}
-	
+
 	using _read::read_t;
 
 	/** Concept used to check if type \a T implements the `read` CBO for buffer type \a Buff. */
@@ -236,21 +238,55 @@ namespace rod::io
 		template<typename Snd>
 		concept write_sender = sender_of<Snd, set_value_t(std::size_t)> || sender_of<Snd, set_value_t(std::size_t, std::error_code)>;
 
-		struct async_write_t
+		class async_write_t
 		{
-			template<typename Dst, buffer Buff> requires tag_invocable<async_write_t, Dst, Buff>
-			[[nodiscard]] constexpr write_sender decltype(auto) operator()(Dst &&dst, Buff &&buff) const noexcept(nothrow_tag_invocable<async_write_t, Dst, Buff>)
+			template<typename Snd>
+			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
+			template<typename Dst, typename Buff>
+			using back_adaptor = detail::back_adaptor<async_write_t, Dst, std::decay_t<Buff>>;
+
+		public:
+			template<sender Snd, typename Dst, buffer Buff> requires detail::tag_invocable_with_completion_scheduler<async_write_t, set_value_t, Snd, Snd, Dst, Buff>
+			[[nodiscard]] write_sender decltype(auto) operator()(Snd &&snd, Dst &&dst, Buff &&buff) const noexcept(nothrow_tag_invocable<async_write_t, value_completion<Snd>, Snd, Dst, Buff>)
 			{
-				return tag_invoke(*this, std::forward<Dst>(dst), std::forward<Buff>(buff));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Dst>(dst), std::forward<Buff>(buff));
+			}
+			template<sender Snd, typename Dst, buffer Buff> requires(!detail::tag_invocable_with_completion_scheduler<async_write_t, set_value_t, Snd, Snd, Dst, Buff> && tag_invocable<async_read_t, Snd, Dst, Buff>)
+			[[nodiscard]] write_sender decltype(auto) operator()(Snd &&snd, Dst &&dst, Buff &&buff) const noexcept(nothrow_tag_invocable<async_write_t, Snd, Dst, Buff>)
+			{
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Dst>(dst), std::forward<Buff>(buff));
+			}
+
+			template<typename Dst, buffer Buff>
+			[[nodiscard]] back_adaptor<Dst, Buff> operator()(Dst &&dst, Buff &&buff) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Dst, Buff>, async_write_t, Dst, Buff>)
+			{
+				return back_adaptor<Dst, Buff>{*this, std::forward_as_tuple(std::forward<Dst>(dst), std::forward<Buff>(buff))};
 			}
 		};
 
-		struct async_write_at_t
+		class async_write_at_t
 		{
-			template<typename Dst, std::integral Pos, buffer Buff> requires tag_invocable<async_write_t, Dst, Pos, Buff>
-			[[nodiscard]] constexpr write_sender decltype(auto) operator()(Dst &&dst, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<async_write_t, Dst, Pos, Buff>)
+			template<typename Snd>
+			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
+			template<typename Dst, typename Pos, typename Buff>
+			using back_adaptor = detail::back_adaptor<async_write_at_t, Dst, std::decay_t<Pos>, std::decay_t<Buff>>;
+
+		public:
+			template<sender Snd, typename Dst, std::integral Pos, buffer Buff> requires detail::tag_invocable_with_completion_scheduler<async_write_at_t, set_value_t, Snd, Snd, Dst, Pos, Buff>
+			[[nodiscard]] write_sender decltype(auto) operator()(Snd &&snd, Dst &&dst, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<async_write_at_t, value_completion<Snd>, Snd, Dst, Pos, Buff>)
 			{
-				return tag_invoke(*this, std::forward<Dst>(dst), std::forward<Pos>(pos), std::forward<Buff>(buff));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Dst>(dst), std::forward<Pos>(pos), std::forward<Buff>(buff));
+			}
+			template<sender Snd, typename Dst, std::integral Pos, buffer Buff> requires(!detail::tag_invocable_with_completion_scheduler<async_write_at_t, set_value_t, Snd, Snd, Dst, Pos, Buff> && tag_invocable<async_write_at_t, Snd, Dst, Pos, Buff>)
+			[[nodiscard]] write_sender decltype(auto) operator()(Snd &&snd, Dst &&dst, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<async_write_at_t, Snd, Dst, Pos, Buff>)
+			{
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Dst>(dst), std::forward<Pos>(pos), std::forward<Buff>(buff));
+			}
+
+			template<typename Dst, std::integral Pos, buffer Buff>
+			[[nodiscard]] back_adaptor<Dst, Pos, Buff> operator()(Dst &&dst, Pos &&pos, Buff &&buff) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Dst, Pos, Buff>, async_write_at_t, Dst, Pos, Buff>)
+			{
+				return back_adaptor<Dst, Pos, Buff>{*this, std::forward_as_tuple(std::forward<Dst>(dst), std::forward<Pos>(pos), std::forward<Buff>(buff))};
 			}
 		};
 	}

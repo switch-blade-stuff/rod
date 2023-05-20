@@ -13,6 +13,14 @@
 #define ROD_NO_UNIQUE_ADDRESS no_unique_address
 #endif
 
+#if !defined(ROD_NO_AIO) && defined(__unix__)
+#ifndef ROD_HAS_AIO
+#define ROD_HAS_AIO
+#endif
+#elif defined(ROD_HAS_AIO)
+#undef ROD_HAS_AIO
+#endif
+
 #if !defined(ROD_NO_COROUTINES) && defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L
 
 #ifndef ROD_HAS_COROUTINES
@@ -27,5 +35,4 @@
 #elif defined(ROD_HAS_COROUTINES)
 #undef ROD_HAS_COROUTINES
 #endif
-
 

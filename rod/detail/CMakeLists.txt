@@ -4,7 +4,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/adaptors/CMakeLists.txt)
 include(${CMAKE_CURRENT_LIST_DIR}/factories/CMakeLists.txt)
 
 # Platform subdirectories
-include(${CMAKE_CURRENT_LIST_DIR}/unix/CMakeLists.txt)
+if (UNIX)
+    include(${CMAKE_CURRENT_LIST_DIR}/unix/CMakeLists.txt)
+endif ()
 
 list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/config.hpp

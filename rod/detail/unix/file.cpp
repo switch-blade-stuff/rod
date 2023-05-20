@@ -4,8 +4,6 @@
 
 #include "file.hpp"
 
-#ifdef __unix__
-
 #include <fcntl.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
@@ -78,4 +76,3 @@ namespace rod::detail
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
-#endif

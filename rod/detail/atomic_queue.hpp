@@ -28,12 +28,12 @@ namespace rod::detail
 		}
 		bool push(Node *node) noexcept
 		{
-			for (auto candidate = head.load(std::memory_order_relaxed);;)
+			for (auto ptr = head.load(std::memory_order_relaxed);;)
 			{
-				if (candidate == sentinel()) return false;
+				if (ptr == sentinel()) return false;
 
-				node_next(*node, static_cast<Node *>(candidate));
-				if (head.compare_exchange_weak(candidate, node, std::memory_order_acq_rel, std::memory_order_relaxed))
+				node_next(*node, static_cast<Node *>(ptr));
+				if (head.compare_exchange_weak(ptr, node, std::memory_order_acq_rel, std::memory_order_relaxed))
 				{
 					notify_one();
 					return true;
@@ -42,19 +42,23 @@ namespace rod::detail
 		}
 		[[nodiscard]] Node *pop() noexcept
 		{
-			for (auto candidate = head.load(std::memory_order_relaxed);;)
+			for (auto ptr = head.load(std::memory_order_relaxed);;)
 			{
-				if (candidate == sentinel())
+				if (ptr == sentinel())
 					return nullptr;
-				else if (!candidate)
+				else if (!ptr)
 				{
-					wait(candidate);
+					wait(ptr);
+					ptr = head.load(std::memory_order_relaxed);
 					continue;
 				}
 
-				const auto next = node_next(*static_cast<Node *>(candidate));
-				if (head.compare_exchange_weak(candidate, next, std::memory_order_acq_rel, std::memory_order_relaxed))
-					return static_cast<Node *>(candidate);
+				const auto next = node_next(*static_cast<Node *>(ptr));
+				if (head.compare_exchange_weak(ptr, next, std::memory_order_acq_rel, std::memory_order_relaxed))
+				{
+					head.notify_one();
+					return static_cast<Node *>(ptr);
+				}
 			}
 		}
 

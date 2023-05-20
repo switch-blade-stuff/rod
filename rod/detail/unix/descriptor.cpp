@@ -4,10 +4,7 @@
 
 #include "descriptor.hpp"
 
-#ifdef __unix__
-
 #include <unistd.h>
-#include <utility>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
@@ -15,7 +12,7 @@ namespace rod::detail
 	descriptor_handle::~descriptor_handle() { ::close(m_fd); }
 	std::error_code descriptor_handle::close() noexcept
 	{
-		if (::close(std::exchange(m_fd, -1))) [[unlikely]]
+		if (::close(release())) [[unlikely]]
 			return std::make_error_code(static_cast<std::errc>(errno));
 		else
 			return {};
@@ -62,4 +59,3 @@ namespace rod::detail
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
-#endif
