@@ -11,7 +11,7 @@
 #include <cstdio>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
-namespace rod::io
+namespace rod
 {
 	namespace detail
 	{
@@ -36,9 +36,12 @@ namespace rod::io
 		class native_file;
 	}
 
-	/** Structure representing an unbuffered file handle (such as a posix file descriptor or win32 HANDLE). */
-	class basic_file;
-	/** Structure representing a buffered file handle. */
-	class file;
+	namespace io
+	{
+		/** Structure representing an unbuffered file handle (such as a posix file descriptor or win32 HANDLE). */
+		class basic_file;
+		/** Structure representing a buffered file handle. */
+		class file;
+	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

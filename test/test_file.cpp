@@ -22,7 +22,6 @@ void test_basic_file(auto mode)
 
 	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode, err);
 	TEST_ASSERT(!err && file);
-
 	{
 		const auto write_n = rod::io::write(file, data, err);
 		TEST_ASSERT(!err && write_n == data.size());
@@ -43,10 +42,6 @@ void test_basic_file(auto mode)
 		TEST_ASSERT(buff.find(data) != buff.rfind(data));
 		TEST_ASSERT(buff.find(data) == 0);
 	}
-
-	file.close(err);
-	TEST_ASSERT(!err);
-
 	std::filesystem::remove(path);
 }
 

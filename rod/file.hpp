@@ -166,6 +166,13 @@ namespace rod::io
 	 	 * @throw std::system_error On failure to close the file. */
 		void close() { if (auto err = m_file.close(); err) [[unlikely]] throw std::system_error(err); }
 
+		/** @brief Flushes modified file data to the underlying device.
+		 * @param[out] err Reference to the error code set on failure to flush the file. */
+		void flush(std::error_code &err) noexcept { err = m_file.flush(); }
+		/** @copybrief flush
+	 	 * @throw std::system_error On failure to flush the file. */
+		void flush() { if (auto err = m_file.flush(); err) [[unlikely]] throw std::system_error(err); }
+
 		/** @brief Seeks to the specified offset within the file starting at the specified position.
 		 * @param[in] off Offset into the file starting at \a dir.
 		 * @param[in] dir Base direction to seek from.
@@ -212,7 +219,7 @@ namespace rod::io
 		/** Returns the underlying native file handle. */
 		[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return m_file.native_handle(); }
 
-		template<rod::detail::decays_to<basic_file> T, typename Dst>
+		template<detail::decays_to<basic_file> T, typename Dst>
 		friend std::size_t tag_invoke(read_t, T &&src, Dst &&dst, std::error_code &err) noexcept(nothrow_buffer<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
@@ -220,7 +227,7 @@ namespace rod::io
 			const auto dst_max = std::ranges::size(dst) * sizeof(value_t);
 			return src.m_file.read(static_cast<void *>(dst_ptr), dst_max, err);
 		}
-		template<rod::detail::decays_to<basic_file> T, typename Src>
+		template<detail::decays_to<basic_file> T, typename Src>
 		friend std::size_t tag_invoke(write_t, T &&dst, Src &&src, std::error_code &err) noexcept(nothrow_buffer<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
@@ -229,8 +236,8 @@ namespace rod::io
 			return dst.m_file.write(static_cast<const void *>(src_ptr), src_max, err);
 		}
 
-		template<rod::detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
-		friend std::size_t tag_invoke(read_at_t, T &&src, Pos &&pos, Dst &&dst, std::error_code &err) noexcept(rod::detail::nothrow_callable<read_t, T, Dst, std::error_code &>)
+		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
+		friend std::size_t tag_invoke(read_at_t, T &&src, Pos &&pos, Dst &&dst, std::error_code &err) noexcept(nothrow_buffer<Dst>)
 		{
 			/* Seek to the specified position within the file before reading. */
 			src.seek(static_cast<std::ptrdiff_t>(pos), beg, err);
@@ -238,8 +245,8 @@ namespace rod::io
 
 			return read(std::forward<T>(src), std::forward<Dst>(dst), err);
 		}
-		template<rod::detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
-		friend std::size_t tag_invoke(write_at_t, T &&dst, Pos &&pos, Src &&src, std::error_code &err) noexcept(rod::detail::nothrow_callable<write_t, T, Src, std::error_code &>)
+		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
+		friend std::size_t tag_invoke(write_at_t, T &&dst, Pos &&pos, Src &&src, std::error_code &err) noexcept(nothrow_buffer<Src>)
 		{
 			/* Seek to the specified position within the file before writing. */
 			dst.seek(static_cast<std::ptrdiff_t>(pos), beg, err);
