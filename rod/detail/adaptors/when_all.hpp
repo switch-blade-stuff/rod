@@ -69,7 +69,7 @@ namespace rod
 
 		struct stop_trigger
 		{
-			void operator()() noexcept { _src.request_stop(); }
+			void operator()() const noexcept { _src.request_stop(); }
 			in_place_stop_source &_src;
 		};
 

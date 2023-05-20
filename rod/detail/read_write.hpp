@@ -22,17 +22,17 @@ namespace rod::io
 		struct read_t
 		{
 			template<typename Src, buffer Buff> requires tag_invocable<read_t, Src, Buff, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff, std::error_code &err) noexcept
+			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff, std::error_code &err) const noexcept(nothrow_tag_invocable<read_t, Src, Buff, std::error_code &>)
 			{
 				return tag_invoke(*this, std::forward<Src>(src), std::forward<Buff>(buff), err);
 			}
 			template<typename Src, buffer Buff> requires tag_invocable<read_t, Src, Buff>
-			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff) const noexcept(nothrow_tag_invocable<read_t, Src, Buff>)
 			{
 				return tag_invoke(*this, std::forward<Src>(src), std::forward<Buff>(buff));
 			}
 			template<typename Src, buffer Buff> requires(!tag_invocable<read_t, Src, Buff>)
-			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff) const
 			{
 				static_assert(tag_invocable<read_t, Src, Buff, std::error_code &>);
 
@@ -47,17 +47,17 @@ namespace rod::io
 		struct read_at_t
 		{
 			template<typename Src, std::integral Pos, buffer Buff> requires tag_invocable<read_at_t, Src, Pos, Buff, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff, std::error_code &err) noexcept
+			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff, std::error_code &err) const noexcept(nothrow_tag_invocable<read_at_t, Src, Pos, Buff, std::error_code &>)
 			{
 				return tag_invoke(*this, std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff), err);
 			}
 			template<typename Src, std::integral Pos, buffer Buff> requires tag_invocable<read_at_t, Src, Pos, Buff>
-			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<read_at_t, Src, Pos, Buff>)
 			{
 				return tag_invoke(*this, std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff));
 			}
 			template<typename Src, std::integral Pos, buffer Buff> requires(!tag_invocable<read_at_t, Src, Pos, Buff>)
-			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff) const
 			{
 				static_assert(tag_invocable<read_at_t, Src, Pos, Buff, std::error_code &>);
 
@@ -186,17 +186,17 @@ namespace rod::io
 		struct write_t
 		{
 			template<typename Dst, typename Buff> requires tag_invocable<write_t, Dst, Buff, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Dst &&dst, Buff &&buff, std::error_code &err) noexcept
+			[[nodiscard]] std::size_t operator()(Dst &&dst, Buff &&buff, std::error_code &err) const noexcept(nothrow_tag_invocable<write_t, Dst, Buff, std::error_code &>)
 			{
 				return tag_invoke(*this, std::forward<Dst>(dst), std::forward<Buff>(buff), err);
 			}
 			template<typename Dst, typename Buff> requires tag_invocable<write_t, Dst, Buff>
-			[[nodiscard]] std::size_t operator()(Dst &&dst, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Dst &&dst, Buff &&buff) const noexcept(nothrow_tag_invocable<write_t, Dst, Buff>)
 			{
 				return tag_invoke(*this, std::forward<Dst>(dst), std::forward<Buff>(buff));
 			}
 			template<typename Dst, typename Buff> requires(!tag_invocable<write_t, Dst, Buff>)
-			[[nodiscard]] std::size_t operator()(Dst &&dst, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Dst &&dst, Buff &&buff) const
 			{
 				static_assert(tag_invocable<write_t, Dst, Buff, std::error_code &>);
 
@@ -211,17 +211,17 @@ namespace rod::io
 		struct write_at_t
 		{
 			template<typename Dst, std::integral Pos, buffer Buff> requires tag_invocable<write_at_t, Dst, Pos, Buff, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Dst &&dst, Pos &&pos, Buff &&buff, std::error_code &err) noexcept
+			[[nodiscard]] std::size_t operator()(Dst &&dst, Pos &&pos, Buff &&buff, std::error_code &err) const noexcept(nothrow_tag_invocable<write_at_t, Dst, Pos, Buff, std::error_code &>)
 			{
 				return tag_invoke(*this, std::forward<Dst>(dst), std::forward<Pos>(pos), std::forward<Buff>(buff), err);
 			}
 			template<typename Dst, std::integral Pos, buffer Buff> requires tag_invocable<write_at_t, Dst, Pos, Buff>
-			[[nodiscard]] std::size_t operator()(Dst &&dst, Pos &&pos, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Dst &&dst, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<write_at_t, Dst, Pos, Buff>)
 			{
 				return tag_invoke(*this, std::forward<Dst>(dst), std::forward<Pos>(pos), std::forward<Buff>(buff));
 			}
 			template<typename Dst, std::integral Pos, buffer Buff> requires(!tag_invocable<write_at_t, Dst, Pos, Buff>)
-			[[nodiscard]] std::size_t operator()(Dst &&dst, Pos &&pos, Buff &&buff)
+			[[nodiscard]] std::size_t operator()(Dst &&dst, Pos &&pos, Buff &&buff) const
 			{
 				static_assert(tag_invocable<write_at_t, Dst, Pos, Buff, std::error_code &>);
 

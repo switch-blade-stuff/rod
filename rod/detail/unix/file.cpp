@@ -3,7 +3,6 @@
  */
 
 #include "file.hpp"
-#include "rod/file.hpp"
 
 #ifdef __unix__
 
@@ -27,14 +26,14 @@ namespace rod::io::detail
 		if (const auto res = ::read(m_fd, dst, n); res < 0) [[unlikely]]
 			return (err = std::make_error_code(static_cast<std::errc>(errno)), 0);
 		else
-			return static_cast<std::size_t>(res);
+			return (err = {}, static_cast<std::size_t>(res));
 	}
 	std::size_t descriptor_handle::write(const void *src, std::size_t n, std::error_code &err) noexcept
 	{
 		if (const auto res = ::write(m_fd, src, n); res < 0) [[likely]]
 			return (err = std::make_error_code(static_cast<std::errc>(errno)), 0);
 		else
-			return static_cast<std::size_t>(res);
+			return (err = {}, static_cast<std::size_t>(res));
 	}
 
 	std::size_t descriptor_handle::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
@@ -42,14 +41,14 @@ namespace rod::io::detail
 		if (const auto res = ::lseek(m_fd, off, dir); res < 0) [[likely]]
 			return (err = std::make_error_code(static_cast<std::errc>(errno)), 0);
 		else
-			return static_cast<std::size_t>(res);
+			return (err = {}, static_cast<std::size_t>(res));
 	}
 	std::size_t descriptor_handle::tell(std::error_code &err) const noexcept
 	{
 		if (const auto res = ::lseek(m_fd, 0, SEEK_CUR); res < 0) [[likely]]
 			return (err = std::make_error_code(static_cast<std::errc>(errno)), 0);
 		else
-			return static_cast<std::size_t>(res);
+			return (err = {}, static_cast<std::size_t>(res));
 	}
 
 	static inline int native_flags(int flags) noexcept
@@ -72,7 +71,8 @@ namespace rod::io::detail
 
 	native_file native_file::open(const char *path, int mode, std::error_code &err) noexcept
 	{
-		const auto fd = ::open(path, native_flags(mode));
+		constexpr auto perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+		const auto fd = ::open(path, native_flags(mode), perms);
 		if (fd < 0) [[unlikely]] goto fail;
 
 		if ((mode & openmode::ate) && ::lseek(fd, 0, SEEK_END) < 0) [[unlikely]]
@@ -80,10 +80,10 @@ namespace rod::io::detail
 			::close(fd);
 			goto fail;
 		}
-		return native_file{fd};
+
+		return (err = {}, native_file{fd});
 	fail:
-		err = std::make_error_code(static_cast<std::errc>(errno));
-		return native_file{};
+		return (err = std::make_error_code(static_cast<std::errc>(errno)), native_file{});
 	}
 	native_file native_file::reopen(native_handle_type other_fd, int mode, std::error_code &err) noexcept
 	{
@@ -101,10 +101,9 @@ namespace rod::io::detail
 			::close(new_fd);
 			goto fail;
 		}
-		return native_file{new_fd};
+		return (err = {}, native_file{new_fd});
 	fail:
-		err = std::make_error_code(static_cast<std::errc>(errno));
-		return native_file{};
+		return (err = std::make_error_code(static_cast<std::errc>(errno)), native_file{});
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
