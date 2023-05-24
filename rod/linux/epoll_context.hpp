@@ -33,6 +33,8 @@ namespace rod
 
 		template<typename Env>
 		concept stoppable_env = stoppable_token<stop_token_of_t<Env> &>;
+		template<typename Snd, typename Env>
+		using make_signs = make_completion_signatures<Snd, Env, completion_signatures<set_error_t(std::exception_ptr)>>;
 
 		struct operation_base
 		{
@@ -194,7 +196,7 @@ namespace rod
 			 * @param max Maximum size of the internal EPOLL event buffer.
 			 * @throw std::system_error On failure to initialize EPOLL descriptors.
 			 * @throw std::bad_alloc On failure to allocate EPOLL event buffer. */
-			ROD_PUBLIC context(std::size_t max);
+			ROD_PUBLIC explicit context(std::size_t max);
 			ROD_PUBLIC ~context();
 
 			/** Blocks the current thread until stopped via \a tok and handles EPOLL operations.

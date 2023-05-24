@@ -71,6 +71,14 @@ namespace rod::_epoll
 		max = std::min<std::size_t>(max ? max : default_max_events, std::numeric_limits<int>::max());
 		m_events = {new epoll_event[max], max};
 	}
+	context::~context()
+	{
+		assert(m_consumer_tid == std::thread::id{});
+		epoll_event event = {};
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, m_timer_fd.native_handle(), &event);
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, m_event_fd.native_handle(), &event);
+		delete[] m_events.data();
+	}
 
 	void context::schedule_producer(operation_base *node)
 	{
