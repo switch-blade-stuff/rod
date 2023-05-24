@@ -4,6 +4,10 @@
 
 #pragma once
 
+#ifdef __linux__
+#include <linux/version.h>
+#endif
+
 #include "api.hpp"
 
 /* MSVC does not support standard no_unique_address */
@@ -13,12 +17,12 @@
 #define ROD_NO_UNIQUE_ADDRESS no_unique_address
 #endif
 
-#if !defined(ROD_NO_AIO) && defined(__unix__)
-#ifndef ROD_HAS_AIO
-#define ROD_HAS_AIO
+#if !defined(ROD_NO_EPOLL) && LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0)
+#ifndef ROD_HAS_EPOLL
+#define ROD_HAS_EPOLL
 #endif
-#elif defined(ROD_HAS_AIO)
-#undef ROD_HAS_AIO
+#elif defined(ROD_HAS_EPOLL)
+#undef ROD_HAS_EPOLL
 #endif
 
 #if !defined(ROD_NO_COROUTINES) && defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L

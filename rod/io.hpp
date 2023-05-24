@@ -4,5 +4,9 @@
 
 #pragma once
 
-#include "detail/read_write.hpp"
+#include "detail/io_buffer.hpp"
+#include "detail/adaptors/read_some.hpp"
+#include "detail/adaptors/write_some.hpp"
+
+#include "linux/epoll_context.hpp"
 #include "file.hpp"

@@ -7,10 +7,10 @@
 #include "detail/file_fwd.hpp"
 
 /* Platform-specific implementations. */
-#include "detail/unix/file.hpp"
+#include "unix/detail/file.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
-namespace rod::io
+namespace rod::_file
 {
 	static_assert(requires { typename detail::native_file; }, "Native file interface must be implemented for the current platform");
 
@@ -220,7 +220,7 @@ namespace rod::io
 		[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return m_file.native_handle(); }
 
 		template<detail::decays_to<basic_file> T, typename Dst>
-		friend std::size_t tag_invoke(read_t, T &&src, Dst &&dst, std::error_code &err) noexcept(nothrow_buffer<Dst>)
+		friend std::size_t tag_invoke(read_some_t, T &&src, Dst &&dst, std::error_code &err) noexcept(nothrow_buffer<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
 			const auto dst_ptr = std::to_address(std::ranges::begin(dst));
@@ -228,7 +228,7 @@ namespace rod::io
 			return src.m_file.read(static_cast<void *>(dst_ptr), dst_max, err);
 		}
 		template<detail::decays_to<basic_file> T, typename Src>
-		friend std::size_t tag_invoke(write_t, T &&dst, Src &&src, std::error_code &err) noexcept(nothrow_buffer<Src>)
+		friend std::size_t tag_invoke(write_some_t, T &&dst, Src &&src, std::error_code &err) noexcept(nothrow_buffer<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
 			const auto src_ptr = std::to_address(std::ranges::begin(src));
@@ -237,22 +237,22 @@ namespace rod::io
 		}
 
 		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
-		friend std::size_t tag_invoke(read_at_t, T &&src, Pos &&pos, Dst &&dst, std::error_code &err) noexcept(nothrow_buffer<Dst>)
+		friend std::size_t tag_invoke(read_some_at_t, T &&src, Pos &&pos, Dst &&dst, std::error_code &err) noexcept(nothrow_buffer<Dst>)
 		{
 			/* Seek to the specified position within the file before reading. */
 			src.seek(static_cast<std::ptrdiff_t>(pos), beg, err);
 			if (err) [[unlikely]] return 0;
 
-			return read(std::forward<T>(src), std::forward<Dst>(dst), err);
+			return read_some(std::forward<T>(src), std::forward<Dst>(dst), err);
 		}
 		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
-		friend std::size_t tag_invoke(write_at_t, T &&dst, Pos &&pos, Src &&src, std::error_code &err) noexcept(nothrow_buffer<Src>)
+		friend std::size_t tag_invoke(write_some_at_t, T &&dst, Pos &&pos, Src &&src, std::error_code &err) noexcept(nothrow_buffer<Src>)
 		{
 			/* Seek to the specified position within the file before writing. */
 			dst.seek(static_cast<std::ptrdiff_t>(pos), beg, err);
 			if (err) [[unlikely]] return 0;
 
-			return write(std::forward<T>(dst), std::forward<Src>(src), err);
+			return write_some(std::forward<T>(dst), std::forward<Src>(src), err);
 		}
 
 		constexpr void swap(basic_file &other) noexcept

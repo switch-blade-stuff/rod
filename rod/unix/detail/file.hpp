@@ -8,7 +8,7 @@
 
 #include <cstdio>
 
-#include "../file_fwd.hpp"
+#include "../../detail/file_fwd.hpp"
 #include "descriptor.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN

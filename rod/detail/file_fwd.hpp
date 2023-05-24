@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "read_write.hpp"
+#include "adaptors/read_some.hpp"
+#include "adaptors/write_some.hpp"
 
 #include <filesystem>
 #include <string>
@@ -36,12 +37,15 @@ namespace rod
 		class native_file;
 	}
 
-	namespace io
+	namespace _file
 	{
-		/** Structure representing an unbuffered file handle (such as a posix file descriptor or win32 HANDLE). */
+		/** Unbuffered file handle (such as a posix file descriptor or win32 HANDLE). */
 		class basic_file;
-		/** Structure representing a buffered file handle. */
+		/** Buffered file handle. */
 		class file;
 	}
+
+	using _file::basic_file;
+	using _file::file;
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

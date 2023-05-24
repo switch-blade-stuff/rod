@@ -16,7 +16,7 @@ namespace rod
 {
 	namespace _split
 	{
-		struct split_sender_tag {};
+		struct sender_tag {};
 
 		struct stop_trigger
 		{
@@ -190,7 +190,7 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		struct sender<Snd, Env>::type : split_sender_tag
+		struct sender<Snd, Env>::type : sender_tag
 		{
 			using is_sender = std::true_type;
 
@@ -237,9 +237,9 @@ namespace rod
 			}
 
 			/* split(_split::sender::type) should not split. */
-			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd> && !tag_invocable<split_t, Snd> && !std::derived_from<std::decay_t<Snd>, split_sender_tag>)
+			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<split_t, set_value_t, Snd> && !tag_invocable<split_t, Snd> && !std::derived_from<std::decay_t<Snd>, sender_tag>)
 			[[nodiscard]] sender_t<Snd> operator()(Snd &&snd) const { return sender_t<Snd>{std::forward<Snd>(snd)}; }
-			template<typename Snd> requires(std::derived_from<std::decay_t<Snd>, split_sender_tag>)
+			template<typename Snd> requires(std::derived_from<std::decay_t<Snd>, sender_tag>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept { return std::forward<Snd>(snd); }
 
 			[[nodiscard]] constexpr back_adaptor operator()() const noexcept { return {}; }

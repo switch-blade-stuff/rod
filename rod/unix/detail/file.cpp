@@ -44,7 +44,7 @@ namespace rod::detail
 
 		return (err = {}, native_file{fd});
 	fail:
-		return (err = std::make_error_code(static_cast<std::errc>(errno)), native_file{});
+		return (err = errno_code(), native_file{});
 	}
 	native_file native_file::reopen(native_handle_type other_fd, int mode, std::error_code &err) noexcept
 	{
@@ -52,7 +52,7 @@ namespace rod::detail
 		if (new_fd < 0) [[unlikely]] goto fail;
 
 		/* Make sure to close the file if we fail to update flags. */
-		if (::fcntl(new_fd, F_SETFD, native_flags(mode)) < 0) [[unlikely]]
+		if (::fcntl(new_fd, F_SETFD, native_flags(mode))) [[unlikely]]
 		{
 			::close(new_fd);
 			goto fail;
@@ -64,13 +64,13 @@ namespace rod::detail
 		}
 		return (err = {}, native_file{new_fd});
 	fail:
-		return (err = std::make_error_code(static_cast<std::errc>(errno)), native_file{});
+		return (err = errno_code(), native_file{});
 	}
 
 	std::error_code native_file::flush() noexcept
 	{
 		if (::fsync(native_handle())) [[unlikely]]
-			return std::make_error_code(static_cast<std::errc>(errno));
+			return errno_code();
 		else
 			return {};
 	}

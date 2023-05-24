@@ -30,9 +30,6 @@ namespace rod
 		public:
 			constexpr operation(run_loop *loop, void (*invoke)(operation *) noexcept) noexcept : invoke_func(invoke), loop(loop) {}
 
-			friend constexpr void tag_invoke(detail::next_t, operation &node, operation *ptr) noexcept { node.next = ptr; }
-			friend constexpr auto tag_invoke(detail::next_t, operation &node) noexcept { return node.next; }
-
 			void invoke() noexcept { invoke_func(this); }
 
 			void (*invoke_func)(operation *) noexcept;
@@ -154,9 +151,20 @@ namespace rod
 			/** Returns a scheduler used to schedule work to be executed on the run loop. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept { return {this}; }
 
-			/** Blocks until work is available (or finish is called), then runs all scheduled work until the queue is empty or the run loop is cancelled. */
-			void run() { while (auto node = pop_node()) node->invoke(); }
-			/** Changes the internal state to stopped. Any in-progress work will run to completion. */
+			/** Repeatedly blocks until the run loop is stopped or any work is available. */
+			void run() { run_impl(true); }
+			/** Blocks until the run loop is stopped or any work is available.
+			 * @return `true` if a task has been executed, `false` if the run loop was stopped. */
+			bool run_one() { return run_one_impl(true); }
+
+			/** Runs all currently available tasks until the queue is empty or the run loop is stopped without blocking.
+			 * @return Total number of tasks executed. */
+			void poll() { run_impl(false); }
+			/** Runs a single available task and returns without blocking.
+			 * @return `true` if a task has been executed, `false` if the queue was empty or stopped. */
+			bool poll_one() { return run_one_impl(false); }
+
+			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */
 			void finish() { m_queue.terminate(); }
 
 			/** Returns copy of the stop source associated with the run loop. */
@@ -167,15 +175,25 @@ namespace rod
 			void request_stop() { m_stop_source.request_stop(); }
 
 		private:
-			void push_node(operation<> &node) { m_queue.push(&node); }
-			[[nodiscard]] operation<> *pop_node() { return m_queue.pop(); }
+			void run_impl(bool block)
+			{
+				while (auto node = m_queue.pop(block))
+					node->invoke();
+			}
+			bool run_one_impl(bool block)
+			{
+				if (auto node = m_queue.pop(block); node)
+					return (node->invoke(), true);
+				else
+					return false;
+			}
 
-			detail::atomic_queue<operation<>> m_queue;
+			detail::atomic_queue<operation<>, &operation<>::next> m_queue;
 			in_place_stop_source m_stop_source;
 		};
 
 		template<typename R>
-		void operation<R>::start() noexcept try { loop->push_node(*this); } catch (...) { set_error(std::move(m_rcv), std::current_exception()); }
+		void operation<R>::start() noexcept try { loop->m_queue.push(this); } catch (...) { set_error(std::move(m_rcv), std::current_exception()); }
 
 		template<typename T>
 		constexpr scheduler sender::env::get_scheduler() const noexcept { return m_loop->get_scheduler(); }

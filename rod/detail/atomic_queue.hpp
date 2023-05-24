@@ -6,45 +6,46 @@
 
 #include <atomic>
 
-#include "../utility.hpp"
+#include "basic_queue.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	inline constexpr struct next_t
-	{
-		template<typename V>
-		constexpr decltype(auto) operator()(auto &node, V &&val) const { return tag_invoke(*this, node, std::forward<V>(val)); }
-		constexpr decltype(auto) operator()(auto &node) const { return tag_invoke(*this, node); }
-	} node_next = {};
-
-	template<typename Node>
+	template<typename Node, auto *Node::*Next>
 	struct atomic_queue
 	{
-		void terminate() noexcept
+		void terminate(bool notify = true) noexcept
 		{
 			head.store(sentinel(), std::memory_order_release);
-			notify_all();
+			if (notify) notify_all();
 		}
-		bool push(Node *node) noexcept
+		bool try_terminate(bool notify = true) noexcept
+		{
+			if (void *old = nullptr; head.compare_exchange_strong(old, sentinel(), std::memory_order_acq_rel))
+			{
+				if (notify) notify_all();
+				return true;
+			}
+			return false;
+		}
+
+		bool push(Node *node, bool notify = true) noexcept
 		{
 			for (auto ptr = head.load(std::memory_order_relaxed);;)
 			{
-				if (ptr == sentinel()) return false;
-
-				node_next(*node, static_cast<Node *>(ptr));
+				node->*Next = (ptr == sentinel() ? nullptr : static_cast<Node *>(ptr));
 				if (head.compare_exchange_weak(ptr, node, std::memory_order_acq_rel, std::memory_order_relaxed))
 				{
-					notify_one();
-					return true;
+					if (notify) notify_one();
+					return ptr == sentinel();
 				}
 			}
 		}
-		[[nodiscard]] Node *pop() noexcept
+		[[nodiscard]] Node *pop(bool block = true, bool notify = true) noexcept
 		{
 			for (auto ptr = head.load(std::memory_order_relaxed);;)
 			{
-				if (ptr == sentinel())
+				if (ptr == sentinel() || (!ptr && !block))
 					return nullptr;
 				else if (!ptr)
 				{
@@ -53,11 +54,12 @@ namespace rod::detail
 					continue;
 				}
 
-				const auto next = node_next(*static_cast<Node *>(ptr));
-				if (head.compare_exchange_weak(ptr, next, std::memory_order_acq_rel, std::memory_order_relaxed))
+				const auto node = static_cast<Node *>(ptr);
+				if (head.compare_exchange_weak(ptr, node->*Next, std::memory_order_acq_rel, std::memory_order_relaxed))
 				{
-					head.notify_one();
-					return static_cast<Node *>(ptr);
+					if (notify) notify_one();
+					node->*Next = {};
+					return node;
 				}
 			}
 		}
@@ -66,6 +68,20 @@ namespace rod::detail
 		void notify_all() noexcept { head.notify_all(); }
 		void wait(void *old = nullptr) noexcept { head.wait(old); }
 		[[nodiscard]] void *sentinel() const noexcept { return const_cast<atomic_queue *>(this); }
+
+		/* Convert to a basic queue with `head` becoming the tail of the new queue. */
+		[[nodiscard]] explicit operator basic_queue<Node, Next>() && noexcept
+		{
+			auto node = static_cast<Node *>(head.exchange({}, std::memory_order_acq_rel));
+			basic_queue<Node, Next> result;
+			result.tail = node;
+			while (node)
+			{
+				const auto next = std::exchange(node->*Next, result.head);
+				result.head = std::exchange(node, next);
+			}
+			return result;
+		}
 
 		std::atomic<void *> head = {};
 	};

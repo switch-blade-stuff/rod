@@ -21,7 +21,7 @@ namespace rod
 		};
 	}
 
-	/** Customization point object used to obtain a scheduler from from the passed object. */
+	/** Customization point object used to obtain a scheduler from the passed object. */
 	inline constexpr auto get_scheduler = get_scheduler_t{};
 
 	inline namespace _get_delegatee_scheduler

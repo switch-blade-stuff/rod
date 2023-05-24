@@ -1,6 +1,14 @@
 
 include(${CMAKE_CURRENT_LIST_DIR}/detail/CMakeLists.txt)
 
+# Platform subdirectories
+if (UNIX)
+    include(${CMAKE_CURRENT_LIST_DIR}/unix/CMakeLists.txt)
+endif ()
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(${CMAKE_CURRENT_LIST_DIR}/linux/CMakeLists.txt)
+endif ()
+
 list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/tag.hpp
         ${CMAKE_CURRENT_LIST_DIR}/utility.hpp

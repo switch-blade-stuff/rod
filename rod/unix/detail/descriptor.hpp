@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "../config.hpp"
+#include "../../detail/config.hpp"
 
 #ifdef __unix__
 
@@ -14,6 +14,8 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
+	static inline std::error_code errno_code() noexcept { return {errno, std::system_category()}; }
+
 	/* RAII handle to a file descriptor. */
 	class descriptor_handle
 	{
