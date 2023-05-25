@@ -7,11 +7,50 @@
 #include "common.hpp"
 
 using basic_file_t = rod::basic_file;
-using file_t = rod::file;
+using async_file_t = rod::async_file;
 
 const auto path = std::filesystem::path{"test.txt"};
 const auto data = std::string_view{"hello, world"};
 
+void test_async_file(auto mode)
+{
+	auto buff = std::string(data.size() * 2, '\0');
+	rod::in_place_stop_source src;
+	rod::epoll_context ctx;
+	std::error_code err;
+
+	auto trd = std::jthread{[&]() { ctx.run(src.get_token()); }};
+
+	if (mode & basic_file_t::noreplace)
+		std::filesystem::remove(path);
+
+	auto file = async_file_t::open(path, basic_file_t::in | basic_file_t::out | mode, err);
+	TEST_ASSERT(!err && file.is_open());
+	auto sch = ctx.get_scheduler();
+	{
+		auto snd = rod::schedule(sch) |
+		           rod::async_write_some(file, std::span{data}) |
+		           rod::then([](auto n) { TEST_ASSERT(n == data.size()); }) |
+		           rod::then([&]() { file.seek(0, async_file_t::beg); }) |
+		           rod::async_read_some(file, std::span{buff}) |
+		           rod::then([](auto n) { TEST_ASSERT(n == data.size()); }) |
+		           rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
+		rod::sync_wait(snd);
+	}
+	{
+		auto snd = rod::schedule(sch) |
+		           rod::async_write_some_at(file, data.size(), std::span{data}) |
+		           rod::then([](auto n) { TEST_ASSERT(n == data.size()); }) |
+		           rod::async_read_some_at(file, 0, std::span{buff}) |
+		           rod::then([](auto n) { TEST_ASSERT(n == data.size() * 2); }) |
+		           rod::then([&]() { TEST_ASSERT(buff.find(data) != buff.rfind(data)); }) |
+		           rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
+		rod::sync_wait(snd);
+	}
+
+	std::filesystem::remove(path);
+	src.request_stop();
+}
 void test_basic_file(auto mode)
 {
 	auto buff = std::string(data.size() * 2, '\0');
@@ -21,7 +60,7 @@ void test_basic_file(auto mode)
 		std::filesystem::remove(path);
 
 	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode, err);
-	TEST_ASSERT(!err && file);
+	TEST_ASSERT(!err && file.is_open());
 	{
 		const auto write_n = rod::write_some(file, data, err);
 		TEST_ASSERT(!err && write_n == data.size());
@@ -43,20 +82,6 @@ void test_basic_file(auto mode)
 		TEST_ASSERT(buff.find(data) != buff.rfind(data));
 		TEST_ASSERT(buff.find(data) == 0);
 	}
-	{
-		rod::epoll_context ctx;
-//		auto sch = ctx.get_scheduler();
-//
-//		static_assert(!requires { rod::async_read_some(rod::just(), file, std::span{buff}); });
-//		static_assert(!requires { rod::async_write_some(rod::just(), file, std::span{buff}); });
-//		static_assert(requires { rod::async_read_some(rod::schedule(sch), file, std::span{buff}); });
-//		static_assert(requires { rod::async_write_some(rod::schedule(sch), file, std::span{buff}); });
-//
-//		static_assert(!requires { rod::async_read_some_at(rod::just(), file, 0, std::span{buff}); });
-//		static_assert(!requires { rod::async_write_some_at(rod::just(), file, 0, std::span{buff}); });
-//		static_assert(requires { rod::async_read_some_at(rod::schedule(sch), file, 0, std::span{buff}); });
-//		static_assert(requires { rod::async_write_some_at(rod::schedule(sch), file, 0, std::span{buff}); });
-	}
 	std::filesystem::remove(path);
 }
 
@@ -64,4 +89,6 @@ int main()
 {
 	test_basic_file(basic_file_t::trunc);
 	test_basic_file(basic_file_t::noreplace);
+	test_async_file(basic_file_t::trunc);
+	test_async_file(basic_file_t::noreplace);
 }

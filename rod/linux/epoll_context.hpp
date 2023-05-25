@@ -23,6 +23,7 @@ namespace rod
 {
 	namespace _epoll
 	{
+		struct scheduler;
 		class context;
 
 		using clock = monotonic_clock;
@@ -30,6 +31,56 @@ namespace rod
 
 		template<typename Env>
 		concept stoppable_env = stoppable_token<stop_token_of_t<Env> &>;
+
+		template<typename>
+		struct io_func;
+		template<>
+		struct io_func<async_read_some_t>
+		{
+			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
+
+			std::span<std::byte> buff;
+		};
+		template<>
+		struct io_func<async_write_some_t>
+		{
+			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
+
+			std::span<const std::byte> buff;
+		};
+		template<>
+		struct io_func<async_read_some_at_t>
+		{
+			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
+
+			std::span<std::byte> buff;
+			std::ptrdiff_t pos;
+		};
+		template<>
+		struct io_func<async_write_some_at_t>
+		{
+			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
+
+			std::span<const std::byte> buff;
+			std::ptrdiff_t pos;
+		};
+
+		template<typename, auto>
+		struct stop_cb {};
+		template<typename Env, typename Op, void (Op::*Stop)() noexcept> requires stoppable_env<Env>
+		struct stop_cb<Env, Stop>
+		{
+			struct callback
+			{
+				void operator()() const noexcept { op->*Stop(); }
+				Op *op;
+			};
+
+			constexpr void init(auto &&env, Op *ptr) noexcept { data.emplace(get_stop_token(env), callback{ptr}); }
+			constexpr void reset() noexcept { data.reset(); }
+
+			std::optional<stop_callback_for_t<stop_token_of_t<Env &>, callback>> data;
+		};
 
 		struct operation_base
 		{
@@ -58,32 +109,17 @@ namespace rod
 			context &_ctx;
 		};
 
-		struct scheduler;
 		template<typename Rcv>
 		struct timer_operation { struct type; };
 		template<typename Op, typename Rcv>
 		struct io_operation { struct type; };
 		template<typename Rcv>
 		struct operation { struct type; };
-		template<typename T>
-		struct sender { struct type; };
-
-		template<typename, auto>
-		struct stop_cb {};
-		template<typename Env, typename Op, void (Op::*Stop)() noexcept> requires stoppable_env<Env>
-		struct stop_cb<Env, Stop>
-		{
-			struct callback
-			{
-				void operator()() const noexcept { op->*Stop(); }
-				Op *op;
-			};
-
-			constexpr void init(auto &&env, Op *ptr) noexcept { data.emplace(get_stop_token(env), callback{ptr}); }
-			constexpr void reset() noexcept { data.reset(); }
-
-			std::optional<stop_callback_for_t<stop_token_of_t<Env &>, callback>> data;
-		};
+		template<typename Op>
+		struct io_sender { struct type; };
+		struct timer_sender;
+		struct sender;
+		struct env;
 
 		template<typename Rcv>
 		struct operation<Rcv>::type : operation_base
@@ -108,7 +144,7 @@ namespace rod
 			}
 
 			template<typename Rcv1>
-			constexpr type(context &ctx, Rcv1 &&rcv) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx) { this->_notify = _bind_notify; }
+			constexpr type(context &ctx, Rcv1 &&rcv) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx) { _notify_func = _bind_notify; }
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -173,12 +209,14 @@ namespace rod
 		{
 			enum _flags_t { stop_possible = 1, stop_requested = 4, io_done = 8 };
 
+			using _func_t = io_func<Op>;
+			
 			static void _notify_read(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_read(); }
 			static void _notify_start(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_start_consumer(); }
 			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
 
 			template<typename Rcv1>
-			explicit type(context &ctx, int fd, Rcv1 &&rcv, Op op) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx), _fd(fd), _op(std::move(op)) {}
+			explicit type(context &ctx, int fd, Rcv1 &&rcv, _func_t func) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx), _func(std::move(func)), _fd(fd) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -200,9 +238,9 @@ namespace rod
 
 			[[ROD_NO_UNIQUE_ADDRESS]] _stop_cb_t _stop_cb;
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
-			[[ROD_NO_UNIQUE_ADDRESS]] Op _op;
 			std::atomic<int> _flags = {};
 			context &_ctx;
+			_func_t _func;
 			int _fd;
 		};
 
@@ -243,6 +281,9 @@ namespace rod
 			ROD_PUBLIC explicit context(std::size_t max);
 			ROD_PUBLIC ~context();
 
+			/** Returns a scheduler used to schedule work to be executed on the EPOLL context. */
+			[[nodiscard]] constexpr scheduler get_scheduler() noexcept;
+
 			/** Blocks the current thread until stopped via \a tok and handles EPOLL operations.
 			 * @throw std::system_error On implementation-defined internal failures.
 			 * @note Only one thread may call `run`. */
@@ -254,21 +295,26 @@ namespace rod
 					throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run`");
 
 				auto trigger = stop_trigger{m_stop_pending};
-				const auto on_stop = [&]() { schedule(&trigger); };
+				const auto on_stop = [&]()
+				{
+					std::error_code err = {};
+					schedule(&trigger, err);
+					if (err) [[unlikely]] throw std::system_error{err, "write(event_fd)"};
+				};
 				auto cb = stop_callback_for_t<Tok, decltype(on_stop)>{std::forward<Tok>(tok), on_stop};
 				run_impl();
 			}
 
 		private:
-			void schedule(operation_base *node)
+			void schedule(operation_base *node, std::error_code &err) noexcept
 			{
 				if (m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
-					schedule_producer(node);
+					schedule_producer(node, err);
 				else
 					schedule_consumer(node);
 			}
 
-			ROD_PUBLIC void schedule_producer(operation_base *node);
+			ROD_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
 			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
 
 			ROD_PUBLIC void insert_timer(timer_node *node) noexcept;
@@ -314,17 +360,19 @@ namespace rod
 		template<typename Rcv>
 		void operation<Rcv>::type::_start() noexcept
 		{
-			try { _ctx.schedule(this); }
-			catch (...) { set_error(std::move(_rcv), std::current_exception()); }
+			std::error_code err = {};
+			_ctx.schedule(this, err);
+			if (err) [[unlikely]] set_error(std::move(_rcv), err);
 		}
 		template<typename Rcv>
 		void timer_operation<Rcv>::type::_start() noexcept
 		{
 			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
 			{
+				std::error_code err = {};
 				_notify_func = [](operation_base *p) noexcept { static_cast<type *>(p)->_start_consumer(); };
-				try { _ctx.schedule_producer(this); }
-				catch (...) { set_error(std::move(_rcv), std::current_exception()); }
+				_ctx.schedule_producer(this, err);
+				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
 			else
 				_start_consumer();
@@ -334,9 +382,10 @@ namespace rod
 		{
 			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
 			{
+				std::error_code err = {};
 				complete_base::_notify_func = _notify_start;
-				try { _ctx.schedule_producer(static_cast<complete_base *>(this)); }
-				catch (...) { set_error(std::move(_rcv), std::current_exception()); }
+				_ctx.schedule_producer(static_cast<complete_base *>(this), err);
+				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
 			else
 				_start_consumer();
@@ -364,10 +413,10 @@ namespace rod
 		template<typename Op, typename Rcv>
 		void io_operation<Op, Rcv>::type::_start_consumer() noexcept
 		{
-			const auto res = _op(*this);
-			int err;
+			int err = {};
+			const auto res = _func(_fd, err);
 
-			if (res < 0 && ((err = errno) == EAGAIN || err == EWOULDBLOCK || err == EPERM))
+			if (res < 0 && (err == EAGAIN || err == EWOULDBLOCK || err == EPERM))
 			{
 				/* Schedule read operation via EPOLL. */
 				complete_base::_notify_func = _notify_read;
@@ -398,9 +447,13 @@ namespace rod
 				return;
 
 			_ctx.del_io(_fd);
-			if (const auto res = _op(*this); res >= 0)
+
+			int err = {};
+			const auto res = _func(_fd, err);
+
+			if (res >= 0)
 				_complete_value(res);
-			else if (const auto err = errno; err != ECANCELED)
+			else if (err != ECANCELED)
 				set_error(std::move(_rcv), std::error_code{err, std::system_category()});
 			else
 				set_stopped(std::move(_rcv));
@@ -450,7 +503,10 @@ namespace rod
 
 					op->_complete_stopped();
 				};
-				_ctx.schedule_producer(this);
+
+				std::error_code err = {};
+				_ctx.schedule_producer(this, err);
+				if (err) [[unlikely]] std::terminate();
 			}
 		}
 		template<typename Op, typename Rcv>
@@ -460,9 +516,167 @@ namespace rod
 			{
 				_ctx.del_io(_fd);
 				stop_base::_notify_func = _notify_stopped;
-				_ctx.schedule_producer(static_cast<stop_base *>(this));
+
+				std::error_code err = {};
+				_ctx.schedule_producer(static_cast<stop_base *>(this), err);
+				if (err) [[unlikely]] std::terminate();
 			}
 		}
+
+		struct env { context *_ctx; };
+
+		struct sender
+		{
+			using is_sender = std::true_type;
+
+			template<typename Rcv>
+			using _operation_t = typename operation<std::decay_t<Rcv>>::type;
+
+			using _error_signs_t =  completion_signatures<set_error_t(std::error_code), set_error_t(std::exception_ptr)>;
+			template<typename Env>
+			using _stop_signs_t = std::conditional_t<stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			template<typename Env>
+			using _signs_t = detail::concat_tuples_t<completion_signatures<set_value_t()>, _error_signs_t, _stop_signs_t<Env>>;
+
+			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {&s._ctx}; }
+			template<detail::decays_to<sender> T, typename Env>
+			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+
+			template<detail::decays_to<sender> T, typename Rcv>
+			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
+			{
+				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
+				return _operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv)};
+			}
+
+			context &_ctx;
+		};
+		struct timer_sender
+		{
+			using is_sender = std::true_type;
+
+			template<typename Rcv>
+			using _operation_t = typename timer_operation<std::decay_t<Rcv>>::type;
+
+			using _error_signs_t =  completion_signatures<set_error_t(std::error_code), set_error_t(std::exception_ptr)>;
+			template<typename Env>
+			using _stop_signs_t = std::conditional_t<stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			template<typename Env>
+			using _signs_t = detail::concat_tuples_t<completion_signatures<set_value_t()>, _error_signs_t, _stop_signs_t<Env>>;
+
+
+			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {&s._ctx}; }
+			template<detail::decays_to<timer_sender> T, typename Env>
+			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+
+			template<detail::decays_to<timer_sender> T, typename Rcv>
+			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
+			{
+				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
+				return _operation_t<Rcv>{s._ctx, s._tp, std::forward<Rcv>(rcv)};
+			}
+
+			time_point _tp;
+			context &_ctx;
+		};
+		template<typename Op>
+		struct io_sender<Op>::type
+		{
+			using is_sender = std::true_type;
+
+			template<typename Rcv>
+			using _operation_t = typename io_operation<Op, std::decay_t<Rcv>>::type;
+			using _func_t = io_func<Op>;
+
+			using _value_signs_t =  completion_signatures<set_value_t(std::size_t)>;
+			using _error_signs_t =  completion_signatures<set_error_t(std::error_code), set_error_t(std::exception_ptr)>;
+			template<typename Env>
+			using _stop_signs_t = std::conditional_t<stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			template<typename Env>
+			using _signs_t = detail::concat_tuples_t<_value_signs_t, _error_signs_t, _stop_signs_t<Env>>;
+
+			constexpr type(context &ctx, int fd, _func_t func) noexcept : _ctx(ctx), _func(func), _fd(fd) {}
+
+
+			friend constexpr env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
+			template<detail::decays_to<type> T, typename Env>
+			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+
+			template<detail::decays_to<type> T, typename Rcv>
+			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
+			{
+				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
+				return _operation_t<Rcv>{s._ctx, s._fd, std::forward<Rcv>(rcv), std::forward<T>(s)._func};
+			}
+
+			context &_ctx;
+			_func_t _func;
+			int _fd;
+		};
+
+		struct scheduler
+		{
+			template<typename Op>
+			using _io_sender_t = typename io_sender<Op>::type;
+
+			template<typename R>
+			static constexpr auto as_byte_buffer(R &&range) { return make_byte_buffer(std::to_address(std::ranges::begin(range)), std::ranges::size(range)); }
+
+			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::weakly_parallel; }
+			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
+
+			template<detail::decays_to<scheduler> T>
+			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{*s._ctx}; }
+			template<detail::decays_to<scheduler> T, detail::decays_to<time_point> TP>
+			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), *s._ctx}; }
+			template<detail::decays_to<scheduler> T, typename Dur>
+			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), monotonic_clock::now() + dur); }
+
+			template<typename Snd, detail::decays_to<scheduler> T, typename Dst>
+			friend decltype(auto) tag_invoke(async_read_some_t, T &&sch, Snd &&snd, int fd, Dst &&dst)
+			{
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, buff = as_byte_buffer(std::forward<Dst>(dst))]()
+				{
+					return _io_sender_t<async_read_some_t>{*ctx, fd, {buff}};
+				});
+			}
+			template<typename Snd, detail::decays_to<scheduler> T, typename Src>
+			friend decltype(auto) tag_invoke(async_write_some_t, T &&sch, Snd &&snd, int fd, Src &&src)
+			{
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, buff = as_byte_buffer(std::forward<Src>(src))]()
+				{
+					return _io_sender_t<async_write_some_t>{*ctx, fd, {buff}};
+				});
+			}
+			template<typename Snd, detail::decays_to<scheduler> T, std::convertible_to<std::ptrdiff_t> Pos,  typename Dst>
+			friend decltype(auto) tag_invoke(async_read_some_at_t, T &&sch, Snd &&snd, int fd, Pos pos, Dst &&dst)
+			{
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos = static_cast<std::ptrdiff_t>(pos), buff = as_byte_buffer(std::forward<Dst>(dst))]()
+				{
+					return _io_sender_t<async_read_some_at_t>{*ctx, fd, {buff, pos}};
+				});
+			}
+			template<typename Snd, detail::decays_to<scheduler> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
+			friend decltype(auto) tag_invoke(async_write_some_at_t, T &&sch, Snd &&snd, int fd, Pos pos, Src &&src)
+			{
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos = static_cast<std::ptrdiff_t>(pos), buff = as_byte_buffer(std::forward<Src>(src))]()
+				{
+					return _io_sender_t<async_write_some_at_t>{*ctx, fd, {buff, pos}};
+				});
+			}
+
+			/** Returns the current time point of the clock used by the EPOLL context. */
+			[[nodiscard]] time_point now() const noexcept { return monotonic_clock::now(); }
+
+			constexpr bool operator==(const scheduler &) const noexcept = default;
+
+			context *_ctx;
+		};
+
+		constexpr auto tag_invoke(get_delegatee_scheduler_t, const env &e) noexcept { return scheduler{e._ctx}; }
+		constexpr auto tag_invoke(get_scheduler_t, const env &e) noexcept { return scheduler{e._ctx}; }
+
+		constexpr scheduler context::get_scheduler() noexcept { return {this}; }
 	}
 
 	/** Linux-specific execution context implemented via EPOLL. */

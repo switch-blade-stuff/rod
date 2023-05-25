@@ -39,22 +39,22 @@ namespace rod
 		struct write_some_at_t
 		{
 			template<typename Hnd, std::integral Pos, io_buffer Src> requires tag_invocable<write_some_at_t, Hnd, Pos, Src, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Src &&src, std::error_code &err) const noexcept(nothrow_tag_invocable<write_some_at_t, Hnd, Pos, Src, std::error_code &>)
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos pos, Src &&src, std::error_code &err) const noexcept(nothrow_tag_invocable<write_some_at_t, Hnd, Pos, Src, std::error_code &>)
 			{
-				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Src>(src), err);
+				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Src>(src), err);
 			}
 			template<typename Hnd, std::integral Pos, io_buffer Src> requires tag_invocable<write_some_at_t, Hnd, Pos, Src>
-			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Src &&src) const noexcept(nothrow_tag_invocable<write_some_at_t, Hnd, Pos, Src>)
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<write_some_at_t, Hnd, Pos, Src>)
 			{
-				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Src>(src));
+				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
 			template<typename Hnd, std::integral Pos, io_buffer Src> requires(!tag_invocable<write_some_at_t, Hnd, Pos, Src>)
-			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Src &&src) const
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos pos, Src &&src) const
 			{
 				static_assert(tag_invocable<write_some_at_t, Hnd, Pos, Src, std::error_code &>);
 
 				std::error_code err = {};
-				if (const auto res = operator()(std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Src>(src), err); err)
+				if (const auto res = operator()(std::forward<Hnd>(hnd), pos, std::forward<Src>(src), err); err)
 					throw std::system_error(err);
 				else
 					return res;
@@ -75,7 +75,7 @@ namespace rod
 			template<sender Snd, typename Hnd, io_buffer Src> requires detail::tag_invocable_with_delegatee_scheduler<async_write_some_t, Snd, Snd, Hnd, Src>
 			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, delegatee_scheduler<Snd>, Snd, Hnd, Src>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
+				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
 			template<sender Snd, typename Hnd, io_buffer Src> requires(!detail::tag_invocable_with_delegatee_scheduler<async_write_some_t, Snd, Snd, Hnd, Src> && tag_invocable<async_write_some_t, Snd, Hnd, Src>)
 			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, Snd, Hnd, Src>)
@@ -99,20 +99,20 @@ namespace rod
 
 		public:
 			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires detail::tag_invocable_with_delegatee_scheduler<async_write_some_at_t, Snd, Snd, Hnd, Pos, Src>
-			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos &&pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Src>)
+			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Src>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Src>(src));
+				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
 			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires(!detail::tag_invocable_with_delegatee_scheduler<async_write_some_at_t, Snd, Snd, Hnd, Pos, Src> && tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
-			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos &&pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
+			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
 			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Src>(src));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
 
 			template<typename Hnd, std::integral Pos, io_buffer Src>
-			[[nodiscard]] back_adaptor<Hnd, Pos, Src> operator()(Hnd &&hnd, Pos &&pos, Src &&src) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Src>, async_write_some_at_t, Hnd, Pos, Src>)
+			[[nodiscard]] back_adaptor<Hnd, Pos, Src> operator()(Hnd &&hnd, Pos pos, Src &&src) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Src>, async_write_some_at_t, Hnd, Pos, Src>)
 			{
-				return back_adaptor<Hnd, Pos, Src>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Src>(src))};
+				return back_adaptor<Hnd, Pos, Src>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), pos, std::forward<Src>(src))};
 			}
 		};
 	}

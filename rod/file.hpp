@@ -21,6 +21,11 @@ namespace rod::_file
 	{
 		using native_t = detail::native_file;
 
+		[[nodiscard]] static constexpr int filter_mode(int mode) noexcept
+		{
+			return mode & ~(detail::ate | detail::trunc | detail::noreplace | detail::_async);
+		}
+
 	public:
 		using native_handle_type = typename native_t::native_handle_type;
 		using openmode = int;
@@ -53,8 +58,8 @@ namespace rod::_file
 		static constexpr seekdir end = detail::seekdir::end;
 		
 	protected:
-		constexpr file_handle(native_handle_type file, openmode mode) noexcept : m_file(file), m_mode(mode) {}
-		constexpr file_handle(native_t &&file, openmode mode) noexcept : m_file(std::move(file)), m_mode(mode) {}
+		constexpr file_handle(native_handle_type file, openmode mode) noexcept : m_file(file), m_mode(filter_mode(mode)) {}
+		constexpr file_handle(native_t &&file, openmode mode) noexcept : m_file(std::move(file)), m_mode(filter_mode(mode)) {}
 		
 	public:
 		constexpr file_handle() noexcept = default;
@@ -118,8 +123,6 @@ namespace rod::_file
 
 		/** Checks if the file is open. */
 		[[nodiscard]] constexpr bool is_open() const noexcept { return m_file.is_open(); }
-		/** @copydoc is_open */
-		[[nodiscard]] constexpr operator bool() const noexcept { return m_file.is_open(); }
 
 		/** Returns the mode flags used to open the file. */
 		[[nodiscard]] constexpr openmode mode() const noexcept { return m_mode; }
@@ -142,7 +145,6 @@ namespace rod::_file
 	{
 	public:
 		/** @brief Opens the file specified by \a path using mode flags \a flags.
-		 * @note `binary` mode flag is implied.
 		 * @param[in] path Path to the file to be opened.
 		 * @param[in] mode Mode flags to open the file with.
 		 * @return `basic_file` handle to the opened file.
@@ -161,7 +163,6 @@ namespace rod::_file
 		[[nodiscard]] static basic_file open(const std::filesystem::path &path, openmode mode) { return open(path.c_str(), mode); }
 
 		/** @copybrief open
-		 * @note `binary` mode flag is implied.
 		 * @param[in] path Path to the file to be opened.
 		 * @param[in] mode Mode flags to open the file with.
 		 * @param[out] err Reference to the error code set on failure to open the file.
@@ -169,7 +170,7 @@ namespace rod::_file
 		[[nodiscard]] static basic_file open(const char *path, openmode mode, std::error_code &err) noexcept
 		{
 			mode |= binary; /* binary mode is inferred. */
-			mode ^= mode & detail::_async;
+			mode &= ~detail::_async;
 			return {native_t::open(path, mode, err), mode};
 		}
 		/** @copydoc open */
@@ -178,7 +179,6 @@ namespace rod::_file
 		[[nodiscard]] static basic_file open(const std::filesystem::path &path, openmode mode, std::error_code &err) noexcept { return open(path.c_str(), mode, err); }
 
 		/** @brief Re-opens a file pointed to by a native file handle and mode flags.
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @return `basic_file` handle to the re-opened file.
@@ -192,7 +192,6 @@ namespace rod::_file
 				return res;
 		}
 		/** @copybrief reopen
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @param[out] err Reference to the error code set on failure to re-open the file.
@@ -200,32 +199,28 @@ namespace rod::_file
 		[[nodiscard]] static basic_file reopen(native_handle_type file, openmode mode, std::error_code &err) noexcept
 		{
 			mode |= binary; /* binary mode is inferred. */
-			mode ^= mode & (noreplace | detail::_async);
+			mode &= ~detail::_async;
 			return {native_t::reopen(file, mode, err), mode};
 		}
 
 		/** @brief Re-opens a file from an existing file handle.
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @return `basic_file` handle to the re-opened file.
 	 	 * @throw std::system_error On failure to reopen the file. */
 		[[nodiscard]] static basic_file reopen(const basic_file &file) { return reopen(file.native_handle(), file.mode()); }
 		/** @copybrief reopen
-		 * @note `binary` mode is implied and`noreplace` is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @param[out] err Reference to the error code set on failure to re-open the file.
 		 * @return `basic_file` handle to the re-opened file. */
 		[[nodiscard]] static basic_file reopen(const basic_file &file, std::error_code &err) noexcept { return reopen(file.native_handle(), file.mode(), err); }
 
 		/** @brief Re-opens a file from an existing file handle and mode flags.
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @return `basic_file` handle to the re-opened file.
 	 	 * @throw std::system_error On failure to reopen the file. */
 		[[nodiscard]] static basic_file reopen(const basic_file &file, openmode mode) { return reopen(file.native_handle(), mode); }
 		/** @copybrief reopen
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @param[out] err Reference to the error code set on failure to re-open the file.
@@ -262,7 +257,7 @@ namespace rod::_file
 		}
 
 		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
-		friend std::size_t tag_invoke(read_some_at_t, T &&src, Pos &&pos, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
+		friend std::size_t tag_invoke(read_some_at_t, T &&src, Pos pos, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
 			const auto dst_ptr = std::to_address(std::ranges::begin(dst));
@@ -270,7 +265,7 @@ namespace rod::_file
 			return src.m_file.read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err);
 		}
 		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
-		friend std::size_t tag_invoke(write_some_at_t, T &&dst, Pos &&pos, Src &&src, std::error_code &err) noexcept(noexcept_sizeable_range<Src>)
+		friend std::size_t tag_invoke(write_some_at_t, T &&dst, Pos pos, Src &&src, std::error_code &err) noexcept(noexcept_sizeable_range<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
 			const auto src_ptr = std::to_address(std::ranges::begin(src));
@@ -285,7 +280,6 @@ namespace rod::_file
 	{
 	public:
 		/** @brief Opens the file specified by \a path using mode flags \a flags.
-		 * @note `binary` mode flag is implied.
 		 * @param[in] path Path to the file to be opened.
 		 * @param[in] mode Mode flags to open the file with.
 		 * @return `basic_file` handle to the opened file.
@@ -320,7 +314,6 @@ namespace rod::_file
 		[[nodiscard]] static async_file open(const std::filesystem::path &path, openmode mode, std::error_code &err) noexcept { return open(path.c_str(), mode, err); }
 
 		/** @brief Re-opens a file pointed to by a native file handle and mode flags.
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @return `async_file` handle to the re-opened file.
@@ -334,7 +327,6 @@ namespace rod::_file
 				return res;
 		}
 		/** @copybrief reopen
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @param[out] err Reference to the error code set on failure to re-open the file.
@@ -342,32 +334,27 @@ namespace rod::_file
 		[[nodiscard]] static async_file reopen(native_handle_type file, openmode mode, std::error_code &err) noexcept
 		{
 			mode |= binary | detail::_async; /* binary & async modes are is inferred. */
-			mode ^= mode & noreplace;
 			return {native_t::reopen(file, mode, err), mode};
 		}
 
 		/** @brief Re-opens a file from an existing file handle.
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @return `async_file` handle to the re-opened file.
 	 	 * @throw std::system_error On failure to reopen the file. */
-		[[nodiscard]] static async_file reopen(const file_handle &file) { return reopen(file.native_handle(), file.mode()); }
+		[[nodiscard]] static async_file reopen(const async_file &file) { return reopen(file.native_handle(), file.mode()); }
 		/** @copybrief reopen
-		 * @note `binary` mode is implied and`noreplace` is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @param[out] err Reference to the error code set on failure to re-open the file.
 		 * @return `async_file` handle to the re-opened file. */
 		[[nodiscard]] static async_file reopen(const async_file &file, std::error_code &err) noexcept { return reopen(file.native_handle(), file.mode(), err); }
 
 		/** @brief Re-opens a file from an existing file handle and mode flags.
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @return `async_file` handle to the re-opened file.
 	 	 * @throw std::system_error On failure to reopen the file. */
 		[[nodiscard]] static async_file reopen(const async_file &file, openmode mode) { return reopen(file.native_handle(), mode); }
 		/** @copybrief reopen
-		 * @note `binary` mode flag is implied and `noreplace` flag is ignored.
 		 * @param[in] file Native Handle to an existing file to be re-opened.
 		 * @param[in] mode Mode flags to use when re-opening the file.
 		 * @param[out] err Reference to the error code set on failure to re-open the file.
@@ -398,14 +385,14 @@ namespace rod::_file
 		}
 
 		template<typename Snd, detail::decays_to<async_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires detail::callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>
-		friend decltype(auto) tag_invoke(async_read_some_at_t, Snd &&snd, T &&src, Pos &&pos, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>)
+		friend decltype(auto) tag_invoke(async_read_some_at_t, Snd &&snd, T &&src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>)
 		{
-			return async_read_some(std::forward<Snd>(snd), src.native_handle(), std::forward<Pos>(pos), std::forward<Dst>(dst));
+			return async_read_some_at(std::forward<Snd>(snd), src.native_handle(), pos, std::forward<Dst>(dst));
 		}
 		template<typename Snd, detail::decays_to<async_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires detail::callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>
-		friend decltype(auto) tag_invoke(async_write_some_at_t, Snd &&snd, T &&dst, Pos &&pos, Src &&src) noexcept(detail::nothrow_callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>)
+		friend decltype(auto) tag_invoke(async_write_some_at_t, Snd &&snd, T &&dst, Pos pos, Src &&src) noexcept(detail::nothrow_callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>)
 		{
-			return async_write_some(std::forward<Snd>(snd), dst.native_handle(), std::forward<Pos>(pos), std::forward<Src>(src));
+			return async_write_some_at(std::forward<Snd>(snd), dst.native_handle(), pos, std::forward<Src>(src));
 		}
 
 		constexpr void swap(async_file &other) noexcept { file_handle::swap(other); }

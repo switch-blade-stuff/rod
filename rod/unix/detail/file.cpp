@@ -54,7 +54,12 @@ namespace rod::detail
 		if (new_fd < 0) [[unlikely]] goto fail;
 
 		/* Make sure to close the file if we fail to update flags. */
-		if (::fcntl(new_fd, F_SETFD, native_flags(mode))) [[unlikely]]
+		if (::fcntl(new_fd, F_SETFD, O_CLOEXEC)) [[unlikely]]
+		{
+			::close(new_fd);
+			goto fail;
+		}
+		if (::fcntl(new_fd, F_SETFL, native_flags(mode))) [[unlikely]]
 		{
 			::close(new_fd);
 			goto fail;

@@ -39,22 +39,22 @@ namespace rod
 		struct read_some_at_t
 		{
 			template<typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Dst &&dst, std::error_code &err) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>)
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos pos, Dst &&dst, std::error_code &err) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>)
 			{
-				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst), err);
+				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst), err);
 			}
 			template<typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<read_some_at_t, Hnd, Pos, Dst>
-			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst));
+				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
 			template<typename Hnd, std::integral Pos, io_buffer Dst> requires(!tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
-			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Dst &&dst) const
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos pos, Dst &&dst) const
 			{
 				static_assert(tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>);
 
 				std::error_code err = {};
-				if (const auto res = operator()(std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst), err); err)
+				if (const auto res = operator()(std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst), err); err)
 					throw std::system_error(err);
 				else
 					return res;
@@ -95,24 +95,24 @@ namespace rod
 			template<typename Snd>
 			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
 			template<typename Hnd, typename Pos, typename Dst>
-			using back_adaptor = detail::back_adaptor<async_read_some_t, Hnd, std::decay_t<Pos>, std::decay_t<Dst>>;
+			using back_adaptor = detail::back_adaptor<async_read_some_at_t, Hnd, std::decay_t<Pos>, std::decay_t<Dst>>;
 
 		public:
 			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires detail::tag_invocable_with_delegatee_scheduler<async_read_some_at_t, Snd, Snd, Hnd, Pos, Dst>
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst));
+				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
 			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires(!detail::tag_invocable_with_delegatee_scheduler<async_read_some_at_t, Snd, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
 
 			template<typename Hnd, std::integral Pos, io_buffer Dst>
-			[[nodiscard]] back_adaptor<Hnd, Pos, Dst> operator()(Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Dst>, async_read_some_t, Hnd, Pos, Dst>)
+			[[nodiscard]] back_adaptor<Hnd, Pos, Dst> operator()(Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Dst>, async_read_some_at_t, Hnd, Pos, Dst>)
 			{
-				return back_adaptor<Hnd, Pos, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst))};
+				return back_adaptor<Hnd, Pos, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst))};
 			}
 		};
 	}

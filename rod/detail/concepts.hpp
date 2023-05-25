@@ -165,7 +165,7 @@ namespace rod
 	{
 		struct schedule_t
 		{
-			template<typename S> requires tag_invocable<schedule_t, S> && sender<tag_invoke_result_t<schedule_t, S>>
+			template<typename S> requires tag_invocable<schedule_t, S>
 			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch) const noexcept(nothrow_tag_invocable<schedule_t, S>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch));
@@ -180,6 +180,48 @@ namespace rod
 	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule(S)`. */
 	template<typename S>
 	using schedule_result_t = decltype(schedule(std::declval<S>()));
+
+	inline namespace _schedule
+	{
+		struct schedule_in_t
+		{
+			template<typename S, typename Dur> requires tag_invocable<schedule_in_t, S, Dur>
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, Dur &&dur) const noexcept(nothrow_tag_invocable<schedule_in_t, S, Dur>)
+			{
+				return tag_invoke(*this, std::forward<S>(sch), std::forward<Dur>(dur));
+			}
+		};
+	}
+
+	/** Customization point object used to obtain a sender from the passed scheduler that completes after the specified duration.
+	 * @param sch Scheduler to create a sender from.
+	 * @param dur Duration specifying the difference from now until completion of the scheduler.
+	 * @return Sender created from \a sch. */
+	inline constexpr auto schedule_in = schedule_in_t{};
+	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule_in(S, Dur)`. */
+	template<typename S, typename Dur>
+	using schedule_in_result_t = decltype(schedule_in(std::declval<S>(), std::declval<Dur>()));
+
+	inline namespace _schedule
+	{
+		struct schedule_at_t
+		{
+			template<typename S, typename TP> requires tag_invocable<schedule_at_t, S, TP>
+			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, TP &&tp) const noexcept(nothrow_tag_invocable<schedule_at_t, S, TP>)
+			{
+				return tag_invoke(*this, std::forward<S>(sch), std::forward<TP>(tp));
+			}
+		};
+	}
+
+	/** Customization point object used to obtain a sender from the passed scheduler that completes after the specified time point.
+	 * @param sch Scheduler to create a sender from.
+	 * @param tp Time point to schedule the sender at.
+	 * @return Sender created from \a sch. */
+	inline constexpr auto schedule_at = schedule_at_t{};
+	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule_at(S, TP)`. */
+	template<typename S, typename TP>
+	using schedule_at_result_t = decltype(schedule_at(std::declval<S>(), std::declval<TP>()));
 
 	inline namespace _get_completion_scheduler
 	{

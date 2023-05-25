@@ -11,7 +11,6 @@
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
-#include <sys/uio.h>
 
 namespace rod::_epoll
 {
@@ -22,6 +21,39 @@ namespace rod::_epoll
 	/* 5k buffer. */
 	constexpr std::size_t default_max_events = 128;
 #endif
+
+	ssize_t io_func<async_read_some_t>::operator()(int fd, int &err) const noexcept
+	{
+		const auto res = ::read(fd, buff.data(), buff.size());
+		if (res < 0) [[unlikely]] err = errno;
+		return res;
+	}
+	ssize_t io_func<async_write_some_t>::operator()(int fd, int &err) const noexcept
+	{
+		const auto res = ::write(fd, buff.data(), buff.size());
+		if (res < 0) [[unlikely]] err = errno;
+		return res;
+	}
+	ssize_t io_func<async_read_some_at_t>::operator()(int fd, int &err) const noexcept
+	{
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto res = ::pread64(fd, buff.data(), buff.size(), static_cast<off64_t>(pos));
+#else
+		const auto res = ::pread(fd, buff.data(), buff.size(), static_cast<off_t>(pos));
+#endif
+		if (res < 0) [[unlikely]] err = errno;
+		return res;
+	}
+	ssize_t io_func<async_write_some_at_t>::operator()(int fd, int &err) const noexcept
+	{
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto res = ::pwrite64(fd, buff.data(), buff.size(), static_cast<off64_t>(pos));
+#else
+		const auto res = ::pwrite(fd, buff.data(), buff.size(), static_cast<off_t>(pos));
+#endif
+		if (res < 0) [[unlikely]] err = errno;
+		return res;
+	}
 
 	enum event_id : std::uint64_t { timer_event, queue_event, };
 
@@ -83,16 +115,14 @@ namespace rod::_epoll
 		delete[] static_cast<epoll_event *>(m_event_buff);
 	}
 
-	void context::schedule_producer(operation_base *node)
+	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
 		assert(!node->_next);
 		if (m_producer_queue.push(node, false))
 		{
 			/* Notify the event file descriptor to wake up the consumer thread. */
-			std::error_code err = {};
 			const std::uint64_t token = 1;
 			m_event_fd.write(&token, sizeof(token), err);
-			if (err) [[unlikely]] throw std::system_error(err, "write(event_fd)");
 		}
 	}
 	void context::schedule_consumer(operation_base *node) noexcept
@@ -124,7 +154,7 @@ namespace rod::_epoll
 	}
 	inline void context::epoll_wait()
 	{
-		const auto blocking = !m_consumer_queue.empty();
+		const auto blocking = m_consumer_queue.empty();
 		const auto events = static_cast<epoll_event *>(m_event_buff);
 		const auto res = ::epoll_wait(m_epoll_fd.native_handle(), events, m_buff_size, blocking ? -1 : 0);
 		if (res < 0) [[unlikely]] throw_errno("epoll_wait");
@@ -188,35 +218,38 @@ namespace rod::_epoll
 				return;
 
 			/* Schedule execution of elapsed timers. */
-			for (const auto now = monotonic_clock::now(); !m_timers.empty() && m_timers.front()->_timeout <= now;)
+			if (m_timer_pending)
 			{
-				auto node = m_timers.pop_front();
-
-				/* Handle timer cancellation. */
-				if (node->_flags.load(std::memory_order_relaxed) & timer_node::stop_possible)
+				for (const auto now = monotonic_clock::now(); !m_timers.empty() && m_timers.front()->_timeout <= now;)
 				{
-					const auto flags = node->_flags.fetch_or(timer_node::dispatched, std::memory_order_acq_rel);
-					if (flags & timer_node::stop_requested) continue;
+					auto node = m_timers.pop_front();
+
+					/* Handle timer cancellation. */
+					if (node->_flags.load(std::memory_order_relaxed) & timer_node::stop_possible)
+					{
+						const auto flags = node->_flags.fetch_or(timer_node::dispatched, std::memory_order_acq_rel);
+						if (flags & timer_node::stop_requested) continue;
+					}
+					schedule_consumer(node);
 				}
-				schedule_consumer(node);
-			}
 
-			/* Disarm timer descriptor (set timeout to 0) if there is no more pending timers. */
-			if (m_timers.empty() && std::exchange(m_timer_fd_started, {}))
-			{
-				set_timer_fd(m_timer_fd.native_handle());
-				m_timer_pending = false;
-			}
-			else if (!m_timers.empty())
-			{
-				/* Start timer_fd timer for the earliest pending time point. */
-				const auto next_timeout = m_timers.front()->_timeout;
-				if (m_timer_fd_started && m_next_timeout <= next_timeout)
-					m_timer_pending = false;
-				else if ((m_timer_fd_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
+				/* Disarm timer descriptor (set timeout to 0) if there is no more pending timers. */
+				if (m_timers.empty() && std::exchange(m_timer_fd_started, {}))
 				{
-					m_next_timeout = next_timeout;
+					set_timer_fd(m_timer_fd.native_handle());
 					m_timer_pending = false;
+				}
+				else if (!m_timers.empty())
+				{
+					/* Start timer_fd timer for the earliest pending time point. */
+					const auto next_timeout = m_timers.front()->_timeout;
+					if (m_timer_fd_started && m_next_timeout <= next_timeout)
+						m_timer_pending = false;
+					else if ((m_timer_fd_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
+					{
+						m_next_timeout = next_timeout;
+						m_timer_pending = false;
+					}
 				}
 			}
 

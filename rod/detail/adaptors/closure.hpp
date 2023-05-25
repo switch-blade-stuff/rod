@@ -68,15 +68,15 @@ namespace rod
 			template<typename T, typename... Ts>
 			constexpr back_adaptor(T &&f, std::tuple<Ts &&...> args) noexcept(std::is_nothrow_constructible_v<pair_base, T, std::tuple<Ts && ...>>) : pair_base(std::forward<F>(f), std::move(args)) {}
 
-			template<sender S> requires callable<F, S, Args...>
-			constexpr std::invoke_result_t<F, S, Args...> operator()(S &&snd) && noexcept(nothrow_callable<F, S, Args...>)
+			template<typename S> requires callable<F, S, Args...>
+			constexpr decltype(auto) operator()(S &&snd) && noexcept(nothrow_callable<F, S, Args...>)
 			{
-				return std::apply([&snd, this](Args &...as) { return std::move(first)(std::forward<S>(snd), std::move(as)...); }, second);
+				return std::apply([&snd, this](Args &...as) -> decltype(auto) { return std::move(first)(std::forward<S>(snd), std::move(as)...); }, second);
 			}
-			template<sender S> requires callable<const F &, S, const Args &...>
-			constexpr std::invoke_result_t<const F &, S, const Args &...> operator()(S &&snd) const & noexcept(nothrow_callable<const F &, S, const Args &...>)
+			template<typename S> requires callable<const F &, S, const Args &...>
+			constexpr decltype(auto) operator()(S &&snd) const & noexcept(nothrow_callable<const F &, S, const Args &...>)
 			{
-				return std::apply([&snd, this](const Args &...as) { return first(std::forward<S>(snd), as...); }, second);
+				return std::apply([&snd, this](const Args &...as) -> decltype(auto) { return first(std::forward<S>(snd), as...); }, second);
 			}
 		};
 
