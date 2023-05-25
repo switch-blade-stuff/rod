@@ -176,7 +176,7 @@ namespace rod
 					}
 				}
 
-				if constexpr (detail::nothrow_callable<set_value_t, Rcv>)
+				if constexpr (!detail::nothrow_callable<set_value_t, Rcv>)
 					try { set_value(std::move(_rcv)); } catch (...) { set_error(std::move(_rcv), std::current_exception()); }
 				else
 					set_value(std::move(_rcv));
@@ -222,7 +222,7 @@ namespace rod
 
 			void _complete_value(auto n) noexcept
 			{
-				if constexpr (detail::nothrow_callable<set_value_t, Rcv, std::size_t>)
+				if constexpr (!detail::nothrow_callable<set_value_t, Rcv, std::size_t>)
 					try { set_value(std::move(_rcv), static_cast<std::size_t>(n)); } catch (...) { set_error(std::move(_rcv), std::current_exception()); }
 				else
 					set_value(std::move(_rcv), static_cast<std::size_t>(n));

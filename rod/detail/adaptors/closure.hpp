@@ -66,7 +66,7 @@ namespace rod
 			using pair_base::swap;
 
 			template<typename T, typename... Ts>
-			constexpr back_adaptor(T &&f, std::tuple<Ts &&...> args) noexcept(std::is_nothrow_constructible_v<pair_base, T, std::tuple<Ts && ...>>) : pair_base(std::forward<F>(f), std::move(args)) {}
+			constexpr back_adaptor(T &&f, std::tuple<Ts &&...> args) noexcept(std::is_nothrow_constructible_v<pair_base, T, std::tuple<Ts && ...>>) : pair_base(std::forward<T>(f), std::move(args)) {}
 
 			template<typename S> requires callable<F, S, Args...>
 			constexpr decltype(auto) operator()(S &&snd) && noexcept(nothrow_callable<F, S, Args...>)
