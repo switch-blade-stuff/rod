@@ -13,23 +13,23 @@ namespace rod
 	{
 		struct read_some_t
 		{
-			template<typename Src, io_buffer Buff> requires tag_invocable<read_some_t, Src, Buff, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff, std::error_code &err) const noexcept(nothrow_tag_invocable<read_some_t, Src, Buff, std::error_code &>)
+			template<typename Hnd, io_buffer Dst> requires tag_invocable<read_some_t, Hnd, Dst, std::error_code &>
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Dst &&dst, std::error_code &err) const noexcept(nothrow_tag_invocable<read_some_t, Hnd, Dst, std::error_code &>)
 			{
-				return tag_invoke(*this, std::forward<Src>(src), std::forward<Buff>(buff), err);
+				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Dst>(dst), err);
 			}
-			template<typename Src, io_buffer Buff> requires tag_invocable<read_some_t, Src, Buff>
-			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff) const noexcept(nothrow_tag_invocable<read_some_t, Src, Buff>)
+			template<typename Hnd, io_buffer Dst> requires tag_invocable<read_some_t, Hnd, Dst>
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<read_some_t, Hnd, Dst>)
 			{
-				return tag_invoke(*this, std::forward<Src>(src), std::forward<Buff>(buff));
+				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
-			template<typename Src, io_buffer Buff> requires(!tag_invocable<read_some_t, Src, Buff>)
-			[[nodiscard]] std::size_t operator()(Src &&src, Buff &&buff) const
+			template<typename Hnd, io_buffer Dst> requires(!tag_invocable<read_some_t, Hnd, Dst>)
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Dst &&dst) const
 			{
-				static_assert(tag_invocable<read_some_t, Src, Buff, std::error_code &>);
+				static_assert(tag_invocable<read_some_t, Hnd, Dst, std::error_code &>);
 
 				std::error_code err = {};
-				if (const auto res = operator()(std::forward<Src>(src), std::forward<Buff>(buff), err); err)
+				if (const auto res = operator()(std::forward<Hnd>(hnd), std::forward<Dst>(dst), err); err)
 					throw std::system_error(err);
 				else
 					return res;
@@ -38,23 +38,23 @@ namespace rod
 
 		struct read_some_at_t
 		{
-			template<typename Src, std::integral Pos, io_buffer Buff> requires tag_invocable<read_some_at_t, Src, Pos, Buff, std::error_code &>
-			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff, std::error_code &err) const noexcept(nothrow_tag_invocable<read_some_at_t, Src, Pos, Buff, std::error_code &>)
+			template<typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Dst &&dst, std::error_code &err) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>)
 			{
-				return tag_invoke(*this, std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff), err);
+				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst), err);
 			}
-			template<typename Src, std::integral Pos, io_buffer Buff> requires tag_invocable<read_some_at_t, Src, Pos, Buff>
-			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<read_some_at_t, Src, Pos, Buff>)
+			template<typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<read_some_at_t, Hnd, Pos, Dst>
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff));
+				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst));
 			}
-			template<typename Src, std::integral Pos, io_buffer Buff> requires(!tag_invocable<read_some_at_t, Src, Pos, Buff>)
-			[[nodiscard]] std::size_t operator()(Src &&src, Pos &&pos, Buff &&buff) const
+			template<typename Hnd, std::integral Pos, io_buffer Dst> requires(!tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
+			[[nodiscard]] std::size_t operator()(Hnd &&hnd, Pos &&pos, Dst &&dst) const
 			{
-				static_assert(tag_invocable<read_some_at_t, Src, Pos, Buff, std::error_code &>);
+				static_assert(tag_invocable<read_some_at_t, Hnd, Pos, Dst, std::error_code &>);
 
 				std::error_code err = {};
-				if (const auto res = operator()(std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff), err); err)
+				if (const auto res = operator()(std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst), err); err)
 					throw std::system_error(err);
 				else
 					return res;
@@ -67,61 +67,61 @@ namespace rod
 		class async_read_some_t
 		{
 			template<typename Snd>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
-			template<typename Src, typename Buff>
-			using back_adaptor = detail::back_adaptor<async_read_some_t, Src, std::decay_t<Buff>>;
+			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
+			template<typename Hnd, typename Dst>
+			using back_adaptor = detail::back_adaptor<async_read_some_t, Hnd, std::decay_t<Dst>>;
 
 		public:
-			template<sender Snd, typename Src, io_buffer Buff> requires detail::tag_invocable_with_completion_scheduler<async_read_some_t, set_value_t, Snd, Snd, Src, Buff>
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Src &&src, Buff &&buff) const noexcept(nothrow_tag_invocable<async_read_some_t, value_completion<Snd>, Snd, Src, Buff>)
+			template<sender Snd, typename Hnd, io_buffer Dst> requires detail::tag_invocable_with_delegatee_scheduler<async_read_some_t, Snd, Snd, Hnd, Dst>
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, delegatee_scheduler<Snd>, Snd, Hnd, Dst>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Buff>(buff));
+				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
-			template<sender Snd, typename Src, io_buffer Buff> requires(!detail::tag_invocable_with_completion_scheduler<async_read_some_t, set_value_t, Snd, Snd, Src, Buff> && tag_invocable<async_read_some_t, Snd, Src, Buff>)
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Src &&src, Buff &&buff) const noexcept(nothrow_tag_invocable<async_read_some_t, Snd, Src, Buff>)
+			template<sender Snd, typename Hnd, io_buffer Dst> requires(!detail::tag_invocable_with_delegatee_scheduler<async_read_some_t, Snd, Snd, Hnd, Dst> && tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
 			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Buff>(buff));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
 
-			template<typename Src, io_buffer Buff>
-			[[nodiscard]] back_adaptor<Src, Buff> operator()(Src &&src, Buff &&buff) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Src, Buff>, async_read_some_t, Src, Buff>)
+			template<typename Hnd, io_buffer Dst>
+			[[nodiscard]] back_adaptor<Hnd, Dst> operator()(Hnd &&hnd, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Dst>, async_read_some_t, Hnd, Dst>)
 			{
-				return back_adaptor<Src, Buff>{*this, std::forward_as_tuple(std::forward<Src>(src), std::forward<Buff>(buff))};
+				return back_adaptor<Hnd, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Dst>(dst))};
 			}
 		};
 
 		class async_read_some_at_t
 		{
 			template<typename Snd>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
-			template<typename Src, typename Pos, typename Buff>
-			using back_adaptor = detail::back_adaptor<async_read_some_t, Src, std::decay_t<Pos>, std::decay_t<Buff>>;
+			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
+			template<typename Hnd, typename Pos, typename Dst>
+			using back_adaptor = detail::back_adaptor<async_read_some_t, Hnd, std::decay_t<Pos>, std::decay_t<Dst>>;
 
 		public:
-			template<sender Snd, typename Src, std::integral Pos, io_buffer Buff> requires detail::tag_invocable_with_completion_scheduler<async_read_some_at_t, set_value_t, Snd, Snd, Src, Pos, Buff>
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Src &&src, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<async_read_some_at_t, value_completion<Snd>, Snd, Src, Pos, Buff>)
+			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires detail::tag_invocable_with_delegatee_scheduler<async_read_some_at_t, Snd, Snd, Hnd, Pos, Dst>
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff));
+				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst));
 			}
-			template<sender Snd, typename Src, std::integral Pos, io_buffer Buff> requires(!detail::tag_invocable_with_completion_scheduler<async_read_some_at_t, set_value_t, Snd, Snd, Src, Pos, Buff> && tag_invocable<async_read_some_at_t, Snd, Src, Pos, Buff>)
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Src &&src, Pos &&pos, Buff &&buff) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Src, Pos, Buff>)
+			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires(!detail::tag_invocable_with_delegatee_scheduler<async_read_some_at_t, Snd, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst));
 			}
 
-			template<typename Src, std::integral Pos, io_buffer Buff>
-			[[nodiscard]] back_adaptor<Src, Pos, Buff> operator()(Src &&src, Pos &&pos, Buff &&buff) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Src, Pos, Buff>, async_read_some_t, Src, Pos, Buff>)
+			template<typename Hnd, std::integral Pos, io_buffer Dst>
+			[[nodiscard]] back_adaptor<Hnd, Pos, Dst> operator()(Hnd &&hnd, Pos &&pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Dst>, async_read_some_t, Hnd, Pos, Dst>)
 			{
-				return back_adaptor<Src, Pos, Buff>{*this, std::forward_as_tuple(std::forward<Src>(src), std::forward<Pos>(pos), std::forward<Buff>(buff))};
+				return back_adaptor<Hnd, Pos, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Pos>(pos), std::forward<Dst>(dst))};
 			}
 		};
 	}
 
 	using _read_some::read_some_t;
 
-	/** Customization point object used to read a contiguous buffer of integral values from a readable source object.
-	 * @param[in] src Source object to read the data from.
-	 * @param[out] buff Contiguous output range of integral values.
+	/** Customization point object used to read a contiguous dster of integral values from a readable source object.
+	 * @param[in] hnd Handle to read the data from.
+	 * @param[out] dst Contiguous output range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
 	 * @return Amount of elements read. */
@@ -129,10 +129,10 @@ namespace rod
 
 	using _read_some::read_some_at_t;
 
-	/** Customization point object used to read a contiguous buffer of integral values from a readable source object at the specified offset.
-	 * @param[in] src Source object to read the data from.
+	/** Customization point object used to read a contiguous dster of integral values from a readable source object at the specified offset.
+	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source object at which to read the values.
-	 * @param[out] buff Contiguous output range of integral values.
+	 * @param[out] dst Contiguous output range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
 	 * @return Amount of elements read. */
@@ -140,21 +140,21 @@ namespace rod
 
 	using _read_some::async_read_some_t;
 
-	/** Customization point object returning a sender used to read a contiguous buffer of integral values from an async-readable source object.
+	/** Customization point object returning a sender used to read a contiguous dster of integral values from an async-readable source object.
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
-	 * @param[in] src Source object used to read the data from.
-	 * @param[out] buff Contiguous output range of integral values.
+	 * @param[in] hnd Handle to read the data from.
+	 * @param[out] dst Contiguous output range of integral values.
 	 * @return Sender completing either with the amount of elements read and an optional error code, or an error on read failure. */
 	inline constexpr auto async_read_some = async_read_some_t{};
 
 	using _read_some::async_read_some_at_t;
 
-	/** Customization point object returning a sender used to read a contiguous buffer of integral values from an async-readable source object.
+	/** Customization point object returning a sender used to read a contiguous dster of integral values from an async-readable source object.
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
-	 * @param[in] src Source object used to read the data from.
-	 * @param[out] buff Contiguous output range of integral values.
+	 * @param[in] hnd Handle to read the data from.
+	 * @param[out] dst Contiguous output range of integral values.
 	 * @return Sender completing either with the amount of elements read and an optional error code, or an error on read failure. */
 	inline constexpr auto async_read_some_at = async_read_some_at_t{};
 }

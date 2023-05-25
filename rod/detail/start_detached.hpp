@@ -54,13 +54,13 @@ namespace rod
 		class start_detached_t
 		{
 			template<typename Snd>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
+			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Snd>
 			using operation_t = typename operation<std::decay_t<Snd>>::type;
 
 		public:
 			template<rod::sender Snd> requires detail::tag_invocable_with_completion_scheduler<start_detached_t, set_value_t, Snd, Snd>
-			constexpr void operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<start_detached_t, value_completion<Snd>, Snd>)
+			constexpr void operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<start_detached_t, value_scheduler<Snd>, Snd>)
 			{
 				tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd));
 			}

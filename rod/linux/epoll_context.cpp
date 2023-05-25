@@ -6,9 +6,12 @@
 
 #ifdef ROD_HAS_EPOLL
 
+#include <cassert>
+
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
-#include <cassert>
+#include <sys/epoll.h>
+#include <sys/uio.h>
 
 namespace rod::_epoll
 {
@@ -68,8 +71,8 @@ namespace rod::_epoll
 	context::context(std::size_t max) : m_epoll_fd(init_epoll_fd()), m_timer_fd(init_timer_fd(m_epoll_fd)), m_event_fd(init_event_fd(m_epoll_fd))
 	{
 		/* Events are heap-allocated in order to avoid excessive stack usage and allow for user-specified buffer sizes. */
-		max = std::min<std::size_t>(max ? max : default_max_events, std::numeric_limits<int>::max());
-		m_events = {new epoll_event[max], max};
+		m_buff_size = std::min<std::size_t>(max ? max : default_max_events, std::numeric_limits<int>::max());
+		m_event_buff = new epoll_event[m_buff_size];
 	}
 	context::~context()
 	{
@@ -77,7 +80,7 @@ namespace rod::_epoll
 		epoll_event event = {};
 		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, m_timer_fd.native_handle(), &event);
 		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, m_event_fd.native_handle(), &event);
-		delete[] m_events.data();
+		delete[] static_cast<epoll_event *>(m_event_buff);
 	}
 
 	void context::schedule_producer(operation_base *node)
@@ -122,12 +125,13 @@ namespace rod::_epoll
 	inline void context::epoll_wait()
 	{
 		const auto blocking = !m_consumer_queue.empty();
-		const auto res = ::epoll_wait(m_epoll_fd.native_handle(), m_events.data(), m_events.size(), blocking ? -1 : 0);
+		const auto events = static_cast<epoll_event *>(m_event_buff);
+		const auto res = ::epoll_wait(m_epoll_fd.native_handle(), events, m_buff_size, blocking ? -1 : 0);
 		if (res < 0) [[unlikely]] throw_errno("epoll_wait");
 
 		for (auto pos = static_cast<std::size_t>(res); pos-- != 0;)
 		{
-			auto &event = m_events[pos];
+			auto &event = events[pos];
 			switch (std::error_code err; event.data.u64)
 			{
 			case event_id::timer_event: /* Timer elapsed notification event. */
@@ -191,7 +195,7 @@ namespace rod::_epoll
 				/* Handle timer cancellation. */
 				if (node->_flags.load(std::memory_order_relaxed) & timer_node::stop_possible)
 				{
-					const auto flags = node->_flags.fetch_add(timer_node::dispatched, std::memory_order_acq_rel);
+					const auto flags = node->_flags.fetch_or(timer_node::dispatched, std::memory_order_acq_rel);
 					if (flags & timer_node::stop_requested) continue;
 				}
 				schedule_consumer(node);
@@ -220,6 +224,19 @@ namespace rod::_epoll
 			if (m_epoll_pending || (m_epoll_pending = acquire_producer_queue()))
 				epoll_wait();
 		}
+	}
+
+	void context::add_io(int fd, operation_base *node) noexcept
+	{
+		epoll_event event = {};
+		event.data.ptr = node;
+		event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event);
+	}
+	void context::del_io(int fd) noexcept
+	{
+		epoll_event event = {};
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
 	}
 }
 #endif

@@ -11,9 +11,6 @@
 #include <thread>
 #include <chrono>
 
-#include <sys/epoll.h>
-#include <sys/uio.h>
-
 #include "../detail/priority_queue.hpp"
 #include "../detail/atomic_queue.hpp"
 #include "../detail/basic_queue.hpp"
@@ -33,19 +30,19 @@ namespace rod
 
 		template<typename Env>
 		concept stoppable_env = stoppable_token<stop_token_of_t<Env> &>;
-		template<typename Snd, typename Env>
-		using make_signs = make_completion_signatures<Snd, Env, completion_signatures<set_error_t(std::exception_ptr)>>;
 
 		struct operation_base
 		{
+			using _notify_func_t = void (*)(operation_base *);
+
 			operation_base(operation_base &&) = delete;
 			operation_base &operator=(operation_base &&) = delete;
 
 			constexpr operation_base() noexcept = default;
 
-			void _notify() noexcept { _notify_func(this); }
+			void _notify() noexcept { std::exchange(_notify_func, {})(this); }
 
-			void (*_notify_func)(operation_base *) noexcept = {};
+			_notify_func_t _notify_func = {};
 			operation_base *_next = {};
 		};
 		struct timer_node : operation_base
@@ -64,6 +61,8 @@ namespace rod
 		struct scheduler;
 		template<typename Rcv>
 		struct timer_operation { struct type; };
+		template<typename Op, typename Rcv>
+		struct io_operation { struct type; };
 		template<typename Rcv>
 		struct operation { struct type; };
 		template<typename T>
@@ -109,7 +108,7 @@ namespace rod
 			}
 
 			template<typename Rcv1>
-			constexpr type(context &ctx, Rcv1 &&rcv) : _ctx(ctx), _rcv(std::forward<Rcv1>(rcv)) { this->_notify = _bind_notify; }
+			constexpr type(context &ctx, Rcv1 &&rcv) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx) { this->_notify = _bind_notify; }
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -164,10 +163,55 @@ namespace rod
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
 		};
 
+		/* IO operations inherit from `operation_base` twice in order to
+		 * enable cancellation in the middle of a queued IO operation. */
+		struct complete_base : operation_base {};
+		struct stop_base : operation_base {};
+
+		template<typename Op, typename Rcv>
+		struct io_operation<Op, Rcv>::type : private complete_base, private stop_base
+		{
+			enum _flags_t { stop_possible = 1, stop_requested = 4, io_done = 8 };
+
+			static void _notify_read(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_read(); }
+			static void _notify_start(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_start_consumer(); }
+			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
+
+			template<typename Rcv1>
+			explicit type(context &ctx, int fd, Rcv1 &&rcv, Op op) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx), _fd(fd), _op(std::move(op)) {}
+
+			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
+
+			void _complete_value(auto n) noexcept
+			{
+				if constexpr (detail::nothrow_callable<set_value_t, Rcv, std::size_t>)
+					try { set_value(std::move(_rcv), static_cast<std::size_t>(n)); } catch (...) { set_error(std::move(_rcv), std::current_exception()); }
+				else
+					set_value(std::move(_rcv), static_cast<std::size_t>(n));
+			}
+			inline void _complete_read() noexcept;
+			inline void _complete_stopped() noexcept;
+
+			inline void _start() noexcept;
+			inline void _start_consumer() noexcept;
+			inline void _request_stop() noexcept;
+
+			using _stop_cb_t = stop_cb<env_of_t<Rcv>, &type::_request_stop>;
+
+			[[ROD_NO_UNIQUE_ADDRESS]] _stop_cb_t _stop_cb;
+			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			[[ROD_NO_UNIQUE_ADDRESS]] Op _op;
+			std::atomic<int> _flags = {};
+			context &_ctx;
+			int _fd;
+		};
+
 		class context
 		{
 			template<typename>
 			friend struct timer_operation;
+			template<typename, typename>
+			friend struct io_operation;
 			template<typename>
 			friend struct operation;
 
@@ -230,6 +274,9 @@ namespace rod
 			ROD_PUBLIC void insert_timer(timer_node *node) noexcept;
 			ROD_PUBLIC void erase_timer(timer_node *node) noexcept;
 
+			ROD_PUBLIC void add_io(int fd, operation_base *node) noexcept;
+			ROD_PUBLIC void del_io(int fd) noexcept;
+
 			bool acquire_producer_queue() noexcept;
 			void epoll_wait();
 
@@ -244,7 +291,8 @@ namespace rod
 			detail::descriptor_handle m_event_fd = {};
 
 			/* EPOLL event buffer. */
-			std::span<epoll_event> m_events = {};
+			std::size_t m_buff_size = {};
+			void *m_event_buff = {};
 
 			/* Queue of operations pending for dispatch by consumer thread. */
 			consumer_queue_t m_consumer_queue = {};
@@ -281,6 +329,19 @@ namespace rod
 			else
 				_start_consumer();
 		}
+		template<typename Op, typename Rcv>
+		void io_operation<Op, Rcv>::type::_start() noexcept
+		{
+			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
+			{
+				complete_base::_notify_func = _notify_start;
+				try { _ctx.schedule_producer(static_cast<complete_base *>(this)); }
+				catch (...) { set_error(std::move(_rcv), std::current_exception()); }
+			}
+			else
+				_start_consumer();
+		}
+
 		template<typename Rcv>
 		void timer_operation<Rcv>::type::_start_consumer() noexcept
 		{
@@ -300,43 +361,106 @@ namespace rod
 			if constexpr (stoppable_env<env_of_t<Rcv>>)
 				_stop_cb.init(get_env(_rcv));
 		}
+		template<typename Op, typename Rcv>
+		void io_operation<Op, Rcv>::type::_start_consumer() noexcept
+		{
+			const auto res = _op(*this);
+			int err;
+
+			if (res < 0 && ((err = errno) == EAGAIN || err == EWOULDBLOCK || err == EPERM))
+			{
+				/* Schedule read operation via EPOLL. */
+				complete_base::_notify_func = _notify_read;
+				if constexpr (stoppable_env<env_of_t<Rcv>>)
+					_stop_cb.init(get_env(_rcv));
+
+				_ctx.add_io(_fd, static_cast<complete_base *>(this));
+				return;
+			}
+
+			if (_flags.fetch_or(_flags_t::io_done, std::memory_order_acq_rel) & _flags_t::stop_requested)
+				return; /* Already stopped on a different thread. */
+
+			if (res >= 0)
+				_complete_value(res);
+			else if (err != ECANCELED)
+				set_error(std::move(_rcv), std::error_code{err, std::system_category()});
+			else
+				set_stopped(std::move(_rcv));
+		}
+
+		template<typename Op, typename Rcv>
+		void io_operation<Op, Rcv>::type::_complete_read() noexcept
+		{
+			if constexpr (stoppable_env<env_of_t<Rcv>>)
+				_stop_cb.reset();
+			if (_flags.fetch_or(_flags_t::io_done, std::memory_order_acq_rel) & _flags_t::stop_requested)
+				return;
+
+			_ctx.del_io(_fd);
+			if (const auto res = _op(*this); res >= 0)
+				_complete_value(res);
+			else if (const auto err = errno; err != ECANCELED)
+				set_error(std::move(_rcv), std::error_code{err, std::system_category()});
+			else
+				set_stopped(std::move(_rcv));
+		}
+		template<typename Op, typename Rcv>
+		void io_operation<Op, Rcv>::type::_complete_stopped() noexcept
+		{
+			/* If _notify_func is set we are a part of a queue and must delay stopping. */
+			if (complete_base::_notify_func)
+			{
+				stop_base::_notify_func = _notify_stopped;
+				_ctx.schedule_consumer(static_cast<stop_base *>(this));
+			}
+			else if constexpr (stoppable_env<env_of_t<Rcv>>)
+				set_stopped(std::move(_rcv));
+			else
+				std::terminate();
+		}
+
 		template<typename Rcv>
 		void timer_operation<Rcv>::type::_request_stop() noexcept
 		{
 			if constexpr (!stoppable_env<env_of_t<Rcv>>)
 				std::terminate();
-			else
+			else if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
 			{
-				if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
+				_stop_cb.reset();
+				_notify_func = _notify_stopped;
+				if (!(_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
 				{
-					_stop_cb.reset();
-					_notify_func = _notify_stopped;
-					if (!(_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
-					{
-						/* Timer has not yet been dispatched, schedule stop completion. */
-						_ctx.erase_timer(this);
-						_ctx.schedule_consumer(this);
-					}
+					/* Timer has not yet been dispatched, schedule stop completion. */
+					_ctx.erase_timer(this);
+					_ctx.schedule_consumer(this);
 				}
-				else if (!(_flags.fetch_add(_flags_t::stop_requested, std::memory_order_acq_rel) & _flags_t::dispatched))
+			}
+			else if (!(_flags.fetch_or(_flags_t::stop_requested, std::memory_order_acq_rel) & _flags_t::dispatched))
+			{
+				/* Timer has not yet been dispatched, schedule stop completion on producer thread. */
+				_notify_func = [](operation_base *ptr) noexcept
 				{
-					/* Timer has not yet been dispatched, schedule stop completion on producer thread. */
-					_notify_func = [](operation_base *ptr) noexcept
-					{
-						const auto op = static_cast<type *>(ptr);
-						op->_stop_cb.reset();
+					const auto op = static_cast<type *>(ptr);
+					op->_stop_cb.reset();
 
-						/* Make sure to erase the timer if it has not already been dispatched. */
-						if (!(op->_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
-							op->_ctx.erase_timer(&op);
+					/* Make sure to erase the timer if it has not already been dispatched. */
+					if (!(op->_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
+						op->_ctx.erase_timer(&op);
 
-						op->_complete_stopped();
-					};
-
-					/* Complete with error if failed to schedule. */
-					try { _ctx.schedule_producer(this); }
-					catch (...) { set_error(std::move(_rcv), std::current_exception()); }
-				}
+					op->_complete_stopped();
+				};
+				_ctx.schedule_producer(this);
+			}
+		}
+		template<typename Op, typename Rcv>
+		void io_operation<Op, Rcv>::type::_request_stop() noexcept
+		{
+			if (!(_flags.fetch_or(_flags_t::stop_requested, std::memory_order_acq_rel) & _flags_t::io_done))
+			{
+				_ctx.del_io(_fd);
+				stop_base::_notify_func = _notify_stopped;
+				_ctx.schedule_producer(static_cast<stop_base *>(this));
 			}
 		}
 	}

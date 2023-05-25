@@ -107,7 +107,7 @@ namespace rod
 		class bulk_t
 		{
 			template<typename Snd>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
+			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Snd, typename Shape, typename F>
 			using sender_t = typename sender<std::decay_t<Snd>, Shape, std::decay_t<F>>::type;
 			template<typename Shape, typename F>
@@ -115,7 +115,7 @@ namespace rod
 			
 		public:
 			template<rod::sender Snd, std::integral Shape, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F>
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(nothrow_tag_invocable<bulk_t, value_completion<Snd>, Snd, Shape, F>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(nothrow_tag_invocable<bulk_t, value_scheduler<Snd>, Snd, Shape, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::move(shape), std::forward<F>(fn));
 			}

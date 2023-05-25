@@ -33,9 +33,34 @@ namespace rod::detail
 			return (err = errno_code(), 0);
 	}
 
+	std::size_t descriptor_handle::read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept
+	{
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto res = ::pread64(m_fd, dst, n, static_cast<off64_t>(off));
+#else
+		const auto res = ::pread(m_fd, dst, n, static_cast<off_t>(off));
+#endif
+		if (res >= 0) [[likely]]
+			return (err = {}, static_cast<std::size_t>(res));
+		else
+			return (err = errno_code(), 0);
+	}
+	std::size_t descriptor_handle::write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept
+	{
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto res = ::pwrite64(m_fd, src, n, static_cast<off64_t>(off));
+#else
+		const auto res = ::pwrite(m_fd, src, n, static_cast<off_t>(off));
+#endif
+		if (res >= 0) [[likely]]
+			return (err = {}, static_cast<std::size_t>(res));
+		else
+			return (err = errno_code(), 0);
+	}
+
 	std::size_t descriptor_handle::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
-#if PTRDIFF_MAX >= INT64_MAX || SIZE_MAX >= UINT64_MAX
+#if PTRDIFF_MAX >= INT64_MAX
 		const auto res = ::lseek64(m_fd, static_cast<off64_t>(off), dir);
 #else
 		const auto res = ::lseek(m_fd, static_cast<off_t>(off), dir);

@@ -36,6 +36,8 @@ namespace rod::detail
 
 		ROD_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
 
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t tell(std::error_code &err) const noexcept;

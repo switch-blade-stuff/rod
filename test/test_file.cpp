@@ -2,7 +2,7 @@
  * Created by switchblade on 2023-05-20.
  */
 
-#include <rod/file.hpp>
+#include <rod/io.hpp>
 
 #include "common.hpp"
 
@@ -37,10 +37,25 @@ void test_basic_file(auto mode)
 		const auto write_n = rod::write_some_at(file, data.size(), data, err);
 		TEST_ASSERT(!err && write_n == data.size());
 
+		std::fill(buff.begin(), buff.end(), '\0');
 		const auto read_n = rod::read_some_at(file, 0, buff, err);
 		TEST_ASSERT(!err && read_n == data.size() * 2);
 		TEST_ASSERT(buff.find(data) != buff.rfind(data));
 		TEST_ASSERT(buff.find(data) == 0);
+	}
+	{
+		rod::epoll_context ctx;
+//		auto sch = ctx.get_scheduler();
+//
+//		static_assert(!requires { rod::async_read_some(rod::just(), file, std::span{buff}); });
+//		static_assert(!requires { rod::async_write_some(rod::just(), file, std::span{buff}); });
+//		static_assert(requires { rod::async_read_some(rod::schedule(sch), file, std::span{buff}); });
+//		static_assert(requires { rod::async_write_some(rod::schedule(sch), file, std::span{buff}); });
+//
+//		static_assert(!requires { rod::async_read_some_at(rod::just(), file, 0, std::span{buff}); });
+//		static_assert(!requires { rod::async_write_some_at(rod::just(), file, 0, std::span{buff}); });
+//		static_assert(requires { rod::async_read_some_at(rod::schedule(sch), file, 0, std::span{buff}); });
+//		static_assert(requires { rod::async_write_some_at(rod::schedule(sch), file, 0, std::span{buff}); });
 	}
 	std::filesystem::remove(path);
 }

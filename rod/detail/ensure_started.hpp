@@ -202,14 +202,14 @@ namespace rod
 		class ensure_started_t
 		{
 			template<typename Snd>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
+			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Snd>
 			using sender_t = typename sender<std::decay_t<Snd>, env_of_t<std::decay_t<Snd>>>::type;
 			using back_adaptor = detail::back_adaptor<ensure_started_t>;
 
 		public:
 			template<rod::sender Snd> requires detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd, Snd>
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<ensure_started_t, value_completion<Snd>, Snd>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<ensure_started_t, value_scheduler<Snd>, Snd>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd));
 			}

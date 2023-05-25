@@ -163,7 +163,7 @@ namespace rod
 		class let_channel
 		{
 			template<typename S>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<S>())));
+			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<S>())));
 			template<typename S, typename F>
 			using sender_t = typename sender<C, std::decay_t<S>, std::decay_t<F>>::type;
 			template<typename F>
@@ -171,7 +171,7 @@ namespace rod
 
 		public:
 			template<rod::sender Snd, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, F>
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, F &&fn) const noexcept(nothrow_tag_invocable<let_channel, value_completion<Snd>, Snd, F>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, F &&fn) const noexcept(nothrow_tag_invocable<let_channel, value_scheduler<Snd>, Snd, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<F>(fn));
 			}

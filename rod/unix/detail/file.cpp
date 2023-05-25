@@ -26,6 +26,8 @@ namespace rod::detail
 		if (flags & openmode::trunc) result |= O_TRUNC;
 		if (flags & openmode::direct) result |= O_DIRECT;
 		if (flags & openmode::noreplace) result |= O_EXCL;
+		/* Async files must use O_NONBLOCK. */
+		if (flags & openmode::_async) result |= O_NONBLOCK;
 		/* openmode::binary & openmode::ate has no use here. */
 		return result;
 	}

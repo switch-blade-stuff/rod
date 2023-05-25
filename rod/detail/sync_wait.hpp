@@ -78,7 +78,7 @@ namespace rod
 		class sync_wait_t
 		{
 			template<typename S>
-			using value_completion = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<S>())));
+			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<S>())));
 			template<typename S>
 			using receiver_t = typename sync_wait_types<std::decay_t<S>, receiver>::type;
 			template<typename S>
@@ -88,7 +88,7 @@ namespace rod
 
 		public:
 			template<detail::single_sender<env> S> requires detail::tag_invocable_with_completion_scheduler<sync_wait_t, set_value_t, S, S>
-			constexpr std::optional<result_t<S>> operator()(S &&snd) const noexcept(nothrow_tag_invocable<sync_wait_t, value_completion<S>, S>)
+			constexpr std::optional<result_t<S>> operator()(S &&snd) const noexcept(nothrow_tag_invocable<sync_wait_t, value_scheduler<S>, S>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_attrs(std::forward<S>(snd))), std::forward<S>(snd));
 			}
