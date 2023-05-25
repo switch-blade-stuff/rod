@@ -590,22 +590,19 @@ namespace rod
 
 			using _value_signs_t =  completion_signatures<set_value_t(std::size_t)>;
 			using _error_signs_t =  completion_signatures<set_error_t(std::error_code), set_error_t(std::exception_ptr)>;
-			template<typename Env>
-			using _stop_signs_t = std::conditional_t<stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
-			template<typename Env>
-			using _signs_t = detail::concat_tuples_t<_value_signs_t, _error_signs_t, _stop_signs_t<Env>>;
+			using _signs_t = detail::concat_tuples_t<_value_signs_t, _error_signs_t, completion_signatures<set_stopped_t()>>;
 
 			constexpr type(context &ctx, int fd, _func_t func) noexcept : _ctx(ctx), _func(func), _fd(fd) {}
 
 
 			friend constexpr env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
 			template<detail::decays_to<type> T, typename Env>
-			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
 			template<detail::decays_to<type> T, typename Rcv>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
-				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
+				static_assert(receiver_of<Rcv, _signs_t>);
 				return _operation_t<Rcv>{s._ctx, s._fd, std::forward<Rcv>(rcv), std::forward<T>(s)._func};
 			}
 
