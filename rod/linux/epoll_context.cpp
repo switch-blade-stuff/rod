@@ -131,16 +131,29 @@ namespace rod::_epoll
 		m_consumer_queue.push_back(node);
 	}
 
-	void context::insert_timer(timer_node *node) noexcept
+	void context::add_timer(timer_node *node) noexcept
 	{
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
-	void context::erase_timer(timer_node *node) noexcept
+	void context::del_timer(timer_node *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
 		m_timers.erase(node);
+	}
+
+	void context::add_io(int fd, operation_base *node) noexcept
+	{
+		epoll_event event = {};
+		event.data.ptr = node;
+		event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event);
+	}
+	void context::del_io(int fd) noexcept
+	{
+		epoll_event event = {};
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
 	}
 
 	inline bool context::acquire_producer_queue() noexcept
@@ -257,19 +270,6 @@ namespace rod::_epoll
 			if (m_epoll_pending || (m_epoll_pending = acquire_producer_queue()))
 				epoll_wait();
 		}
-	}
-
-	void context::add_io(int fd, operation_base *node) noexcept
-	{
-		epoll_event event = {};
-		event.data.ptr = node;
-		event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event);
-	}
-	void context::del_io(int fd) noexcept
-	{
-		epoll_event event = {};
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
 	}
 }
 #endif

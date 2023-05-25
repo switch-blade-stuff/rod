@@ -317,8 +317,8 @@ namespace rod
 			ROD_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
 			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
 
-			ROD_PUBLIC void insert_timer(timer_node *node) noexcept;
-			ROD_PUBLIC void erase_timer(timer_node *node) noexcept;
+			ROD_PUBLIC void add_timer(timer_node *node) noexcept;
+			ROD_PUBLIC void del_timer(timer_node *node) noexcept;
 
 			ROD_PUBLIC void add_io(int fd, operation_base *node) noexcept;
 			ROD_PUBLIC void del_io(int fd) noexcept;
@@ -404,7 +404,7 @@ namespace rod
 				}
 
 			_notify_func = _notify_value;
-			_ctx.insert_timer(this);
+			_ctx.add_timer(this);
 
 			/* Initialize the stop callback for stoppable environments. */
 			if constexpr (stoppable_env<env_of_t<Rcv>>)
@@ -485,7 +485,7 @@ namespace rod
 				if (!(_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
 				{
 					/* Timer has not yet been dispatched, schedule stop completion. */
-					_ctx.erase_timer(this);
+					_ctx.del_timer(this);
 					_ctx.schedule_consumer(this);
 				}
 			}
@@ -499,7 +499,7 @@ namespace rod
 
 					/* Make sure to erase the timer if it has not already been dispatched. */
 					if (!(op->_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
-						op->_ctx.erase_timer(&op);
+						op->_ctx.del_timer(&op);
 
 					op->_complete_stopped();
 				};
