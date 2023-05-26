@@ -25,7 +25,11 @@ function(make_test NAME FILE)
 endfunction()
 
 make_test(file ${CMAKE_CURRENT_LIST_DIR}/test_file.cpp)
-make_test(timer ${CMAKE_CURRENT_LIST_DIR}/test_epoll.cpp)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    make_test(epoll ${CMAKE_CURRENT_LIST_DIR}/test_epoll.cpp)
+endif ()
+
 make_test(signal ${CMAKE_CURRENT_LIST_DIR}/test_signal.cpp)
 make_test(coroutine ${CMAKE_CURRENT_LIST_DIR}/test_coroutine.cpp)
 make_test(stop-token ${CMAKE_CURRENT_LIST_DIR}/test_stop_token.cpp)

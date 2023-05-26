@@ -239,7 +239,7 @@ namespace rod::_file
 		 * @note Validity of the mode flags is not checked. */
 		constexpr basic_file(native_handle_type file, openmode mode) noexcept : file_handle(file, mode) {}
 
-		template<detail::decays_to<basic_file> T, typename Dst>
+		template<typename T, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
 		friend std::size_t tag_invoke(read_some_t, T &&src, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
@@ -247,7 +247,7 @@ namespace rod::_file
 			const auto dst_max = std::ranges::size(dst) * sizeof(value_t);
 			return src.m_file.read(static_cast<void *>(dst_ptr), dst_max, err);
 		}
-		template<detail::decays_to<basic_file> T, typename Src>
+		template<typename T, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
 		friend std::size_t tag_invoke(write_some_t, T &&dst, Src &&src, std::error_code &err) noexcept(noexcept_sizeable_range<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
@@ -256,7 +256,7 @@ namespace rod::_file
 			return dst.m_file.write(static_cast<const void *>(src_ptr), src_max, err);
 		}
 
-		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
+		template<typename T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
 		friend std::size_t tag_invoke(read_some_at_t, T &&src, Pos pos, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
@@ -264,7 +264,7 @@ namespace rod::_file
 			const auto dst_max = std::ranges::size(dst) * sizeof(value_t);
 			return src.m_file.read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err);
 		}
-		template<detail::decays_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
+		template<typename T, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
 		friend std::size_t tag_invoke(write_some_at_t, T &&dst, Pos pos, Src &&src, std::error_code &err) noexcept(noexcept_sizeable_range<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
@@ -373,27 +373,27 @@ namespace rod::_file
 		 * @note Validity of the mode flags is not checked. */
 		constexpr async_file(native_handle_type file, openmode mode) noexcept : file_handle(file, mode) {}
 
-		template<typename Snd, typename Dst>
-		friend decltype(auto) tag_invoke(async_read_some_t, Snd &&snd, async_file &src, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_t, Snd, native_handle_type, Dst>)
+		template<typename T, typename Snd, typename Dst> requires std::same_as<std::remove_reference_t<T>, async_file>
+		friend decltype(auto) tag_invoke(async_read_some_t, Snd &&snd, T &&src, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_t, Snd, native_handle_type, Dst>)
 		{
 			static_assert(detail::callable<async_read_some_t, Snd, native_handle_type, Dst>);
 			return async_read_some(std::forward<Snd>(snd), src.native_handle(), std::forward<Dst>(dst));
 		}
-		template<typename Snd, typename Src>
-		friend decltype(auto) tag_invoke(async_write_some_t, Snd &&snd, async_file &dst, Src &&src) noexcept(detail::nothrow_callable<async_write_some_t, Snd, native_handle_type, Src>)
+		template<typename T, typename Snd, typename Src> requires std::same_as<std::remove_reference_t<T>, async_file>
+		friend decltype(auto) tag_invoke(async_write_some_t, Snd &&snd, T &&dst, Src &&src) noexcept(detail::nothrow_callable<async_write_some_t, Snd, native_handle_type, Src>)
 		{
 			static_assert(detail::callable<async_write_some_t, Snd, native_handle_type, Src>);
 			return async_write_some(std::forward<Snd>(snd), dst.native_handle(), std::forward<Src>(src));
 		}
 
-		template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
-		friend decltype(auto) tag_invoke(async_read_some_at_t, Snd &&snd, async_file &src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>)
+		template<typename T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, async_file>
+		friend decltype(auto) tag_invoke(async_read_some_at_t, Snd &&snd, T &&src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>)
 		{
 			static_assert(detail::callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>);
 			return async_read_some_at(std::forward<Snd>(snd), src.native_handle(), pos, std::forward<Dst>(dst));
 		}
-		template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
-		friend decltype(auto) tag_invoke(async_write_some_at_t, Snd &&snd, async_file &dst, Pos pos, Src &&src) noexcept(detail::nothrow_callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>)
+		template<typename T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires std::same_as<std::remove_reference_t<T>, async_file>
+		friend decltype(auto) tag_invoke(async_write_some_at_t, Snd &&snd, T &&dst, Pos pos, Src &&src) noexcept(detail::nothrow_callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>)
 		{
 			static_assert(detail::callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>);
 			return async_write_some_at(std::forward<Snd>(snd), dst.native_handle(), pos, std::forward<Src>(src));
