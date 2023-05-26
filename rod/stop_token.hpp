@@ -85,28 +85,25 @@ namespace rod
 			node_t() = delete;
 			node_t(node_t &&) = delete;
 
-			node_t(in_place_stop_source *src, void (*invoke)(node_t *) noexcept) noexcept : src(src), invoke_func(invoke) { if (src) src->insert(this); }
+			node_t(in_place_stop_source *src, void (*invoke)(node_t *) noexcept) noexcept : invoke_func(invoke), src(src) { if (src) src->insert(this); }
 			~node_t() noexcept { if (src) src->erase(this); }
 
 			void invoke() noexcept { invoke_func(this); }
-
-			node_t *unlink() noexcept
+			bool invoke(bool &removed_ref) noexcept
 			{
-				if (next_node) std::exchange(next_node, nullptr)->this_ptr = this_ptr;
-				if (this_ptr) *std::exchange(this_ptr, nullptr) = next_node;
-				return this;
-			}
-			void link(node_t *&list) noexcept
-			{
-				if (list) list->this_ptr = &next_node;
-				next_node = std::exchange(list, this);
-				this_ptr = &list;
+				removed = &removed_ref;
+				invoke_func(this);
+				removed = {};
+				return removed_ref;
 			}
 
+			void (*invoke_func)(node_t *) noexcept;
+			in_place_stop_source *src;
 			node_t *next_node = {};
 			node_t **this_ptr = {};
-			in_place_stop_source *src;
-			void (*invoke_func)(node_t *) noexcept;
+
+			std::atomic_flag complete;
+			bool *removed = nullptr;
 		};
 
 	public:
@@ -126,21 +123,28 @@ namespace rod
 		/** Sends a stop request via this stop source. */
 		bool request_stop() noexcept
 		{
-			if (!try_lock(status_t::has_req))
-				return false;
-
-			while (m_nodes) m_nodes->unlink()->invoke();
+			if (!try_lock(status_t::has_req)) return false;
+			for (m_tid = std::this_thread::get_id(); m_nodes; lock())
+			{
+				const auto node = pop();
+				unlock(status_t::has_req);
+				if (bool removed = false; !node->invoke(removed))
+				{
+					node->complete.test_and_set(std::memory_order_release);
+					node->complete.notify_one();
+				}
+			}
 			return (unlock(status_t::has_req), true);
 		}
 
 	private:
-		auto lock() noexcept
+		status_t lock() noexcept
 		{
 			for (auto flags = m_flags.load(std::memory_order_relaxed);;)
 			{
 				while (flags & status_t::is_busy)
 				{
-					m_flags.wait(flags);
+					m_flags.wait(flags, std::memory_order_acq_rel);
 					flags = m_flags.load(std::memory_order_relaxed);
 				}
 
@@ -162,7 +166,7 @@ namespace rod
 				for (; flags; flags = m_flags.load(std::memory_order_relaxed))
 				{
 					if (flags & status_t::has_req) return false;
-					if (flags & status_t::is_busy) m_flags.wait(flags);
+					if (flags & status_t::is_busy) m_flags.wait(flags, std::memory_order_acq_rel);
 				}
 
 				if (m_flags.compare_exchange_weak(
@@ -172,6 +176,14 @@ namespace rod
 			}
 		}
 
+		[[nodiscard]] node_t *pop() noexcept
+		{
+			const auto node = m_nodes;
+			m_nodes = node->next_node;
+			if (m_nodes) m_nodes->this_ptr = &m_nodes;
+			node->this_ptr = {};
+			return node;
+		}
 		void insert(node_t *node) noexcept
 		{
 			if (!try_lock())
@@ -180,18 +192,36 @@ namespace rod
 				return;
 			}
 
-			node->link(m_nodes);
+			node->next_node = m_nodes;
+			node->this_ptr = &m_nodes;
+			if (m_nodes) m_nodes->this_ptr = &node->next_node;
+			m_nodes = node;
+
 			unlock();
 		}
 		void erase(node_t *node) noexcept
 		{
-			auto old = lock();
-			node->unlink();
-			unlock(old);
+			if (auto old = lock(); node->this_ptr)
+			{
+				if ((*node->this_ptr = node->next_node))
+					node->next_node->this_ptr = node->this_ptr;
+				unlock(old);
+			}
+			else
+			{
+				const auto tid = m_tid;
+				unlock(old);
+
+				if (tid != std::this_thread::get_id())
+					node->complete.wait(false, std::memory_order_acq_rel);
+				else if (node->removed)
+					*node->removed = true;
+			}
 		}
 
-		node_t *m_nodes = {};
 		std::atomic<status_t> m_flags = {};
+		std::thread::id m_tid = {};
+		node_t *m_nodes = {};
 	};
 
 	/** Stop token used to query for stop requests of the associated `in_place_stop_source`. */
