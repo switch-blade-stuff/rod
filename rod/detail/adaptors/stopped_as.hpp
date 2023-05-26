@@ -106,11 +106,7 @@ namespace rod
 			template<typename T, typename Env>
 			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, Env, completion_signatures<set_error_t(std::exception_ptr)>, _value_signs_t, _error_signs_t, completion_signatures<>>;
 
-			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>)
-			{
-				static_assert(detail::callable<get_env_t, const Snd &>);
-				return get_env(s._snd);
-			}
+			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<detail::decays_to<type> T, typename Env>
 			friend constexpr _signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 

@@ -25,11 +25,7 @@ namespace rod
 		{
 			using is_receiver = std::true_type;
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>)
-			{
-				static_assert(detail::callable<get_env_t, const Rcv &>);
-				return get_env(r._rcv);
-			}
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._rcv); }
 
 			template<typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...>
 			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
@@ -84,11 +80,7 @@ namespace rod
 			template<typename T, typename E>
 			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, E, _error_signs_t<copy_cvref_t<T, Snd>, E>>;
 
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>)
-			{
-				static_assert(detail::callable<get_env_t, const Snd &>);
-				return get_env(s._snd);
-			}
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 
 			template<detail::decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }

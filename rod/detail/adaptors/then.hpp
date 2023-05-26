@@ -101,11 +101,7 @@ namespace rod
 
 			using _storage_t = typename storage<R, F>::type;
 
-			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const R &>)
-			{
-				static_assert(detail::callable<get_env_t, const R &>);
-				return get_env(r._data->_rcv);
-			}
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const R &>) { return get_env(r._data->_rcv); }
 
 			template<detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<F, Args...>
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept
@@ -161,11 +157,7 @@ namespace rod
 			template<typename R>
 			using _receiver_t = typename receiver<C, R, F>::type;
 
-			friend constexpr env_of_t<S> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const S &>)
-			{
-				static_assert(detail::callable<get_env_t, const S &>);
-				return get_env(s._snd);
-			}
+			friend constexpr env_of_t<S> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const S &>) { return get_env(s._snd); }
 
 			template<detail::decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
@@ -245,6 +237,6 @@ namespace rod
 	 * @param snd Sender who's stop channel to adapt for execution of \a fn. If omitted, creates a pipe-able sender adaptor.
 	 * @param fn Function invoked when \a snd is stopped.
 	 * @return Sender completing via the value channel with results of \a fn. */
-	inline constexpr auto upon_stopped = upon_error_t{};
+	inline constexpr auto upon_stopped = upon_stopped_t{};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -73,11 +73,7 @@ namespace rod
 			using _operation_t = typename operation<Sch, Snd, Rcv>::type;
 			using _env_t = typename env<Sch, env_of_t<Rcv>>::type;
 
-			friend constexpr _env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>)
-			{
-				static_assert(detail::callable<get_env_t, const Rcv &>);
-				return _env_t{get_env(r._op->_rcv)};
-			}
+			friend constexpr _env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return _env_t{get_env(r._op->_rcv)}; }
 
 			template<typename... Args>
 			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
@@ -108,11 +104,7 @@ namespace rod
 			using _receiver_ref_t = typename receiver_ref<Sch, Snd, Rcv>::type;
 			using _operation_t = typename operation<Sch, Snd, Rcv>::type;
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>)
-			{
-				static_assert(detail::callable<get_env_t, const Rcv &>);
-				return get_env(r._op->_rcv);
-			}
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
 			template<typename Err>
 			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, Rcv &&, Err>)

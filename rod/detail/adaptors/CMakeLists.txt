@@ -12,4 +12,5 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/write_some.hpp
         ${CMAKE_CURRENT_LIST_DIR}/stopped_as.hpp
         ${CMAKE_CURRENT_LIST_DIR}/into_variant.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/schedule_from.hpp)
+        ${CMAKE_CURRENT_LIST_DIR}/schedule_from.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/with_stop_token.hpp)

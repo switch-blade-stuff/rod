@@ -192,11 +192,7 @@ namespace rod
 			using _operation_base_t = typename operation_base<Rcv, Vals, Errs>::type;
 			using _env_t = env_for_t<Rcv>;
 
-			friend constexpr _env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>)
-			{
-				static_assert(detail::callable<get_env_t, const Rcv &>);
-				return _env_t{get_env(r._op->_rcv), r._op->_stop_src.get_token()};
-			}
+			friend constexpr _env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return _env_t{get_env(r._op->_rcv), r._op->_stop_src.get_token()}; }
 
 			template<typename... Args>
 			friend void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept

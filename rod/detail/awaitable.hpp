@@ -104,11 +104,8 @@ namespace rod
 		public:
 			using is_receiver = std::true_type;
 
-			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>)
-			{
-				static_assert(detail::callable<get_env_t, const P &>);
-				return get_env(std::as_const(r.m_cont_handle.promise()));
-			}
+			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>) { return get_env(std::as_const(r.m_cont_handle.promise())); }
+
 			template<typename... Vs> requires std::constructible_from<result_or_unit<S, P>, Vs...>
 			friend void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
 			{
@@ -285,11 +282,7 @@ namespace rod
 		class awaitable_promise
 		{
 		public:
-			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>)
-			{
-				static_assert(detail::callable<get_env_t, const R &>);
-				return get_env(p.m_rcv);
-			}
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(p.m_rcv); }
 
 		public:
 			awaitable_promise(auto &, R &r) noexcept : m_rcv(r) {}

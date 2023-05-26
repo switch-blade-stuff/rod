@@ -16,6 +16,7 @@
 #include "detail/queries/progress.hpp"
 
 #include "detail/adaptors/closure.hpp"
+#include "detail/adaptors/with_stop_token.hpp"
 #include "detail/adaptors/schedule_from.hpp"
 #include "detail/adaptors/stopped_as.hpp"
 #include "detail/adaptors/transfer.hpp"
