@@ -37,6 +37,9 @@ namespace rod
 		template<>
 		struct io_func<async_read_some_t>
 		{
+			template<detail::decays_to<std::byte> T>
+			constexpr io_func(std::span<T> s) : buff(std::begin(s), std::end(s)) {}
+
 			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
 
 			std::span<std::byte> buff;
@@ -44,6 +47,9 @@ namespace rod
 		template<>
 		struct io_func<async_write_some_t>
 		{
+			template<detail::decays_to<std::byte> T>
+			constexpr io_func(std::span<T> s) : buff(std::cbegin(s), std::cend(s)) {}
+
 			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
 
 			std::span<const std::byte> buff;
@@ -51,6 +57,9 @@ namespace rod
 		template<>
 		struct io_func<async_read_some_at_t>
 		{
+			template<detail::decays_to<std::byte> T>
+			constexpr io_func(std::span<T> s, std::ptrdiff_t pos) : buff(std::begin(s), std::end(s)), pos(pos) {}
+
 			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
 
 			std::span<std::byte> buff;
@@ -59,6 +68,9 @@ namespace rod
 		template<>
 		struct io_func<async_write_some_at_t>
 		{
+			template<detail::decays_to<std::byte> T>
+			constexpr io_func(std::span<T> s, std::ptrdiff_t pos) : buff(std::cbegin(s), std::cend(s)), pos(pos) {}
+
 			ROD_PUBLIC ssize_t operator()(int fd, int &err) const noexcept;
 
 			std::span<const std::byte> buff;
