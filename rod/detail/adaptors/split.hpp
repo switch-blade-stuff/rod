@@ -44,10 +44,9 @@ namespace rod
 			template<detail::decays_to<type> E>
 			friend constexpr auto tag_invoke(get_stop_token_t, const E &&e) noexcept { return e._token; }
 
-			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args>
+			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
-				static_assert(detail::callable<Q, Env, Args...>);
 				return Q{}(*e._env, std::forward<Args>(args)...);
 			}
 

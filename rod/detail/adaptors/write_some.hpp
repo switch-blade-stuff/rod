@@ -62,23 +62,26 @@ namespace rod
 		};
 
 		template<typename Snd>
-		concept write_somesender = sender_of<Snd, set_value_t(std::size_t)> || sender_of<Snd, set_value_t(std::size_t, std::error_code)>;
+		concept write_some_sender = sender_of<Snd, set_value_t(std::size_t)> || sender_of<Snd, set_value_t(std::size_t, std::error_code)>;
+		template<typename T, typename Snd, typename... Args>
+		concept value_overload = detail::tag_invocable_with_completion_scheduler<T, set_value_t, Snd, Snd, Args...>;
+
+		template<typename Snd>
+		using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 
 		class async_write_some_t
 		{
-			template<typename Snd>
-			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
 			template<typename Hnd, typename Src>
 			using back_adaptor = detail::back_adaptor<async_write_some_t, Hnd, std::decay_t<Src>>;
 
 		public:
-			template<sender Snd, typename Hnd, io_buffer Src> requires detail::tag_invocable_with_delegatee_scheduler<async_write_some_t, Snd, Snd, Hnd, Src>
-			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, delegatee_scheduler<Snd>, Snd, Hnd, Src>)
+			template<sender Snd, typename Hnd, io_buffer Src> requires (value_overload<async_write_some_t, Snd, Hnd, Src>)
+			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, value_scheduler<Snd>, Snd, Hnd, Src>)
 			{
-				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
-			template<sender Snd, typename Hnd, io_buffer Src> requires(!detail::tag_invocable_with_delegatee_scheduler<async_write_some_t, Snd, Snd, Hnd, Src> && tag_invocable<async_write_some_t, Snd, Hnd, Src>)
-			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, Snd, Hnd, Src>)
+			template<sender Snd, typename Hnd, io_buffer Src> requires(!value_overload<async_write_some_t, Snd, Hnd, Src> && tag_invocable<async_write_some_t, Snd, Hnd, Src>)
+			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, Snd, Hnd, Src>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
@@ -92,19 +95,17 @@ namespace rod
 
 		class async_write_some_at_t
 		{
-			template<typename Snd>
-			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
 			template<typename Hnd, typename Pos, typename Src>
 			using back_adaptor = detail::back_adaptor<async_write_some_at_t, Hnd, std::decay_t<Pos>, std::decay_t<Src>>;
 
 		public:
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires detail::tag_invocable_with_delegatee_scheduler<async_write_some_at_t, Snd, Snd, Hnd, Pos, Src>
-			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Src>)
+			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires (value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src>)
+			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Src>)
 			{
-				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires(!detail::tag_invocable_with_delegatee_scheduler<async_write_some_at_t, Snd, Snd, Hnd, Pos, Src> && tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
-			[[nodiscard]] write_somesender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
+			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires(!value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src> && tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
+			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}

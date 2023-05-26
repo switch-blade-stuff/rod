@@ -11,7 +11,7 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	template<typename Node, auto *Node::*Next>
+	template<typename Node, Node *Node::*Next>
 	struct basic_queue
 	{
 		constexpr basic_queue() noexcept = default;

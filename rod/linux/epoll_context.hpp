@@ -592,8 +592,8 @@ namespace rod
 			using _error_signs_t =  completion_signatures<set_error_t(std::error_code), set_error_t(std::exception_ptr)>;
 			using _signs_t = detail::concat_tuples_t<_value_signs_t, _error_signs_t, completion_signatures<set_stopped_t()>>;
 
-			constexpr type(context &ctx, int fd, _func_t func) noexcept : _ctx(ctx), _func(func), _fd(fd) {}
-
+			template<typename... Args>
+			constexpr type(context &ctx, int fd, Args &&...args) noexcept : _ctx(ctx), _func(std::forward<Args>(args)...), _fd(fd) {}
 
 			friend constexpr env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
 			template<detail::decays_to<type> T, typename Env>
@@ -629,36 +629,36 @@ namespace rod
 			template<detail::decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), monotonic_clock::now() + dur); }
 
-			template<typename Snd, detail::decays_to<scheduler> T, typename Dst>
-			friend decltype(auto) tag_invoke(async_read_some_t, T &&sch, Snd &&snd, int fd, Dst &&dst)
+			template<typename Snd, typename Dst>
+			friend decltype(auto) tag_invoke(async_read_some_t, scheduler sch, Snd &&snd, int fd, Dst &&dst)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, buff = as_byte_buffer(std::forward<Dst>(dst))]()
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, dst = std::forward<Dst>(dst)]()
 				{
-					return _io_sender_t<async_read_some_t>{*ctx, fd, {buff}};
+					return _io_sender_t<async_read_some_t>{*ctx, fd, as_byte_buffer(dst)};
 				});
 			}
-			template<typename Snd, detail::decays_to<scheduler> T, typename Src>
-			friend decltype(auto) tag_invoke(async_write_some_t, T &&sch, Snd &&snd, int fd, Src &&src)
+			template<typename Snd, typename Src>
+			friend decltype(auto) tag_invoke(async_write_some_t, scheduler sch, Snd &&snd, int fd, Src &&src)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, buff = as_byte_buffer(std::forward<Src>(src))]()
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, src = std::forward<Src>(src)]()
 				{
-					return _io_sender_t<async_write_some_t>{*ctx, fd, {buff}};
+					return _io_sender_t<async_write_some_t>{*ctx, fd, as_byte_buffer(src)};
 				});
 			}
-			template<typename Snd, detail::decays_to<scheduler> T, std::convertible_to<std::ptrdiff_t> Pos,  typename Dst>
-			friend decltype(auto) tag_invoke(async_read_some_at_t, T &&sch, Snd &&snd, int fd, Pos pos, Dst &&dst)
+			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos,  typename Dst>
+			friend decltype(auto) tag_invoke(async_read_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Dst &&dst)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos = static_cast<std::ptrdiff_t>(pos), buff = as_byte_buffer(std::forward<Dst>(dst))]()
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos, dst = std::forward<Dst>(dst)]()
 				{
-					return _io_sender_t<async_read_some_at_t>{*ctx, fd, {buff, pos}};
+					return _io_sender_t<async_read_some_at_t>{*ctx, fd, as_byte_buffer(dst), static_cast<std::ptrdiff_t>(pos)};
 				});
 			}
-			template<typename Snd, detail::decays_to<scheduler> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
-			friend decltype(auto) tag_invoke(async_write_some_at_t, T &&sch, Snd &&snd, int fd, Pos pos, Src &&src)
+			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
+			friend decltype(auto) tag_invoke(async_write_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Src &&src)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos = static_cast<std::ptrdiff_t>(pos), buff = as_byte_buffer(std::forward<Src>(src))]()
+				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos, src = std::forward<Src>(src)]()
 				{
-					return _io_sender_t<async_write_some_at_t>{*ctx, fd, {buff, pos}};
+					return _io_sender_t<async_write_some_at_t>{*ctx, fd, as_byte_buffer(src), static_cast<std::ptrdiff_t>(pos)};
 				});
 			}
 
@@ -670,8 +670,8 @@ namespace rod
 			context *_ctx;
 		};
 
-		constexpr auto tag_invoke(get_delegatee_scheduler_t, const env &e) noexcept { return scheduler{e._ctx}; }
-		constexpr auto tag_invoke(get_scheduler_t, const env &e) noexcept { return scheduler{e._ctx}; }
+		template<typename T>
+		constexpr auto tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return scheduler{e._ctx}; }
 
 		constexpr scheduler context::get_scheduler() noexcept { return {this}; }
 	}

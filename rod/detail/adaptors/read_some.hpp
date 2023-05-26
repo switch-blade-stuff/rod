@@ -63,21 +63,24 @@ namespace rod
 
 		template<typename Snd>
 		concept read_some_sender = sender_of<Snd, set_value_t(std::size_t)> || sender_of<Snd, set_value_t(std::size_t, std::error_code)>;
+		template<typename T, typename Snd, typename... Args>
+		concept value_overload = detail::tag_invocable_with_completion_scheduler<T, set_value_t, Snd, Snd, Args...>;
+
+		template<typename Snd>
+		using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 
 		class async_read_some_t
 		{
-			template<typename Snd>
-			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
 			template<typename Hnd, typename Dst>
 			using back_adaptor = detail::back_adaptor<async_read_some_t, Hnd, std::decay_t<Dst>>;
 
 		public:
-			template<sender Snd, typename Hnd, io_buffer Dst> requires detail::tag_invocable_with_delegatee_scheduler<async_read_some_t, Snd, Snd, Hnd, Dst>
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, delegatee_scheduler<Snd>, Snd, Hnd, Dst>)
+			template<sender Snd, typename Hnd, io_buffer Dst> requires value_overload<async_read_some_t, Snd, Hnd, Dst>
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, value_scheduler<Snd>, Snd, Hnd, Dst>)
 			{
-				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
-			template<sender Snd, typename Hnd, io_buffer Dst> requires(!detail::tag_invocable_with_delegatee_scheduler<async_read_some_t, Snd, Snd, Hnd, Dst> && tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
+			template<sender Snd, typename Hnd, io_buffer Dst> requires(!value_overload<async_read_some_t, Snd, Hnd, Dst> && tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
 			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
@@ -92,18 +95,16 @@ namespace rod
 
 		class async_read_some_at_t
 		{
-			template<typename Snd>
-			using delegatee_scheduler = decltype(get_delegatee_scheduler(get_env(std::declval<Snd>())));
 			template<typename Hnd, typename Pos, typename Dst>
 			using back_adaptor = detail::back_adaptor<async_read_some_at_t, Hnd, std::decay_t<Pos>, std::decay_t<Dst>>;
 
 		public:
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires detail::tag_invocable_with_delegatee_scheduler<async_read_some_at_t, Snd, Snd, Hnd, Pos, Dst>
-			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, delegatee_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
+			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst>
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, get_delegatee_scheduler(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires(!detail::tag_invocable_with_delegatee_scheduler<async_read_some_at_t, Snd, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
+			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires(!value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
 			[[nodiscard]] read_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));

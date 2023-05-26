@@ -11,7 +11,7 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	template<typename Node, auto *Node::*Next>
+	template<typename Node, Node *Node::*Next>
 	struct atomic_queue
 	{
 		void terminate(bool notify = true) noexcept

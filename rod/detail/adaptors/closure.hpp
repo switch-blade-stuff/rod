@@ -71,7 +71,7 @@ namespace rod
 			template<typename S> requires callable<F, S, Args...>
 			constexpr decltype(auto) operator()(S &&snd) && noexcept(nothrow_callable<F, S, Args...>)
 			{
-				return std::apply([&snd, this](Args &...as) -> decltype(auto) { return std::move(first)(std::forward<S>(snd), std::move(as)...); }, second);
+				return std::apply([&snd, this](Args &...as) -> decltype(auto) { return std::move(first)(std::forward<S>(snd), static_cast<Args &&>(as)...); }, second);
 			}
 			template<typename S> requires callable<const F &, S, const Args &...>
 			constexpr decltype(auto) operator()(S &&snd) const & noexcept(nothrow_callable<const F &, S, const Args &...>)

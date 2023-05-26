@@ -29,10 +29,9 @@ namespace rod
 		{
 			template<detail::decays_to<type> E>
 			friend constexpr Sch tag_invoke(get_scheduler_t, E &&e) noexcept { return get_scheduler(e._env); }
-			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args>
+			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
-				static_assert(detail::callable<Q, Env, Args...>);
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
@@ -171,6 +170,7 @@ namespace rod
 			using _signs_t = make_completion_signatures<schedule_result_t<Sch>, Env, make_completion_signatures<copy_cvref_t<T, Snd>, _env_t<Env>,
 								completion_signatures<set_error_t(std::exception_ptr)>>, _empty_signs_t>;
 
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<detail::decays_to<type> T, typename Env>
 			friend constexpr _signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
@@ -183,8 +183,6 @@ namespace rod
 				static_assert(sender_to<Snd, _receiver_ref_t<Rcv>>);
 				return _operation_t<Rcv>{std::forward<T>(s)._sch, std::forward<T>(s)._snd, std::move(rcv)};
 			}
-
-			friend constexpr decltype(auto) tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
 			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
