@@ -103,13 +103,15 @@ namespace rod
 			{
 				static_assert(sender_to<S, receiver_t<S>>);
 
-				state_t<S> state;
-				run_loop loop;
+				state_t<S> state = {};
+				run_loop loop = {};
 
 				/* Start the sender chain & wait for it to finish executing. */
-				auto op = connect(std::forward<S>(snd), receiver_t<S>{&state, &loop});
-				start(op);
-				loop.run();
+				{
+					auto op = connect(std::forward<S>(snd), receiver_t<S>{&state, &loop});
+					start(op);
+					loop.run();
+				}
 
 				/* Rethrow exceptions & return value results. */
 				switch (state.index())

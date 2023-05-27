@@ -3,8 +3,10 @@
  */
 
 #include <string_view>
-#include <rod/io.hpp>
 #include <fcntl.h>
+
+#include <rod/task.hpp>
+#include <rod/io.hpp>
 
 #include "common.hpp"
 
@@ -12,11 +14,10 @@ using namespace std::chrono_literals;
 
 int main()
 {
-	rod::in_place_stop_source src;
-	rod::epoll_context ctx;
+	rod::in_place_stop_source src = {};
+	rod::epoll_context ctx = {};
 	auto trd = std::jthread{[&]() { ctx.run(src.get_token()); }};
 	auto sch = ctx.get_scheduler();
-
 	{
 		const auto start = sch.now();
 		rod::sync_wait(rod::schedule_in(sch, 50ms) | rod::then([&]() { TEST_ASSERT((sch.now() - start) >= 50ms); }));
@@ -34,12 +35,17 @@ int main()
 		close(pipe_fd[0]);
 		close(pipe_fd[1]);
 	}
-
 	{
-		auto snd0 = rod::schedule_in(sch, 50ms) | rod::then([&]() { src.request_stop(); });
-		auto snd1 = rod::schedule_in(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); });
-		auto snd2 = rod::schedule_in(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); });
+		rod::in_place_stop_source src2;
+		auto snd0 = rod::schedule_in(sch, 50ms) | rod::then([&]() { src2.request_stop(); });
+		auto snd1 = rod::schedule_in(sch, 100ms) | rod::with_stop_token(src2.get_token()) | rod::then([]() { std::terminate(); });
+		auto snd2 = rod::schedule_in(sch, 100ms) | rod::with_stop_token(src2.get_token()) | rod::then([]() { std::terminate(); });
 
 		rod::sync_wait(rod::when_all(snd1, snd2, snd0));
 	}
+
+	{
+		rod::sync_wait([&]() -> rod::task<> { co_await rod::schedule_in(sch, 50ms); }());
+	}
+	src.request_stop();
 }

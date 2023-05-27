@@ -55,7 +55,14 @@ namespace rod
 			using _stop_cb_t = std::optional<stop_callback_for_t<Tok, stop_trigger<Rcv, Tok>>>;
 
 			template<typename C, typename... Args>
-			constexpr void _complete(Args &&...args) noexcept { if (!_is_done.test_and_set()) C{}(std::move(_rcv), std::forward<Args>(args)...); }
+			constexpr void _complete(Args &&...args) noexcept
+			{
+				if (!_is_done.test_and_set())
+				{
+					_stop_cb.reset();
+					C{}(std::move(_rcv), std::forward<Args>(args)...);
+				}
+			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
 			[[ROD_NO_UNIQUE_ADDRESS]] Tok _tok;

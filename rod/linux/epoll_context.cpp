@@ -11,6 +11,7 @@
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
+#include <cstdio>
 
 namespace rod::_epoll
 {
@@ -117,6 +118,7 @@ namespace rod::_epoll
 
 	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
+//		fprintf(stdout, "context::schedule_producer(%p)\n", (void *)node);
 		assert(!node->_next);
 		if (m_producer_queue.push(node, false))
 		{
@@ -127,17 +129,20 @@ namespace rod::_epoll
 	}
 	void context::schedule_consumer(operation_base *node) noexcept
 	{
+//		fprintf(stdout, "context::schedule_consumer(%p)\n", (void *)node);
 		assert(!node->_next);
 		m_consumer_queue.push_back(node);
 	}
 
 	void context::add_timer(timer_node *node) noexcept
 	{
+//		fprintf(stdout, "context::add_timer(%p)\n", (void *)node);
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
 	void context::del_timer(timer_node *node) noexcept
 	{
+//		fprintf(stdout, "context::del_timer(%p)\n", (void *)node);
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
 		m_timers.erase(node);
@@ -179,6 +184,7 @@ namespace rod::_epoll
 			{
 			case event_id::timer_event: /* Timer elapsed notification event. */
 			{
+//				fprintf(stdout, "event_id::timer_event timers.front() = %p\n", (void *)m_timers.front());
 				m_timer_fd_started = false;
 				m_timer_pending = true;
 
@@ -190,6 +196,7 @@ namespace rod::_epoll
 			}
 			case event_id::queue_event: /* Producer queue notification event. */
 			{
+				//fprintf(stdout, "event_id::queue_event\n");
 				std::uint64_t token;
 				m_event_fd.read(&token, sizeof(token), err);
 				if (err)
@@ -207,6 +214,9 @@ namespace rod::_epoll
 
 	inline auto set_timer_fd(int fd, time_point tp = {}) noexcept
 	{
+//		const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(tp - monotonic_clock::now());
+//		fprintf(stdout, "_epoll::set_timer_fd(%i, %lims)\n", fd, millis.count());
+
 		::itimerspec timeout = {};
 		timeout.it_value.tv_sec = tp.seconds();
 		timeout.it_value.tv_nsec = tp.nanoseconds();
@@ -226,7 +236,11 @@ namespace rod::_epoll
 			/* Always run local thread queue to completion before checking for stop requests.
 			 * Timers & pending producer queue will be handled after the stop request check. */
 			for (auto queue = std::move(m_consumer_queue); !queue.empty();)
-				queue.pop_front()->_notify();
+			{
+				const auto node = queue.pop_front();
+//				fprintf(stdout, "notify(%p)\n", (void *)node);
+				node->_notify();
+			}
 			if (std::exchange(m_stop_pending, false)) [[unlikely]]
 				return;
 
@@ -247,9 +261,10 @@ namespace rod::_epoll
 				}
 
 				/* Disarm timer descriptor (set timeout to 0) if there is no more pending timers. */
-				if (m_timers.empty() && std::exchange(m_timer_fd_started, {}))
+				if (m_timers.empty())
 				{
-					set_timer_fd(m_timer_fd.native_handle());
+					if (std::exchange(m_timer_fd_started, {}))
+						set_timer_fd(m_timer_fd.native_handle());
 					m_timer_pending = false;
 				}
 				else if (!m_timers.empty())
@@ -263,6 +278,8 @@ namespace rod::_epoll
 						m_next_timeout = next_timeout;
 						m_timer_pending = false;
 					}
+					else
+						throw std::system_error{errno, std::system_category()};
 				}
 			}
 

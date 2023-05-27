@@ -30,7 +30,7 @@ namespace rod
 		using time_point = typename clock::time_point;
 
 		template<typename Env>
-		concept stoppable_env = stoppable_token<stop_token_of_t<Env> &>;
+		concept stoppable_env = stoppable_token<stop_token_of_t<Env &>>;
 
 		template<typename>
 		struct io_func;
@@ -84,7 +84,7 @@ namespace rod
 		{
 			struct callback
 			{
-				void operator()() const noexcept { op->*Stop(); }
+				void operator()() const noexcept { (op->*Stop)(); }
 				Op *op;
 			};
 
@@ -379,28 +379,28 @@ namespace rod
 		template<typename Rcv>
 		void timer_operation<Rcv>::type::_start() noexcept
 		{
-			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
+			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
+				_start_consumer();
+			else
 			{
 				std::error_code err = {};
 				_notify_func = [](operation_base *p) noexcept { static_cast<type *>(p)->_start_consumer(); };
 				_ctx.schedule_producer(this, err);
 				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
-			else
-				_start_consumer();
 		}
 		template<typename Op, typename Rcv>
 		void io_operation<Op, Rcv>::type::_start() noexcept
 		{
-			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
+			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
+				_start_consumer();
+			else
 			{
 				std::error_code err = {};
 				complete_base::_notify_func = _notify_start;
 				_ctx.schedule_producer(static_cast<complete_base *>(this), err);
 				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
-			else
-				_start_consumer();
 		}
 
 		template<typename Rcv>
@@ -420,7 +420,7 @@ namespace rod
 
 			/* Initialize the stop callback for stoppable environments. */
 			if constexpr (stoppable_env<env_of_t<Rcv>>)
-				_stop_cb.init(get_env(_rcv));
+				_stop_cb.init(get_env(_rcv), this);
 		}
 		template<typename Op, typename Rcv>
 		void io_operation<Op, Rcv>::type::_start_consumer() noexcept
@@ -432,7 +432,7 @@ namespace rod
 				/* Schedule read operation via EPOLL. */
 				complete_base::_notify_func = _notify_read;
 				if constexpr (stoppable_env<env_of_t<Rcv>>)
-					_stop_cb.init(get_env(_rcv));
+					_stop_cb.init(get_env(_rcv), this);
 
 				_ctx.add_io(_fd, static_cast<complete_base *>(this));
 				return;
@@ -510,7 +510,7 @@ namespace rod
 
 					/* Make sure to erase the timer if it has not already been dispatched. */
 					if (!(op->_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
-						op->_ctx.del_timer(&op);
+						op->_ctx.del_timer(op);
 
 					op->_complete_stopped();
 				};
@@ -614,7 +614,7 @@ namespace rod
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t>);
-				return _operation_t<Rcv>{s._ctx, s._fd, std::forward<Rcv>(rcv), std::forward<T>(s)._func};
+				return _operation_t<Rcv>{s._ctx, s._fd, std::forward<Rcv>(rcv), s._func};
 			}
 
 			context &_ctx;

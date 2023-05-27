@@ -84,7 +84,7 @@ namespace rod
 		struct env<Env>::type
 		{
 			template<detail::decays_to<type> E>
-			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._token; }
+			friend constexpr in_place_stop_token tag_invoke(get_stop_token_t, E &&e) noexcept { return e._token; }
 
 			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)

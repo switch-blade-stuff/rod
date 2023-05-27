@@ -46,14 +46,14 @@ namespace rod::detail
 			else
 			{
 				auto prev = head;
-				while (prev->*Next && Cmp{}(*(prev->*Next), *node))
+				while (prev->*Next && !Cmp{}(*node, *(prev->*Next)))
 					prev = prev->*Next;
 
 				const auto next = prev->*Next;
-				node->*Prev = prev;
-				node->*Next = next;
-				prev->*Next = next;
 				if (next) next->*Prev = node;
+				node->*Next = next;
+				prev->*Next = node;
+				node->*Prev = prev;
 			}
 			return node;
 		}
