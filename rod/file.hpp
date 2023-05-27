@@ -203,7 +203,6 @@ namespace rod::_file
 			const auto src_max = std::ranges::size(src) * sizeof(value_t);
 			return dst.m_file.sync_write(static_cast<const void *>(src_ptr), src_max, err);
 		}
-
 		template<typename T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
 		friend std::size_t tag_invoke(read_some_at_t, T &&src, Pos pos, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
 		{
@@ -233,7 +232,6 @@ namespace rod::_file
 			static_assert(detail::callable<async_write_some_t, Snd, native_handle_type, Src>);
 			return async_write_some(std::forward<Snd>(snd), dst.native_handle(), std::forward<Src>(src));
 		}
-
 		template<typename T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
 		friend decltype(auto) tag_invoke(async_read_some_at_t, Snd &&snd, T &&src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>)
 		{
@@ -245,6 +243,31 @@ namespace rod::_file
 		{
 			static_assert(detail::callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>);
 			return async_write_some_at(std::forward<Snd>(snd), dst.native_handle(), pos, std::forward<Src>(src));
+		}
+
+		template<typename T, typename Sch, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		friend decltype(auto) tag_invoke(schedule_read_some_t, Sch &&sch, T &&src, Dst &&dst) noexcept(detail::nothrow_callable<schedule_read_some_t, Sch, native_handle_type, Dst>)
+		{
+			static_assert(detail::callable<schedule_read_some_t, Sch, native_handle_type, Dst>);
+			return schedule_read_some(std::forward<Sch>(sch), src.native_handle(), std::forward<Dst>(dst));
+		}
+		template<typename T, typename Sch, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		friend decltype(auto) tag_invoke(schedule_write_some_t, Sch &&sch, T &&dst, Src &&src) noexcept(detail::nothrow_callable<schedule_write_some_t, Sch, native_handle_type, Src>)
+		{
+			static_assert(detail::callable<schedule_write_some_t, Sch, native_handle_type, Src>);
+			return schedule_write_some(std::forward<Sch>(sch), dst.native_handle(), std::forward<Src>(src));
+		}
+		template<typename T, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		friend decltype(auto) tag_invoke(schedule_read_some_at_t, Sch &&sch, T &&src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Dst>)
+		{
+			static_assert(detail::callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Dst>);
+			return schedule_read_some_at(std::forward<Sch>(sch), src.native_handle(), pos, std::forward<Dst>(dst));
+		}
+		template<typename T, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		friend decltype(auto) tag_invoke(schedule_write_some_at_t, Sch &&sch, T &&dst, Pos pos, Src &&src) noexcept(detail::nothrow_callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Src>)
+		{
+			static_assert(detail::callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Src>);
+			return schedule_write_some_at(std::forward<Sch>(sch), dst.native_handle(), pos, std::forward<Src>(src));
 		}
 
 		constexpr void swap(basic_file &other) noexcept { m_file.swap(other.m_file); }

@@ -116,11 +116,39 @@ namespace rod
 				return back_adaptor<Hnd, Pos, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst))};
 			}
 		};
+
+		struct schedule_read_some_t
+		{
+			template<scheduler Sch, typename Hnd, io_buffer Dst> requires tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>)
+			{
+				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
+			}
+			template<scheduler Sch, typename Hnd, io_buffer Dst> requires(!tag_invocable<schedule_read_some_t, Sch, Hnd, Dst> && detail::callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Dst &&dst) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
+			{
+				return async_read_some_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
+			}
+		};
+
+		struct schedule_read_some_at_t
+		{
+			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>)
+			{
+				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
+			}
+			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Dst> requires(!tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst> && detail::callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
+			[[nodiscard]] read_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
+			{
+				return async_read_some_at_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
+			}
+		};
 	}
 
 	using _read_some::read_some_t;
 
-	/** Customization point object used to read a contiguous dster of integral values from a readable source object.
+	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[out] dst Contiguous output range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
@@ -130,9 +158,9 @@ namespace rod
 
 	using _read_some::read_some_at_t;
 
-	/** Customization point object used to read a contiguous dster of integral values from a readable source object at the specified offset.
+	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle at the specified offset.
 	 * @param[in] hnd Handle to read the data from.
-	 * @param[in] pos Offset into the source object at which to read the values.
+	 * @param[in] pos Offset into the source handle at which to read the data.
 	 * @param[out] dst Contiguous output range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
@@ -141,7 +169,7 @@ namespace rod
 
 	using _read_some::async_read_some_t;
 
-	/** Customization point object returning a sender used to read a contiguous dster of integral values from an async-readable source object.
+	/** Customization point object returning a sender used to read a contiguous buffer of integral values from an async-readable source handle.
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to read the data from.
@@ -151,12 +179,34 @@ namespace rod
 
 	using _read_some::async_read_some_at_t;
 
-	/** Customization point object returning a sender used to read a contiguous dster of integral values from an async-readable source object.
+	/** Customization point object returning a sender used to read a contiguous buffer of integral values from an async-readable source handle.
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to read the data from.
+	 * @param[in] pos Offset into the source handle at which to read the data.
 	 * @param[out] dst Contiguous output range of integral values.
 	 * @return Sender completing either with the amount of elements read and an optional error code, or an error on read failure. */
 	inline constexpr auto async_read_some_at = async_read_some_at_t{};
+
+	using _read_some::schedule_read_some_t;
+
+	/** Customization point object used to schedule an asynchronous read operation using the specified scheduler.
+	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
+	 * @param[in] sch Scheduler used to schedule the read operation.
+	 * @param[in] hnd Handle to read the data from.
+	 * @param[out] dst Contiguous output range of integral values.
+	 * @return Sender completing on \a sch either with the amount of elements read and an optional error code, or an error on read failure. */
+	inline constexpr auto schedule_read_some = schedule_read_some_t{};
+
+	using _read_some::schedule_read_some_at_t;
+
+	/** Customization point object used to schedule an asynchronous read operation at the specified position using the specified scheduler.
+	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
+	 * @param[in] sch Scheduler used to schedule the read operation.
+	 * @param[in] hnd Handle to read the data from.
+	 * @param[in] pos Offset into the source handle at which to read the data.
+	 * @param[out] dst Contiguous output range of integral values.
+	 * @return Sender completing on \a sch either with the amount of elements read and an optional error code, or an error on read failure. */
+	inline constexpr auto schedule_read_some_at = schedule_read_some_at_t{};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

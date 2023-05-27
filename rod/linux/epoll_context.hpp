@@ -640,36 +640,57 @@ namespace rod
 			template<detail::decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), monotonic_clock::now() + dur); }
 
+			template<typename Dst>
+			friend _io_sender_t<async_read_some_t> tag_invoke(schedule_read_some_t, scheduler sch, int fd, Dst &&dst)
+			{
+				return _io_sender_t<async_read_some_t>{*sch._ctx, fd, as_byte_buffer(dst)};
+			}
+			template<typename Src>
+			friend _io_sender_t<async_write_some_t> tag_invoke(schedule_write_some_t, scheduler sch, int fd, Src &&src)
+			{
+				return _io_sender_t<async_write_some_t>{*sch._ctx, fd, as_byte_buffer(src)};
+			}
+			template<std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
+			friend _io_sender_t<async_read_some_at_t> tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Dst &&dst)
+			{
+				return _io_sender_t<async_read_some_at_t>{*sch._ctx, fd, as_byte_buffer(dst), static_cast<std::ptrdiff_t>(pos)};
+			}
+			template<std::convertible_to<std::ptrdiff_t> Pos, typename Src>
+			friend _io_sender_t<async_write_some_at_t> tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Src &&src)
+			{
+				return _io_sender_t<async_write_some_at_t>{*sch._ctx, fd, as_byte_buffer(src), static_cast<std::ptrdiff_t>(pos)};
+			}
+
 			template<typename Snd, typename Dst>
 			friend decltype(auto) tag_invoke(async_read_some_t, scheduler sch, Snd &&snd, int fd, Dst &&dst)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, dst = std::forward<Dst>(dst)]()
+				return let_value(std::forward<Snd>(snd), [sch, fd, dst = std::forward<Dst>(dst)]()
 				{
-					return _io_sender_t<async_read_some_t>{*ctx, fd, as_byte_buffer(dst)};
+					return schedule_read_some(sch, fd, std::move(dst));
 				});
 			}
 			template<typename Snd, typename Src>
 			friend decltype(auto) tag_invoke(async_write_some_t, scheduler sch, Snd &&snd, int fd, Src &&src)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, src = std::forward<Src>(src)]()
+				return let_value(std::forward<Snd>(snd), [sch, fd, src = std::forward<Src>(src)]()
 				{
-					return _io_sender_t<async_write_some_t>{*ctx, fd, as_byte_buffer(src)};
+					return schedule_write_some(sch, fd, std::move(src));
 				});
 			}
-			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos,  typename Dst>
+			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
 			friend decltype(auto) tag_invoke(async_read_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Dst &&dst)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos, dst = std::forward<Dst>(dst)]()
+				return let_value(std::forward<Snd>(snd), [sch, fd, pos, dst = std::forward<Dst>(dst)]()
 				{
-					return _io_sender_t<async_read_some_at_t>{*ctx, fd, as_byte_buffer(dst), static_cast<std::ptrdiff_t>(pos)};
+					return schedule_read_some_at(sch, fd, pos, std::move(dst));
 				});
 			}
 			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
 			friend decltype(auto) tag_invoke(async_write_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Src &&src)
 			{
-				return let_value(std::forward<Snd>(snd), [ctx = sch._ctx, fd, pos, src = std::forward<Src>(src)]()
+				return let_value(std::forward<Snd>(snd), [sch, fd, pos, src = std::forward<Src>(src)]()
 				{
-					return _io_sender_t<async_write_some_at_t>{*ctx, fd, as_byte_buffer(src), static_cast<std::ptrdiff_t>(pos)};
+					return schedule_write_some_at(sch, fd, pos, std::move(src));
 				});
 			}
 

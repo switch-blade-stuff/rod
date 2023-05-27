@@ -59,8 +59,7 @@ void test_basic_file(auto mode)
 		rod::sync_wait(snd);
 	}
 	{
-		auto snd = rod::schedule(sch)
-		           | rod::async_write_some_at(file, data.size(), std::span{data})
+		auto snd = rod::schedule_write_some_at(sch, file, data.size(), std::span{data})
 		           | rod::then([](auto n) { TEST_ASSERT(n == data.size()); })
 		           | rod::async_read_some_at(file, 0, std::span{buff})
 		           | rod::then([](auto n) { TEST_ASSERT(n == data.size() * 2); })
