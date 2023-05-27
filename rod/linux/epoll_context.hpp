@@ -627,9 +627,6 @@ namespace rod
 			template<typename Op>
 			using _io_sender_t = typename io_sender<Op>::type;
 
-			template<typename R>
-			static constexpr auto as_byte_buffer(R &&range) { return make_byte_buffer(std::to_address(std::ranges::begin(range)), std::ranges::size(range)); }
-
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::weakly_parallel; }
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
 
@@ -641,25 +638,13 @@ namespace rod
 			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), monotonic_clock::now() + dur); }
 
 			template<typename Dst>
-			friend _io_sender_t<async_read_some_t> tag_invoke(schedule_read_some_t, scheduler sch, int fd, Dst &&dst)
-			{
-				return _io_sender_t<async_read_some_t>{*sch._ctx, fd, as_byte_buffer(dst)};
-			}
+			friend _io_sender_t<async_read_some_t> tag_invoke(schedule_read_some_t, scheduler sch, int fd, Dst &&dst) { return {*sch._ctx, fd, dst}; }
 			template<typename Src>
-			friend _io_sender_t<async_write_some_t> tag_invoke(schedule_write_some_t, scheduler sch, int fd, Src &&src)
-			{
-				return _io_sender_t<async_write_some_t>{*sch._ctx, fd, as_byte_buffer(src)};
-			}
+			friend _io_sender_t<async_write_some_t> tag_invoke(schedule_write_some_t, scheduler sch, int fd, Src &&src) { return {*sch._ctx, fd, src}; }
 			template<std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
-			friend _io_sender_t<async_read_some_at_t> tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Dst &&dst)
-			{
-				return _io_sender_t<async_read_some_at_t>{*sch._ctx, fd, as_byte_buffer(dst), static_cast<std::ptrdiff_t>(pos)};
-			}
+			friend _io_sender_t<async_read_some_at_t> tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Dst &&dst) { return {*sch._ctx, fd, dst, static_cast<std::ptrdiff_t>(pos)}; }
 			template<std::convertible_to<std::ptrdiff_t> Pos, typename Src>
-			friend _io_sender_t<async_write_some_at_t> tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Src &&src)
-			{
-				return _io_sender_t<async_write_some_at_t>{*sch._ctx, fd, as_byte_buffer(src), static_cast<std::ptrdiff_t>(pos)};
-			}
+			friend _io_sender_t<async_write_some_at_t> tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Src &&src) { return {*sch._ctx, fd, src, static_cast<std::ptrdiff_t>(pos)}; }
 
 			template<typename Snd, typename Dst>
 			friend decltype(auto) tag_invoke(async_read_some_t, scheduler sch, Snd &&snd, int fd, Dst &&dst)

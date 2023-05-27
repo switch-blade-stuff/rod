@@ -27,8 +27,8 @@ int main()
 
 		std::array<char, 13> buff = {};
 		const std::string_view data = "hello, world";
-		auto snd_read = rod::schedule(sch) | rod::async_read_some(pipe_fd[0], std::span{buff}) | rod::then([&](auto n) { TEST_ASSERT((std::string_view{buff.data(), n} == data)); });
-		auto snd_write = rod::schedule(sch) | rod::async_write_some(pipe_fd[1], data) | rod::then([&](auto n) { TEST_ASSERT(n == data.size()); });
+		auto snd_read = rod::schedule_read_some(sch, pipe_fd[0], rod::as_byte_buffer(buff)) | rod::then([&](auto n) { TEST_ASSERT((std::string_view{buff.data(), n} == data)); });
+		auto snd_write = rod::schedule_write_some(sch, pipe_fd[1], rod::as_byte_buffer(data)) | rod::then([&](auto n) { TEST_ASSERT(n == data.size()); });
 		rod::sync_wait(rod::when_all(snd_read, snd_write));
 
 		close(pipe_fd[0]);

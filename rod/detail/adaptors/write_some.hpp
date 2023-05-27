@@ -153,7 +153,7 @@ namespace rod
 	 * @param[in] src Contiguous input range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
-	 * @return Amount of elements written. */
+	 * @return Amount of bytes written. */
 	inline constexpr auto write_some = write_some_t{};
 
 	using _write_some::write_some_at_t;
@@ -164,7 +164,7 @@ namespace rod
 	 * @param[in] src Contiguous input range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
-	 * @return Amount of elements written. */
+	 * @return Amount of bytes written. */
 	inline constexpr auto write_some_at = write_some_at_t{};
 
 	using _write_some::async_write_some_t;
@@ -174,7 +174,7 @@ namespace rod
 	 * @param[in] snd Input sender who's value completion channel will be used for the async write operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] src Contiguous input range of integral values.
-	 * @return Sender completing either with the amount of elements elementswritten and an optional error code, or an error on write failure. */
+	 * @return Sender completing either with the amount of bytes written and an optional error code, or an error on write failure. */
 	inline constexpr auto async_write_some = async_write_some_t{};
 
 	using _write_some::async_write_some_at_t;
@@ -185,7 +185,7 @@ namespace rod
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
 	 * @param[in] src Contiguous input range of integral values.
-	 * @return Sender completing either with the amount of elements elements written and an optional error code, or an error on write failure. */
+	 * @return Sender completing either with the amount of bytes written and an optional error code, or an error on write failure. */
 	inline constexpr auto async_write_some_at = async_write_some_at_t{};
 
 	using _write_some::schedule_write_some_t;
@@ -195,7 +195,7 @@ namespace rod
 	 * @param[in] sch Scheduler used to schedule the write operation.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing on \a sch either with the amount of elements written and an optional error code, or an error on write failure. */
+	 * @return Sender completing on \a sch either with the amount of bytes written and an optional error code, or an error on write failure. */
 	inline constexpr auto schedule_write_some = schedule_write_some_t{};
 
 	using _write_some::schedule_write_some_at_t;
@@ -206,7 +206,7 @@ namespace rod
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing on \a sch either with the amount of elements written and an optional error code, or an error on write failure. */
+	 * @return Sender completing on \a sch either with the amount of bytes written and an optional error code, or an error on write failure. */
 	inline constexpr auto schedule_write_some_at = schedule_write_some_at_t{};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

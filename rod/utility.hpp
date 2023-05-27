@@ -118,6 +118,13 @@ namespace rod
 	template<typename From, typename To>
 	using copy_cvref_t = typename copy_cvref<From, To>::type;
 
+	/** Metaprogramming utility used to copy `const` & `volatile` qualifiers from \a From to \a To. */
+	template<typename From, typename To>
+	using copy_cv = copy_cvref<std::remove_reference_t<From>, To>;
+	/** Alias for `typename copy_cv<From, To>::type`. */
+	template<typename From, typename To>
+	using copy_cv_t = typename copy_cv<From, To>::type;
+
 	namespace detail
 	{
 		template<typename, template<typename...> typename>

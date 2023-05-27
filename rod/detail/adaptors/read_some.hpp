@@ -153,7 +153,7 @@ namespace rod
 	 * @param[out] dst Contiguous output range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
-	 * @return Amount of elements read. */
+	 * @return Amount of bytes read. */
 	inline constexpr auto read_some = read_some_t{};
 
 	using _read_some::read_some_at_t;
@@ -164,7 +164,7 @@ namespace rod
 	 * @param[out] dst Contiguous output range of integral values.
 	 * @param[out] err Reference to the error code set on failure to complete the operation. If omitted, an exception is thrown instead.
 	 * @throw std::system_error If an error has occurred and no output error code has been specified.
-	 * @return Amount of elements read. */
+	 * @return Amount of bytes read. */
 	inline constexpr auto read_some_at = read_some_at_t{};
 
 	using _read_some::async_read_some_t;
@@ -174,7 +174,7 @@ namespace rod
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing either with the amount of elements read and an optional error code, or an error on read failure. */
+	 * @return Sender completing either with the amount of bytes read and an optional error code, or an error on read failure. */
 	inline constexpr auto async_read_some = async_read_some_t{};
 
 	using _read_some::async_read_some_at_t;
@@ -185,7 +185,7 @@ namespace rod
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source handle at which to read the data.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing either with the amount of elements read and an optional error code, or an error on read failure. */
+	 * @return Sender completing either with the amount of bytes read and an optional error code, or an error on read failure. */
 	inline constexpr auto async_read_some_at = async_read_some_at_t{};
 
 	using _read_some::schedule_read_some_t;
@@ -195,7 +195,7 @@ namespace rod
 	 * @param[in] sch Scheduler used to schedule the read operation.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing on \a sch either with the amount of elements read and an optional error code, or an error on read failure. */
+	 * @return Sender completing on \a sch either with the amount of bytes read and an optional error code, or an error on read failure. */
 	inline constexpr auto schedule_read_some = schedule_read_some_t{};
 
 	using _read_some::schedule_read_some_at_t;
@@ -206,7 +206,7 @@ namespace rod
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source handle at which to read the data.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing on \a sch either with the amount of elements read and an optional error code, or an error on read failure. */
+	 * @return Sender completing on \a sch either with the amount of bytes read and an optional error code, or an error on read failure. */
 	inline constexpr auto schedule_read_some_at = schedule_read_some_at_t{};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
