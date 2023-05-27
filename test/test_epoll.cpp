@@ -35,5 +35,11 @@ int main()
 		close(pipe_fd[1]);
 	}
 
-	src.request_stop();
+	{
+		auto snd0 = rod::schedule_in(sch, 50ms) | rod::then([&]() { src.request_stop(); });
+		auto snd1 = rod::schedule_in(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); }) | rod::upon_stopped([]() {});
+		auto snd2 = rod::schedule_in(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); }) | rod::upon_stopped([]() {});
+
+		rod::sync_wait(rod::when_all(snd1, snd2, snd0));
+	}
 }

@@ -26,7 +26,6 @@ namespace rod
 			app = 0b0010'0000,
 			trunc = 0b0100'0000,
 			noreplace = 0b1000'0000,
-			_async =  0b1'0000'0000,
 		};
 		enum seekdir : int
 		{
@@ -42,14 +41,11 @@ namespace rod
 	{
 		/** Unbuffered file handle (such as a regular posix file descriptor). */
 		class basic_file;
-		/** Asynchronous file handle (such as a posix file descriptor opened with `O_NONBLOCK`). */
-		class async_file;
 		/** Buffered file handle. */
 		class file;
 	}
 
 	using _file::basic_file;
-	using _file::async_file;
 	using _file::file;
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

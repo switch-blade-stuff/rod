@@ -344,9 +344,9 @@ namespace rod
 			std::atomic<std::thread::id> m_consumer_tid = {};
 
 			/* Descriptors used for EPOLL notifications. */
-			detail::descriptor_handle m_epoll_fd = {};
-			detail::descriptor_handle m_timer_fd = {};
-			detail::descriptor_handle m_event_fd = {};
+			detail::unique_descriptor m_epoll_fd = {};
+			detail::unique_descriptor m_timer_fd = {};
+			detail::unique_descriptor m_event_fd = {};
 
 			/* EPOLL event buffer. */
 			std::size_t m_buff_size = {};
@@ -427,8 +427,7 @@ namespace rod
 		{
 			int err = {};
 			const auto res = _func(_fd, err);
-
-			if (res < 0 && (err == EAGAIN || err == EWOULDBLOCK || err == EPERM))
+			if (err == EAGAIN || err == EWOULDBLOCK || err == EPERM)
 			{
 				/* Schedule read operation via EPOLL. */
 				complete_base::_notify_func = _notify_read;

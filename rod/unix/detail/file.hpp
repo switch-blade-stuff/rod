@@ -14,22 +14,34 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	class native_file : public descriptor_handle
+	class native_file : unique_descriptor
 	{
 	public:
 		using native_handle_type = int;
 
 		static ROD_PUBLIC native_file open(const char *path, int mode, std::error_code &err) noexcept;
-		static ROD_PUBLIC native_file reopen(native_handle_type other_fd, int mode, std::error_code &err) noexcept;
+		static ROD_PUBLIC native_file reopen(native_handle_type fd, int mode, std::error_code &err) noexcept;
 
 		constexpr native_file() = default;
 
-		constexpr explicit native_file(native_handle_type fd) noexcept : descriptor_handle(fd) {}
-		constexpr explicit native_file(descriptor_handle &&fd) noexcept : descriptor_handle(std::move(fd)) {}
+		constexpr explicit native_file(native_handle_type fd) noexcept : unique_descriptor(fd) {}
+		constexpr explicit native_file(unique_descriptor &&fd) noexcept : unique_descriptor(std::move(fd)) {}
 
-		ROD_PUBLIC std::error_code flush() noexcept;
+		using unique_descriptor::tell;
+		using unique_descriptor::seek;
+		using unique_descriptor::close;
 
-		constexpr void swap(native_file &other) noexcept { descriptor_handle::swap(other); }
+		std::error_code flush() noexcept { return unique_descriptor::sync(); }
+
+		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
+
+		using unique_descriptor::is_open;
+		using unique_descriptor::native_handle;
+
+		constexpr void swap(native_file &other) noexcept { unique_descriptor::swap(other); }
 		friend constexpr void swap(native_file &a, native_file &b) noexcept { a.swap(b); }
 	};
 }

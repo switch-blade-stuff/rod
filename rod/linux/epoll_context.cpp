@@ -59,7 +59,7 @@ namespace rod::_epoll
 
 	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
 
-	inline detail::descriptor_handle init_epoll_fd()
+	inline detail::unique_descriptor init_epoll_fd()
 	{
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 27)
 		const auto fd = epoll_create(1);
@@ -68,9 +68,9 @@ namespace rod::_epoll
 		const auto fd = epoll_create1(EPOLL_CLOEXEC);
 		if (fd < 0) [[unlikely]] throw_errno("epoll_create1(EPOLL_CLOEXEC)");
 #endif
-		return detail::descriptor_handle{fd};
+		return detail::unique_descriptor{fd};
 	}
-	inline detail::descriptor_handle init_timer_fd(const detail::descriptor_handle &epoll_fd)
+	inline detail::unique_descriptor init_timer_fd(const detail::unique_descriptor &epoll_fd)
 	{
 		const auto fd = timerfd_create(CLOCK_MONOTONIC, 0);
 		if (fd < 0) [[unlikely]] throw_errno("timerfd_create(CLOCK_MONOTONIC, 0)");
@@ -82,9 +82,9 @@ namespace rod::_epoll
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
 			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event)");
 		else
-			return detail::descriptor_handle{fd};
+			return detail::unique_descriptor{fd};
 	}
-	inline detail::descriptor_handle init_event_fd(const detail::descriptor_handle &epoll_fd)
+	inline detail::unique_descriptor init_event_fd(const detail::unique_descriptor &epoll_fd)
 	{
 		const auto fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
 		if (fd < 0) [[unlikely]] throw_errno("eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)");
@@ -96,7 +96,7 @@ namespace rod::_epoll
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
 			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_fd, &event)");
 		else
-			return detail::descriptor_handle{fd};
+			return detail::unique_descriptor{fd};
 	}
 
 	context::context() : context(default_max_events) {}

@@ -9,33 +9,30 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	static inline int native_flags(int flags) noexcept
-	{
-		int result = O_CREAT | O_CLOEXEC;
-		switch (flags & (openmode::in | openmode::out))
-		{
-			case openmode::out | openmode::in: result |= O_RDWR;
-				break;
-			case openmode::out: result |= O_WRONLY;
-				break;
-			default: result |= O_RDONLY;
-				break;
-		}
-
-		if (flags & openmode::app) result |= O_APPEND;
-		if (flags & openmode::trunc) result |= O_TRUNC;
-		if (flags & openmode::direct) result |= O_DIRECT;
-		if (flags & openmode::noreplace) result |= O_EXCL;
-		/* Async files must use O_NONBLOCK. */
-		if (flags & openmode::_async) result |= O_NONBLOCK;
-		/* openmode::binary & openmode::ate has no use here. */
-		return result;
-	}
+	constexpr auto perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
 
 	native_file native_file::open(const char *path, int mode, std::error_code &err) noexcept
 	{
-		constexpr auto perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
-		const auto fd = ::open(path, native_flags(mode), perms);
+		int flags = O_CREAT | O_CLOEXEC | O_NONBLOCK;
+		switch (mode & (openmode::in | openmode::out))
+		{
+			case openmode::out | openmode::in:
+				flags |= O_RDWR;
+				break;
+			case openmode::out:
+				flags |= O_WRONLY;
+				break;
+			default:
+				flags |= O_RDONLY;
+				break;
+		}
+
+		if (mode & openmode::app) flags |= O_APPEND;
+		if (mode & openmode::trunc) flags |= O_TRUNC;
+		if (mode & openmode::direct) flags |= O_DIRECT;
+		if (mode & openmode::noreplace) flags |= O_EXCL;
+
+		const auto fd = ::open(path, flags, perms);
 		if (fd < 0) [[unlikely]] goto fail;
 
 		if ((mode & openmode::ate) && ::lseek(fd, 0, SEEK_END) < 0) [[unlikely]]
@@ -46,40 +43,108 @@ namespace rod::detail
 
 		return (err = {}, native_file{fd});
 	fail:
-		return (err = errno_code(), native_file{});
+		return (err = {errno, std::system_category()}, native_file{});
 	}
-	native_file native_file::reopen(native_handle_type other_fd, int mode, std::error_code &err) noexcept
+	native_file native_file::reopen(native_handle_type fd, int mode, std::error_code &err) noexcept
 	{
-		const auto new_fd = ::fcntl(other_fd, F_DUPFD, 0);
-		if (new_fd < 0) [[unlikely]] goto fail;
+		int flags = O_CLOEXEC | O_NONBLOCK;
+		switch (mode & (openmode::in | openmode::out))
+		{
+			case openmode::out | openmode::in:
+				flags |= O_RDWR;
+				break;
+			case openmode::out:
+				flags |= O_WRONLY;
+				break;
+			default:
+				flags |= O_RDONLY;
+				break;
+		}
+		if (mode & openmode::app) flags |= O_APPEND;
+		if (mode & openmode::direct) flags |= O_DIRECT;
 
-		/* Make sure to close the file if we fail to update flags. */
-		if (::fcntl(new_fd, F_SETFD, O_CLOEXEC)) [[unlikely]]
-		{
-			::close(new_fd);
+		/* Get file path from the descriptor & re-open the file. */
+		char path[PATH_MAX];
+#ifdef F_GETPATH
+		if (::fcntl(fd, F_GETPATH, path) < 0) [[unlikely]]
 			goto fail;
-		}
-		if (::fcntl(new_fd, F_SETFL, native_flags(mode))) [[unlikely]]
-		{
-			::close(new_fd);
+#else
+		char proc_fd[15 + std::numeric_limits<int>::digits10];
+		::snprintf(proc_fd, sizeof(proc_fd), "/proc/self/fd/%i", fd);
+		if (::readlink(proc_fd, path, PATH_MAX) < 0) [[unlikely]]
 			goto fail;
-		}
-		if ((mode & openmode::ate) && ::lseek(new_fd, 0, SEEK_END) < 0) [[unlikely]]
-		{
-			::close(new_fd);
-			goto fail;
-		}
-		return (err = {}, native_file{new_fd});
-	fail:
-		return (err = errno_code(), native_file{});
-	}
+#endif
 
-	std::error_code native_file::flush() noexcept
-	{
-		if (::fsync(native_handle())) [[unlikely]]
-			return errno_code();
+		/* Save old flags. */
+		if (const auto getfl = ::fcntl(fd, F_GETFL); getfl >= 0) [[likely]]
+			flags |= getfl;
 		else
-			return {};
+			goto fail;
+
+		if (const auto new_fd = ::open(path, flags, perms); new_fd >= 0) [[likely]]
+		{
+			if ((mode & openmode::ate) && ::lseek(new_fd, 0, SEEK_END) < 0) [[unlikely]]
+			{
+				::close(new_fd);
+				goto fail;
+			}
+			return (err = {}, native_file{new_fd});
+		}
+	fail:
+		return (err = {errno, std::system_category()}, native_file{});
+	}
+
+	std::size_t native_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
+	{
+		for (;;)
+		{
+			const auto res = unique_descriptor::read(dst, n, err);
+			if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
+			{
+				unique_descriptor::poll_read(-1, err);
+				continue;
+			}
+			return res;
+		}
+	}
+	std::size_t native_file::sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
+	{
+		for (;;)
+		{
+			const auto res = unique_descriptor::write(src, n, err);
+			if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
+			{
+				unique_descriptor::poll_read(-1, err);
+				continue;
+			}
+			return res;
+		}
+	}
+	std::size_t native_file::sync_read_at(void *dst, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
+	{
+		for (;;)
+		{
+			const auto res = unique_descriptor::read_at(dst, n, pos, err);
+			if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
+			{
+				unique_descriptor::poll_read(-1, err);
+				continue;
+			}
+			return res;
+		}
+	}
+	std::size_t native_file::sync_write_at(const void *src, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
+	{
+		for (;;)
+		{
+			const auto res = unique_descriptor::write_at(src, n, pos, err);
+			if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
+			{
+				unique_descriptor::poll_read(-1, err);
+				continue;
+			}
+			return res;
+		}
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
