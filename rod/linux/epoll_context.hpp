@@ -347,6 +347,7 @@ namespace rod
 			std::size_t m_buff_size = {};
 			void *m_event_buff = {};
 
+			in_place_stop_source m_stop_source = {};
 			/* Queue of operations pending for dispatch by consumer thread. */
 			consumer_queue_t m_consumer_queue = {};
 			/* Queue of operation pending for acquisition by consumer thread. */
@@ -358,7 +359,6 @@ namespace rod
 			time_point m_next_timeout = {};
 			bool m_timer_fd_started = {};
 
-			in_place_stop_source m_stop_source = {};
 			bool m_epoll_pending = {};
 			bool m_timer_pending = {};
 			bool m_stop_pending = {};
@@ -685,6 +685,8 @@ namespace rod
 
 	/** Linux-specific execution context implemented via EPOLL. */
 	using epoll_context = _epoll::context;
+
+	static_assert(scheduler<decltype(std::declval<epoll_context>().get_scheduler())>);
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif
