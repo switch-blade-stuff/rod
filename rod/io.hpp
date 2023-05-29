@@ -10,3 +10,14 @@
 
 #include "linux/epoll_context.hpp"
 #include "file.hpp"
+
+ROD_TOPLEVEL_NAMESPACE_OPEN
+namespace rod
+{
+#ifdef ROD_HAS_EPOLL
+	using system_context = epoll_context;
+#else
+	using system_context = run_loop;
+#endif
+}
+ROD_TOPLEVEL_NAMESPACE_CLOSE

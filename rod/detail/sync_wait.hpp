@@ -101,7 +101,7 @@ namespace rod
 			template<detail::single_sender<env> S> requires(!detail::tag_invocable_with_completion_scheduler<sync_wait_t, set_value_t, S, S> && !tag_invocable<sync_wait_t, S>)
 			std::optional<result_t<S>> operator()(S &&snd) const
 			{
-				//static_assert(sender_to<S, receiver_t<S>>);
+				static_assert(sender_to<S, receiver_t<S>>);
 
 				state_t<S> state = {};
 				run_loop loop = {};

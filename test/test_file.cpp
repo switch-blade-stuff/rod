@@ -14,7 +14,7 @@ const auto data = std::string_view{"hello, world"};
 void test_basic_file(auto mode)
 {
 	auto buff = std::string(data.size() * 2, '\0');
-	rod::epoll_context ctx;
+	rod::system_context ctx;
 	std::error_code err;
 
 	auto trd = std::jthread{[&]() { ctx.run(); }};
