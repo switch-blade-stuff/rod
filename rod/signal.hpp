@@ -17,7 +17,7 @@ namespace rod
 {
 	template<std::move_constructible, typename>
 	class basic_signal;
-	template<instance_of<basic_signal>>
+	template<typename>
 	class sink;
 
 	/** Ordered list of listeners of type \a Func, representing the private half of the signal-sink interface.
@@ -27,7 +27,7 @@ namespace rod
 	template<std::move_constructible Func, typename Alloc = std::allocator<Func>>
 	class basic_signal
 	{
-		template<instance_of<basic_signal>>
+		template<typename>
 		friend class sink;
 
 		using storage_t = std::list<Func, Alloc>;
@@ -104,9 +104,10 @@ namespace rod
 	 * erased from the signal queue. Stability of pointers and references to listeners is unspecified.
 	 *
 	 * @tparam Signal Signal type associated with the sink. */
-	template<instance_of<basic_signal> Signal>
+	template<typename Signal>
 	class sink
 	{
+		static_assert(instance_of<Signal, basic_signal>);
 		using storage_t = typename Signal::storage_t;
 
 	public:

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <functional>
+#include <array>
 #include <bit>
 
 #include "utility.hpp"

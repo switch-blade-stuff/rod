@@ -8,6 +8,7 @@
 
 /* Platform-specific implementations. */
 #include "unix/detail/file.hpp"
+#include "win32/detail/file.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::_file

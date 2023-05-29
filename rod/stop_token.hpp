@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stop_token>
+#include <thread>
 #include <atomic>
 
 #include "detail/factories/read.hpp"

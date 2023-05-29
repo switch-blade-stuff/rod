@@ -21,26 +21,23 @@ namespace rod
 		template<typename P, typename A>
 		concept has_await_transform = requires(P p, A a) { p.await_transform(a); };
 
-		template<typename A>
-		constexpr decltype(auto) get_awaiter(A &&a, auto *p) requires requires { p->await_transform(std::forward<A>(a)); }
+		template<typename T>
+		concept has_member_await = requires(T &&value) { static_cast<T &&>(value).operator co_await(); };
+		template<typename T>
+		concept has_static_await = requires(T &&value) { operator co_await(static_cast<T &&>(value)); };
+
+		template<has_member_await T>
+		constexpr decltype(auto) get_awaiter(T &&value, auto *) noexcept(noexcept(static_cast<T &&>(value).operator co_await()))
 		{
-			if constexpr (requires { p->await_transform(std::forward<A>(a)).operator co_await(); })
-				return p->await_transform(std::forward<A>(a)).operator co_await();
-			else if constexpr (requires { operator co_await(p->await_transform(std::forward<A>(a))); })
-				return operator co_await(p->await_transform(std::forward<A>(a)));
-			else
-				return p->await_transform(std::forward<A>(a));
+			return static_cast<T &&>(value).operator co_await();
 		}
-		template<typename A>
-		constexpr decltype(auto) get_awaiter(A &&a, auto...)
+		template<has_static_await T> requires(!has_member_await<T>)
+		constexpr decltype(auto) get_awaiter(T &&value, auto *) noexcept(noexcept(operator co_await(static_cast<T &&>(value))))
 		{
-			if constexpr (requires { std::forward<A>(a).operator co_await(); })
-				return std::forward<A>(a).operator co_await();
-			else if constexpr (requires { operator co_await(std::forward<A>(a)); })
-				return operator co_await(std::forward<A>(a));
-			else
-				return std::forward<A>(a);
+			return operator co_await(static_cast<T &&>(value));
 		}
+		template<typename T> requires(!has_member_await<T> && !has_static_await<T>)
+		constexpr T &&get_awaiter(T &&value, auto *) noexcept { return static_cast<T &&>(value); }
 
 		template<typename T>
 		concept await_suspend_result = std::is_void_v<T> || std::same_as<T, bool> || instance_of<T, std::coroutine_handle>;

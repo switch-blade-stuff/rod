@@ -2,6 +2,9 @@
 include(${CMAKE_CURRENT_LIST_DIR}/detail/CMakeLists.txt)
 
 # Platform subdirectories
+if (WIN32)
+    include(${CMAKE_CURRENT_LIST_DIR}/win32/CMakeLists.txt)
+endif ()
 if (UNIX)
     include(${CMAKE_CURRENT_LIST_DIR}/unix/CMakeLists.txt)
 endif ()
