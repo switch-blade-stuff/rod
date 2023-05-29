@@ -98,7 +98,6 @@ namespace rod
 		struct receiver<C, R, F>::type
 		{
 			using is_receiver = std::true_type;
-
 			using _storage_t = typename storage<R, F>::type;
 
 			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const R &>) { return get_env(r._data->_rcv); }
@@ -106,30 +105,21 @@ namespace rod
 			template<detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<F, Args...>
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept
 			{
-				const auto pass_result = [&]()
-				{
-					const auto do_invoke = [&]() { return std::invoke(std::move(r._data->_fn), std::forward<Args>(args)...); };
-					if constexpr (std::same_as<void, std::invoke_result_t<F, Args...>>)
-					{
-						static_assert(detail::callable<set_value_t, R>);
-						(do_invoke(), set_value(std::move(r._data->_rcv)));
-					}
-					else
-					{
-						static_assert(detail::callable<set_value_t, R, std::invoke_result_t<F, Args...>>);
-						set_value(std::move(r._data->_rcv), do_invoke());
-					}
-				};
 				if constexpr (!std::is_nothrow_invocable_v<F, Args...>)
-					try { pass_result(); } catch (...) { set_error(std::move(r._data->_rcv), std::current_exception()); }
+					try { r._complete(std::forward<Args>(args)...); } catch (...) { set_error(std::move(r._data->_rcv), std::current_exception()); }
 				else
-					pass_result();
+					r._complete(std::forward<Args>(args)...);;
 			}
-			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C>)
-			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept
+			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, R, Args...>)
+			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { T{}(std::move(r._data->_rcv), std::forward<Args>(args)...); }
+
+			template<typename... Args>
+			constexpr void _complete(Args &&...args) noexcept(std::is_nothrow_invocable_v<F, Args...>)
 			{
-				static_assert(detail::callable<T, R, Args...>);
-				T{}(std::move(r._data->_rcv), std::forward<Args>(args)...);
+				if constexpr (std::same_as<std::invoke_result_t<F, Args...>, void>)
+					(std::invoke(std::move(_data->_fn), std::forward<Args>(args)...), set_value(std::move(_data->_rcv)));
+				else
+					set_value(std::move(_data->_rcv), std::invoke(std::move(_data->_fn), std::forward<Args>(args)...));
 			}
 
 			_storage_t *_data;
@@ -185,12 +175,12 @@ namespace rod
 
 		public:
 			template<rod::sender S, movable_value F> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, completion_scheduler<S>, S, F>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, completion_scheduler<S>, S, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<C>(get_env(snd)), std::forward<S>(snd), std::forward<F>(fn));
 			}
 			template<rod::sender S, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && tag_invocable<upon_channel<C>, S, F>)
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, S, F>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, S, F>)
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<F>(fn));
 			}

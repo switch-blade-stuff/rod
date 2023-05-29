@@ -170,10 +170,8 @@ namespace rod
 
 		public:
 			template<typename T, typename P> requires tag_invocable<as_awaitable_t, T, P &>
-			[[nodiscard]] constexpr decltype(auto) operator()(T &&t, P &p) const noexcept(nothrow_tag_invocable<as_awaitable_t, T, P &>)
+			[[nodiscard]] constexpr detail::is_awaitable decltype(auto) operator()(T &&t, P &p) const noexcept(nothrow_tag_invocable<as_awaitable_t, T, P &>)
 			{
-				using result_t = tag_invoke_result_t<as_awaitable_t, T, P &>;
-				static_assert(detail::is_awaitable<result_t, P>);
 				return tag_invoke(*this, std::forward<T>(t), p);
 			}
 			template<typename T, typename P> requires(!tag_invocable<as_awaitable_t, T, P &> && !detail::is_awaitable<T, detail::undefined_promise> && awaitable_sender<T, P>)
@@ -182,7 +180,7 @@ namespace rod
 				return awaitable_t<T, P>{std::forward<T>(t), std::coroutine_handle<P>::from_promise(p)};
 			}
 			template<typename T, typename P>
-			[[nodiscard]] constexpr decltype(auto) operator()(T &&t, P &) const noexcept { return std::forward<T>(t); }
+			[[nodiscard]] constexpr detail::is_awaitable decltype(auto) operator()(T &&t, P &) const noexcept { return std::forward<T>(t); }
 		};
 	}
 

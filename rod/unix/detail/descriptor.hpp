@@ -62,8 +62,6 @@ namespace rod::detail
 		using basic_descriptor::poll_write;
 		using basic_descriptor::poll_error;
 
-		using basic_descriptor::tell;
-		using basic_descriptor::seek;
 		using basic_descriptor::read;
 		using basic_descriptor::write;
 		using basic_descriptor::read_at;

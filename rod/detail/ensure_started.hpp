@@ -188,10 +188,9 @@ namespace rod
 
 			template<decays_to<type> T>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, auto) noexcept { return {}; }
-			template<decays_to<type> T, typename Rcv>
+			template<decays_to<type> T, receiver_of<_signs_t> Rcv>
 			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
 			{
-				static_assert(receiver_of<Rcv, _signs_t>);
 				return _operation_t<Rcv>{std::move(rcv), std::forward<T>(s)._state};
 			}
 

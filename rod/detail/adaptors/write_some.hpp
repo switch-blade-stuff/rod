@@ -76,12 +76,12 @@ namespace rod
 
 		public:
 			template<sender Snd, typename Hnd, io_buffer Src> requires value_overload<async_write_some_t, Snd, Hnd, Src>
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, value_scheduler<Snd>, Snd, Hnd, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, value_scheduler<Snd>, Snd, Hnd, Src>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
 			template<sender Snd, typename Hnd, io_buffer Src> requires(!value_overload<async_write_some_t, Snd, Hnd, Src> && tag_invocable<async_write_some_t, Snd, Hnd, Src>)
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, Snd, Hnd, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, Snd, Hnd, Src>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
@@ -100,12 +100,12 @@ namespace rod
 
 		public:
 			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src>
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
 			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires(!value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src> && tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
@@ -120,12 +120,12 @@ namespace rod
 		struct schedule_write_some_t
 		{
 			template<scheduler Sch, typename Hnd, io_buffer Src> requires tag_invocable<schedule_write_some_t, Sch, Hnd, Src>
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<schedule_write_some_t, Sch, Hnd, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<schedule_write_some_t, Sch, Hnd, Src>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
 			template<scheduler Sch, typename Hnd, io_buffer Src> requires(!tag_invocable<schedule_write_some_t, Sch, Hnd, Src> && detail::callable<async_write_some_t, schedule_result_t<Sch>, Hnd, Src>)
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Src &&src) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_t, schedule_result_t<Sch>, Hnd, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Src &&src) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_t, schedule_result_t<Sch>, Hnd, Src>)
 			{
 				return async_write_some_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
@@ -134,12 +134,12 @@ namespace rod
 		struct schedule_write_some_at_t
 		{
 			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Src> requires tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src>
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
 			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Src> requires(!tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src> && detail::callable<async_write_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Src>)
-			[[nodiscard]] write_some_sender decltype(auto) operator()(Sch &&sch, Hnd &&hnd, Pos pos, Src &&src) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Src>)
+			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Src &&src) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Src>)
 			{
 				return async_write_some_at_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}

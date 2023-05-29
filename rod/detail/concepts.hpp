@@ -166,7 +166,7 @@ namespace rod
 		struct schedule_t
 		{
 			template<typename S> requires tag_invocable<schedule_t, S>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch) const noexcept(nothrow_tag_invocable<schedule_t, S>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch) const noexcept(nothrow_tag_invocable<schedule_t, S>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch));
 			}
@@ -186,7 +186,7 @@ namespace rod
 		struct schedule_in_t
 		{
 			template<typename S, typename Dur> requires tag_invocable<schedule_in_t, S, Dur>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, Dur &&dur) const noexcept(nothrow_tag_invocable<schedule_in_t, S, Dur>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, Dur &&dur) const noexcept(nothrow_tag_invocable<schedule_in_t, S, Dur>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch), std::forward<Dur>(dur));
 			}
@@ -207,7 +207,7 @@ namespace rod
 		struct schedule_at_t
 		{
 			template<typename S, typename TP> requires tag_invocable<schedule_at_t, S, TP>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, TP &&tp) const noexcept(nothrow_tag_invocable<schedule_at_t, S, TP>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, TP &&tp) const noexcept(nothrow_tag_invocable<schedule_at_t, S, TP>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch), std::forward<TP>(tp));
 			}

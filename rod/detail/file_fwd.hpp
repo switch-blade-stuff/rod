@@ -34,7 +34,7 @@ namespace rod
 			end = SEEK_END,
 		};
 
-		class native_file;
+		class system_file;
 	}
 
 	namespace _file

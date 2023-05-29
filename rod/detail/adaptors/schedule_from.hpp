@@ -199,7 +199,7 @@ namespace rod
 
 		public:
 			template<scheduler Sch, rod::sender Snd> requires tag_invocable<schedule_from_t, Sch, Snd>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<schedule_from_t, Sch, Snd>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<schedule_from_t, Sch, Snd>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snd>(snd));
 			}

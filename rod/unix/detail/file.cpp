@@ -11,7 +11,7 @@ namespace rod::detail
 {
 	constexpr auto perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
 
-	native_file native_file::open(const char *path, int mode, std::error_code &err) noexcept
+	system_file system_file::open(const char *path, int mode, std::error_code &err) noexcept
 	{
 		int flags = O_CREAT | O_CLOEXEC | O_NONBLOCK;
 		switch (mode & (openmode::in | openmode::out))
@@ -41,25 +41,25 @@ namespace rod::detail
 			goto fail;
 		}
 
-		return (err = {}, native_file{fd});
+		return (err = {}, system_file{fd});
 	fail:
-		return (err = {errno, std::system_category()}, native_file{});
+		return (err = {errno, std::system_category()}, system_file{});
 	}
-	native_file native_file::open(const wchar_t *path, int mode, std::error_code &err) noexcept
+	system_file system_file::open(const wchar_t *path, int mode, std::error_code &err) noexcept
 	{
 		auto state = std::mbstate_t{};
 		auto res = std::wcsrtombs(nullptr, &path, 0, &state);
 		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
-			return (err = {errno, std::system_category()}, native_file{});
+			return (err = {errno, std::system_category()}, system_file{});
 
 		auto buff = std::string(res, '\0');
 		res = std::wcsrtombs(buff.data(), &path, buff.size(), &state);
 		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
-			return (err = {errno, std::system_category()}, native_file{});
+			return (err = {errno, std::system_category()}, system_file{});
 		else
 			return open(buff.c_str(), mode, err);
 	}
-	native_file native_file::reopen(native_handle_type fd, int mode, std::error_code &err) noexcept
+	system_file system_file::reopen(native_handle_type fd, int mode, std::error_code &err) noexcept
 	{
 		int flags = O_CLOEXEC | O_NONBLOCK;
 		switch (mode & (openmode::in | openmode::out))
@@ -102,30 +102,30 @@ namespace rod::detail
 				::close(new_fd);
 				goto fail;
 			}
-			return (err = {}, native_file{new_fd});
+			return (err = {}, system_file{new_fd});
 		}
 	fail:
-		return (err = {errno, std::system_category()}, native_file{});
+		return (err = {errno, std::system_category()}, system_file{});
 	}
 
-	std::ptrdiff_t native_file::tell(std::error_code &err) const noexcept
+	std::size_t system_file::tell(std::error_code &err) const noexcept
 	{
 #if SIZE_MAX >= UINT64_MAX
-		const auto res = ::lseek64(m_fd, 0, SEEK_CUR);
+		const auto res = ::lseek64(native_handle(), 0, SEEK_CUR);
 #else
-		const auto res = ::lseek(m_fd, 0, SEEK_CUR);
+		const auto res = ::lseek(native_handle(), 0, SEEK_CUR);
 #endif
 		if (res < 0) [[unlikely]]
 			return (err = {errno, std::system_category()}, -1);
 		else
 			return (err = {}, static_cast<std::size_t>(res));
 	}
-	std::ptrdiff_t native_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
+	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX
-		const auto res = ::lseek64(m_fd, static_cast<off64_t>(off), dir);
+		const auto res = ::lseek64(native_handle(), static_cast<off64_t>(off), dir);
 #else
-		const auto res = ::lseek(m_fd, static_cast<off_t>(off), dir);
+		const auto res = ::lseek(native_handle(), static_cast<off_t>(off), dir);
 #endif
 		if (res < 0) [[unlikely]]
 			return (err = {errno, std::system_category()}, -1);
@@ -133,14 +133,14 @@ namespace rod::detail
 			return (err = {}, static_cast<std::size_t>(res));
 	}
 
-	std::error_code native_file::flush() noexcept
+	std::error_code system_file::flush() noexcept
 	{
 		if (::fsync(native_handle())) [[unlikely]]
 			return {errno, std::system_category()};
 		else
 			return {};
 	}
-	std::size_t native_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
+	std::size_t system_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
 	{
 		for (;;)
 		{
@@ -153,7 +153,7 @@ namespace rod::detail
 			return res;
 		}
 	}
-	std::size_t native_file::sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
+	std::size_t system_file::sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
 	{
 		for (;;)
 		{
@@ -166,7 +166,7 @@ namespace rod::detail
 			return res;
 		}
 	}
-	std::size_t native_file::sync_read_at(void *dst, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
+	std::size_t system_file::sync_read_at(void *dst, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
 	{
 		for (;;)
 		{
@@ -179,7 +179,7 @@ namespace rod::detail
 			return res;
 		}
 	}
-	std::size_t native_file::sync_write_at(const void *src, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
+	std::size_t system_file::sync_write_at(const void *src, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
 	{
 		for (;;)
 		{

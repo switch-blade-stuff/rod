@@ -27,23 +27,10 @@ namespace rod
 
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._rcv); }
 
-			template<typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...>
-			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
-			{
-				static_assert(detail::callable<set_value_t, Rcv, Args...>);
-				r._set_value(std::forward<Args>(args)...);
-			}
-			template<typename Err>
-			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
-			{
-				static_assert(detail::callable<set_error_t, Rcv, Err>);
-				set_error(std::move(r._rcv), std::forward<Err>(err));
-			}
-			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept
-			{
-				static_assert(detail::callable<set_stopped_t, Rcv>);
-				set_stopped(std::move(r._rcv));
-			}
+			template<decays_to<set_value_t> C, typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...> && detail::callable<C, Rcv, Args...>
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r._set_value(std::forward<Args>(args)...); }
+			template<detail::completion_channel C, typename... Args> requires(!std::same_as<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._rcv), std::forward<Args>(args)...); }
 
 			template<typename... Args>
 			constexpr void _set_value(Args &&...args) noexcept

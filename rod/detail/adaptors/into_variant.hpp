@@ -28,23 +28,19 @@ namespace rod
 
 			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(r._rcv); }
 
-			template<typename... Vs> requires std::constructible_from<V, std::tuple<Vs &&...>>
-			friend constexpr void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
+			template<decays_to<set_value_t> C, typename... Args> requires std::constructible_from<V, std::tuple<Args &&...>>
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept
 			{
-				try { set_value(std::move(r._rcv), V{std::tuple<Vs &&...>{std::forward<Vs>(vs)...}}); }
-				catch (...) { set_error(std::move(r._rcv), std::current_exception()); }
+				if constexpr (!detail::all_nothrow_decay_copyable<Args...>::value)
+				{
+					try { set_value(std::move(r._rcv), V{std::tuple<Args &&...>{std::forward<Args>(args)...}}); }
+					catch (...) { set_error(std::move(r._rcv), std::current_exception()); }
+				}
+				else
+					set_value(std::move(r._rcv), V{std::tuple<Args &&...>{std::forward<Args>(args)...}});
 			}
-			template<typename Err>
-			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
-			{
-				static_assert(detail::callable<set_error_t, R, Err>);
-				set_error(std::move(r._rcv), std::forward<Err>(err));
-			}
-			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept
-			{
-				static_assert(detail::callable<set_stopped_t, R>);
-				set_stopped(std::move(r._rcv));
-			}
+			template<detail::completion_channel C, typename... Args>  requires(!std::same_as<C, set_value_t> && detail::callable<C, R, Args...>)
+			friend constexpr void tag_invoke(set_error_t, type &&r, Args &&...args) noexcept { C{}(std::move(r._rcv), std::forward<Args>(args)...); }
 
 			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
 		};

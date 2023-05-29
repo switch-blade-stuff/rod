@@ -23,12 +23,8 @@ namespace rod
 		{
 			constexpr complete_for(C, Rcv &rcv) noexcept : rcv(rcv) {}
 
-			template<typename... Args>
-			constexpr void operator()(Args &...args) const noexcept
-			{
-				static_assert(detail::callable<C, Rcv, Args...>);
-				C{}(std::move(rcv), std::move(args)...);
-			}
+			template<typename... Args> requires detail::callable<C, Rcv, Args...>
+			constexpr void operator()(Args &...args) const noexcept { C{}(std::move(rcv), std::move(args)...); }
 
 			Rcv &rcv;
 		};

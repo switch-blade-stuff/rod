@@ -147,12 +147,12 @@ namespace rod
 
 		public:
 			template<rod::sender Snd, stoppable_token Tok> requires detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Snd &&snd, Tok tok) const noexcept(nothrow_tag_invocable<with_stop_token_t, value_scheduler<Snd>, Snd, Tok>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Tok tok) const noexcept(nothrow_tag_invocable<with_stop_token_t, value_scheduler<Snd>, Snd, Tok>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), tok);
 			}
 			template<rod::sender Snd, stoppable_token Tok> requires(!detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok> && tag_invocable<with_stop_token_t, Snd, Tok>)
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Snd &&snd, Tok tok) const noexcept(nothrow_tag_invocable<with_stop_token_t, Snd, Tok>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Tok tok) const noexcept(nothrow_tag_invocable<with_stop_token_t, Snd, Tok>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), tok);
 			}

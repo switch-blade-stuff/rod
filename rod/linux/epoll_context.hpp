@@ -593,7 +593,7 @@ namespace rod
 			using _func_t = io_func<Op>;
 
 			template<typename... Args>
-			constexpr type(context &ctx, int fd, Args &&...args) noexcept : _fd(fd), _func(std::forward<Args>(args)...), _ctx(ctx) {}
+			constexpr type(context &ctx, int fd, Args &&...args) noexcept : _fd(fd), _func{std::forward<Args>(args)...}, _ctx(ctx) {}
 
 			friend constexpr env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
 			template<decays_to<type> T, typename Env>

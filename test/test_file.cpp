@@ -17,14 +17,14 @@ void test_basic_file(auto mode)
 	rod::system_context ctx;
 	std::error_code err;
 
-	auto trd = std::jthread{[&]() { ctx.run(); }};
-	auto sch = ctx.get_scheduler();
-
 	if (mode & basic_file_t::noreplace)
 		std::filesystem::remove(path);
 
 	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode, err);
 	TEST_ASSERT(!err && file.is_open());
+
+	auto trd = std::jthread{[&]() { ctx.run(); }};
+	auto sch = ctx.get_scheduler();
 	{
 		const auto write_n = rod::write_some(file, rod::as_byte_buffer(data), err);
 		TEST_ASSERT(!err && write_n == data.size());

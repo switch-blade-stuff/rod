@@ -74,24 +74,8 @@ namespace rod
 			using _env_t = typename env<Sch, env_of_t<Rcv>>::type;
 
 			friend constexpr _env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return _env_t{get_env(r._op->_rcv)}; }
-
-			template<typename... Args>
-			friend constexpr void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
-			{
-				static_assert(detail::callable<set_value_t, Rcv, Args...>);
-				set_value(std::move(r._op->_rcv), std::forward<Args>(args)...);
-			}
-			template<typename Err>
-			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
-			{
-				static_assert(detail::callable<set_error_t, Rcv, Err>);
-				set_error(std::move(r._op->_rcv), std::forward<Err>(err));
-			}
-			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept
-			{
-				static_assert(detail::callable<set_stopped_t, Rcv>);
-				set_stopped(std::move(r._op->_rcv));
-			}
+			template<detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, Args...>
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Args>(args)...); }
 
 			_operation_t *_op = {};
 		};
@@ -106,22 +90,11 @@ namespace rod
 
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
-			template<typename Err>
-			friend constexpr void tag_invoke(set_error_t, type &&r, Err &&err) noexcept(detail::nothrow_callable<set_error_t, Rcv &&, Err>)
-			{
-				static_assert(detail::callable<set_error_t, Rcv, Err>);
-				set_error(std::move(r._op->_rcv), std::forward<Err>(err));
-			}
-			friend constexpr void tag_invoke(set_stopped_t, type &&r) noexcept(detail::nothrow_callable<set_stopped_t, Rcv &&>)
-			{
-				static_assert(detail::callable<set_stopped_t, Rcv>);
-				set_stopped(std::move(r._op->_rcv));
-			}
-
+			template<detail::completion_channel C, typename... Args> requires(!std::same_as<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Args>(args)...); }
+			template<typename... Args>
 			friend constexpr void tag_invoke(set_value_t, type &&r) noexcept
 			{
-				static_assert(detail::callable<set_value_t, Rcv, std::exception_ptr>);
-
 				constexpr bool nothrow_start = detail::nothrow_callable<start_t, std::add_lvalue_reference<connect_result_t<Snd, _receiver_ref_t>>>;
 				constexpr bool nothrow_connect = detail::nothrow_callable<connect_t, Snd, _receiver_ref_t>;
 
@@ -187,7 +160,7 @@ namespace rod
 
 		public:
 			template<rod::scheduler Sch, rod::sender Snd> requires tag_invocable<on_t, Sch, Snd>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<on_t, Sch, Snd>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snd &&snd) const noexcept(nothrow_tag_invocable<on_t, Sch, Snd>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snd>(snd));
 			}

@@ -111,12 +111,12 @@ namespace rod
 
 		public:
 			template<scheduler S, typename... Vs> requires tag_invocable<transfer_just_t, S, Vs...>
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, Vs &&...vals) const noexcept(nothrow_tag_invocable<transfer_just_t, S, Vs...>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, Vs &&...vals) const noexcept(nothrow_tag_invocable<transfer_just_t, S, Vs...>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch), std::forward<Vs>(vals)...);
 			}
 			template<scheduler S, typename... Vs> requires(!tag_invocable<transfer_just_t, S, Vs...>)
-			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&sch, Vs &&...vals) const noexcept(default_nothrow<S, Vs...>)
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, Vs &&...vals) const noexcept(default_nothrow<S, Vs...>)
 			{
 				return transfer(just(std::forward<Vs>(vals)...), std::forward<S>(sch));
 			}
