@@ -18,9 +18,6 @@ namespace rod::detail
 	{
 	public:
 		constexpr basic_descriptor() noexcept = default;
-		constexpr basic_descriptor(basic_descriptor &&other) noexcept { swap(other); }
-		constexpr basic_descriptor &operator=(basic_descriptor &&other) noexcept { return (swap(other), *this); }
-
 		constexpr explicit basic_descriptor(int fd) noexcept : m_fd(fd) {}
 
 		constexpr int release() noexcept { return std::exchange(m_fd, -1); }
@@ -57,8 +54,8 @@ namespace rod::detail
 		unique_descriptor &operator=(const unique_descriptor &) = delete;
 
 		constexpr unique_descriptor() noexcept = default;
-		constexpr unique_descriptor(unique_descriptor &&other) noexcept : basic_descriptor(std::move(other)) {}
-		constexpr unique_descriptor &operator=(unique_descriptor &&other) noexcept { return (basic_descriptor::operator=(std::move(other)), *this); }
+		constexpr unique_descriptor(unique_descriptor &&other) noexcept { swap(other); }
+		constexpr unique_descriptor &operator=(unique_descriptor &&other) noexcept { return (swap(other), *this); }
 
 		constexpr explicit unique_descriptor(int fd) noexcept : basic_descriptor(fd) {}
 

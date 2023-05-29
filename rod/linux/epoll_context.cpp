@@ -23,39 +23,6 @@ namespace rod::_epoll
 	constexpr std::size_t default_max_events = 128;
 #endif
 
-	ssize_t io_func<async_read_some_t>::operator()(int fd, int &err) const noexcept
-	{
-		const auto res = ::read(fd, buff.data(), buff.size());
-		if (res < 0) [[unlikely]] err = errno;
-		return res;
-	}
-	ssize_t io_func<async_write_some_t>::operator()(int fd, int &err) const noexcept
-	{
-		const auto res = ::write(fd, buff.data(), buff.size());
-		if (res < 0) [[unlikely]] err = errno;
-		return res;
-	}
-	ssize_t io_func<async_read_some_at_t>::operator()(int fd, int &err) const noexcept
-	{
-#if PTRDIFF_MAX >= INT64_MAX
-		const auto res = ::pread64(fd, buff.data(), buff.size(), static_cast<off64_t>(pos));
-#else
-		const auto res = ::pread(fd, buff.data(), buff.size(), static_cast<off_t>(pos));
-#endif
-		if (res < 0) [[unlikely]] err = errno;
-		return res;
-	}
-	ssize_t io_func<async_write_some_at_t>::operator()(int fd, int &err) const noexcept
-	{
-#if PTRDIFF_MAX >= INT64_MAX
-		const auto res = ::pwrite64(fd, buff.data(), buff.size(), static_cast<off64_t>(pos));
-#else
-		const auto res = ::pwrite(fd, buff.data(), buff.size(), static_cast<off_t>(pos));
-#endif
-		if (res < 0) [[unlikely]] err = errno;
-		return res;
-	}
-
 	enum event_id : std::uint64_t { timer_event, queue_event, };
 
 	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
@@ -116,11 +83,12 @@ namespace rod::_epoll
 		delete[] static_cast<epoll_event *>(m_event_buff);
 	}
 
+	void context::request_stop() { m_stop_source.request_stop(); }
+
 	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
-//		fprintf(stdout, "context::schedule_producer(%p)\n", (void *)node);
 		assert(!node->_next);
-		if (m_producer_queue.push(node, false))
+		if (m_producer_queue.push(node))
 		{
 			/* Notify the event file descriptor to wake up the consumer thread. */
 			const std::uint64_t token = 1;
@@ -129,41 +97,40 @@ namespace rod::_epoll
 	}
 	void context::schedule_consumer(operation_base *node) noexcept
 	{
-//		fprintf(stdout, "context::schedule_consumer(%p)\n", (void *)node);
 		assert(!node->_next);
 		m_consumer_queue.push_back(node);
 	}
 
+	void context::add_io(detail::basic_descriptor fd, operation_base *node) noexcept
+	{
+		epoll_event event = {};
+		event.data.ptr = node;
+		event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd.native_handle(), &event);
+	}
+	void context::del_io(detail::basic_descriptor fd) noexcept
+	{
+		epoll_event event = {};
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd.native_handle(), &event);
+	}
+
 	void context::add_timer(timer_node *node) noexcept
 	{
-//		fprintf(stdout, "context::add_timer(%p)\n", (void *)node);
+		assert(!node->_timer_next);
+		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
 	void context::del_timer(timer_node *node) noexcept
 	{
-//		fprintf(stdout, "context::del_timer(%p)\n", (void *)node);
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
 		m_timers.erase(node);
 	}
 
-	void context::add_io(int fd, operation_base *node) noexcept
-	{
-		epoll_event event = {};
-		event.data.ptr = node;
-		event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event);
-	}
-	void context::del_io(int fd) noexcept
-	{
-		epoll_event event = {};
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
-	}
-
 	inline bool context::acquire_producer_queue() noexcept
 	{
-		if (!m_producer_queue.try_terminate(false))
+		if (!m_producer_queue.try_terminate())
 		{
 			m_consumer_queue.merge_back(static_cast<consumer_queue_t>(std::move(m_producer_queue)));
 			return false;
@@ -184,7 +151,6 @@ namespace rod::_epoll
 			{
 			case event_id::timer_event: /* Timer elapsed notification event. */
 			{
-//				fprintf(stdout, "event_id::timer_event timers.front() = %p\n", (void *)m_timers.front());
 				m_timer_fd_started = false;
 				m_timer_pending = true;
 
@@ -196,7 +162,6 @@ namespace rod::_epoll
 			}
 			case event_id::queue_event: /* Producer queue notification event. */
 			{
-				//fprintf(stdout, "event_id::queue_event\n");
 				std::uint64_t token;
 				m_event_fd.read(&token, sizeof(token), err);
 				if (err)
@@ -212,19 +177,23 @@ namespace rod::_epoll
 		}
 	}
 
-	inline auto set_timer_fd(int fd, time_point tp = {}) noexcept
+	inline auto set_timer_fd(int fd, time_point tp = {})
 	{
-//		const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(tp - monotonic_clock::now());
-//		fprintf(stdout, "_epoll::set_timer_fd(%i, %lims)\n", fd, millis.count());
-
 		::itimerspec timeout = {};
 		timeout.it_value.tv_sec = tp.seconds();
 		timeout.it_value.tv_nsec = tp.nanoseconds();
-		return timerfd_settime(fd, TFD_TIMER_ABSTIME, &timeout, nullptr);
+		if (const auto res =  timerfd_settime(fd, TFD_TIMER_ABSTIME, &timeout, nullptr); res == EINVAL)
+			throw std::system_error{EINVAL, std::system_category(), "timerfd_settime"};
+		else
+			return res;
 	}
 
-	void context::run_impl()
+	void context::run()
 	{
+		/* Make sure only one thread is allowed to run at a given time. */
+		if (std::thread::id id = {}; !m_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
+			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run`");
+
 		struct tid_guard
 		{
 			~tid_guard() { tid.store(std::thread::id{}, std::memory_order_release); }
@@ -236,11 +205,7 @@ namespace rod::_epoll
 			/* Always run local thread queue to completion before checking for stop requests.
 			 * Timers & pending producer queue will be handled after the stop request check. */
 			for (auto queue = std::move(m_consumer_queue); !queue.empty();)
-			{
-				const auto node = queue.pop_front();
-//				fprintf(stdout, "notify(%p)\n", (void *)node);
-				node->_notify();
-			}
+				queue.pop_front()->_notify();
 			if (std::exchange(m_stop_pending, false)) [[unlikely]]
 				return;
 
@@ -278,8 +243,6 @@ namespace rod::_epoll
 						m_next_timeout = next_timeout;
 						m_timer_pending = false;
 					}
-					else
-						throw std::system_error{errno, std::system_category()};
 				}
 			}
 
@@ -287,6 +250,16 @@ namespace rod::_epoll
 			if (m_epoll_pending || (m_epoll_pending = acquire_producer_queue()))
 				epoll_wait();
 		}
+	}
+
+	void context::finish()
+	{
+		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
+		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->m_stop_pending = true; };
+
+		std::error_code err;
+		schedule(this, err);
+		if (err) [[unlikely]] throw std::system_error{err, "write(event_fd)"};
 	}
 }
 #endif

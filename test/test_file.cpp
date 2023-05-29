@@ -14,11 +14,10 @@ const auto data = std::string_view{"hello, world"};
 void test_basic_file(auto mode)
 {
 	auto buff = std::string(data.size() * 2, '\0');
-	rod::in_place_stop_source src;
 	rod::epoll_context ctx;
 	std::error_code err;
 
-	auto trd = std::jthread{[&]() { ctx.run(src.get_token()); }};
+	auto trd = std::jthread{[&]() { ctx.run(); }};
 	auto sch = ctx.get_scheduler();
 
 	if (mode & basic_file_t::noreplace)
@@ -68,7 +67,7 @@ void test_basic_file(auto mode)
 		rod::sync_wait(snd);
 	}
 	std::filesystem::remove(path);
-	src.request_stop();
+	ctx.finish();
 }
 
 int main()
