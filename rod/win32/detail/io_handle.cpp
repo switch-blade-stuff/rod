@@ -9,12 +9,7 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	std::error_code basic_io_handle::close() noexcept
-	{
-		if (!::CloseHandle(m_handle)) [[unlikely]]
-			return {static_cast<int>(::GetLastError()), std::system_category()};
-		else
-			return {};
-	}
+	std::error_code basic_io_handle::close() noexcept { return ::CloseHandle(m_handle) ? std::error_code{} : std::error_code{static_cast<int>(::GetLastError()), std::system_category()}; }
+	unique_io_handle::~unique_io_handle() { ::CloseHandle(native_handle()); }
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

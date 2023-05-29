@@ -38,7 +38,7 @@ namespace rod
 		template<>
 		struct io_func<async_read_some_t>
 		{
-			template<detail::decays_to<std::byte> T>
+			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s) : buff(std::begin(s), std::end(s)) {}
 
 			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
@@ -51,7 +51,7 @@ namespace rod
 		template<>
 		struct io_func<async_write_some_t>
 		{
-			template<detail::decays_to<std::byte> T>
+			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s) : buff(std::cbegin(s), std::cend(s)) {}
 
 			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
@@ -64,7 +64,7 @@ namespace rod
 		template<>
 		struct io_func<async_read_some_at_t>
 		{
-			template<detail::decays_to<std::byte> T>
+			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s, std::ptrdiff_t pos) : buff(std::begin(s), std::end(s)), pos(pos) {}
 
 			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
@@ -78,7 +78,7 @@ namespace rod
 		template<>
 		struct io_func<async_write_some_at_t>
 		{
-			template<detail::decays_to<std::byte> T>
+			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s, std::ptrdiff_t pos) : buff(std::cbegin(s), std::cend(s)), pos(pos) {}
 
 			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
@@ -544,10 +544,10 @@ namespace rod
 			using _signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, _stop_signs_t<Env>>;
 
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {&s._ctx}; }
-			template<detail::decays_to<sender> T, typename Env>
+			template<decays_to<sender> T, typename Env>
 			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<detail::decays_to<sender> T, typename Rcv>
+			template<decays_to<sender> T, typename Rcv>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
@@ -569,10 +569,10 @@ namespace rod
 			using _signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, _stop_signs_t<Env>>;
 
 			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {&s._ctx}; }
-			template<detail::decays_to<timer_sender> T, typename Env>
+			template<decays_to<timer_sender> T, typename Env>
 			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<detail::decays_to<timer_sender> T, typename Rcv>
+			template<decays_to<timer_sender> T, typename Rcv>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
@@ -596,10 +596,10 @@ namespace rod
 			constexpr type(context &ctx, int fd, Args &&...args) noexcept : _fd(fd), _func(std::forward<Args>(args)...), _ctx(ctx) {}
 
 			friend constexpr env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
-			template<detail::decays_to<type> T, typename Env>
+			template<decays_to<type> T, typename Env>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, typename Rcv>
+			template<decays_to<type> T, typename Rcv>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t>);
@@ -619,11 +619,11 @@ namespace rod
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::weakly_parallel; }
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
 
-			template<detail::decays_to<scheduler> T>
+			template<decays_to<scheduler> T>
 			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{*s._ctx}; }
-			template<detail::decays_to<scheduler> T, detail::decays_to<time_point> TP>
+			template<decays_to<scheduler> T, decays_to<time_point> TP>
 			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), *s._ctx}; }
-			template<detail::decays_to<scheduler> T, typename Dur>
+			template<decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
 			template<typename Dst>

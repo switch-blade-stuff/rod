@@ -13,6 +13,16 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
+	/** Concept used to check if type \a T is a movable value type. */
+	template<typename T>
+	concept movable_value = std::move_constructible<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>;
+	/** Concept used to check if type \a From is a reference of type \a To. */
+	template<typename From, typename To>
+	concept reference_to = std::same_as<std::remove_reference_t<From>, To>;
+	/** Concept used to check if type \a From decays into type \a To. */
+	template<typename From, typename To>
+	concept decays_to = std::same_as<std::decay_t<From>, To>;
+
 	namespace detail
 	{
 		template<typename... Ts>
@@ -29,11 +39,6 @@ namespace rod
 		using nothrow_decay_copyable = std::is_nothrow_constructible<std::decay_t<T>, T>;
 		template<typename... Ts>
 		using all_nothrow_decay_copyable = std::conjunction<nothrow_decay_copyable<Ts>...>;
-
-		template<typename T>
-		concept movable_value = std::move_constructible<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>;
-		template<typename From, typename To>
-		concept decays_to = std::same_as<std::decay_t<From>, To>;
 		template<typename T>
 		concept class_type = decays_to<T, T> && std::is_class_v<T>;
 
@@ -82,9 +87,9 @@ namespace rod
 		template<typename Err>
 		[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept
 		{
-			if constexpr (detail::decays_to<Err, std::exception_ptr>)
+			if constexpr (decays_to<Err, std::exception_ptr>)
 				return std::forward<Err>(err);
-			else if constexpr (detail::decays_to<Err, std::error_code>)
+			else if constexpr (decays_to<Err, std::error_code>)
 				return std::make_exception_ptr(std::system_error(std::forward<Err>(err)));
 			else
 				return std::make_exception_ptr(std::forward<Err>(err));

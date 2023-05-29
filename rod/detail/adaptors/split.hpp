@@ -41,10 +41,10 @@ namespace rod
 		template<typename Env>
 		struct env<Env>::type
 		{
-			template<detail::decays_to<type> E>
+			template<decays_to<type> E>
 			friend constexpr auto tag_invoke(get_stop_token_t, const E &&e) noexcept { return e._token; }
 
-			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(*e._env, std::forward<Args>(args)...);
@@ -207,9 +207,9 @@ namespace rod
 
 			explicit type(Snd &&snd) : _state(new _shared_state_t{std::forward<Snd>(snd)}) {}
 
-			template<detail::decays_to<type> T, typename E>
+			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t<T> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
-			template<detail::decays_to<type> T, receiver_of<_signs_t<T>> Rcv>
+			template<decays_to<type> T, receiver_of<_signs_t<T>> Rcv>
 			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) { return _operation_t<Rcv>{std::move(rcv), s._state}; }
 
 			detail::shared_handle<_shared_state_t> _state;

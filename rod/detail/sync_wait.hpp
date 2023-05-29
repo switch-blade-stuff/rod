@@ -66,9 +66,9 @@ namespace rod
 			template<typename Err>
 			constexpr void set_error(Err &&err) noexcept
 			{
-				if constexpr (detail::decays_to<Err, std::exception_ptr>)
+				if constexpr (decays_to<Err, std::exception_ptr>)
 					state->template emplace<2>(std::forward<Err>(err));
-				if constexpr (detail::decays_to<Err, std::error_code>)
+				if constexpr (decays_to<Err, std::error_code>)
 					state->template emplace<2>(std::make_exception_ptr(std::system_error(std::forward<Err>(err))));
 				else
 					state->template emplace<2>(std::make_exception_ptr(std::forward<Err>(err)));

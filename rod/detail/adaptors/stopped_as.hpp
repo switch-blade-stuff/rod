@@ -30,11 +30,11 @@ namespace rod
 			using _operation_t = typename operation<Snd, Rcv>::type;
 			using _value_t = std::decay_t<detail::single_sender_value_type<Snd, env_of_t<Rcv>>>;
 
-			template<detail::decays_to<type> T, typename V>
+			template<decays_to<type> T, typename V>
 			friend constexpr void tag_invoke(set_value_t, T &&r, V &&value) noexcept { r._set_value(std::forward<V>(value)); }
-			template<detail::decays_to<type> T, typename Err>
+			template<decays_to<type> T, typename Err>
 			friend constexpr void tag_invoke(set_error_t, T &&r, Err &&err) noexcept { r._set_error(std::forward<Err>(err)); }
-			template<detail::decays_to<type> T>
+			template<decays_to<type> T>
 			friend constexpr void tag_invoke(set_stopped_t, T &&r) noexcept { r._set_stopped(); }
 
 			template<typename V>
@@ -107,10 +107,10 @@ namespace rod
 			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, Env, completion_signatures<set_error_t(std::exception_ptr)>, _value_signs_t, _error_signs_t, completion_signatures<>>;
 
 			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
-			template<detail::decays_to<type> T, typename Env>
+			template<decays_to<type> T, typename Env>
 			friend constexpr _signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, typename Rcv>
+			template<decays_to<type> T, typename Rcv>
 			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv)
 			{
 				static_assert(detail::single_sender<copy_cvref_t<T, Snd>, env_of_t<Rcv>>);
@@ -136,7 +136,7 @@ namespace rod
 			using back_adaptor = detail::back_adaptor<stopped_as_error_t, Err>;
 
 		public:
-			template<rod::sender Snd, detail::movable_value Err>
+			template<rod::sender Snd, movable_value Err>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Err err) const
 			{
 				return snd | let_stopped([e = std::move(err)]() mutable noexcept(std::is_nothrow_move_constructible_v<Err>)
@@ -144,7 +144,7 @@ namespace rod
 					return just_error(std::move(e));
 				});
 			}
-			template<detail::movable_value Err>
+			template<movable_value Err>
 			[[nodiscard]] constexpr back_adaptor<Err> operator()(Err &&err) const noexcept(std::is_nothrow_move_constructible_v<Err>)
 			{
 				return back_adaptor<Err>{*this, std::move(err)};

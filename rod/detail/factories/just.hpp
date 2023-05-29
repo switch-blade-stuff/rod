@@ -19,12 +19,12 @@ namespace rod
 		struct just_error_t;
 		struct just_stopped_t;
 
-		template<typename, typename, detail::movable_value...>
+		template<typename, typename, movable_value...>
 		struct operation { struct type; };
-		template<typename, detail::movable_value...>
+		template<typename, movable_value...>
 		struct sender { struct type; };
 
-		template<typename R, typename C, detail::movable_value... Ts>
+		template<typename R, typename C, movable_value... Ts>
 		struct operation<R, C, Ts...>::type
 		{
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op._rcv), std::move(vals)...); }, op._values); }
@@ -32,14 +32,14 @@ namespace rod
 			[[ROD_NO_UNIQUE_ADDRESS]] std::tuple<Ts...> _values;
 			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
 		};
-		template<typename C, detail::movable_value... Ts>
+		template<typename C, movable_value... Ts>
 		struct sender<C, Ts...>::type
 		{
 			using is_sender = std::true_type;
 			using _signs_t = completion_signatures<C(Ts...)>;
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
-			template<detail::decays_to<type> T, typename E>
+			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
 			template<receiver_of<_signs_t> R> requires(std::copy_constructible<Ts> && ...)
@@ -141,7 +141,7 @@ namespace rod
 	{
 		struct just_invoke_t
 		{
-			template<detail::movable_value F, typename... Args> requires std::invocable<F, Args...>
+			template<movable_value F, typename... Args> requires std::invocable<F, Args...>
 			[[nodiscard]] constexpr rod::sender auto operator()(F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<then_t, std::invoke_result_t<just_t, Args...>, F>)
 			{
 				return then(just(std::forward<Args>(args)...), std::forward<F>(fn));
@@ -162,7 +162,7 @@ namespace rod
 	{
 		struct just_bulk_t
 		{
-			template<detail::movable_value F, std::integral Shape, typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...>
+			template<movable_value F, std::integral Shape, typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...>
 			[[nodiscard]] constexpr rod::sender auto operator()(Shape shape, F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<bulk_t, std::invoke_result_t<just_t, Args...>, Shape, F>)
 			{
 				return bulk(just(std::forward<Args>(args)...), std::move(shape), std::forward<F>(fn));

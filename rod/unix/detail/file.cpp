@@ -45,6 +45,20 @@ namespace rod::detail
 	fail:
 		return (err = {errno, std::system_category()}, native_file{});
 	}
+	native_file native_file::open(const wchar_t *path, int mode, std::error_code &err) noexcept
+	{
+		auto state = std::mbstate_t{};
+		auto res = std::wcsrtombs(nullptr, &path, 0, &state);
+		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
+			return (err = {errno, std::system_category()}, native_file{});
+
+		auto buff = std::string(res, '\0');
+		res = std::wcsrtombs(buff.data(), &path, buff.size(), &state);
+		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
+			return (err = {errno, std::system_category()}, native_file{});
+		else
+			return open(buff.c_str(), mode, err);
+	}
 	native_file native_file::reopen(native_handle_type fd, int mode, std::error_code &err) noexcept
 	{
 		int flags = O_CLOEXEC | O_NONBLOCK;
@@ -94,6 +108,38 @@ namespace rod::detail
 		return (err = {errno, std::system_category()}, native_file{});
 	}
 
+	std::ptrdiff_t native_file::tell(std::error_code &err) const noexcept
+	{
+#if SIZE_MAX >= UINT64_MAX
+		const auto res = ::lseek64(m_fd, 0, SEEK_CUR);
+#else
+		const auto res = ::lseek(m_fd, 0, SEEK_CUR);
+#endif
+		if (res < 0) [[unlikely]]
+			return (err = {errno, std::system_category()}, -1);
+		else
+			return (err = {}, static_cast<std::size_t>(res));
+	}
+	std::ptrdiff_t native_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
+	{
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto res = ::lseek64(m_fd, static_cast<off64_t>(off), dir);
+#else
+		const auto res = ::lseek(m_fd, static_cast<off_t>(off), dir);
+#endif
+		if (res < 0) [[unlikely]]
+			return (err = {errno, std::system_category()}, -1);
+		else
+			return (err = {}, static_cast<std::size_t>(res));
+	}
+
+	std::error_code native_file::flush() noexcept
+	{
+		if (::fsync(native_handle())) [[unlikely]]
+			return {errno, std::system_category()};
+		else
+			return {};
+	}
 	std::size_t native_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
 	{
 		for (;;)

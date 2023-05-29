@@ -30,7 +30,7 @@ namespace rod
 
 				std::error_code err = {};
 				if (const auto res = operator()(std::forward<Hnd>(hnd), std::forward<Src>(src), err); err)
-					throw std::system_error(err);
+					throw std::system_error(err, "rod::write_some");
 				else
 					return res;
 			}
@@ -55,7 +55,7 @@ namespace rod
 
 				std::error_code err = {};
 				if (const auto res = operator()(std::forward<Hnd>(hnd), pos, std::forward<Src>(src), err); err)
-					throw std::system_error(err);
+					throw std::system_error(err, "rod::write_some_at");
 				else
 					return res;
 			}

@@ -8,7 +8,10 @@
 #include "detail/adaptors/read_some.hpp"
 #include "detail/adaptors/write_some.hpp"
 
+#ifdef __linux__
 #include "linux/epoll_context.hpp"
+#endif
+
 #include "file.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN

@@ -6,8 +6,6 @@
 
 #include "../../detail/config.hpp"
 
-#ifdef __unix__
-
 #include <system_error>
 #include <utility>
 
@@ -24,7 +22,6 @@ namespace rod::detail
 
 		ROD_PUBLIC std::error_code close() noexcept;
 
-		ROD_PUBLIC std::error_code sync() noexcept;
 		ROD_PUBLIC bool poll_read(int timeout, std::error_code &err) noexcept;
 		ROD_PUBLIC bool poll_write(int timeout, std::error_code &err) noexcept;
 		ROD_PUBLIC bool poll_error(int timeout, std::error_code &err) noexcept;
@@ -33,9 +30,6 @@ namespace rod::detail
 		ROD_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
-
-		ROD_PUBLIC std::ptrdiff_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
-		ROD_PUBLIC std::ptrdiff_t tell(std::error_code &err) const noexcept;
 
 		[[nodiscard]] constexpr bool is_open() const noexcept { return m_fd > -1; }
 		[[nodiscard]] constexpr int native_handle() const noexcept { return m_fd; }
@@ -64,7 +58,6 @@ namespace rod::detail
 		using basic_descriptor::close;
 		using basic_descriptor::release;
 
-		using basic_descriptor::sync;
 		using basic_descriptor::poll_read;
 		using basic_descriptor::poll_write;
 		using basic_descriptor::poll_error;
@@ -83,4 +76,3 @@ namespace rod::detail
 		friend constexpr void swap(unique_descriptor &a, unique_descriptor &b) noexcept { a.swap(b); }
 	};
 }
-#endif

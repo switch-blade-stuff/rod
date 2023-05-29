@@ -68,7 +68,7 @@ namespace rod
 			template<typename E>
 			friend constexpr _signs_t<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, rod::receiver Rcv> requires sender_to<S, _receiver_t<Rcv>>
+			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<S, _receiver_t<Rcv>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_callable<connect_t, S, _receiver_t<Rcv>>)
 			{
 				return connect(std::move(s._snd), _receiver_t<Rcv>{std::move(rcv)});

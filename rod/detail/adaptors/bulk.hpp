@@ -82,10 +82,10 @@ namespace rod
 
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 
-			template<detail::decays_to<type> T, typename E>
+			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, _receiver_t<Rcv>>
+			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, _receiver_t<Rcv>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_callable<connect_t, copy_cvref_t<T, Snd>, _receiver_t<Rcv>>)
 			{
 				return connect(std::forward<T>(s)._snd, _receiver_t<Rcv>{s._shape, std::move(rcv), std::forward<T>(s)._fn});
@@ -106,23 +106,23 @@ namespace rod
 			using back_adaptor = detail::back_adaptor<bulk_t, Shape, std::decay_t<F>>;
 			
 		public:
-			template<rod::sender Snd, std::integral Shape, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F>
+			template<rod::sender Snd, std::integral Shape, movable_value F> requires detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(nothrow_tag_invocable<bulk_t, value_scheduler<Snd>, Snd, Shape, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::move(shape), std::forward<F>(fn));
 			}
-			template<rod::sender Snd, std::integral Shape, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && tag_invocable<bulk_t, Snd, Shape, F>)
+			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && tag_invocable<bulk_t, Snd, Shape, F>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(nothrow_tag_invocable<bulk_t, Snd, Shape, F>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::move(shape), std::forward<F>(fn));
 			}
-			template<rod::sender Snd, std::integral Shape, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && !tag_invocable<bulk_t, Snd, Shape, F>)
+			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && !tag_invocable<bulk_t, Snd, Shape, F>)
 			[[nodiscard]] constexpr sender_t<Snd, Shape, F> operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Shape, F>, Shape, Snd, F>)
 			{
 				return sender_t<Snd, Shape, F>{std::move(shape), std::forward<Snd>(snd), std::forward<F>(fn)};
 			}
 
-			template<std::integral Shape, detail::movable_value F>
+			template<std::integral Shape, movable_value F>
 			[[nodiscard]] constexpr back_adaptor<Shape, F> operator()(Shape shape, F &&fn) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Shape, F>, bulk_t, Shape, F>)
 			{
 				return back_adaptor<Shape, F>{*this, {std::move(shape), std::forward<F>(fn)}};

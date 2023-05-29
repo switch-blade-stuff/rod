@@ -30,9 +30,9 @@ namespace rod
 		template<typename Env, typename Tok>
 		struct env<Env, Tok>::type
 		{
-			template<detail::decays_to<type> E>
+			template<decays_to<type> E>
 			friend constexpr Tok tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
-			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
@@ -122,10 +122,10 @@ namespace rod
 			using _signs_t = make_completion_signatures<Snd, env_of_t<Snd>, completion_signatures<set_stopped_t()>>;
 
 			friend constexpr _env_t tag_invoke(get_env_t, const type &s) noexcept { return _env_t{get_env(s._snd), s._tok}; }
-			template<detail::decays_to<type> T, typename E>
+			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<detail::decays_to<type> T, typename Rcv>
+			template<decays_to<type> T, typename Rcv>
 			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv)
 			{
 				static_assert(sender_to<copy_cvref_t<T, Snd>, _receiver_t<Rcv>>);

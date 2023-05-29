@@ -294,7 +294,7 @@ namespace rod
 
 		/** Initializes the delegate with a reference to a functor. */
 		template<typename T>
-		delegate(T &func) requires(!detail::decays_to<T, delegate> && !std::is_function_v<T>) { init_ref(typename traits_t::arg_types{}, func); }
+		delegate(T &func) requires(!decays_to<T, delegate> && !std::is_function_v<T>) { init_ref(typename traits_t::arg_types{}, func); }
 		/** Initializes the delegate with an in-place constructed functor. */
 		template<typename T, typename U = std::decay_t<T>>
 		delegate(T &&func) requires(!std::same_as<U, delegate> && !std::is_function_v<U>) { init_value<U>(typename traits_t::arg_types{}, std::forward<T>(func)); }

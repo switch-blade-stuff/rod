@@ -98,10 +98,10 @@ namespace rod
 			using _operation_t = typename operation<std::decay_t<R>>::type;
 
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._loop}; }
-			template<detail::decays_to<sender> T, typename E>
+			template<decays_to<sender> T, typename E>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<detail::decays_to<timer_sender> T, typename R>
+			template<decays_to<timer_sender> T, typename R>
 			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R>) { return {s._loop, std::forward<R>(rcv)};; }
 
 			run_loop *_loop;
@@ -115,10 +115,10 @@ namespace rod
 			using _operation_t = typename timer_operation<std::decay_t<R>>::type;
 
 			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {s._loop}; }
-			template<detail::decays_to<timer_sender> T, typename E>
+			template<decays_to<timer_sender> T, typename E>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<detail::decays_to<timer_sender> T, typename R>
+			template<decays_to<timer_sender> T, typename R>
 			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R>) { return {s._loop, s._timeout, std::forward<R>(rcv)};; }
 
 			time_point _timeout;
@@ -130,11 +130,11 @@ namespace rod
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 
-			template<detail::decays_to<scheduler> T>
+			template<decays_to<scheduler> T>
 			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{s._loop}; }
-			template<detail::decays_to<scheduler> T, detail::decays_to<time_point> TP>
+			template<decays_to<scheduler> T, decays_to<time_point> TP>
 			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), s._loop}; }
-			template<detail::decays_to<scheduler> T, typename Dur>
+			template<decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
 			/** Returns the current time point of the clock used by the run loop. */

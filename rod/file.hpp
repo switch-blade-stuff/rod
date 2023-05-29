@@ -7,8 +7,12 @@
 #include "detail/file_fwd.hpp"
 
 /* Platform-specific implementations. */
+#ifdef __unix__
 #include "unix/detail/file.hpp"
+#endif
+#ifdef _WIN32
 #include "win32/detail/file.hpp"
+#endif
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::_file
@@ -52,12 +56,6 @@ namespace rod::_file
 		static constexpr seekdir cur = detail::seekdir::cur;
 		/** Seek from the end of the file. */
 		static constexpr seekdir end = detail::seekdir::end;
-
-	private:
-		[[nodiscard]] static constexpr openmode filter_mode(openmode mode) noexcept
-		{
-			return mode & ~(detail::ate | detail::trunc | detail::noreplace);
-		}
 		
 	public:
 		/** @brief Opens the file specified by \a path using mode flags \a flags.
@@ -69,12 +67,23 @@ namespace rod::_file
 		{
 			std::error_code err;
 			if (auto res = open(path, mode, err); err)
-				[[unlikely]] throw std::system_error(err);
+				[[unlikely]] throw std::system_error(err, "rod::basic_file::open");
+			else
+				return res;
+		}
+		/** @copydoc open */
+		[[nodiscard]] static basic_file open(const wchar_t *path, openmode mode)
+		{
+			std::error_code err;
+			if (auto res = open(path, mode, err); err)
+				[[unlikely]] throw std::system_error(err, "rod::basic_file::open");
 			else
 				return res;
 		}
 		/** @copydoc open */
 		[[nodiscard]] static basic_file open(const std::string &path, openmode mode) { return open(path.c_str(), mode); }
+		/** @copydoc open */
+		[[nodiscard]] static basic_file open(const std::wstring &path, openmode mode) { return open(path.c_str(), mode); }
 		/** @copydoc open */
 		[[nodiscard]] static basic_file open(const std::filesystem::path &path, openmode mode) { return open(path.c_str(), mode); }
 
@@ -85,7 +94,11 @@ namespace rod::_file
 		 * @return `basic_file` handle to the opened file, or a closed file handle if an error has occurred. */
 		[[nodiscard]] static basic_file open(const char *path, openmode mode, std::error_code &err) noexcept { return {native_t::open(path, mode | binary, err)}; }
 		/** @copydoc open */
+		[[nodiscard]] static basic_file open(const wchar_t *path, openmode mode, std::error_code &err) noexcept { return {native_t::open(path, mode | binary, err)}; }
+		/** @copydoc open */
 		[[nodiscard]] static basic_file open(const std::string &path, openmode mode, std::error_code &err) noexcept { return open(path.c_str(), mode, err); }
+		/** @copydoc open */
+		[[nodiscard]] static basic_file open(const std::wstring &path, openmode mode, std::error_code &err) noexcept { return open(path.c_str(), mode, err); }
 		/** @copydoc open */
 		[[nodiscard]] static basic_file open(const std::filesystem::path &path, openmode mode, std::error_code &err) noexcept { return open(path.c_str(), mode, err); }
 
@@ -98,7 +111,7 @@ namespace rod::_file
 		{
 			std::error_code err;
 			if (auto res = reopen(file, mode, err); err)
-				[[unlikely]] throw std::system_error(err);
+				[[unlikely]] throw std::system_error(err, "rod::basic_file::reopen");
 			else
 				return res;
 		}
@@ -138,14 +151,14 @@ namespace rod::_file
 		void close(std::error_code &err) noexcept { err = m_file.close(); }
 		/** @copybrief close
 	 	 * @throw std::system_error On failure to close the file. */
-		void close() { if (auto err = m_file.close(); err) [[unlikely]] throw std::system_error(err); }
+		void close() { if (auto err = m_file.close(); err) [[unlikely]] throw std::system_error(err, "rod::basic_file::close"); }
 
 		/** @brief Flushes modified file data to the underlying device.
 		 * @param[out] err Reference to the error code set on failure to flush the file. */
 		void flush(std::error_code &err) noexcept { err = m_file.flush(); }
 		/** @copybrief flush
 	 	 * @throw std::system_error On failure to flush the file. */
-		void flush() { if (auto err = m_file.flush(); err) [[unlikely]] throw std::system_error(err); }
+		void flush() { if (auto err = m_file.flush(); err) [[unlikely]] throw std::system_error(err, "rod::basic_file::flush"); }
 
 		/** @brief Seeks to the specified offset within the file starting at the specified position.
 		 * @param[in] off Offset into the file starting at \a dir.
@@ -156,7 +169,7 @@ namespace rod::_file
 		{
 			std::error_code err;
 			if (auto res = seek(off, dir, err); err)
-				[[unlikely]] throw std::system_error(err);
+				[[unlikely]] throw std::system_error(err, "rod::basic_file::seek");
 			else
 				return res;
 		}
@@ -174,7 +187,7 @@ namespace rod::_file
 		{
 			std::error_code err;
 			if (auto res = tell(err); err)
-				[[unlikely]] throw std::system_error(err);
+				[[unlikely]] throw std::system_error(err, "rod::basic_file::tell");
 			else
 				return res;
 		}
@@ -187,8 +200,12 @@ namespace rod::_file
 		[[nodiscard]] constexpr bool is_open() const noexcept { return m_file.is_open(); }
 		/** Returns the underlying native file handle. */
 		[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return m_file.native_handle(); }
-		
-		template<typename T, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+
+		constexpr void swap(basic_file &other) noexcept { m_file.swap(other.m_file); }
+		friend constexpr void swap(basic_file &a, basic_file &b) noexcept { a.swap(b); }
+
+	public:
+		template<reference_to<basic_file> T, typename Dst>
 		friend std::size_t tag_invoke(read_some_t, T &&src, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
@@ -196,7 +213,7 @@ namespace rod::_file
 			const auto dst_max = std::ranges::size(dst) * sizeof(value_t);
 			return src.m_file.sync_read(static_cast<void *>(dst_ptr), dst_max, err);
 		}
-		template<typename T, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Src>
 		friend std::size_t tag_invoke(write_some_t, T &&dst, Src &&src, std::error_code &err) noexcept(noexcept_sizeable_range<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
@@ -204,7 +221,7 @@ namespace rod::_file
 			const auto src_max = std::ranges::size(src) * sizeof(value_t);
 			return dst.m_file.sync_write(static_cast<const void *>(src_ptr), src_max, err);
 		}
-		template<typename T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
 		friend std::size_t tag_invoke(read_some_at_t, T &&src, Pos pos, Dst &&dst, std::error_code &err) noexcept(noexcept_sizeable_range<Dst>)
 		{
 			using value_t = std::ranges::range_value_t<Dst>;
@@ -212,7 +229,7 @@ namespace rod::_file
 			const auto dst_max = std::ranges::size(dst) * sizeof(value_t);
 			return src.m_file.sync_read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err);
 		}
-		template<typename T, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
 		friend std::size_t tag_invoke(write_some_at_t, T &&dst, Pos pos, Src &&src, std::error_code &err) noexcept(noexcept_sizeable_range<Src>)
 		{
 			using value_t = std::ranges::range_value_t<Src>;
@@ -221,58 +238,47 @@ namespace rod::_file
 			return dst.m_file.sync_write_at(static_cast<const void *>(src_ptr), src_max, static_cast<std::ptrdiff_t>(pos), err);
 		}
 		
-		template<typename T, typename Snd, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Snd, typename Dst> requires detail::callable<async_read_some_t, Snd, native_handle_type, Dst>
 		friend decltype(auto) tag_invoke(async_read_some_t, Snd &&snd, T &&src, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_t, Snd, native_handle_type, Dst>)
 		{
-			static_assert(detail::callable<async_read_some_t, Snd, native_handle_type, Dst>);
 			return async_read_some(std::forward<Snd>(snd), src.native_handle(), std::forward<Dst>(dst));
 		}
-		template<typename T, typename Snd, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Snd, typename Src> requires detail::callable<async_write_some_t, Snd, native_handle_type, Src>
 		friend decltype(auto) tag_invoke(async_write_some_t, Snd &&snd, T &&dst, Src &&src) noexcept(detail::nothrow_callable<async_write_some_t, Snd, native_handle_type, Src>)
 		{
-			static_assert(detail::callable<async_write_some_t, Snd, native_handle_type, Src>);
 			return async_write_some(std::forward<Snd>(snd), dst.native_handle(), std::forward<Src>(src));
 		}
-		template<typename T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires detail::callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>
 		friend decltype(auto) tag_invoke(async_read_some_at_t, Snd &&snd, T &&src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>)
 		{
-			static_assert(detail::callable<async_read_some_at_t, Snd, native_handle_type, Pos, Dst>);
 			return async_read_some_at(std::forward<Snd>(snd), src.native_handle(), pos, std::forward<Dst>(dst));
 		}
-		template<typename T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires detail::callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>
 		friend decltype(auto) tag_invoke(async_write_some_at_t, Snd &&snd, T &&dst, Pos pos, Src &&src) noexcept(detail::nothrow_callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>)
 		{
-			static_assert(detail::callable<async_write_some_at_t, Snd, native_handle_type, Pos, Src>);
 			return async_write_some_at(std::forward<Snd>(snd), dst.native_handle(), pos, std::forward<Src>(src));
 		}
 
-		template<typename T, typename Sch, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Sch, typename Dst> requires detail::callable<schedule_read_some_t, Sch, native_handle_type, Dst>
 		friend decltype(auto) tag_invoke(schedule_read_some_t, Sch &&sch, T &&src, Dst &&dst) noexcept(detail::nothrow_callable<schedule_read_some_t, Sch, native_handle_type, Dst>)
 		{
-			static_assert(detail::callable<schedule_read_some_t, Sch, native_handle_type, Dst>);
 			return schedule_read_some(std::forward<Sch>(sch), src.native_handle(), std::forward<Dst>(dst));
 		}
-		template<typename T, typename Sch, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Sch, typename Src> requires detail::callable<schedule_write_some_t, Sch, native_handle_type, Src>
 		friend decltype(auto) tag_invoke(schedule_write_some_t, Sch &&sch, T &&dst, Src &&src) noexcept(detail::nothrow_callable<schedule_write_some_t, Sch, native_handle_type, Src>)
 		{
-			static_assert(detail::callable<schedule_write_some_t, Sch, native_handle_type, Src>);
 			return schedule_write_some(std::forward<Sch>(sch), dst.native_handle(), std::forward<Src>(src));
 		}
-		template<typename T, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Dst> requires detail::callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Dst>
 		friend decltype(auto) tag_invoke(schedule_read_some_at_t, Sch &&sch, T &&src, Pos pos, Dst &&dst) noexcept(detail::nothrow_callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Dst>)
 		{
-			static_assert(detail::callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Dst>);
 			return schedule_read_some_at(std::forward<Sch>(sch), src.native_handle(), pos, std::forward<Dst>(dst));
 		}
-		template<typename T, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires std::same_as<std::remove_reference_t<T>, basic_file>
+		template<reference_to<basic_file> T, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Src> requires detail::callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Src>
 		friend decltype(auto) tag_invoke(schedule_write_some_at_t, Sch &&sch, T &&dst, Pos pos, Src &&src) noexcept(detail::nothrow_callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Src>)
 		{
-			static_assert(detail::callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Src>);
 			return schedule_write_some_at(std::forward<Sch>(sch), dst.native_handle(), pos, std::forward<Src>(src));
 		}
-
-		constexpr void swap(basic_file &other) noexcept { m_file.swap(other.m_file); }
-		friend constexpr void swap(basic_file &a, basic_file &b) noexcept { a.swap(b); }
 		
 	private:
 		native_t m_file = {};

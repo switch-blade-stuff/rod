@@ -40,10 +40,10 @@ namespace rod
 		template<typename Env>
 		struct env<Env>::type
 		{
-			template<detail::decays_to<type> E>
+			template<decays_to<type> E>
 			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._token; }
 
-			template<is_forwarding_query Q, detail::decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(*std::forward<E>(e)._env, std::forward<Args>(args)...);
@@ -186,9 +186,9 @@ namespace rod
 			type(Snd snd) : _state(new _shared_state_t{std::move(snd)}) {}
 			~type() { if (_state) _state->detach(); }
 
-			template<detail::decays_to<type> T>
+			template<decays_to<type> T>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, auto) noexcept { return {}; }
-			template<detail::decays_to<type> T, typename Rcv>
+			template<decays_to<type> T, typename Rcv>
 			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t>);

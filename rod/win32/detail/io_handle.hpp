@@ -6,7 +6,7 @@
 
 #include "../../detail/config.hpp"
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 
 #include <system_error>
 #include <utility>
@@ -23,19 +23,6 @@ namespace rod::detail
 		constexpr void *release() noexcept { return std::exchange(m_handle, nullptr); }
 
 		ROD_PUBLIC std::error_code close() noexcept;
-
-		ROD_PUBLIC std::error_code sync() noexcept;
-		ROD_PUBLIC bool poll_read(int timeout, std::error_code &err) noexcept;
-		ROD_PUBLIC bool poll_write(int timeout, std::error_code &err) noexcept;
-		ROD_PUBLIC bool poll_error(int timeout, std::error_code &err) noexcept;
-
-		ROD_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
-
-		ROD_PUBLIC std::ptrdiff_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
-		ROD_PUBLIC std::ptrdiff_t tell(std::error_code &err) const noexcept;
 
 		[[nodiscard]] constexpr bool is_open() const noexcept { return m_handle != nullptr; }
 		[[nodiscard]] constexpr void *native_handle() const noexcept { return m_handle; }
@@ -63,18 +50,6 @@ namespace rod::detail
 
 		using basic_io_handle::close;
 		using basic_io_handle::release;
-
-		using basic_io_handle::sync;
-		using basic_io_handle::poll_read;
-		using basic_io_handle::poll_write;
-		using basic_io_handle::poll_error;
-
-		using basic_io_handle::tell;
-		using basic_io_handle::seek;
-		using basic_io_handle::read;
-		using basic_io_handle::write;
-		using basic_io_handle::read_at;
-		using basic_io_handle::write_at;
 
 		using basic_io_handle::is_open;
 		using basic_io_handle::native_handle;

@@ -17,13 +17,6 @@ namespace rod::detail
 		else
 			return {};
 	}
-	std::error_code basic_descriptor::sync() noexcept
-	{
-		if (::fsync(native_handle())) [[unlikely]]
-			return {errno, std::system_category()};
-		else
-			return {};
-	}
 
 	bool basic_descriptor::poll_read(int timeout, std::error_code &err) noexcept
 	{
@@ -83,31 +76,6 @@ namespace rod::detail
 		const auto res = ::pwrite64(m_fd, src, n, static_cast<off64_t>(off));
 #else
 		const auto res = ::pwrite(m_fd, src, n, static_cast<off_t>(off));
-#endif
-		if (res < 0) [[unlikely]]
-			return (err = {errno, std::system_category()}, 0);
-		else
-			return (err = {}, static_cast<std::size_t>(res));
-	}
-
-	std::ptrdiff_t basic_descriptor::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
-	{
-#if PTRDIFF_MAX >= INT64_MAX
-		const auto res = ::lseek64(m_fd, static_cast<off64_t>(off), dir);
-#else
-		const auto res = ::lseek(m_fd, static_cast<off_t>(off), dir);
-#endif
-		if (res < 0) [[unlikely]]
-			return (err = {errno, std::system_category()}, 0);
-		else
-			return (err = {}, static_cast<std::size_t>(res));
-	}
-	std::ptrdiff_t basic_descriptor::tell(std::error_code &err) const noexcept
-	{
-#if SIZE_MAX >= UINT64_MAX
-		const auto res = ::lseek64(m_fd, 0, SEEK_CUR);
-#else
-		const auto res = ::lseek(m_fd, 0, SEEK_CUR);
 #endif
 		if (res < 0) [[unlikely]]
 			return (err = {errno, std::system_category()}, 0);

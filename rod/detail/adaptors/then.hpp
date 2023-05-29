@@ -159,10 +159,10 @@ namespace rod
 
 			friend constexpr env_of_t<S> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const S &>) { return get_env(s._snd); }
 
-			template<detail::decays_to<type> T, typename E>
+			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<detail::decays_to<type> T, rod::receiver Rcv>
+			template<decays_to<type> T, rod::receiver Rcv>
 			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv r) noexcept(std::is_nothrow_constructible_v<_operation_t<T, Rcv>, copy_cvref_t<T, S>, Rcv, copy_cvref_t<T, F>>)
 			{
 				static_assert(receiver_of<_receiver_t<Rcv>, _input_signs_t<T, env_of_t<Rcv>>>);
@@ -184,23 +184,23 @@ namespace rod
 			using sender_t = typename sender<C, S, std::decay_t<F>>::type;
 
 		public:
-			template<rod::sender S, detail::movable_value F> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F>
+			template<rod::sender S, movable_value F> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F>
 			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, completion_scheduler<S>, S, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<C>(get_env(snd)), std::forward<S>(snd), std::forward<F>(fn));
 			}
-			template<rod::sender S, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && tag_invocable<upon_channel<C>, S, F>)
+			template<rod::sender S, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && tag_invocable<upon_channel<C>, S, F>)
 			[[nodiscard]] constexpr rod::sender decltype(auto) operator()(S &&snd, F &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, S, F>)
 			{
 				return tag_invoke(*this, std::forward<S>(snd), std::forward<F>(fn));
 			}
-			template<rod::sender S, detail::movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && !tag_invocable<upon_channel<C>, S, F>)
+			template<rod::sender S, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, S, S, F> && !tag_invocable<upon_channel<C>, S, F>)
 			[[nodiscard]] constexpr sender_t<S, F> operator()(S &&snd, F &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<S, F>, S, F>)
 			{
 				return sender_t<S, F>{std::forward<S>(snd), std::forward<F>(fn)};
 			}
 
-			template<detail::movable_value F>
+			template<movable_value F>
 			[[nodiscard]] constexpr back_adaptor<F> operator()(F &&fn) const noexcept(std::is_nothrow_constructible_v<back_adaptor<F>, upon_channel<C>, F>)
 			{
 				return {*this, std::forward<F>(fn)};
