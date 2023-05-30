@@ -4,6 +4,8 @@
 
 #pragma once
 
+#ifdef __unix__
+
 #include <chrono>
 
 #include "../detail/config.hpp"
@@ -115,3 +117,4 @@ namespace rod
 	};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
+#endif

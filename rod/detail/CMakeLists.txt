@@ -16,5 +16,4 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/sync_wait.hpp
         ${CMAKE_CURRENT_LIST_DIR}/ensure_started.hpp
         ${CMAKE_CURRENT_LIST_DIR}/start_detached.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/io_buffer.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/file_fwd.hpp)
+        ${CMAKE_CURRENT_LIST_DIR}/io_buffer.hpp)

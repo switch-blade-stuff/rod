@@ -2,63 +2,17 @@
  * Created by switchblade on 2023-05-18.
  */
 
+#ifdef __unix__
+
 #include "file.hpp"
 
-#include <fcntl.h>
+#include <unistd.h>
+#include <climits>
+#include <limits>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	constexpr auto perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
-
-	system_file system_file::open(const char *path, int mode, std::error_code &err) noexcept
-	{
-		int flags = O_CREAT | O_CLOEXEC | O_NONBLOCK;
-		switch (mode & (openmode::in | openmode::out))
-		{
-			case openmode::out | openmode::in:
-				flags |= O_RDWR;
-				break;
-			case openmode::out:
-				flags |= O_WRONLY;
-				break;
-			default:
-				flags |= O_RDONLY;
-				break;
-		}
-
-		if (mode & openmode::app) flags |= O_APPEND;
-		if (mode & openmode::trunc) flags |= O_TRUNC;
-		if (mode & openmode::direct) flags |= O_DIRECT;
-		if (mode & openmode::noreplace) flags |= O_EXCL;
-
-		const auto fd = ::open(path, flags, perms);
-		if (fd < 0) [[unlikely]] goto fail;
-
-		if ((mode & openmode::ate) && ::lseek(fd, 0, SEEK_END) < 0) [[unlikely]]
-		{
-			::close(fd);
-			goto fail;
-		}
-
-		return (err = {}, system_file{fd});
-	fail:
-		return (err = {errno, std::system_category()}, system_file{});
-	}
-	system_file system_file::open(const wchar_t *path, int mode, std::error_code &err) noexcept
-	{
-		auto state = std::mbstate_t{};
-		auto res = std::wcsrtombs(nullptr, &path, 0, &state);
-		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
-			return (err = {errno, std::system_category()}, system_file{});
-
-		auto buff = std::string(res, '\0');
-		res = std::wcsrtombs(buff.data(), &path, buff.size(), &state);
-		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
-			return (err = {errno, std::system_category()}, system_file{});
-		else
-			return open(buff.c_str(), mode, err);
-	}
 	system_file system_file::reopen(native_handle_type fd, int mode, std::error_code &err) noexcept
 	{
 		int flags = O_CLOEXEC | O_NONBLOCK;
@@ -91,11 +45,11 @@ namespace rod::detail
 
 		/* Save old flags. */
 		if (const auto getfl = ::fcntl(fd, F_GETFL); getfl >= 0) [[likely]]
-			flags |= getfl;
+				                                                         flags |= getfl;
 		else
 			goto fail;
 
-		if (const auto new_fd = ::open(path, flags, perms); new_fd >= 0) [[likely]]
+		if (const auto new_fd = ::open(path, flags); new_fd >= 0) [[likely]]
 		{
 			if ((mode & openmode::ate) && ::lseek(new_fd, 0, SEEK_END) < 0) [[unlikely]]
 			{
@@ -107,6 +61,54 @@ namespace rod::detail
 	fail:
 		return (err = {errno, std::system_category()}, system_file{});
 	}
+	system_file system_file::open(const char *path, int mode, int prot, std::error_code &err) noexcept
+	{
+		int flags = O_CREAT | O_CLOEXEC | O_NONBLOCK;
+		switch (mode & (openmode::in | openmode::out))
+		{
+			case openmode::out | openmode::in:
+				flags |= O_RDWR;
+				break;
+			case openmode::out:
+				flags |= O_WRONLY;
+				break;
+			default:
+				flags |= O_RDONLY;
+				break;
+		}
+
+		if (mode & openmode::app) flags |= O_APPEND;
+		if (mode & openmode::trunc) flags |= O_TRUNC;
+		if (mode & openmode::direct) flags |= O_DIRECT;
+		if (mode & openmode::noreplace) flags |= O_EXCL;
+
+		const auto fd = ::open(path, flags, prot);
+		if (fd < 0) [[unlikely]] goto fail;
+
+		if ((mode & openmode::ate) && ::lseek(fd, 0, SEEK_END) < 0) [[unlikely]]
+		{
+			::close(fd);
+			goto fail;
+		}
+
+		return (err = {}, system_file{fd});
+	fail:
+		return (err = {errno, std::system_category()}, system_file{});
+	}
+	system_file system_file::open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept
+	{
+		auto state = std::mbstate_t{};
+		auto res = std::wcsrtombs(nullptr, &path, 0, &state);
+		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
+			return (err = {errno, std::system_category()}, system_file{});
+
+		auto buff = std::string(res, '\0');
+		res = std::wcsrtombs(buff.data(), &path, buff.size(), &state);
+		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
+			return (err = {errno, std::system_category()}, system_file{});
+		else
+			return open(buff.c_str(), mode, prot, err);
+	}
 
 	std::size_t system_file::tell(std::error_code &err) const noexcept
 	{
@@ -116,7 +118,7 @@ namespace rod::detail
 		const auto res = ::lseek(native_handle(), 0, SEEK_CUR);
 #endif
 		if (res < 0) [[unlikely]]
-			return (err = {errno, std::system_category()}, -1);
+			return (err = {errno, std::system_category()}, 0);
 		else
 			return (err = {}, static_cast<std::size_t>(res));
 	}
@@ -128,7 +130,7 @@ namespace rod::detail
 		const auto res = ::lseek(native_handle(), static_cast<off_t>(off), dir);
 #endif
 		if (res < 0) [[unlikely]]
-			return (err = {errno, std::system_category()}, -1);
+			return (err = {errno, std::system_category()}, 0);
 		else
 			return (err = {}, static_cast<std::size_t>(res));
 	}
@@ -194,3 +196,4 @@ namespace rod::detail
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
+#endif

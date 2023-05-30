@@ -23,6 +23,7 @@ namespace rod::detail
 		static ROD_PUBLIC system_file open(const wchar_t *path, int mode, std::error_code &err) noexcept;
 		static ROD_PUBLIC system_file reopen(native_handle_type fd, int mode, std::error_code &err) noexcept;
 
+	public:
 		constexpr system_file() = default;
 
 		constexpr explicit system_file(native_handle_type fd) noexcept : unique_io_handle(fd) {}

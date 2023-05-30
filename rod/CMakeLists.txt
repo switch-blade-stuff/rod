@@ -23,4 +23,5 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/signal.hpp
         ${CMAKE_CURRENT_LIST_DIR}/task.hpp
         ${CMAKE_CURRENT_LIST_DIR}/file.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/mmap.hpp
         ${CMAKE_CURRENT_LIST_DIR}/io.hpp)

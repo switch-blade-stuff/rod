@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "../detail/config.hpp"
+#include "../detail/adaptors/read_some.hpp"
+#include "../detail/adaptors/write_some.hpp"
 
 #ifdef ROD_HAS_EPOLL
 

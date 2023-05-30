@@ -2,6 +2,8 @@
  * Created by switchblade on 2023-05-20.
  */
 
+#ifdef __unix__
+
 #include "descriptor.hpp"
 
 #include <unistd.h>
@@ -83,6 +85,7 @@ namespace rod::detail
 			return (err = {}, static_cast<std::size_t>(res));
 	}
 
-	unique_descriptor::~unique_descriptor() { ::close(native_handle()); }
+	unique_descriptor::~unique_descriptor() { if (is_open()) ::close(release()); }
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
+#endif
