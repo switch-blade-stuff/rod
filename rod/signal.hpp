@@ -5,7 +5,7 @@
 #pragma once
 
 #include <functional>
-#include <list>
+#include <cassert>
 
 #include "detail/config.hpp"
 #include "packed_pair.hpp"
@@ -30,44 +30,85 @@ namespace rod
 		template<typename>
 		friend class sink;
 
-		using storage_t = std::list<Func, Alloc>;
+	public:
+		using size_type = typename std::allocator_traits<Alloc>::size_type;
+		using allocator_type = Alloc;
+		using value_type = Func;
+
+	private:
+		constexpr static auto npos = std::numeric_limits<size_type>::max();
+
+		struct node_t
+		{
+			constexpr node_t(const node_t &other) noexcept(std::is_nothrow_copy_constructible_v<value_type>) : next(other.next), prev(other.prev), value(other.value) {}
+			constexpr node_t(node_t &&other) noexcept(std::is_nothrow_move_constructible_v<value_type>) : next(other.next), prev(other.prev), value(std::move(other.value)) {}
+			template<typename... Args>
+			constexpr explicit node_t(Args &&...args) noexcept(std::is_nothrow_constructible_v<value_type, Args...>) : value(std::forward<Args>(args)...) {}
+
+			size_type next = npos;
+			size_type prev = npos;
+			std::optional<value_type> value;
+		};
+
+		using storage_t = std::vector<node_t, typename std::allocator_traits<Alloc>::template rebind_alloc<node_t>>;
 
 	public:
-		using allocator_type = typename storage_t::allocator_type;
-		using size_type = typename storage_t::size_type;
+		basic_signal(const basic_signal &) = delete;
+		basic_signal &operator=(const basic_signal &) = delete;
 
-	public:
-		/** Checks if the signal's listener queue is empty. */
-		[[nodiscard]] constexpr bool empty() const noexcept { return m_data.empty(); }
-		/** Returns the current size of the signal's listener queue. */
-		[[nodiscard]] constexpr size_type size() const noexcept { return m_data.size(); }
+		/** Initializes an empty signal. */
+		constexpr basic_signal() noexcept = default;
+		/** Initializes an empty signal using the specified allocator. */
+		constexpr explicit basic_signal(const allocator_type &alloc) noexcept : m_nodes(alloc) {}
+
+		constexpr basic_signal(basic_signal &&other) noexcept(std::is_nothrow_move_constructible_v<storage_t>) : m_nodes(std::move(other.m_nodes))
+		{
+			std::swap(m_head, other.m_head);
+			std::swap(m_slot, other.m_slot);
+		}
+		constexpr basic_signal &operator=(basic_signal &&other) noexcept(std::is_nothrow_move_assignable_v<storage_t>)
+		{
+			if (this != &other)
+			{
+				m_nodes = std::move(other.m_nodes);
+				m_head = std::exchange(other.m_head, npos);
+				m_slot = std::exchange(other.m_slot, npos);
+			}
+			return *this;
+		}
+
+		/** Checks if the signal is empty (has no associated listeners). */
+		[[nodiscard]] constexpr bool empty() const noexcept { return m_head == npos; }
 		/** Returns copy of the signal's allocator. */
-		[[nodiscard]] constexpr allocator_type get_allocator() noexcept { return m_data.get_allocator(); }
-
-		/** Resets the signal to initial (no listeners) state. */
-		constexpr void reset() { m_data.clear(); }
+		[[nodiscard]] constexpr allocator_type get_allocator() noexcept { return allocator_type{m_nodes.get_allocator()}; }
 
 		/** Invokes all associated listeners with \a args. */
 		template<typename... Args>
 		constexpr void emit(Args &&...args) requires std::invocable<Func, Args...>
 		{
-			for (auto &&target: m_data) std::invoke(target, args...);
+			for (auto pos = m_head; pos != npos;)
+			{
+				auto &node = m_nodes[pos];
+				pos = node.next;
+
+				std::invoke(*node.value, args...);
+			}
 		}
 		/** Invokes all associated listeners with \a args, and accumulates results using functor \a acc.
 		 * If \a acc returns a `non-void` value convertible to `bool`, stops execution when the result evaluates to `false`. */
 		template<typename A, typename... Args, typename R = std::invoke_result_t<Func, Args...>>
 		constexpr void accumulate(A acc, Args &&...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
 		{
-			for (auto &&target: m_data)
+			for (auto pos = m_head; pos != npos;)
 			{
-				const auto next = [&]() -> decltype(auto) { return std::invoke(acc, std::invoke(target, args...)); };
-				if constexpr (std::convertible_to<std::invoke_result_t<A, R>, bool>)
-				{
-					const auto do_continue = static_cast<bool>(next());
-					if (!do_continue) break;
-				}
-				else
-					next();
+				auto &node = m_nodes[pos];
+				pos = node.next;
+
+				const auto invoke = [&]() -> decltype(auto) { return std::invoke(acc, std::invoke(*node.value, args...)); };
+				if constexpr (!std::convertible_to<std::invoke_result_t<A, R>, bool>)
+					invoke();
+				else if (!static_cast<bool>(invoke()))
+					break;
 			}
 		}
 
@@ -76,15 +117,66 @@ namespace rod
 		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
 		[[nodiscard]] generator<R> generate(Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...>)
 		{
-			for (auto &&target: m_data) co_yield std::invoke(target, args...);
+			for (auto pos = m_head; pos != npos;)
+			{
+				auto &node = m_nodes[pos];
+				pos = node.next;
+
+				co_yield std::invoke(*node.value, args...);
+			}
 		}
 #endif
 
-		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>) { m_data.swap(other.m_data); }
-		friend constexpr void swap(basic_signal &a, basic_signal &b) noexcept(std::is_nothrow_swappable_v<storage_t>) { a.swap(b); }
+		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>) { swap(*this, other); }
+		friend constexpr void swap(basic_signal &a, basic_signal &b) noexcept(std::is_nothrow_swappable_v<storage_t>)
+		{
+			std::swap(a.m_nodes, b.m_nodes);
+			std::swap(a.m_head, b.m_head);
+			std::swap(a.m_slot, b.m_slot);
+		}
 
 	private:
-		storage_t m_data = {};
+		template<typename... Args>
+		constexpr size_type emplace(Args &&...args)
+		{
+			/* If m_slot == npos, node array is contiguous and next free is m_last + 1 or 0 if m_last == npos. */
+			size_type result;
+			if (m_slot != npos)
+			{
+				result = m_slot;
+				m_slot = m_nodes[result].next;
+				m_nodes[result].value.emplace(std::forward<Args>(args)...);
+			}
+			else
+			{
+				result = m_nodes.size();
+				m_nodes.emplace_back(std::forward<Args>(args)...);
+			}
+			if (m_head != npos)
+			{
+				m_nodes[m_head].prev = result;
+				m_nodes[result].next = m_head;
+			}
+			return (m_head = result);
+		}
+		constexpr void erase(size_type pos) noexcept(std::is_nothrow_destructible_v<value_type>)
+		{
+			assert(pos < m_nodes.size());
+
+			auto &node = m_nodes[pos];
+			if (m_head == pos) m_head = node.next;
+			if (node.prev != npos) m_nodes[node.prev].next = node.next;
+			if (node.next != npos) m_nodes[node.next].prev = node.prev;
+
+			node.value.reset();
+			node.next = m_slot;
+			node.prev = npos;
+			m_slot = pos;
+		}
+
+		storage_t m_nodes = {};
+		size_type m_head = npos;
+		size_type m_slot = npos;
 	};
 
 	/** Alias of `basic_signal` that uses `delegate` as it's listener type. */
@@ -108,75 +200,36 @@ namespace rod
 	class sink
 	{
 		static_assert(instance_of<Signal, basic_signal>);
-		using storage_t = typename Signal::storage_t;
 
 	public:
-		using value_type = typename storage_t::value_type;
+		using value_type = typename Signal::value_type;
+		using size_type = typename Signal::size_type;
 
-		using reference = typename storage_t::const_reference;
-		using const_reference = typename storage_t::const_reference;
-		using pointer = typename storage_t::const_pointer;
-		using const_pointer = typename storage_t::const_pointer;
-
-		using iterator = typename storage_t::const_iterator;
-		using reverse_iterator = typename storage_t::const_reverse_iterator;
-
-		using size_type = typename storage_t::size_type;
-		using difference_type = typename storage_t::difference_type;
+		/** Sentinel value used to indicate an invalid index. */
+		constexpr static auto npos = Signal::npos;
 
 	public:
 		/** Initializes a sink for signal \a signal. */
 		constexpr sink(Signal &signal) noexcept : m_signal(&signal) {}
 
-		/** Checks if the associated signal's listener queue is empty. */
-		[[nodiscard]] constexpr bool empty() const noexcept { return m_signal->empty(); }
-		/** Returns the current size of the associated signal's listener queue. */
-		[[nodiscard]] constexpr size_type size() const noexcept { return m_signal->size(); }
+		/** Inserts a copy-constructed listener into the associated signal's queue and returns an index to the inserted element. */
+		constexpr size_type insert(const value_type &value) const requires std::copy_constructible<value_type> { return emplace(value); }
+		/** @copydoc insert */
+		constexpr size_type operator+=(const value_type &value) const requires std::copy_constructible<value_type> { return insert(value); }
 
-		/** Returns bidirectional iterator to the first listener of the associated signal. */
-		[[nodiscard]] constexpr iterator begin() const noexcept { return m_signal->m_data.cbegin(); }
-		/** @copydoc begin */
-		[[nodiscard]] constexpr iterator cbegin() const noexcept { return m_signal->m_data.cbegin(); }
-		/** Returns bidirectional iterator one past the last listener of the associated signal. */
-		[[nodiscard]] constexpr iterator end() const noexcept { return m_signal->m_data.cend(); }
-		/** @copydoc end */
-		[[nodiscard]] constexpr iterator cend() const noexcept { return m_signal->m_data.cend(); }
+		/** Inserts a move-constructed listener into the associated signal's queue and returns an index to the inserted element. */
+		constexpr size_type insert(value_type &&value) const requires std::move_constructible<value_type> { return emplace(std::forward<value_type>(value)); }
+		/** @copydoc insert */
+		constexpr size_type operator+=(value_type &&value) const requires std::move_constructible<value_type> { return insert(std::forward<value_type>(value)); }
 
-		/** Returns reverse bidirectional iterator to the first listener of the associated signal. */
-		[[nodiscard]] constexpr reverse_iterator rbegin() const noexcept { return m_signal->m_data.crbegin(); }
-		/** @copydoc rbegin */
-		[[nodiscard]] constexpr reverse_iterator crbegin() const noexcept { return m_signal->m_data.crbegin(); }
-		/** Returns reverse bidirectional iterator one past the last listener of the associated signal. */
-		[[nodiscard]] constexpr reverse_iterator rend() const noexcept { return m_signal->m_data.crend(); }
-		/** @copydoc rend */
-		[[nodiscard]] constexpr reverse_iterator crend() const noexcept { return m_signal->m_data.crend(); }
-
-		/** Inserts a listener at the end of the associated signal's queue. */
-		void push_back(value_type &&value) const { m_signal->m_data.push_back(std::forward<value_type>(value)); }
-		/** Inserts a listener at the start of the associated signal's queue. */
-		void push_front(value_type &&value) const { m_signal->m_data.push_front(std::forward<value_type>(value)); }
-		/** Inserts a listener into the associated signal's queue after the listener at \a pos and returns an iterator pointing to the inserted element. */
-		iterator insert(iterator pos, value_type &&value) const { return m_signal->m_data.insert(pos, std::forward<value_type>(value)); }
-
-		/** Inserts an in-place constructed listener at the end of the associated signal's queue. */
+		/** Inserts an in-place constructed listener into the associated signal's queue and returns an index to the inserted element. */
 		template<typename... Args>
-		void emplace_back(Args &&...args) const { return m_signal->m_data.emplace_back(std::forward<Args>(args)...); }
-		/** Inserts an in-place constructed listener at the start of the associated signal's queue. */
-		template<typename... Args>
-		void emplace_front(Args &&...args) const { return m_signal->m_data.emplace_front(std::forward<Args>(args)...); }
-		/** Inserts an in-place constructed listener into the associated signal's queue after the listener at \a pos and returns an iterator pointing to the inserted element. */
-		template<typename... Args>
-		iterator emplace(iterator pos, Args &&...args) const { return m_signal->m_data.emplace(pos, std::forward<Args>(args)...); }
+		constexpr size_type emplace(Args &&...args) const requires std::constructible_from<value_type, Args...> { return m_signal->emplace(std::forward<Args>(args)...); }
 
-		/** Removes listener located at \a pos from the associated signal's queue and returns iterator to the listener after the erased one or an end iterator. */
-		iterator erase(iterator pos) const { return m_signal->m_data.erase(pos); }
-		/** Removes all listeners within the range `[first, last)` and returns iterator to the listener after the erased sequence or an end iterator. */
-		iterator erase(iterator first, iterator last) const { return m_signal->m_data.erase(first, last); }
-
-		/** Appends a listener to the associated signal's queue. */
-		sink operator+=(value_type &&value) const { return (push_back(std::forward<value_type>(value)), *this); }
-		/** Removes listener located at \a pos from the associated signal's queue. */
-		sink operator-=(iterator pos) const { return (erase(pos), *this); }
+		/** Removes listener at index \a idx. */
+		constexpr void erase(size_type idx) const noexcept(std::is_nothrow_destructible_v<value_type>) { m_signal->erase(idx); }
+		/** @copydoc erase */
+		constexpr void operator-=(size_type idx) const noexcept(std::is_nothrow_destructible_v<value_type>) { erase(idx); }
 
 		[[nodiscard]] constexpr bool operator==(const sink &) const noexcept = default;
 
