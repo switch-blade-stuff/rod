@@ -58,7 +58,9 @@ namespace rod::detail
 		ROD_PUBLIC std::error_code unmap() noexcept;
 		ROD_PUBLIC std::error_code remap(std::size_t new_size) noexcept;
 
-		[[nodiscard]] constexpr std::pair<void *, std::size_t> release() noexcept { return {std::exchange(m_base, {}), m_size}; }
+		constexpr std::pair<void *, std::size_t> release() noexcept { return {std::exchange(m_base, {}), m_size}; }
+		constexpr std::pair<void *, std::size_t> release(void *base, std::size_t size, std::size_t off = 0) noexcept { return release(static_cast<std::byte *>(base), size, off); }
+		constexpr std::pair<void *, std::size_t> release(std::byte *base, std::size_t size, std::size_t off = 0) noexcept { return (m_data = base + off, std::pair{std::exchange(m_base, base), std::exchange(m_size, size)}); }
 
 		[[nodiscard]] constexpr bool empty() const noexcept { return !m_base; }
 		[[nodiscard]] constexpr operator bool() const noexcept { return !empty(); }

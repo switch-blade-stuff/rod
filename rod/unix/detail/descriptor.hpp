@@ -20,7 +20,7 @@ namespace rod::detail
 		constexpr basic_descriptor() noexcept = default;
 		constexpr explicit basic_descriptor(int fd) noexcept : m_fd(fd) {}
 
-		constexpr int release() noexcept { return std::exchange(m_fd, -1); }
+		constexpr int release(int fd = -1) noexcept { return std::exchange(m_fd, fd); }
 
 		ROD_PUBLIC std::error_code close() noexcept;
 

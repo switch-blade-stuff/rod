@@ -10,20 +10,16 @@
 
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
-#include <sys/epoll.h>
-#include <cstdio>
 
 namespace rod::_epoll
 {
 #if SIZE_MAX >= UINT64_MAX
-	/* 10k buffer. */
 	constexpr std::size_t default_max_events = 256;
 #else
-	/* 5k buffer. */
 	constexpr std::size_t default_max_events = 128;
 #endif
 
-	enum event_id : std::uint64_t { timer_event, queue_event, };
+	enum event_id : std::uint64_t { timer_timeout, queue_dispatch };
 
 	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
 
@@ -46,7 +42,7 @@ namespace rod::_epoll
 		/* Register timer descriptor with EPOLL. */
 		epoll_event event = {};
 		event.events = EPOLLIN;
-		event.data.u64 = event_id::timer_event;
+		event.data.u64 = event_id::timer_timeout;
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
 			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event)");
 		else
@@ -60,7 +56,7 @@ namespace rod::_epoll
 		/* Register timer descriptor with EPOLL. */
 		epoll_event event = {};
 		event.events = EPOLLIN;
-		event.data.u64 = event_id::queue_event;
+		event.data.u64 = event_id::timer_timeout;
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
 			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_fd, &event)");
 		else
@@ -84,6 +80,7 @@ namespace rod::_epoll
 	}
 
 	void context::request_stop() { m_stop_source.request_stop(); }
+	bool context::is_consumer_thread() const noexcept { return m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
 	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
@@ -101,11 +98,23 @@ namespace rod::_epoll
 		m_consumer_queue.push_back(node);
 	}
 
-	void context::add_io(detail::basic_descriptor fd, operation_base *node) noexcept
+	void context::add_io(detail::basic_descriptor fd, io_type type, operation_base *node) noexcept
 	{
 		epoll_event event = {};
 		event.data.ptr = node;
-		event.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP;
+		event.events = EPOLLRDHUP | EPOLLHUP;
+
+		switch (type)
+		{
+		default:
+		case io_type::read:
+			event.events |= EPOLLIN;
+			break;
+		case io_type::write:
+			event.events |= EPOLLOUT;
+			break;
+		}
+
 		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd.native_handle(), &event);
 	}
 	void context::del_io(detail::basic_descriptor fd) noexcept
@@ -114,14 +123,14 @@ namespace rod::_epoll
 		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd.native_handle(), &event);
 	}
 
-	void context::add_timer(timer_node *node) noexcept
+	void context::add_timer(timer_node<context> *node) noexcept
 	{
 		assert(!node->_timer_next);
 		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
-	void context::del_timer(timer_node *node) noexcept
+	void context::del_timer(timer_node<context> *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
@@ -149,9 +158,9 @@ namespace rod::_epoll
 			auto &event = events[pos];
 			switch (std::error_code err; event.data.u64)
 			{
-			case event_id::timer_event: /* Timer elapsed notification event. */
+			case event_id::timer_timeout: /* Timer elapsed notification event. */
 			{
-				m_timer_fd_started = false;
+				m_timer_started = false;
 				m_timer_pending = true;
 
 				// Read the eventfd to clear the signal.
@@ -160,14 +169,14 @@ namespace rod::_epoll
 				if (err) [[unlikely]] throw std::system_error(err, "read(timer_fd)");
 				break;
 			}
-			case event_id::queue_event: /* Producer queue notification event. */
+			case event_id::queue_dispatch: /* Producer queue notification event. */
 			{
 				std::uint64_t token;
 				m_event_fd.read(&token, sizeof(token), err);
 				if (err)
 					[[unlikely]] throw std::system_error(err, "read(event_fd)");
 				else
-					m_epoll_pending = false;
+					m_wait_pending = false;
 				break;
 			}
 			default: /* IO operation event. */
@@ -217,10 +226,10 @@ namespace rod::_epoll
 					auto node = m_timers.pop_front();
 
 					/* Handle timer cancellation. */
-					if (node->_flags.load(std::memory_order_relaxed) & timer_node::stop_possible)
+					if (node->_flags.load(std::memory_order_relaxed) & flags_t::stop_possible)
 					{
-						const auto flags = node->_flags.fetch_or(timer_node::dispatched, std::memory_order_acq_rel);
-						if (flags & timer_node::stop_requested) continue;
+						const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
+						if (flags & flags_t::stop_requested) continue;
 					}
 					schedule_consumer(node);
 				}
@@ -228,7 +237,7 @@ namespace rod::_epoll
 				/* Disarm timer descriptor (set timeout to 0) if there is no more pending timers. */
 				if (m_timers.empty())
 				{
-					if (std::exchange(m_timer_fd_started, {}))
+					if (std::exchange(m_timer_started, {}))
 						set_timer_fd(m_timer_fd.native_handle());
 					m_timer_pending = false;
 				}
@@ -236,9 +245,9 @@ namespace rod::_epoll
 				{
 					/* Start timer_fd timer for the earliest pending time point. */
 					const auto next_timeout = m_timers.front()->_timeout;
-					if (m_timer_fd_started && m_next_timeout <= next_timeout)
+					if (m_timer_started && m_next_timeout <= next_timeout)
 						m_timer_pending = false;
-					else if ((m_timer_fd_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
+					else if ((m_timer_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
 					{
 						m_next_timeout = next_timeout;
 						m_timer_pending = false;
@@ -247,7 +256,7 @@ namespace rod::_epoll
 			}
 
 			/* Acquire pending operations from the producer queue & wait for EPOLL events. */
-			if (m_epoll_pending || (m_epoll_pending = acquire_producer_queue()))
+			if (m_wait_pending || (m_wait_pending = acquire_producer_queue()))
 				epoll_wait();
 		}
 	}

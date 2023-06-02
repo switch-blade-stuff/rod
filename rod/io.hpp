@@ -10,6 +10,7 @@
 
 #ifdef __linux__
 #include "linux/epoll_context.hpp"
+#include "linux/io_uring_context.hpp"
 #endif
 
 #include "file.hpp"

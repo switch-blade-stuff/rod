@@ -4,74 +4,57 @@
 
 #pragma once
 
-#include "../detail/adaptors/read_some.hpp"
-#include "../detail/adaptors/write_some.hpp"
+#include "detail/context_fwd.hpp"
 
 #ifdef ROD_HAS_EPOLL
 
-#include <thread>
-#include <chrono>
-#include <utility>
-
-#include "../detail/priority_queue.hpp"
-#include "../detail/atomic_queue.hpp"
-#include "../detail/basic_queue.hpp"
-
-#include "../unix/monotonic_clock.hpp"
-#include "../unix/detail/file.hpp"
+#include <sys/epoll.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _epoll
 	{
+		using namespace _system_ctx;
+
 		struct scheduler;
 		class context;
-
-		using clock = monotonic_clock;
-		using time_point = typename clock::time_point;
-
-		template<typename Env>
-		concept stoppable_env = stoppable_token<stop_token_of_t<Env &>>;
 
 		template<typename>
 		struct io_func;
 		template<>
 		struct io_func<async_read_some_t>
 		{
+			constexpr static auto type = io_type::read;
+
 			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s) : buff(std::begin(s), std::end(s)) {}
 
-			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
-			{
-				return fd.read(buff.data(), buff.size(), err);
-			}
+			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept { return fd.read(buff.data(), buff.size(), err); }
 
 			std::span<std::byte> buff;
 		};
 		template<>
 		struct io_func<async_write_some_t>
 		{
+			constexpr static auto type = io_type::write;
+
 			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s) : buff(std::cbegin(s), std::cend(s)) {}
 
-			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
-			{
-				return fd.write(buff.data(), buff.size(), err);
-			}
+			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept { return fd.write(buff.data(), buff.size(), err); }
 
 			std::span<const std::byte> buff;
 		};
 		template<>
 		struct io_func<async_read_some_at_t>
 		{
+			constexpr static auto type = io_type::read;
+
 			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s, std::ptrdiff_t pos) : buff(std::begin(s), std::end(s)), pos(pos) {}
 
-			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
-			{
-				return fd.read_at(buff.data(), buff.size(), pos, err);
-			}
+			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept { return fd.read_at(buff.data(), buff.size(), pos, err); }
 
 			std::span<std::byte> buff;
 			std::ptrdiff_t pos;
@@ -79,13 +62,12 @@ namespace rod
 		template<>
 		struct io_func<async_write_some_at_t>
 		{
+			constexpr static auto type = io_type::write;
+
 			template<decays_to<std::byte> T>
 			constexpr io_func(std::span<T> s, std::ptrdiff_t pos) : buff(std::cbegin(s), std::cend(s)), pos(pos) {}
 
-			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept
-			{
-				return fd.write_at(buff.data(), buff.size(), pos, err);
-			}
+			std::size_t operator()(detail::basic_descriptor fd, std::error_code &err) const noexcept { return fd.write_at(buff.data(), buff.size(), pos, err); }
 
 			std::span<const std::byte> buff;
 			std::ptrdiff_t pos;
@@ -108,33 +90,6 @@ namespace rod
 			std::optional<stop_callback_for_t<stop_token_of_t<Env &>, callback>> data;
 		};
 
-		struct operation_base
-		{
-			using _notify_func_t = void (*)(operation_base *);
-
-			operation_base(operation_base &&) = delete;
-			operation_base &operator=(operation_base &&) = delete;
-
-			constexpr operation_base() noexcept = default;
-
-			void _notify() noexcept { std::exchange(_notify_func, {})(this); }
-
-			_notify_func_t _notify_func = {};
-			operation_base *_next = {};
-		};
-		struct timer_node : operation_base
-		{
-			enum _flags_t { stop_possible = 1, stop_requested = 4, dispatched = 8 };
-
-			constexpr timer_node(context &ctx, time_point timeout, bool can_stop) noexcept : _flags(can_stop ? stop_possible : 0), _timeout(timeout), _ctx(ctx) {}
-
-			timer_node *_timer_prev = {};
-			timer_node *_timer_next = {};
-			std::atomic<int> _flags = {};
-			time_point _timeout = {};
-			context &_ctx;
-		};
-
 		template<typename Rcv>
 		struct timer_operation { struct type; };
 		template<typename Op, typename Rcv>
@@ -148,9 +103,9 @@ namespace rod
 		struct env;
 
 		template<typename Rcv>
-		struct operation<Rcv>::type : operation_base
+		struct operation<Rcv>::type : operation_base<context>
 		{
-			static void _bind_notify(operation_base *ptr) noexcept
+			static void _bind_notify(operation_base<context> *ptr) noexcept
 			{
 				auto &op = *static_cast<type *>(ptr);
 
@@ -177,10 +132,10 @@ namespace rod
 			context &_ctx;
 		};
 		template<typename Rcv>
-		struct timer_operation<Rcv>::type : timer_node
+		struct timer_operation<Rcv>::type : timer_node<context>
 		{
-			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_value(); }
-			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_stopped(); }
+			static void _notify_value(operation_base<context> *ptr) noexcept { static_cast<type *>(ptr)->_complete_value(); }
+			static void _notify_stopped(operation_base<context> *ptr) noexcept { static_cast<type *>(ptr)->_complete_stopped(); }
 
 			constexpr type(context &ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_node(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
 
@@ -220,27 +175,25 @@ namespace rod
 
 		/* IO operations inherit from `operation_base` twice in order to
 		 * enable cancellation in the middle of a queued IO operation. */
-		struct complete_base : operation_base {};
-		struct stop_base : operation_base {};
+		struct complete_base : operation_base<context> {};
+		struct stop_base : operation_base<context> {};
 
 		template<typename Op, typename Rcv>
 		struct io_operation<Op, Rcv>::type : private complete_base, private stop_base
 		{
-			enum _flags_t { stop_possible = 1, stop_requested = 4, io_done = 8 };
-
 			using _func_t = io_func<Op>;
 
-			static void _notify_read(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_read(); }
-			static void _notify_start(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_start_consumer(); }
-			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
+			static void _notify_read(operation_base<context> *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_value(); }
+			static void _notify_start(operation_base<context> *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_start_consumer(); }
+			static void _notify_stopped(operation_base<context> *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
 
 			template<typename Rcv1>
-			explicit type(context &ctx, detail::basic_descriptor fd, Rcv1 &&rcv, _func_t func) : _rcv(std::forward<Rcv1>(rcv)), _fd(fd), _func(std::move(func)), _ctx(ctx) {}
+			explicit type(context &ctx, detail::basic_descriptor fd, Rcv1 &&rcv, _func_t func) : _rcv(std::forward<Rcv1>(rcv)), _fd(fd), _ctx(ctx), _func(std::move(func)) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
 			constexpr void _complete_value(std::size_t n) noexcept { set_value(std::move(_rcv), n); }
-			inline void _complete_read() noexcept;
+			inline void _complete_value() noexcept;
 			inline void _complete_stopped() noexcept;
 
 			inline void _start() noexcept;
@@ -251,13 +204,13 @@ namespace rod
 
 			[[ROD_NO_UNIQUE_ADDRESS]] _stop_cb_t _stop_cb;
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
-			detail::basic_descriptor _fd;
 			std::atomic<int> _flags = {};
-			_func_t _func;
+			detail::basic_descriptor _fd;
 			context &_ctx;
+			_func_t _func;
 		};
 
-		class context : operation_base
+		class context : operation_base<context>
 		{
 			template<typename>
 			friend struct timer_operation;
@@ -266,27 +219,27 @@ namespace rod
 			template<typename>
 			friend struct operation;
 
-			struct timer_cmp { constexpr bool operator()(const timer_node &a, const timer_node &b) const noexcept { return a._timeout <= b._timeout; }};
-			using timer_queue_t = detail::priority_queue<timer_node, timer_cmp, &timer_node::_timer_prev, &timer_node::_timer_next>;
-			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
-			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
+			struct timer_cmp { constexpr bool operator()(const timer_node<context> &a, const timer_node<context> &b) const noexcept { return a._timeout <= b._timeout; }};
+			using timer_queue_t = detail::priority_queue<timer_node<context>, timer_cmp, &timer_node<context>::_timer_prev, &timer_node<context>::_timer_next>;
+			using producer_queue_t = detail::atomic_queue<operation_base<context>, &operation_base<context>::_next>;
+			using consumer_queue_t = detail::basic_queue<operation_base<context>, &operation_base<context>::_next>;
 
 		public:
 			context(context &&) = delete;
 			context &operator=(context &&) = delete;
 
 			/** Initializes the EPOLL execution context with a default max number of events.
-			 * @throw std::system_error On failure to initialize EPOLL descriptors.
-			 * @throw std::bad_alloc On failure to allocate EPOLL event buffer. */
+			 * @throw std::system_error On failure to initialize descriptors.
+			 * @throw std::bad_alloc On failure to allocate event buffer. */
 			ROD_PUBLIC context();
 			/** Initializes the EPOLL execution context with the specified max number of events.
 			 * @param max Maximum size of the internal EPOLL event buffer.
-			 * @throw std::system_error On failure to initialize EPOLL descriptors.
-			 * @throw std::bad_alloc On failure to allocate EPOLL event buffer. */
+			 * @throw std::system_error On failure to initialize descriptors.
+			 * @throw std::bad_alloc On failure to allocate event buffer. */
 			ROD_PUBLIC explicit context(std::size_t max);
 			ROD_PUBLIC ~context();
 
-			/** Returns a scheduler used to schedule work to be executed on the EPOLL context. */
+			/** Returns a scheduler used to schedule work to be executed on the context. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept;
 
 			/** Blocks the current thread until `finish` is called and executes scheduled operations.
@@ -308,30 +261,32 @@ namespace rod
 			/** Changes the internal state to stopped and unblocks consumer thread. Any in-progress work will run to completion. */
 			ROD_PUBLIC void finish();
 
-			/** Returns copy of the stop source associated with the EPOLL context. */
+			/** Returns copy of the stop source associated with the context. */
 			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return m_stop_source; }
-			/** Returns a stop token of the stop source associated with the EPOLL context. */
+			/** Returns a stop token of the stop source associated with the context. */
 			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return m_stop_source.get_token(); }
-			/** Sends a stop request to the stop source associated with the EPOLL context. */
+			/** Sends a stop request to the stop source associated with the context. */
 			ROD_PUBLIC void request_stop();
 
 		private:
-			void schedule(operation_base *node, std::error_code &err) noexcept
+			[[nodiscard]] ROD_PUBLIC bool is_consumer_thread() const noexcept;
+
+			void schedule(operation_base<context> *node, std::error_code &err) noexcept
 			{
-				if (m_consumer_tid.load(std::memory_order_acquire) != std::this_thread::get_id())
+				if (!is_consumer_thread())
 					schedule_producer(node, err);
 				else
 					schedule_consumer(node);
 			}
 
-			ROD_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
-			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
+			ROD_PUBLIC void schedule_producer(operation_base<context> *node, std::error_code &err) noexcept;
+			ROD_PUBLIC void schedule_consumer(operation_base<context> *node) noexcept;
 
-			ROD_PUBLIC void add_io(detail::basic_descriptor fd, operation_base *node) noexcept;
+			ROD_PUBLIC void add_io(detail::basic_descriptor fd, io_type type, operation_base<context> *node) noexcept;
 			ROD_PUBLIC void del_io(detail::basic_descriptor fd) noexcept;
 
-			ROD_PUBLIC void add_timer(timer_node *node) noexcept;
-			ROD_PUBLIC void del_timer(timer_node *node) noexcept;
+			ROD_PUBLIC void add_timer(timer_node<context> *node) noexcept;
+			ROD_PUBLIC void del_timer(timer_node<context> *node) noexcept;
 
 			bool acquire_producer_queue() noexcept;
 			void epoll_wait();
@@ -340,29 +295,27 @@ namespace rod
 			std::atomic<std::thread::id> m_consumer_tid = {};
 
 			/* Descriptors used for EPOLL notifications. */
-			detail::unique_descriptor m_epoll_fd = {};
-			detail::unique_descriptor m_timer_fd = {};
-			detail::unique_descriptor m_event_fd = {};
+			detail::unique_descriptor m_epoll_fd;
+			detail::unique_descriptor m_timer_fd;
+			detail::unique_descriptor m_event_fd;
 
 			/* EPOLL event buffer. */
-			std::size_t m_buff_size = {};
-			void *m_event_buff = {};
+			std::size_t m_buff_size;
+			void *m_event_buff;
 
-			in_place_stop_source m_stop_source = {};
+			in_place_stop_source m_stop_source;
 			/* Queue of operations pending for dispatch by consumer thread. */
-			consumer_queue_t m_consumer_queue = {};
+			consumer_queue_t m_consumer_queue;
 			/* Queue of operation pending for acquisition by consumer thread. */
-			producer_queue_t m_producer_queue = {};
+			producer_queue_t m_producer_queue;
 			/* Priority queue of pending timers. */
-			timer_queue_t m_timers = {};
+			timer_queue_t m_timers;
 
-			/* Time point when `m_timer_fd` will elapse. */
 			time_point m_next_timeout = {};
-			bool m_timer_fd_started = {};
-
-			bool m_epoll_pending = {};
-			bool m_timer_pending = {};
-			bool m_stop_pending = {};
+			bool m_timer_started = false;
+			bool m_timer_pending = false;
+			bool m_wait_pending = false;
+			bool m_stop_pending = false;
 		};
 
 		template<typename Rcv>
@@ -375,12 +328,12 @@ namespace rod
 		template<typename Rcv>
 		void timer_operation<Rcv>::type::_start() noexcept
 		{
-			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
+			if (_ctx.is_consumer_thread())
 				_start_consumer();
 			else
 			{
 				std::error_code err = {};
-				_notify_func = [](operation_base *p) noexcept { static_cast<type *>(p)->_start_consumer(); };
+				_notify_func = [](operation_base<context> *p) noexcept { static_cast<type *>(p)->_start_consumer(); };
 				_ctx.schedule_producer(this, err);
 				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
@@ -388,7 +341,7 @@ namespace rod
 		template<typename Op, typename Rcv>
 		void io_operation<Op, Rcv>::type::_start() noexcept
 		{
-			if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
+			if (_ctx.is_consumer_thread())
 				_start_consumer();
 			else
 			{
@@ -430,11 +383,11 @@ namespace rod
 				if constexpr (stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.init(get_env(_rcv), this);
 
-				_ctx.add_io(_fd, static_cast<complete_base *>(this));
+				_ctx.add_io(_fd, _func_t::type, static_cast<complete_base *>(this));
 				return;
 			}
 
-			if (_flags.fetch_or(_flags_t::io_done, std::memory_order_acq_rel) & _flags_t::stop_requested)
+			if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
 				return; /* Already stopped on a different thread. */
 
 			if (!err)
@@ -446,11 +399,11 @@ namespace rod
 		}
 
 		template<typename Op, typename Rcv>
-		void io_operation<Op, Rcv>::type::_complete_read() noexcept
+		void io_operation<Op, Rcv>::type::_complete_value() noexcept
 		{
 			if constexpr (stoppable_env<env_of_t<Rcv>>)
 				_stop_cb.reset();
-			if (_flags.fetch_or(_flags_t::io_done, std::memory_order_acq_rel) & _flags_t::stop_requested)
+			if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
 				return;
 
 			_ctx.del_io(_fd);
@@ -485,27 +438,27 @@ namespace rod
 		{
 			if constexpr (!stoppable_env<env_of_t<Rcv>>)
 				std::terminate();
-			else if (_ctx.m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id())
+			else if (_ctx.is_consumer_thread())
 			{
 				_stop_cb.reset();
 				_notify_func = _notify_stopped;
-				if (!(_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
+				if (!(_flags.load(std::memory_order_relaxed) & flags_t::dispatched))
 				{
 					/* Timer has not yet been dispatched, schedule stop completion. */
 					_ctx.del_timer(this);
 					_ctx.schedule_consumer(this);
 				}
 			}
-			else if (!(_flags.fetch_or(_flags_t::stop_requested, std::memory_order_acq_rel) & _flags_t::dispatched))
+			else if (!(_flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched))
 			{
 				/* Timer has not yet been dispatched, schedule stop completion on producer thread. */
-				_notify_func = [](operation_base *ptr) noexcept
+				_notify_func = [](operation_base<context> *ptr) noexcept
 				{
 					const auto op = static_cast<type *>(ptr);
 					op->_stop_cb.reset();
 
 					/* Make sure to erase the timer if it has not already been dispatched. */
-					if (!(op->_flags.load(std::memory_order_relaxed) & _flags_t::dispatched))
+					if (!(op->_flags.load(std::memory_order_relaxed) & flags_t::dispatched))
 						op->_ctx.del_timer(op);
 
 					op->_complete_stopped();
@@ -519,7 +472,7 @@ namespace rod
 		template<typename Op, typename Rcv>
 		void io_operation<Op, Rcv>::type::_request_stop() noexcept
 		{
-			if (!(_flags.fetch_or(_flags_t::stop_requested, std::memory_order_acq_rel) & _flags_t::io_done))
+			if (!(_flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched))
 			{
 				_ctx.del_io(_fd);
 				stop_base::_notify_func = _notify_stopped;
@@ -594,7 +547,7 @@ namespace rod
 			using _func_t = io_func<Op>;
 
 			template<typename... Args>
-			constexpr type(context &ctx, int fd, Args &&...args) noexcept : _fd(fd), _func{std::forward<Args>(args)...}, _ctx(ctx) {}
+			constexpr type(context &ctx, int fd, Args &&...args) noexcept : _fd(fd), _ctx(ctx), _func{std::forward<Args>(args)...} {}
 
 			friend constexpr env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
 			template<decays_to<type> T, typename Env>
@@ -608,8 +561,8 @@ namespace rod
 			}
 
 			detail::basic_descriptor _fd;
-			_func_t _func;
 			context &_ctx;
+			_func_t _func;
 		};
 
 		struct scheduler
@@ -669,7 +622,7 @@ namespace rod
 				});
 			}
 
-			/** Returns the current time point of the clock used by the EPOLL context. */
+			/** Returns the current time point of the clock used by the context. */
 			[[nodiscard]] time_point now() const noexcept { return clock::now(); }
 
 			constexpr bool operator==(const scheduler &) const noexcept = default;

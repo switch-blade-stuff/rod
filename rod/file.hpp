@@ -229,7 +229,9 @@ namespace rod
 			void close() { if (auto err = m_file.close(); err) [[unlikely]] throw std::system_error(err, "rod::basic_file::close"); }
 
 			/** Releases the underlying native file handle without closing. */
-			[[nodiscard]] constexpr native_handle_type release() noexcept { return m_file.release(); }
+			constexpr native_handle_type release() noexcept { return m_file.release(); }
+			/** Releases the underlying native file handle without closing and replaces it with the specified handle. */
+			constexpr native_handle_type release(native_handle_type new_file) noexcept { return m_file.release(new_file); }
 
 			/** @brief Flushes modified file data to the underlying device.
 			 * @param[out] err Reference to the error code set on failure to flush the file. */

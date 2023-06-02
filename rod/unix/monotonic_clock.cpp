@@ -4,8 +4,6 @@
 
 #include "monotonic_clock.hpp"
 
-#include <ctime>
-
 ROD_TOPLEVEL_NAMESPACE_OPEN
 rod::monotonic_clock::time_point rod::monotonic_clock::now() noexcept
 {

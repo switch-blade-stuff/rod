@@ -144,15 +144,16 @@ namespace rod
 				/* By this point all children have submitted. */
 				switch (_state.load(std::memory_order_relaxed))
 				{
-					case state_t::stopped:
-						complete_stopped(_rcv);
-						break;
-					case state_t::running:
-						complete_value(_rcv, _vals);
-						break;
-					case state_t::error:
-						complete_error(_rcv, _errs);
-						break;
+				default:
+				case state_t::stopped:
+					complete_stopped(_rcv);
+					break;
+				case state_t::running:
+					complete_value(_rcv, _vals);
+					break;
+				case state_t::error:
+					complete_error(_rcv, _errs);
+					break;
 				}
 			}
 

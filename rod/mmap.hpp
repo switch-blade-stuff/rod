@@ -154,7 +154,7 @@ namespace rod
 
 			/** Releases the underlying memory mapping.
 			 * @return Pair where first is the base pointer to the mapping and second is the total base size of the mapping. */
-			[[nodiscard]] constexpr std::pair<void *, std::size_t> release() noexcept { return m_mmap.release(); }
+			constexpr std::pair<void *, std::size_t> release() noexcept { return m_mmap.release(); }
 
 			/** @brief Remaps the underlying memory mapping to the specified size.
 			 * @param[in] new_size New size of the underlying memory mapping.

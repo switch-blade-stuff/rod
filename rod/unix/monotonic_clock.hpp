@@ -7,6 +7,7 @@
 #ifdef __unix__
 
 #include <chrono>
+#include <ctime>
 
 #include "../detail/config.hpp"
 

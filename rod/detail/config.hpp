@@ -38,4 +38,13 @@
 #elif defined(ROD_HAS_EPOLL)
 #undef ROD_HAS_EPOLL
 #endif
+
+#if !defined(ROD_NO_LIBURING) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+#ifndef ROD_HAS_LIBURING
+#define ROD_HAS_LIBURING
+#endif
+#elif defined(ROD_HAS_LIBURING)
+#undef ROD_HAS_LIBURING
+#endif
+
 #endif

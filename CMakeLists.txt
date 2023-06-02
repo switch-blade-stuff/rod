@@ -1,10 +1,27 @@
 cmake_minimum_required(VERSION 3.19)
 project(rod)
 
+# Set CMake module search path
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake ${CMAKE_MODULE_PATH})
+
 # Library options
-option(ROD_NO_COROUTINES "Disables coroutine support" OFF)
+option(ROD_NO_COROUTINES "Disables support for C++20 coroutines" OFF)
 if (${ROD_NO_COROUTINES})
     add_compile_definitions(ROD_NO_COROUTINES)
+endif ()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(ROD_NO_LIBURING "Disables support for io_uring" OFF)
+
+    find_package(liburing)
+    if (NOT LIBURING_FOUND)
+        set(ROD_NO_LIBURING ON CACHE BOOL "liburing was not found" FORCE)
+    else ()
+        get_filename_component(LIBURING_PATH ${LIBURING_LIBRARY} DIRECTORY)
+    endif ()
+    if (${ROD_NO_LIBURING})
+        add_compile_definitions(ROD_NO_LIBURING)
+    endif ()
 endif ()
 
 option(ROD_BUILD_SHARED "Toggles build of shared library target" ON)
@@ -32,6 +49,12 @@ function(rod_configure_target NAME TYPE PREFIX)
     target_sources(${NAME} PUBLIC ${ROD_HEADERS})
     target_sources(${NAME} PRIVATE ${ROD_SOURCES})
     target_include_directories(${NAME} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+
+    # Link dependencies
+    if (${LIBURING_FOUND})
+        target_include_directories(${NAME} PRIVATE ${LIBURING_INCLUDE_DIR})
+        target_link_libraries(${NAME} PUBLIC ${LIBURING_LIBRARY})
+    endif ()
 
     # Set target properties
     set_target_properties(${NAME} PROPERTIES PREFIX "${PREFIX}")

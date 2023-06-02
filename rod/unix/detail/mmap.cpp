@@ -42,8 +42,10 @@ namespace rod::detail
 	{
 		/* Align the file offset and use the difference as the base offset. */
 		const auto base_off = off - align_pagesize(false, off, err);
-		if (err || !(size = align_pagesize(true, size + base_off, err))) [[unlikely]]
+		if (err) [[unlikely]]
 			return system_mmap{};
+		else
+			size += base_off;
 
 #if PTRDIFF_MAX >= INT64_MAX
 		const auto data = ::mmap64(hint, size, prot, mode, fd, static_cast<off64_t>(off - base_off));
@@ -67,9 +69,7 @@ namespace rod::detail
 	{
 		/* Align the file offset and use the difference as the base offset. */
 		const auto off = m_data - m_base;
-		if (std::error_code err = {}; !(new_size = align_pagesize(true, new_size + off, err))) [[unlikely]]
-			return err;
-		if (const auto new_base = static_cast<std::byte *>(::mremap(m_base, m_size, new_size, 0)); !new_base) [[unlikely]]
+		if (const auto new_base = static_cast<std::byte *>(::mremap(m_base, m_size, new_size += off, 0)); !new_base) [[unlikely]]
 			return {errno, std::system_category()};
 		else
 		{
