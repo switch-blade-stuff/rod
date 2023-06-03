@@ -10,6 +10,7 @@
 
 #include <sys/eventfd.h>
 #include <sys/mman.h>
+#include <liburing.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::_io_uring
@@ -20,7 +21,7 @@ namespace rod::_io_uring
 	constexpr std::size_t default_entries = 128;
 #endif
 
-	enum event_id : std::uint64_t { timer_timeout, queue_dispatch, timer_cancel };
+	enum event_id : std::uint64_t { timer_timeout = 1, queue_dispatch, timer_cancel };
 
 	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
 
@@ -85,7 +86,7 @@ namespace rod::_io_uring
 	void context::request_stop() { m_stop_source.request_stop(); }
 	bool context::is_consumer_thread() const noexcept { return m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
-	void context::schedule_producer(operation_base<context> *node, std::error_code &err) noexcept
+	void context::schedule_producer(operation_base_t *node, std::error_code &err) noexcept
 	{
 		assert(!node->_next);
 		if (m_producer_queue.push(node))
@@ -94,29 +95,68 @@ namespace rod::_io_uring
 			m_event_fd.write(&token, sizeof(token), err);
 		}
 	}
-	void context::schedule_consumer(operation_base<context> *node) noexcept
+	void context::schedule_consumer(operation_base_t *node) noexcept
 	{
 		assert(!node->_next);
 		m_waitlist_queue.push_back(node);
 	}
-	void context::schedule_waitlist(operation_base<context> *node) noexcept
+	void context::schedule_waitlist(operation_base_t *node) noexcept
 	{
 		assert(!node->_next);
 		m_waitlist_queue.push_back(node);
 	}
 
-	bool context::submit_timer_event(time_point timeout) noexcept
+	bool context::submit_io_event(operation_base_t *node, _system_ctx::io_id id, const _system_ctx::io_cmd<> &cmd) noexcept
 	{
-		const auto res = submit_sqe([&](io_uring_sqe &sqe) noexcept
-	    {
-			sqe = {};
-			sqe.addr = std::bit_cast<std::uintptr_t>(&m_ktime);
-		    sqe.user_data = event_id::timer_timeout;
-		    sqe.opcode = IORING_OP_TIMEOUT;
-#ifdef IORING_TIMEOUT_ABS
-			sqe.timeout_flags = IORING_TIMEOUT_ABS;
+		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
+		{
+			sq[idx] = {};
+			switch (id)
+			{
+				case _system_ctx::io_id::read: [[fallthrough]];
+				case _system_ctx::io_id::read_at:
+					sq[idx].opcode = IORING_OP_READV;
+					break;
+				case _system_ctx::io_id::write: [[fallthrough]];
+				case _system_ctx::io_id::write_at:
+					sq[idx].opcode = IORING_OP_WRITEV;
+					break;
+				default: [[unlikely]] std::terminate();
+			}
+			sq[idx].user_data = std::bit_cast<std::uintptr_t>(node);
+			sq[idx].addr = std::bit_cast<std::uintptr_t>(&cmd.buff);
+			sq[idx].off = static_cast<std::size_t>(cmd.off);
+			sq[idx].fd = cmd.fd.native_handle();
+			sq[idx].len = 1;
+		});
+	}
+	bool context::cancel_io_event(operation_base_t *node) noexcept
+	{
+		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
+		{
+			sq[idx] = {};
+			sq[idx].addr = std::bit_cast<std::uintptr_t>(node);
+#ifdef IORING_ASYNC_CANCEL_ALL
+			sq[idx].cancel_flags = IORING_ASYNC_CANCEL_ALL;
 #else
-			sqe.rw_flags = 1;
+			sq[idx].rw_flags = 1;
+#endif
+			sq[idx].opcode = IORING_OP_ASYNC_CANCEL;
+		});
+	}
+
+	bool context::submit_timer_event(_system_ctx::time_point timeout) noexcept
+	{
+		const auto res = submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
+	    {
+			sq[idx] = {};
+		    sq[idx].opcode = IORING_OP_TIMEOUT;
+			sq[idx].addr = std::bit_cast<std::uintptr_t>(&m_ktime);
+		    sq[idx].user_data = event_id::timer_timeout;
+#ifdef IORING_TIMEOUT_ABS
+			sq[idx].timeout_flags = IORING_TIMEOUT_ABS;
+#else
+			sq[idx].rw_flags = 1;
 #endif
 		    m_ktime.tv_sec = timeout.seconds();
 		    m_ktime.tv_nsec = timeout.nanoseconds();
@@ -125,23 +165,23 @@ namespace rod::_io_uring
 	}
 	bool context::cancel_timer_event() noexcept
 	{
-		return submit_sqe([&](io_uring_sqe &sqe) noexcept
+		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
 		{
-			sqe = {};
-			sqe.addr = std::bit_cast<std::uintptr_t>(&m_timers);
-			sqe.user_data = event_id::timer_cancel;
-			sqe.opcode = IORING_OP_TIMEOUT_REMOVE;
+			sq[idx] = {};
+			sq[idx].opcode = IORING_OP_TIMEOUT_REMOVE;
+			sq[idx].addr = std::bit_cast<std::uintptr_t>(&m_timers);
+			sq[idx].user_data = event_id::timer_cancel;
 		});
 	}
 
-	void context::add_timer(timer_node<context> *node) noexcept
+	void context::add_timer(timer_node_t *node) noexcept
 	{
 		assert(!node->_timer_next);
 		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
-	void context::del_timer(timer_node<context> *node) noexcept
+	void context::del_timer(timer_node_t *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
