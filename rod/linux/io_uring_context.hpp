@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "detail/system_ctx.hpp"
+#include "../unix/detail/system_ctx.hpp"
 
 #ifdef ROD_HAS_LIBURING
 
@@ -144,7 +144,7 @@ namespace rod
 			ROD_PUBLIC void add_timer(timer_node_t *node) noexcept;
 			ROD_PUBLIC void del_timer(timer_node_t *node) noexcept;
 
-			bool submit_timer_event(_system_ctx::time_point timeout) noexcept;
+			bool submit_timer_event(time_point timeout) noexcept;
 			bool cancel_timer_event() noexcept;
 
 			/* TID of the current consumer thread. */
