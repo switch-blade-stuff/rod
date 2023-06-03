@@ -153,6 +153,11 @@ namespace rod
 			template<typename>
 			friend struct _run_loop::timer_operation;
 
+		public:
+			using time_point = _run_loop::time_point;
+			using clock = _run_loop::clock;
+
+		private:
 			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
 			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
 
