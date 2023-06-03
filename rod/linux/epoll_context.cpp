@@ -10,6 +10,7 @@
 
 #include <sys/timerfd.h>
 #include <sys/eventfd.h>
+#include <sys/epoll.h>
 
 namespace rod::_epoll
 {
@@ -19,7 +20,7 @@ namespace rod::_epoll
 	constexpr std::size_t default_max_events = 128;
 #endif
 
-	enum event_id : std::uint64_t { timer_timeout, queue_dispatch };
+	enum event_id : std::uint64_t { timer_timeout = 1, queue_dispatch };
 
 	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
 
@@ -56,7 +57,7 @@ namespace rod::_epoll
 		/* Register timer descriptor with EPOLL. */
 		epoll_event event = {};
 		event.events = EPOLLIN;
-		event.data.u64 = event_id::timer_timeout;
+		event.data.u64 = event_id::queue_dispatch;
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
 			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_fd, &event)");
 		else
@@ -98,39 +99,41 @@ namespace rod::_epoll
 		m_consumer_queue.push_back(node);
 	}
 
-	void context::add_io(detail::basic_descriptor fd, io_type type, operation_base *node) noexcept
+	void context::add_io(operation_base_t *node, _system_ctx::io_id id, const _system_ctx::io_cmd<> &cmd) noexcept
 	{
 		epoll_event event = {};
 		event.data.ptr = node;
 		event.events = EPOLLRDHUP | EPOLLHUP;
 
-		switch (type)
+		switch (id)
 		{
-		default:
-		case io_type::read:
+		case _system_ctx::io_id::read: [[fallthrough]];
+		case _system_ctx::io_id::read_at:
 			event.events |= EPOLLIN;
 			break;
-		case io_type::write:
+		case _system_ctx::io_id::write: [[fallthrough]];
+		case _system_ctx::io_id::write_at:
 			event.events |= EPOLLOUT;
 			break;
+		default: [[unlikely]] std::terminate();
 		}
 
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd.native_handle(), &event);
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
 	}
-	void context::del_io(detail::basic_descriptor fd) noexcept
+	void context::del_io(const _system_ctx::io_cmd<> &cmd) noexcept
 	{
 		epoll_event event = {};
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd.native_handle(), &event);
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, cmd.fd.native_handle(), &event);
 	}
 
-	void context::add_timer(timer_node<context> *node) noexcept
+	void context::add_timer(timer_node_t *node) noexcept
 	{
 		assert(!node->_timer_next);
 		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
-	void context::del_timer(timer_node<context> *node) noexcept
+	void context::del_timer(timer_node_t *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
@@ -186,7 +189,7 @@ namespace rod::_epoll
 		}
 	}
 
-	inline auto set_timer_fd(int fd, time_point tp = {})
+	inline auto set_timer_fd(int fd, epoll_context::time_point tp = {})
 	{
 		::itimerspec timeout = {};
 		timeout.it_value.tv_sec = tp.seconds();
@@ -226,10 +229,10 @@ namespace rod::_epoll
 					auto node = m_timers.pop_front();
 
 					/* Handle timer cancellation. */
-					if (node->_flags.load(std::memory_order_relaxed) & flags_t::stop_possible)
+					if (node->stop_possible())
 					{
-						const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
-						if (flags & flags_t::stop_requested) continue;
+						const auto flags = node->_flags.fetch_or(_system_ctx::flags_t::dispatched, std::memory_order_acq_rel);
+						if (flags & _system_ctx::flags_t::stop_requested) continue;
 					}
 					schedule_consumer(node);
 				}
