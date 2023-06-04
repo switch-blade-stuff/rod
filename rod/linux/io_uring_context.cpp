@@ -12,7 +12,12 @@
 #include <sys/mman.h>
 #include <liburing.h>
 
-/* TODO: Figure out why valgrind causes a deadlock. */
+/* TODO: Figure out why Valgrind causes a deadlock.
+ * Valdrind invoked with callgrind also deadlocks, even though it should only track function calls.
+ * Simulating slowdown via sleep(1) does not deadlock, nor does deadlock happen under normal operation.
+ *
+ * Neither CLang's -fsanitize=address nor -fsanitize=memory cause this deadlock, and neither does it
+ * happen under normal operation. I have no clue what the hell is happening when running through Valgrind. */
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::_io_uring
@@ -36,20 +41,20 @@ namespace rod::_io_uring
 		{
 			entries = std::min<std::size_t>(entries, std::numeric_limits<unsigned int>::max());
 			if (auto fd = io_uring_setup(entries, &params); fd < 0)
-				[[unlikely]] throw_errno("io_uring_setup");
+				throw_errno("io_uring_setup");
 			else
 				m_uring_fd.release(fd);
 		}
 		{
 			if (const auto fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC); fd < 0)
-				[[unlikely]] throw_errno("eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)");
+				throw_errno("eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)");
 			else
 				m_event_fd.release(fd);
 		}
 		{
 			const auto size = params.cq_entries * sizeof(io_uring_cqe) + params.cq_off.cqes;
 			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, m_uring_fd.native_handle(), IORING_OFF_CQ_RING);
-			if (!data) [[unlikely]] throw_errno("mmap");
+			if (!data) throw_errno("mmap");
 
 			const auto bytes = static_cast<std::byte *>(data);
 			m_cq.entries = reinterpret_cast<io_uring_cqe *>(bytes + params.cq_off.cqes);
@@ -63,7 +68,7 @@ namespace rod::_io_uring
 		{
 			const auto size = params.sq_entries * sizeof(std::uint32_t) + params.sq_off.array;
 			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, m_uring_fd.native_handle(), IORING_OFF_SQ_RING);
-			if (!data) [[unlikely]] throw_errno("mmap");
+			if (!data) throw_errno("mmap");
 
 			const auto bytes = static_cast<std::byte *>(data);
 			m_sq.idx_data = reinterpret_cast<unsigned *>(bytes + params.sq_off.array);
@@ -77,7 +82,7 @@ namespace rod::_io_uring
 		{
 			const auto size = params.sq_entries * sizeof(io_uring_sqe);
 			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, m_uring_fd.native_handle(), IORING_OFF_SQES);
-			if (!data) [[unlikely]] throw_errno("mmap");
+			if (!data) throw_errno("mmap");
 
 			m_sq.entries = static_cast<io_uring_sqe *>(data);
 			m_sqe_mmap.release(data, size);
@@ -106,6 +111,12 @@ namespace rod::_io_uring
 	{
 		assert(!node->_next);
 		m_waitlist_queue.push_back(node);
+	}
+	void context::schedule_producer(operation_base *node)
+	{
+		std::error_code err;
+		schedule_producer(node, err);
+		if (err) throw std::system_error(err, "write(event_fd)");
 	}
 
 	inline bool context::submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::ptrdiff_t off) noexcept
@@ -189,7 +200,7 @@ namespace rod::_io_uring
 		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
 		{
 			sq[idx] = {};
-			sq[idx].addr = std::bit_cast<std::uintptr_t>(node);
+			sq[idx].user_data = sq[idx].addr = std::bit_cast<std::uintptr_t>(node);
 #ifdef IORING_ASYNC_CANCEL_ALL
 			sq[idx].cancel_flags = IORING_ASYNC_CANCEL_ALL;
 #else
@@ -312,7 +323,7 @@ namespace rod::_io_uring
 			count = 1;
 		}
 
-		if (const auto res = io_uring_enter(m_uring_fd.native_handle(), m_sq.pending, count, flags, nullptr); res < 0)
+		if (const auto res = ::io_uring_enter(m_uring_fd.native_handle(), m_sq.pending, count, flags, nullptr); res < 0)
 			throw std::system_error(std::error_code{-res, std::system_category()}, "io_uring_enter");
 		else
 		{
@@ -353,15 +364,11 @@ namespace rod::_io_uring
 				uring_enter();
 		}
 	}
-
 	void context::finish()
 	{
 		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
 		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->m_stop_pending = true; };
-
-		std::error_code err;
-		schedule(this, err);
-		if (err) [[unlikely]] throw std::system_error{err, "write(event_fd)"};
+		schedule(this);
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -27,6 +27,104 @@ namespace rod
 		template<typename T>
 		concept noexcept_sizeable_range = detail::nothrow_callable<decltype(std::ranges::begin), T> && detail::nothrow_callable<decltype(std::ranges::size), T>;
 
+		template<typename T, typename Snd, typename Rcv, typename... Args>
+		struct sync_operation { struct type; };
+		template<typename T, typename Rcv, typename... Args>
+		struct sync_receiver { struct type; };
+		template<typename T, typename Snd, typename... Args>
+		struct sync_sender { struct type; };
+
+		template<typename T, typename Rcv, typename... Args>
+		struct sync_operation_base
+		{
+			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			std::tuple<Args...> _args;
+		};
+
+		template<typename T, typename Snd, typename Rcv, typename... Args>
+		struct sync_operation<T, Snd, Rcv, Args...>::type : sync_operation_base<T, Rcv, Args...>
+		{
+			using _receiver_t = typename sync_receiver<T, Rcv, Args...>::type;
+			using _operation_base_t = sync_operation_base<T, Rcv, Args...>;
+			using _state_t = connect_result_t<Snd, _receiver_t>;
+
+			type(type &&) = delete;
+			type &operator=(type &&) = delete;
+
+			constexpr type(Snd &&snd, Rcv rcv, std::tuple<Args...> args) : _operation_base_t{std::move(rcv), std::move(args)}, _state(connect(std::forward<Snd>(snd), _receiver_t{this})) {}
+
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
+
+			_state_t _state;
+		};
+		template<typename T, typename Rcv, typename... Args>
+		struct sync_receiver<T, Rcv, Args...>::type
+		{
+			using is_receiver = std::true_type;
+			using _operation_base_t = sync_operation_base<T, Rcv, Args...>;
+
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
+
+			friend constexpr void tag_invoke(set_value_t, type &&r) noexcept
+			{
+				if constexpr ((std::is_nothrow_move_constructible_v<Args> && ...))
+					try { r._complete(); } catch (...) { set_error(std::move(r._op->_rcv), std::current_exception()); }
+				else
+					r._complete();
+			}
+			template<detail::completion_channel C, typename... Vs> requires(!std::same_as<C, set_value_t> && detail::callable<C, Rcv, Vs...>)
+			friend constexpr void tag_invoke(C, type &&r, Vs &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Vs>(args)...); }
+
+			constexpr void _complete() noexcept((std::is_nothrow_move_constructible_v<Args> && ...))
+			{
+				std::apply([&]<typename... Vs>(Vs &&...vs) noexcept((std::is_nothrow_move_constructible_v<Args> && ...))
+				           {
+					           std::error_code err;
+					           const auto res = T{}(std::forward<Vs>(vs)..., err);
+					           if (err) [[unlikely]]
+								           set_error(std::move(_op->_rcv), err);
+					           else
+						           set_value(std::move(_op->_rcv), res);
+
+				           }, std::move(_op->_args));
+			}
+
+			_operation_base_t *_op;
+		};
+		template<typename T, typename Snd, typename... Args>
+		struct sync_sender<T, Snd, Args...>::type
+		{
+			using is_sender = std::true_type;
+
+			template<typename U, typename Rcv>
+			using _operation_t = typename sync_operation<T, copy_cvref_t<U, Snd>, Rcv, Args...>::type;
+			template<typename Rcv>
+			using _receiver_t = typename sync_receiver<T, Rcv, Args...>::type;
+
+			template<typename... Ts>
+			using _value_signs_t = completion_signatures<>;
+			template<typename Err>
+			using _error_signs_t = detail::concat_tuples_t<completion_signatures<detail::make_signature_t<set_error_t, Err>>,
+			                                               std::conditional_t<std::conjunction_v<std::is_nothrow_move_constructible<Args>...>,
+			                                                                  completion_signatures<set_error_t(std::exception_ptr)>,
+			                                                                  completion_signatures<>>>;
+			template<typename U, typename E>
+			using _signs_t = make_completion_signatures<copy_cvref_t<U, Snd>, E, completion_signatures<set_value_t(std::size_t), set_error_t(std::error_code)>, _value_signs_t, _error_signs_t>;
+
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const Snd &>) { return get_env(s._snd); }
+
+			template<decays_to<type> U, typename E>
+			friend constexpr _signs_t<U, E> tag_invoke(get_completion_signatures_t, U &&, E) noexcept { return {}; }
+			template<decays_to<type> U, rod::receiver Rcv>
+			friend constexpr _operation_t<U, Rcv> tag_invoke(connect_t, U &&s, Rcv r) noexcept(std::is_nothrow_constructible_v<_operation_t<U, Rcv>, copy_cvref_t<U, Snd>, Rcv, copy_cvref_t<U, std::tuple<Args...>>>)
+			{
+				return _operation_t<U, Rcv>(std::forward<U>(s)._snd, std::move(r), std::forward<U>(s)._args);
+			}
+
+			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
+			std::tuple<Args...> _args;
+		};
+
 		/** Unbuffered file handle (such as a regular posix file descriptor). */
 		class basic_file
 		{
@@ -96,7 +194,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = open(path, mode, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::open");
+					throw std::system_error(err, "rod::basic_file::open");
 				else
 					return res;
 			}
@@ -105,7 +203,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = open(path, mode, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::open");
+					throw std::system_error(err, "rod::basic_file::open");
 				else
 					return res;
 			}
@@ -141,7 +239,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = open(path, mode, prot, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::open");
+					throw std::system_error(err, "rod::basic_file::open");
 				else
 					return res;
 			}
@@ -150,7 +248,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = open(path, mode, prot, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::open");
+					throw std::system_error(err, "rod::basic_file::open");
 				else
 					return res;
 			}
@@ -186,7 +284,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = reopen(file, mode, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::reopen");
+					throw std::system_error(err, "rod::basic_file::reopen");
 				else
 					return res;
 			}
@@ -226,7 +324,7 @@ namespace rod
 			void close(std::error_code &err) noexcept { err = m_file.close(); }
 			/** @copybrief close
 			 * @throw std::system_error On failure to close the file. */
-			void close() { if (auto err = m_file.close(); err) [[unlikely]] throw std::system_error(err, "rod::basic_file::close"); }
+			void close() { if (auto err = m_file.close(); err) throw std::system_error(err, "rod::basic_file::close"); }
 
 			/** Releases the underlying native file handle without closing. */
 			constexpr native_handle_type release() noexcept { return m_file.release(); }
@@ -238,7 +336,7 @@ namespace rod
 			void flush(std::error_code &err) noexcept { err = m_file.flush(); }
 			/** @copybrief flush
 			 * @throw std::system_error On failure to flush the file. */
-			void flush() { if (auto err = m_file.flush(); err) [[unlikely]] throw std::system_error(err, "rod::basic_file::flush"); }
+			void flush() { if (auto err = m_file.flush(); err) throw std::system_error(err, "rod::basic_file::flush"); }
 
 			/** @brief Seeks to the specified offset within the file starting at the specified position.
 			 * @param[in] off Offset into the file starting at \a dir.
@@ -249,7 +347,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = seek(off, dir, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::seek");
+					throw std::system_error(err, "rod::basic_file::seek");
 				else
 					return res;
 			}
@@ -267,7 +365,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = tell(err); err)
-					[[unlikely]] throw std::system_error(err, "rod::basic_file::tell");
+					throw std::system_error(err, "rod::basic_file::tell");
 				else
 					return res;
 			}
@@ -327,20 +425,67 @@ namespace rod
 			template<decays_to<async_write_some_at_t> T, reference_to<basic_file> F, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires detail::callable<T, Snd, native_handle_type, Pos, Buff>
 			friend auto tag_invoke(T, Snd &&snd, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Snd, native_handle_type, Pos, Buff>) { return T{}(std::forward<Snd>(snd), f.native_handle(), pos, std::forward<Buff>(buff)); }
 
-			template<decays_to<schedule_read_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires detail::callable<schedule_read_some_t, Sch, native_handle_type, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<schedule_read_some_t, Sch, native_handle_type, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff)); }
-			template<decays_to<schedule_write_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires detail::callable<schedule_write_some_t, Sch, native_handle_type, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<schedule_write_some_t, Sch, native_handle_type, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff)); }
-			template<decays_to<schedule_read_some_at_t> T, reference_to<basic_file> F, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires detail::callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<schedule_read_some_at_t, Sch, native_handle_type, Pos, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff)); }
-			template<decays_to<schedule_write_some_at_t> T, reference_to<basic_file> F, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires detail::callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<schedule_write_some_at_t, Sch, native_handle_type, Pos, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff)); }
+			template<decays_to<schedule_read_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires detail::callable<T, Sch, native_handle_type, Buff>
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff)); }
+			template<decays_to<schedule_write_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires detail::callable<T, Sch, native_handle_type, Buff>
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff)); }
+			template<decays_to<schedule_read_some_at_t> T, reference_to<basic_file> F, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires detail::callable<T, Sch, native_handle_type, Pos, Buff>
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Pos, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff)); }
+			template<decays_to<schedule_write_some_at_t> T, reference_to<basic_file> F, typename Sch, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires detail::callable<T, Sch, native_handle_type, Pos, Buff>
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Pos, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff)); }
+
+			template<decays_to<schedule_read_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Buff> && detail::callable<async_read_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
+			{
+				return async_read_some(schedule(sch), std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff));
+			}
+			template<decays_to<schedule_write_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Buff> && detail::callable<async_write_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
+			{
+				return async_write_some(schedule(sch), std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff));
+			}
+			template<decays_to<schedule_read_some_at_t> T, reference_to<basic_file> F, typename Sch, typename Pos, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Pos, Buff> && detail::callable<async_read_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
+			{
+				return async_read_some_at(schedule(sch), std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff));
+			}
+			template<decays_to<schedule_write_some_at_t> T, reference_to<basic_file> F, typename Sch, typename Pos, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Pos, Buff> && detail::callable<async_write_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
+			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
+			{
+				return async_write_some_at(schedule(sch), std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff));
+			}
 
 		private:
 			native_t m_file = {};
 		};
-		/** Buffered file handle. */
-		class file;
+
+//		/** Buffered file handle. */
+//		class file;
+
+		template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires(!detail::callable<T, Snd, typename basic_file::native_handle_type, Buff>)
+		inline auto tag_invoke(T, Snd &&snd, F &&f, Buff &&buff) noexcept(detail::nothrow_decay_copyable<Snd>::value && detail::nothrow_decay_copyable<Buff>::value)
+		{
+			using _sender_t = typename sync_sender<read_some_t, std::decay_t<Snd>, F, std::decay_t<Buff>>::type;
+			return _sender_t{std::forward<Snd>(snd), std::forward_as_tuple(std::forward<F>(f), std::forward<Buff>(buff))};
+		}
+		template<decays_to<async_write_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires(!detail::callable<T, Snd, typename basic_file::native_handle_type, Buff>)
+		inline auto tag_invoke(T, Snd &&snd, F &&f, Buff &&buff) noexcept(detail::nothrow_decay_copyable<Snd>::value && detail::nothrow_decay_copyable<Buff>::value)
+		{
+			using _sender_t = typename sync_sender<write_some_t, std::decay_t<Snd>, F, std::decay_t<Buff>>::type;
+			return _sender_t{std::forward<Snd>(snd), std::forward_as_tuple(std::forward<F>(f), std::forward<Buff>(buff))};
+		}
+		template<decays_to<async_read_some_at_t> T, reference_to<basic_file> F, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires(!detail::callable<T, Snd, typename basic_file::native_handle_type, Pos, Buff>)
+		inline auto tag_invoke(T, Snd &&snd, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_decay_copyable<Snd>::value && detail::nothrow_decay_copyable<Buff>::value)
+		{
+			using _sender_t = typename sync_sender<read_some_at_t, std::decay_t<Snd>, F, Pos, std::decay_t<Buff>>::type;
+			return _sender_t{std::forward<Snd>(snd), std::forward_as_tuple(std::forward<F>(f), pos, std::forward<Buff>(buff))};
+		}
+		template<decays_to<async_write_some_at_t> T, reference_to<basic_file> F, typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Buff> requires(!detail::callable<T, Snd, typename basic_file::native_handle_type, Pos, Buff>)
+		inline auto tag_invoke(T, Snd &&snd, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_decay_copyable<Snd>::value && detail::nothrow_decay_copyable<Buff>::value)
+		{
+			using _sender_t = typename sync_sender<write_some_at_t, std::decay_t<Snd>, F, Pos, std::decay_t<Buff>>::type;
+			return _sender_t{std::forward<Snd>(snd), std::forward_as_tuple(std::forward<F>(f), pos, std::forward<Buff>(buff))};
+		}
 	}
 
 	using _file::basic_file;

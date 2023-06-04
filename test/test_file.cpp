@@ -66,7 +66,7 @@ void test_basic_file(auto mode)
 		           | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
 		rod::sync_wait(snd);
 	}
-	//std::filesystem::remove(path);
+	std::filesystem::remove(path);
 	ctx.finish();
 }
 

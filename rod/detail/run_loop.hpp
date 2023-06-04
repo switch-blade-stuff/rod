@@ -62,7 +62,7 @@ namespace rod
 			type() = delete;
 			type(const type &) = delete;
 
-			constexpr type(run_loop *loop, R &&rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, _notify_complete), _rcv(std::forward<R>(rcv)) {}
+			constexpr type(run_loop *loop, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, _notify_complete), _rcv(std::move(rcv)) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -78,7 +78,7 @@ namespace rod
 			type() = delete;
 			type(const type &) = delete;
 
-			constexpr type(run_loop *loop, time_point timeout, R &&rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, _notify_complete), _rcv(std::forward<R>(rcv)), _timeout(timeout) {}
+			constexpr type(run_loop *loop, time_point timeout, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, _notify_complete), _rcv(std::move(rcv)), _timeout(timeout) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -101,8 +101,8 @@ namespace rod
 			template<decays_to<sender> T, typename E>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<decays_to<timer_sender> T, typename R>
-			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R>) { return {s._loop, std::forward<R>(rcv)};; }
+			template<decays_to<sender> T, typename R>
+			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(detail::nothrow_decay_copyable<R>::value) { return {s._loop, std::forward<R>(rcv)}; }
 
 			run_loop *_loop;
 		};
@@ -119,7 +119,7 @@ namespace rod
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
 			template<decays_to<timer_sender> T, typename R>
-			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R>) { return {s._loop, s._timeout, std::forward<R>(rcv)};; }
+			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(detail::nothrow_decay_copyable<R>::value) { return {s._loop, s._timeout, std::forward<R>(rcv)};; }
 
 			time_point _timeout;
 			run_loop *_loop;
@@ -180,12 +180,16 @@ namespace rod
 				{
 					if (m_timers.load(std::memory_order_acquire))
 						now = clock::now();
-					while (!consumer_queue.empty()) consumer_queue.pop_front()->_notify(now);
+					while (!consumer_queue.empty())
+						consumer_queue.pop_front()->_notify(now);
 
 					if (const auto front = m_producer_queue.front(); !front)
 						m_producer_queue.wait();
 					else if (front != m_producer_queue.sentinel())
+					{
 						consumer_queue = std::move(m_producer_queue);
+						m_producer_queue.notify_all();
+					}
 					else
 						break;
 				}
@@ -218,7 +222,7 @@ namespace rod
 			void schedule(operation_base *node) noexcept
 			{
 				m_producer_queue.push(node);
-				m_producer_queue.notify_one();
+				m_producer_queue.notify_all();
 			}
 
 			in_place_stop_source m_stop_source = {};
