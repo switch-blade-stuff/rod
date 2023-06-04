@@ -192,9 +192,9 @@ namespace rod
 			[[nodiscard]] constexpr std::size_t base_size() const noexcept { return m_mmap.base_size(); }
 
 			/** Returns a span of bytes pointing to the underlying memory mapping. */
-			[[nodiscard]] constexpr std::span<std::byte> bytes() const noexcept { return as_byte_buffer(data(), size()); }
+			[[nodiscard]] std::span<std::byte> bytes() const noexcept { return as_byte_buffer(data(), size()); }
 			/** @copydoc bytes */
-			[[nodiscard]] constexpr explicit operator std::span<std::byte>() const noexcept { return bytes(); }
+			[[nodiscard]] explicit operator std::span<std::byte>() const noexcept { return bytes(); }
 
 			constexpr void swap(region &other) noexcept { m_mmap.swap(other.m_mmap); }
 			friend constexpr void swap(region &a, region &b) noexcept { a.swap(b); }
