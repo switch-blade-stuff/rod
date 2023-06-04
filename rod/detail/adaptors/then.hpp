@@ -151,9 +151,8 @@ namespace rod
 
 			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
-
 			template<decays_to<type> T, rod::receiver Rcv>
-			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv r) noexcept(std::is_nothrow_constructible_v<_operation_t<T, Rcv>, copy_cvref_t<T, S>, Rcv, copy_cvref_t<T, F>>)
+			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv r)/* noexcept(std::is_nothrow_constructible_v<_operation_t<T, Rcv>, copy_cvref_t<T, S>, Rcv, copy_cvref_t<T, F>>)*/
 			{
 				static_assert(receiver_of<_receiver_t<Rcv>, _input_signs_t<T, env_of_t<Rcv>>>);
 				return _operation_t<T, Rcv>(std::forward<T>(s)._snd, std::move(r), std::forward<T>(s)._fn);

@@ -209,6 +209,10 @@ namespace rod
 		private:
 			[[nodiscard]] ROD_PUBLIC bool is_consumer_thread() const noexcept;
 
+			ROD_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
+			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
+			ROD_PUBLIC void schedule_producer(operation_base *node);
+
 			void schedule(operation_base *node, std::error_code &err) noexcept
 			{
 				if (!is_consumer_thread())
@@ -216,10 +220,15 @@ namespace rod
 				else
 					schedule_consumer(node);
 			}
+			void schedule(operation_base *node) noexcept
+			{
+				if (!is_consumer_thread())
+					schedule_producer(node);
+				else
+					schedule_consumer(node);
+			}
 
-			ROD_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
-			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
-
+			void add_event(auto *data, int flags, int fd) noexcept;
 			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept;
 			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept;
 			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept;
@@ -230,6 +239,8 @@ namespace rod
 			ROD_PUBLIC void del_timer(timer_node *node) noexcept;
 
 			bool acquire_producer_queue() noexcept;
+			void acquire_elapsed_timers();
+			bool set_timer(time_point tp);
 			void epoll_wait();
 
 			/* TID of the current consumer thread. */
@@ -298,6 +309,7 @@ namespace rod
 		{
 			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_value(); }
 			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_stopped(); }
+			static void _notify_request_stop(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_request_stop_consumer(); }
 
 			constexpr type(context &ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_node(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
 
@@ -361,34 +373,25 @@ namespace rod
 				if constexpr (!detail::stoppable_env<env_of_t<Rcv>>)
 					std::terminate();
 				else if (_ctx.is_consumer_thread())
-				{
-					_stop_cb.reset();
-					_notify_func = _notify_stopped;
-					if (!(_flags.load(std::memory_order_relaxed) & flags_t::dispatched))
-					{
-						/* Timer has not yet been dispatched, schedule stop completion. */
-						_ctx.del_timer(this);
-						_ctx.schedule_consumer(this);
-					}
-				}
+					_request_stop_consumer();
 				else if (!(_flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched))
 				{
-					/* Timer has not yet been dispatched, schedule stop completion on producer thread. */
-					_notify_func = [](operation_base *ptr) noexcept
-					{
-						const auto op = static_cast<type *>(ptr);
-						op->_stop_cb.reset();
+					/* Timer has not yet been dispatched, schedule stop request. */
+					_notify_func = _notify_request_stop;
+					_ctx.schedule_producer(this);
+				}
+			}
+			void _request_stop_consumer() noexcept
+			{
+				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+					_stop_cb.reset();
 
-						/* Make sure to erase the timer if it has not already been dispatched. */
-						if (!(op->_flags.load(std::memory_order_relaxed) & flags_t::dispatched))
-							op->_ctx.del_timer(op);
-
-						op->_complete_stopped();
-					};
-
-					std::error_code err = {};
-					_ctx.schedule_producer(this, err);
-					if (err) [[unlikely]] std::terminate();
+				_notify_func = _notify_stopped;
+				if (!(_flags.load(std::memory_order_relaxed) & flags_t::dispatched))
+				{
+					/* Timer has not yet been dispatched, schedule stop completion. */
+					_ctx.del_timer(this);
+					_ctx.schedule_consumer(this);
 				}
 			}
 
@@ -472,10 +475,7 @@ namespace rod
 				{
 					_ctx.del_io(_cmd.fd.native_handle());
 					stop_base::_notify_func = _notify_stopped;
-
-					std::error_code err = {};
-					_ctx.schedule_producer(static_cast<stop_base *>(this), err);
-					if (err) [[unlikely]] std::terminate();
+					_ctx.schedule_producer(static_cast<stop_base *>(this));
 				}
 			}
 			void _complete_stopped() noexcept

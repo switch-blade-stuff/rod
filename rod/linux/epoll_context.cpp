@@ -26,40 +26,40 @@ namespace rod::_epoll
 
 	inline detail::unique_descriptor init_epoll_fd()
 	{
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 27)
-		const auto fd = epoll_create(1);
-			if (fd < 0) [[unlikely]] throw std::system_error{errno, std::system_category(), "epoll_create(1)"};
-#else
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
 		const auto fd = epoll_create1(EPOLL_CLOEXEC);
-		if (fd < 0) [[unlikely]] throw_errno("epoll_create1(EPOLL_CLOEXEC)");
+		if (fd < 0) throw_errno("epoll_create1(EPOLL_CLOEXEC)");
+#else
+		const auto fd = epoll_create(1);
+		if (fd < 0) throw_errno("epoll_create(1)");
 #endif
 		return detail::unique_descriptor{fd};
 	}
 	inline detail::unique_descriptor init_timer_fd(const detail::unique_descriptor &epoll_fd)
 	{
 		const auto fd = timerfd_create(CLOCK_MONOTONIC, 0);
-		if (fd < 0) [[unlikely]] throw_errno("timerfd_create(CLOCK_MONOTONIC, 0)");
+		if (fd < 0) throw_errno("timerfd_create(CLOCK_MONOTONIC, 0)");
 
 		/* Register timer descriptor with EPOLL. */
 		epoll_event event = {};
 		event.events = EPOLLIN;
 		event.data.u64 = event_id::timer_timeout;
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
-			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event)");
+			throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd)");
 		else
 			return detail::unique_descriptor{fd};
 	}
 	inline detail::unique_descriptor init_event_fd(const detail::unique_descriptor &epoll_fd)
 	{
 		const auto fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-		if (fd < 0) [[unlikely]] throw_errno("eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)");
+		if (fd < 0) throw_errno("eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)");
 
 		/* Register timer descriptor with EPOLL. */
 		epoll_event event = {};
 		event.events = EPOLLIN;
 		event.data.u64 = event_id::queue_dispatch;
 		if (epoll_ctl(epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event))
-			[[unlikely]] throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_fd, &event)");
+			throw_errno("epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_fd)");
 		else
 			return detail::unique_descriptor{fd};
 	}
@@ -98,35 +98,24 @@ namespace rod::_epoll
 		assert(!node->_next);
 		m_consumer_queue.push_back(node);
 	}
+	void context::schedule_producer(operation_base *node)
+	{
+		std::error_code err;
+		schedule_producer(node, err);
+		if (err) throw std::system_error(err, "write(event_fd)");
+	}
 
-	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept
+	inline void context::add_event(auto *data, int flags, int fd) noexcept
 	{
 		epoll_event event = {};
-		event.data.ptr = node;
-		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLIN;
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
+		event.data.ptr = data;
+		event.events = EPOLLRDHUP | EPOLLHUP | flags;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event);
 	}
-	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept
-	{
-		epoll_event event = {};
-		event.data.ptr = node;
-		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLOUT;
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
-	}
-	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept
-	{
-		epoll_event event = {};
-		event.data.ptr = node;
-		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLIN;
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
-	}
-	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept
-	{
-		epoll_event event = {};
-		event.data.ptr = node;
-		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLOUT;
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
-	}
+	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept { add_event(node, EPOLLIN, cmd.fd.native_handle()); }
+	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept { add_event(node, EPOLLOUT, cmd.fd.native_handle()); }
+	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept { add_event(node, EPOLLIN, cmd.fd.native_handle()); }
+	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept { add_event(node, EPOLLOUT, cmd.fd.native_handle()); }
 	void context::del_io(int fd) noexcept
 	{
 		epoll_event event = {};
@@ -156,12 +145,58 @@ namespace rod::_epoll
 		}
 		return true;
 	}
+	inline void context::acquire_elapsed_timers()
+	{
+		if (!m_timer_pending)
+			return;
+
+		if (!m_timers.empty())
+			for (const auto now = monotonic_clock::now(); !m_timers.empty() && m_timers.front()->_tp <= now;)
+			{
+				const auto node = m_timers.pop_front();
+				/* Handle timer cancellation. */
+				if (node->_stop_possible())
+				{
+					const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
+					if (flags & flags_t::stop_requested) continue;
+				}
+				schedule_consumer(node);
+			}
+
+		/* Disarm or start a timeout on the timer descriptor. */
+		if (m_timers.empty())
+		{
+			if (m_timer_started)
+			{
+				set_timer(time_point{});
+				m_timer_started = false;
+				m_timer_pending = false;
+			}
+		}
+		else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout < next_timeout)
+			m_timer_pending = false;
+		else if ((m_timer_started = !set_timer(next_timeout)))
+		{
+			m_next_timeout = next_timeout;
+			m_timer_pending = false;
+		}
+	}
+	inline bool context::set_timer(time_point tp)
+	{
+		::itimerspec timeout = {};
+		timeout.it_value.tv_sec = tp.seconds();
+		timeout.it_value.tv_nsec = tp.nanoseconds();
+		if (const auto res =  timerfd_settime(m_timer_fd.native_handle(), TFD_TIMER_ABSTIME, &timeout, nullptr); res == EINVAL)
+			throw std::system_error{EINVAL, std::system_category(), "timerfd_settime"};
+		else
+			return res;
+	}
 	inline void context::epoll_wait()
 	{
 		const auto blocking = m_consumer_queue.empty();
 		const auto events = static_cast<epoll_event *>(m_event_buff);
 		const auto res = ::epoll_wait(m_epoll_fd.native_handle(), events, m_buff_size, blocking ? -1 : 0);
-		if (res < 0) [[unlikely]] throw_errno("epoll_wait");
+		if (res < 0) throw_errno("epoll_wait");
 
 		for (auto pos = static_cast<std::size_t>(res); pos-- != 0;)
 		{
@@ -176,7 +211,7 @@ namespace rod::_epoll
 				// Read the eventfd to clear the signal.
 				std::uint64_t token;
 				m_timer_fd.read(&token, sizeof(token), err);
-				if (err) [[unlikely]] throw std::system_error(err, "read(timer_fd)");
+				if (err) throw std::system_error(err, "read(timer_fd)");
 				break;
 			}
 			case event_id::queue_dispatch: /* Producer queue notification event. */
@@ -184,7 +219,7 @@ namespace rod::_epoll
 				std::uint64_t token;
 				m_event_fd.read(&token, sizeof(token), err);
 				if (err)
-					[[unlikely]] throw std::system_error(err, "read(event_fd)");
+					throw std::system_error(err, "read(event_fd)");
 				else
 					m_wait_pending = false;
 				break;
@@ -194,17 +229,6 @@ namespace rod::_epoll
 				break;
 			}
 		}
-	}
-
-	inline auto set_timer_fd(int fd, epoll_context::time_point tp = {})
-	{
-		::itimerspec timeout = {};
-		timeout.it_value.tv_sec = tp.seconds();
-		timeout.it_value.tv_nsec = tp.nanoseconds();
-		if (const auto res =  timerfd_settime(fd, TFD_TIMER_ABSTIME, &timeout, nullptr); res == EINVAL)
-			throw std::system_error{EINVAL, std::system_category(), "timerfd_settime"};
-		else
-			return res;
 	}
 
 	void context::run()
@@ -227,55 +251,18 @@ namespace rod::_epoll
 				return;
 
 			/* Schedule execution of elapsed timers. */
-			if (m_timer_pending)
-			{
-				if (!m_timers.empty())
-					for (const auto now = monotonic_clock::now(); !m_timers.empty() && m_timers.front()->_tp <= now;)
-					{
-						const auto node = m_timers.pop_front();
-
-						/* Handle timer cancellation. */
-						if (node->_stop_possible())
-						{
-							const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
-							if (flags & flags_t::stop_requested) continue;
-						}
-						schedule_consumer(node);
-					}
-
-				/* Disarm or start a timeout on the timer descriptor. */
-				if (m_timers.empty())
-				{
-					if (m_timer_started)
-					{
-						set_timer_fd(m_timer_fd.native_handle());
-						m_timer_started = false;
-						m_timer_pending = false;
-					}
-				}
-				else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout < next_timeout)
-					m_timer_pending = false;
-				else if ((m_timer_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
-				{
-					m_next_timeout = next_timeout;
-					m_timer_pending = false;
-				}
-			}
+			acquire_elapsed_timers();
 
 			/* Acquire pending operations from the producer queue & wait for EPOLL events. */
 			if (m_wait_pending || (m_wait_pending = acquire_producer_queue()))
 				epoll_wait();
 		}
 	}
-
 	void context::finish()
 	{
 		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
 		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->m_stop_pending = true; };
-
-		std::error_code err;
-		schedule(this, err);
-		if (err) [[unlikely]] throw std::system_error{err, "write(event_fd)"};
+		schedule(this);
 	}
 }
 #endif

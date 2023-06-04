@@ -61,7 +61,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = map(hint, size, mode, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::mmap_region::map");
+					throw std::system_error(err, "rod::mmap_region::map");
 				else
 					return res;
 			}
@@ -71,7 +71,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = map(hint, size, mode, prot, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::mmap_region::map");
+					throw std::system_error(err, "rod::mmap_region::map");
 				else
 					return res;
 			}
@@ -103,7 +103,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = map(hint, file, off, size, mode, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::mmap_region::map");
+					throw std::system_error(err, "rod::mmap_region::map");
 				else
 					return res;
 			}
@@ -113,7 +113,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (auto res = map(hint, file, off, size, mode, prot, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::mmap_region::map");
+					throw std::system_error(err, "rod::mmap_region::map");
 				else
 					return res;
 			}
@@ -150,7 +150,7 @@ namespace rod
 			void unmap(std::error_code &err) noexcept { err = m_mmap.unmap(); }
 			/** @copybrief unmap
 			  * @throw std::system_error On failure to unmap memory. */
-			void unmap() { if (auto err = m_mmap.unmap(); err) [[unlikely]] throw std::system_error(err, "rod::mmap_region::unmap"); }
+			void unmap() { if (auto err = m_mmap.unmap(); err) throw std::system_error(err, "rod::mmap_region::unmap"); }
 
 			/** Releases the underlying memory mapping.
 			 * @return Pair where first is the base pointer to the mapping and second is the total base size of the mapping. */
@@ -164,7 +164,7 @@ namespace rod
 			{
 				std::error_code err;
 				if (remap(new_size, err); err)
-					[[unlikely]] throw std::system_error(err, "rod::mmap_region::remap");
+					throw std::system_error(err, "rod::mmap_region::remap");
 				else
 					return *this;
 			}
