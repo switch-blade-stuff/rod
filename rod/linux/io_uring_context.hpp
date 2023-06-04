@@ -287,7 +287,7 @@ namespace rod
 
 			void acquire_producer_queue() noexcept;
 			void acquire_consumer_queue();
-			void process_elapsed_timers();
+			void acquire_elapsed_timers();
 			void uring_enter();
 
 			/* TID of the current consumer thread. */

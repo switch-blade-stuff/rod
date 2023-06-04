@@ -254,7 +254,7 @@ namespace rod::_io_uring
 		std::atomic_ref{*m_cq.head}.store(tail, std::memory_order_release);
 		m_cq.pending -= num;
 	}
-	inline void context::process_elapsed_timers()
+	inline void context::acquire_elapsed_timers()
 	{
 		if (!m_timer_pending)
 			return;
@@ -281,18 +281,19 @@ namespace rod::_io_uring
 				m_timer_started = false;
 				m_timer_pending = false;
 			}
+			return;
 		}
-		else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout < next_timeout)
+
+		if (const auto next_timeout = m_timers.front()->_tp; m_timer_started)
 		{
-			/* Cancel a previous timer. */
-			if (cancel_timer_event() && (m_timer_started = submit_timer_event(next_timeout)))
+			if (m_next_timeout >= next_timeout)
+				m_timer_pending = false;
+			else if (cancel_timer_event() && (m_timer_started = submit_timer_event(next_timeout)))
 			{
 				m_next_timeout = next_timeout;
 				m_timer_pending = false;
 			}
 		}
-		else if (m_timer_started)
-			m_timer_pending = false;
 		else if ((m_timer_started = submit_timer_event(next_timeout)))
 		{
 			m_next_timeout = next_timeout;
@@ -301,11 +302,11 @@ namespace rod::_io_uring
 	}
 	inline void context::uring_enter()
 	{
-		const auto idle = !m_sq.pending && m_consumer_queue.empty();
-		if (idle && !m_wait_pending) m_wait_pending = submit_queue_event();
+		const auto has_pending = m_sq.pending || !m_consumer_queue.empty();
+		if (!has_pending && !m_wait_pending) m_wait_pending = submit_queue_event();
 
 		std::uint32_t count = 0, flags = 0;
-		if (idle && (m_wait_pending || m_cq.pending + m_sq.pending == m_cq.size))
+		if (!has_pending && (m_wait_pending || m_cq.pending + m_sq.pending == m_cq.size))
 		{
 			flags = IORING_ENTER_GETEVENTS;
 			count = 1;
@@ -340,7 +341,7 @@ namespace rod::_io_uring
 				return;
 
 			acquire_consumer_queue();
-			process_elapsed_timers();
+			acquire_elapsed_timers();
 
 			/* Handle producer & waitlist queue items. */
 			if (!m_wait_pending && !m_producer_queue.empty())
