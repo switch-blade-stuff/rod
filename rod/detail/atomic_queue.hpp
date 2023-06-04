@@ -55,7 +55,7 @@ namespace rod::detail
 		[[nodiscard]] void *sentinel() const noexcept { return const_cast<atomic_queue *>(this); }
 
 		/* Convert to a basic queue with `head` becoming the tail of the new queue. */
-		[[nodiscard]] explicit operator basic_queue<Node, Next>() && noexcept
+		[[nodiscard]] operator basic_queue<Node, Next>() && noexcept
 		{
 			auto node = static_cast<Node *>(head.exchange({}, std::memory_order_acq_rel));
 			basic_queue<Node, Next> result;

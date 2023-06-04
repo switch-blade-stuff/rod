@@ -185,7 +185,7 @@ namespace rod
 					if (const auto front = m_producer_queue.front(); !front)
 						m_producer_queue.wait();
 					else if (front != m_producer_queue.sentinel())
-						consumer_queue = static_cast<consumer_queue_t>(std::move(m_producer_queue));
+						consumer_queue = std::move(m_producer_queue);
 					else
 						break;
 				}

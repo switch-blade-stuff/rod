@@ -99,41 +99,48 @@ namespace rod::_epoll
 		m_consumer_queue.push_back(node);
 	}
 
-	void context::add_io(operation_base_t *node, _system_ctx::io_id id, const _system_ctx::io_cmd<> &cmd) noexcept
+	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept
 	{
 		epoll_event event = {};
 		event.data.ptr = node;
-		event.events = EPOLLRDHUP | EPOLLHUP;
-
-		switch (id)
-		{
-		case _system_ctx::io_id::read: [[fallthrough]];
-		case _system_ctx::io_id::read_at:
-			event.events |= EPOLLIN;
-			break;
-		case _system_ctx::io_id::write: [[fallthrough]];
-		case _system_ctx::io_id::write_at:
-			event.events |= EPOLLOUT;
-			break;
-		default: [[unlikely]] std::terminate();
-		}
-
+		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLIN;
 		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
 	}
-	void context::del_io(const _system_ctx::io_cmd<> &cmd) noexcept
+	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept
 	{
 		epoll_event event = {};
-		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, cmd.fd.native_handle(), &event);
+		event.data.ptr = node;
+		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLOUT;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
+	}
+	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept
+	{
+		epoll_event event = {};
+		event.data.ptr = node;
+		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLIN;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
+	}
+	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept
+	{
+		epoll_event event = {};
+		event.data.ptr = node;
+		event.events = EPOLLRDHUP | EPOLLHUP | EPOLLOUT;
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_ADD, cmd.fd.native_handle(), &event);
+	}
+	void context::del_io(int fd) noexcept
+	{
+		epoll_event event = {};
+		epoll_ctl(m_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
 	}
 
-	void context::add_timer(timer_node_t *node) noexcept
+	void context::add_timer(timer_node *node) noexcept
 	{
 		assert(!node->_timer_next);
 		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		m_timer_pending |= m_timers.insert(node) == node;
 	}
-	void context::del_timer(timer_node_t *node) noexcept
+	void context::del_timer(timer_node *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		m_timer_pending |= m_timers.front() == node;
@@ -144,7 +151,7 @@ namespace rod::_epoll
 	{
 		if (!m_producer_queue.try_terminate())
 		{
-			m_consumer_queue.merge_back(static_cast<consumer_queue_t>(std::move(m_producer_queue)));
+			m_consumer_queue.merge_back(std::move(m_producer_queue));
 			return false;
 		}
 		return true;
@@ -204,7 +211,7 @@ namespace rod::_epoll
 	{
 		/* Make sure only one thread is allowed to run at a given time. */
 		if (std::thread::id id = {}; !m_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
-			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run`");
+			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run` at a given time");
 
 		struct tid_guard
 		{
@@ -214,8 +221,6 @@ namespace rod::_epoll
 
 		for (;;)
 		{
-			/* Always run local thread queue to completion before checking for stop requests.
-			 * Timers & pending producer queue will be handled after the stop request check. */
 			for (auto queue = std::move(m_consumer_queue); !queue.empty();)
 				queue.pop_front()->_notify();
 			if (std::exchange(m_stop_pending, false)) [[unlikely]]
@@ -224,37 +229,36 @@ namespace rod::_epoll
 			/* Schedule execution of elapsed timers. */
 			if (m_timer_pending)
 			{
-				for (const auto now = monotonic_clock::now(); !m_timers.empty() && m_timers.front()->_timeout <= now;)
-				{
-					auto node = m_timers.pop_front();
-
-					/* Handle timer cancellation. */
-					if (node->stop_possible())
+				if (!m_timers.empty())
+					for (const auto now = monotonic_clock::now(); !m_timers.empty() && m_timers.front()->_tp <= now;)
 					{
-						const auto flags = node->_flags.fetch_or(_system_ctx::flags_t::dispatched, std::memory_order_acq_rel);
-						if (flags & _system_ctx::flags_t::stop_requested) continue;
-					}
-					schedule_consumer(node);
-				}
+						const auto node = m_timers.pop_front();
 
-				/* Disarm timer descriptor (set timeout to 0) if there is no more pending timers. */
+						/* Handle timer cancellation. */
+						if (node->_stop_possible())
+						{
+							const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
+							if (flags & flags_t::stop_requested) continue;
+						}
+						schedule_consumer(node);
+					}
+
+				/* Disarm or start a timeout on the timer descriptor. */
 				if (m_timers.empty())
 				{
-					if (std::exchange(m_timer_started, {}))
-						set_timer_fd(m_timer_fd.native_handle());
-					m_timer_pending = false;
-				}
-				else if (!m_timers.empty())
-				{
-					/* Start timer_fd timer for the earliest pending time point. */
-					const auto next_timeout = m_timers.front()->_timeout;
-					if (m_timer_started && m_next_timeout <= next_timeout)
-						m_timer_pending = false;
-					else if ((m_timer_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
+					if (m_timer_started)
 					{
-						m_next_timeout = next_timeout;
+						set_timer_fd(m_timer_fd.native_handle());
+						m_timer_started = false;
 						m_timer_pending = false;
 					}
+				}
+				else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout <= next_timeout)
+					m_timer_pending = false;
+				else if ((m_timer_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
+				{
+					m_next_timeout = next_timeout;
+					m_timer_pending = false;
 				}
 			}
 

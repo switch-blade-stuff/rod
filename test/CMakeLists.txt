@@ -17,9 +17,7 @@ function(make_test NAME FILE)
     if (MSVC)
         target_compile_options(${TEST_PROJECT} PRIVATE /W3 /WX)
     else ()
-        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes #[[-ftemplate-backtrace-limit=0]])
-#        target_compile_options(${TEST_PROJECT} PRIVATE -fsanitize=memory)
-#        target_link_options(${TEST_PROJECT} PRIVATE -fsanitize=memory)
+        target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes)
     endif ()
 
     # Add as test
@@ -30,6 +28,7 @@ make_test(file ${CMAKE_CURRENT_LIST_DIR}/test_file.cpp)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     make_test(epoll ${CMAKE_CURRENT_LIST_DIR}/test_epoll.cpp)
+    make_test(io_uring ${CMAKE_CURRENT_LIST_DIR}/test_io_uring.cpp)
 endif ()
 
 make_test(signal ${CMAKE_CURRENT_LIST_DIR}/test_signal.cpp)

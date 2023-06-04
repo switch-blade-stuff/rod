@@ -4,4 +4,4 @@
 
 #include "test_io_context.hpp"
 
-int main() { test_io_context(rod::epoll_context{}); }
+int main() { test_io_context(rod::io_uring_context{}); }
