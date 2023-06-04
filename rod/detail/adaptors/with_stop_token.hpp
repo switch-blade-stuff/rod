@@ -24,8 +24,6 @@ namespace rod
 		struct sender { struct type; };
 		template<typename, typename>
 		struct env { struct type; };
-		template<typename, typename>
-		struct stop_trigger;
 
 		template<typename Env, typename Tok>
 		struct env<Env, Tok>::type
@@ -43,35 +41,24 @@ namespace rod
 		};
 
 		template<typename Rcv, typename Tok>
-		struct stop_trigger
-		{
-			inline void operator()() const noexcept;
-			typename operation_base<Rcv, Tok>::type *op;
-		};
-
-		template<typename Rcv, typename Tok>
 		struct operation_base<Rcv, Tok>::type
 		{
-			using _stop_cb_t = std::optional<stop_callback_for_t<Tok, stop_trigger<Rcv, Tok>>>;
-
 			template<typename C, typename... Args>
-			constexpr void _complete(Args &&...args) noexcept
+			void _complete(Args &&...args) noexcept
 			{
-				if (!_is_done.test_and_set())
-				{
-					_stop_cb.reset();
+				if (_is_done.test_and_set())
+					return;
+
+				if (!get_stop_token(get_env(_rcv)).stop_requested())
 					C{}(std::move(_rcv), std::forward<Args>(args)...);
-				}
+				else
+					set_stopped(std::move(_rcv));
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
 			[[ROD_NO_UNIQUE_ADDRESS]] Tok _tok;
 			std::atomic_flag _is_done = {};
-			_stop_cb_t _stop_cb = {};
 		};
-
-		template<typename Rcv, typename Tok>
-		void stop_trigger<Rcv, Tok>::operator()() const noexcept { op->template _complete<set_stopped_t>(); }
 
 		template<typename Rcv, typename Tok>
 		struct receiver<Rcv, Tok>::type
@@ -99,11 +86,7 @@ namespace rod
 
 			constexpr type(Snd &&snd, Tok tok, Rcv rcv) : _operation_base_t{std::move(rcv), tok}, _state(connect(std::forward<Snd>(snd), _receiver_t{this})) {}
 
-			friend constexpr void tag_invoke(start_t, type &op) noexcept
-			{
-				op._stop_cb.emplace(op._tok, stop_trigger<Rcv, Tok>{&op});
-				start(op._state);
-			}
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
 			_state_t _state;
 		};

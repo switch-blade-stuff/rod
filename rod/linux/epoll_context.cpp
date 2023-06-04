@@ -253,7 +253,7 @@ namespace rod::_epoll
 						m_timer_pending = false;
 					}
 				}
-				else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout <= next_timeout)
+				else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout < next_timeout)
 					m_timer_pending = false;
 				else if ((m_timer_started = !set_timer_fd(m_timer_fd.native_handle(), next_timeout)))
 				{

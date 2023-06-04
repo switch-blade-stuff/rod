@@ -4,8 +4,10 @@
 
 #pragma once
 
+#ifdef __unix__
 #include <string_view>
 #include <fcntl.h>
+#endif
 
 #include <rod/task.hpp>
 #include <rod/io.hpp>
@@ -22,6 +24,7 @@ inline void test_io_context(auto &&ctx)
 		const auto start = sch.now();
 		rod::sync_wait(rod::schedule_in(sch, 50ms) | rod::then([&]() { TEST_ASSERT((sch.now() - start) >= 50ms); }));
 	}
+#ifdef __unix__
 	{
 		int pipe_fd[2] = {-1, -1};
 		::pipe2(pipe_fd, O_NONBLOCK | O_CLOEXEC);
@@ -35,6 +38,7 @@ inline void test_io_context(auto &&ctx)
 		close(pipe_fd[0]);
 		close(pipe_fd[1]);
 	}
+#endif
 	{
 		rod::in_place_stop_source src;
 		auto snd0 = rod::schedule_in(sch, 50ms) | rod::then([&]() { src.request_stop(); });

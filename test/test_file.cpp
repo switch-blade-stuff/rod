@@ -14,8 +14,8 @@ const auto data = std::string_view{"hello, world"};
 void test_basic_file(auto mode)
 {
 	auto buff = std::string(data.size() * 2, '\0');
-	rod::system_context ctx;
-	std::error_code err;
+	rod::system_context ctx = {};
+	std::error_code err = {};
 
 	if (mode & basic_file_t::noreplace)
 		std::filesystem::remove(path);
@@ -66,7 +66,7 @@ void test_basic_file(auto mode)
 		           | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
 		rod::sync_wait(snd);
 	}
-	std::filesystem::remove(path);
+	//std::filesystem::remove(path);
 	ctx.finish();
 }
 

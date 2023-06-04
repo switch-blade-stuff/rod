@@ -12,6 +12,8 @@
 #include <sys/mman.h>
 #include <liburing.h>
 
+/* TODO: Figure out why valgrind causes a deadlock. */
+
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::_io_uring
 {
@@ -106,7 +108,7 @@ namespace rod::_io_uring
 		m_waitlist_queue.push_back(node);
 	}
 
-	inline bool context::submit_io_event(int op, void *data, int fd, void *addr, std::size_t n, std::ptrdiff_t off) noexcept
+	inline bool context::submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::ptrdiff_t off) noexcept
 	{
 		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
 		{
@@ -168,33 +170,33 @@ namespace rod::_io_uring
 
 	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data, cmd.buff.size, -1);
+		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), -1);
 	}
 	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data, cmd.buff.size, -1);
+		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), -1);
 	}
 	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_READV, node, cmd.fd.native_handle(), &cmd.buff, 1, cmd.off);
+		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.off);
 	}
 	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_WRITEV, node, cmd.fd.native_handle(), &cmd.buff, 1, cmd.off);
+		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.off);
 	}
 	bool context::cancel_io_event(operation_base *node) noexcept
 	{
 		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
-		                  {
-			                  sq[idx] = {};
-			                  sq[idx].addr = std::bit_cast<std::uintptr_t>(node);
+		{
+			sq[idx] = {};
+			sq[idx].addr = std::bit_cast<std::uintptr_t>(node);
 #ifdef IORING_ASYNC_CANCEL_ALL
-			                  sq[idx].cancel_flags = IORING_ASYNC_CANCEL_ALL;
+			sq[idx].cancel_flags = IORING_ASYNC_CANCEL_ALL;
 #else
-			                  sq[idx].rw_flags = 1;
+			sq[idx].rw_flags = 1;
 #endif
-			                  sq[idx].opcode = IORING_OP_ASYNC_CANCEL;
-		                  });
+			sq[idx].opcode = IORING_OP_ASYNC_CANCEL;
+		});
 	}
 
 	void context::add_timer(timer_node *node) noexcept
@@ -214,7 +216,7 @@ namespace rod::_io_uring
 	inline void context::acquire_consumer_queue()
 	{
 		const auto tail = std::atomic_ref{*m_cq.tail}.load(std::memory_order_acquire);
-		const auto head = *m_cq.head;
+		const auto head = std::atomic_ref{*m_cq.head}.load(std::memory_order_acquire);
 		const auto num = tail - head;
 		if (!num) return;
 
@@ -225,20 +227,18 @@ namespace rod::_io_uring
 			switch (auto &event = m_cq.entries[(head + i) & m_cq.mask]; event.user_data)
 			{
 			case event_id::timer_timeout: /* Timer elapsed notification event. */
-				m_timer_pending |= event.res != ECANCELED;
-				m_active_timers--;
+				m_timer_pending |= (event.res != ECANCELED);
+				m_timer_started = --m_active_timers;
 				[[fallthrough]];
 			case event_id::timer_cancel:
 				break;
 			case event_id::queue_dispatch: /* Producer queue notification event. */
 			{
 				std::error_code err;
-				if (event.res < 0) [[unlikely]]
-					throw std::system_error(std::error_code{-event.res, std::system_category()}, "read(event_fd)");
-
 				std::uint64_t token;
-				m_event_fd.read(&token, sizeof(token), err);
-				if (err)
+				if (event.res < 0)
+					throw std::system_error(std::error_code{-event.res, std::system_category()}, "read(event_fd)");
+				else if (m_event_fd.read(&token, sizeof(token), err); err)
 					throw std::system_error(err, "read(event_fd)");
 				else
 					m_wait_pending = false;
@@ -276,21 +276,24 @@ namespace rod::_io_uring
 		/* Disarm or start a timeout event. */
 		if (m_timers.empty())
 		{
-			if (m_active_timers && cancel_timer_event())
+			if (m_timer_started && cancel_timer_event())
+			{
+				m_timer_started = false;
 				m_timer_pending = false;
+			}
 		}
-		else if (const auto next_timeout = m_timers.front()->_tp; m_active_timers && m_next_timeout <= next_timeout)
+		else if (const auto next_timeout = m_timers.front()->_tp; m_timer_started && m_next_timeout < next_timeout)
 		{
 			/* Cancel a previous timer. */
-			if (cancel_timer_event() && submit_timer_event(next_timeout))
+			if (cancel_timer_event() && (m_timer_started = submit_timer_event(next_timeout)))
 			{
 				m_next_timeout = next_timeout;
 				m_timer_pending = false;
 			}
 		}
-		else if (m_active_timers)
+		else if (m_timer_started)
 			m_timer_pending = false;
-		else if (submit_timer_event(next_timeout))
+		else if ((m_timer_started = submit_timer_event(next_timeout)))
 		{
 			m_next_timeout = next_timeout;
 			m_timer_pending = false;
@@ -308,8 +311,8 @@ namespace rod::_io_uring
 			count = 1;
 		}
 
-		if (const auto res = ::io_uring_enter(m_uring_fd.native_handle(), m_sq.pending, count, flags, nullptr); res < 0)
-			throw std::system_error(std::error_code{errno, std::system_category()}, "io_uring_enter");
+		if (const auto res = io_uring_enter(m_uring_fd.native_handle(), m_sq.pending, count, flags, nullptr); res < 0)
+			throw std::system_error(std::error_code{-res, std::system_category()}, "io_uring_enter");
 		else
 		{
 			m_sq.pending -= res;
@@ -340,7 +343,7 @@ namespace rod::_io_uring
 			process_elapsed_timers();
 
 			/* Handle producer & waitlist queue items. */
-			if (!m_wait_pending)
+			if (!m_wait_pending && !m_producer_queue.empty())
 				m_consumer_queue.merge_back(std::move(m_producer_queue));
 			while (!m_waitlist_queue.empty() && m_sq.pending < m_sq.size && m_cq.pending + m_sq.pending < m_cq.size)
 				m_waitlist_queue.pop_front()->_notify();

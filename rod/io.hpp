@@ -19,7 +19,9 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
-#ifdef ROD_HAS_EPOLL
+#if defined(ROD_HAS_LIBURING)
+	using system_context = io_uring_context;
+#elif defined(ROD_HAS_EPOLL)
 	using system_context = epoll_context;
 #else
 	using system_context = run_loop;

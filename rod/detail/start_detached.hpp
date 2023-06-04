@@ -28,7 +28,9 @@ namespace rod
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 
-			[[noreturn]] friend void tag_invoke(set_error_t, type &&) noexcept { std::terminate(); }
+			[[noreturn]] friend void tag_invoke(set_error_t, type &&, auto...) noexcept { std::terminate(); }
+			[[noreturn]] friend void tag_invoke(set_error_t, type &&, std::error_code e) noexcept { throw std::system_error(e); }
+			[[noreturn]] friend void tag_invoke(set_error_t, type &&, const std::exception_ptr &e) noexcept { rethrow_exception(e); }
 			template<detail::completion_channel C, typename... Args>
 			friend constexpr void tag_invoke(C, type &&r, Args &&...) noexcept { delete r._op; }
 

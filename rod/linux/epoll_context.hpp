@@ -58,7 +58,7 @@ namespace rod
 		struct io_cmd<schedule_read_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::begin(buff), std::end(buff)) {}
+			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::begin(buff), std::end(buff)) {}
 			
 			std::size_t operator()(std::error_code &err) noexcept { return fd.read(buff.data(), buff.size(), err); }
 
@@ -69,7 +69,7 @@ namespace rod
 		struct io_cmd<schedule_write_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::cbegin(buff), std::cend(buff)) {}
+			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::cbegin(buff), std::cend(buff)) {}
 			
 			std::size_t operator()(std::error_code &err) noexcept { return fd.write(buff.data(), buff.size(), err); }
 
@@ -80,7 +80,7 @@ namespace rod
 		struct io_cmd<schedule_read_some_at_t>::type : io_cmd<schedule_read_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
+			constexpr type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
 			
 			std::size_t operator()(std::error_code &err) noexcept { return fd.read_at(buff.data(), buff.size(), off, err); }
 			
@@ -90,7 +90,7 @@ namespace rod
 		struct io_cmd<schedule_write_some_at_t>::type : io_cmd<schedule_write_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_write_some_t>::type(fd, buff), off(off) {}
+			constexpr type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_write_some_t>::type(fd, buff), off(off) {}
 
 			std::size_t operator()(std::error_code &err) noexcept { return fd.write_at(buff.data(), buff.size(), off, err); }
 
@@ -236,9 +236,9 @@ namespace rod
 			std::atomic<std::thread::id> m_consumer_tid = {};
 
 			/* Descriptors used for EPOLL notifications. */
-			detail::unique_descriptor m_epoll_fd;
-			detail::unique_descriptor m_timer_fd;
-			detail::unique_descriptor m_event_fd;
+			detail::unique_descriptor m_epoll_fd = {};
+			detail::unique_descriptor m_timer_fd = {};
+			detail::unique_descriptor m_event_fd = {};
 
 			/* EPOLL event buffer. */
 			std::size_t m_buff_size;

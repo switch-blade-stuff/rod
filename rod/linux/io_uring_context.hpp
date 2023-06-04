@@ -38,12 +38,6 @@ namespace rod
 		using clock = monotonic_clock;
 		using time_point = typename clock::time_point;
 
-		struct iov_buff
-		{
-			void *data;
-			std::size_t size;
-		};
-
 		struct kernel_timespec_t
 		{
 			int64_t tv_sec;
@@ -101,39 +95,35 @@ namespace rod
 		struct io_cmd<schedule_read_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::span<T> buff) noexcept : fd(fd), buff{(void *) buff.data(), buff.size()} {}
+			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::begin(buff), std::end(buff)) {}
 
 			detail::basic_descriptor fd;
-			iov_buff buff;
+			std::span<std::byte> buff;
 		};
 		template<>
 		struct io_cmd<schedule_write_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::span<T> buff) noexcept : fd(fd), buff{(void *) buff.data(), buff.size()} {}
+			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::cbegin(buff), std::cend(buff)) {}
 
 			detail::basic_descriptor fd;
-			iov_buff buff;
+			std::span<const std::byte> buff;
 		};
 		template<>
-		struct io_cmd<schedule_read_some_at_t>::type
+		struct io_cmd<schedule_read_some_at_t>::type : io_cmd<schedule_read_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : fd(fd), off(off), buff{(void *) buff.data(), buff.size()} {}
+			constexpr type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
 
-			detail::basic_descriptor fd;
 			std::ptrdiff_t off;
-			iov_buff buff;
 		};
 		template<>
-		struct io_cmd<schedule_write_some_at_t>::type
+		struct io_cmd<schedule_write_some_at_t>::type : io_cmd<schedule_write_some_t>::type
 		{
 			template<typename T>
-			type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : fd(fd), off(off), buff{(void *) buff.data(), buff.size()} {}
+			constexpr type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_write_some_t>::type(fd, buff), off(off) {}
 
-			detail::basic_descriptor fd;
 			std::ptrdiff_t off;
-			iov_buff buff;
 		};
 
 		struct operation_base
@@ -251,8 +241,8 @@ namespace rod
 				if (m_cq.pending + m_sq.pending >= m_cq.size)
 					return false;
 
+				const auto tail = std::atomic_ref{*m_sq.tail}.load(std::memory_order_acquire);
 				const auto head = std::atomic_ref{*m_sq.head}.load(std::memory_order_acquire);
-				const auto tail = *m_sq.tail;
 				if (m_cq.size <= tail - head)
 					return false;
 
@@ -262,9 +252,9 @@ namespace rod
 				else if (!init(m_sq.entries, idx))
 					return false;
 
-				std::atomic_ref{*m_sq.tail}.store(tail + 1, std::memory_order_release);
-				m_sq.idx_data[idx] = idx;
 				m_sq.pending++;
+				m_sq.idx_data[idx] = idx;
+				std::atomic_ref{*m_sq.tail}.store(tail + 1, std::memory_order_release);
 				return true;
 			}
 
@@ -281,7 +271,7 @@ namespace rod
 			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
 			ROD_PUBLIC void schedule_waitlist(operation_base *node) noexcept;
 
-			bool submit_io_event(int op, void *data, int fd, void *addr, std::size_t n, std::ptrdiff_t off) noexcept;
+			bool submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::ptrdiff_t off) noexcept;
 			bool submit_timer_event(time_point timeout) noexcept;
 			bool submit_queue_event() noexcept;
 			bool cancel_timer_event() noexcept;
@@ -304,13 +294,13 @@ namespace rod
 			std::atomic<std::thread::id> m_consumer_tid = {};
 
 			/* Descriptors used for io_uring notifications. */
-			detail::unique_descriptor m_uring_fd;
-			detail::unique_descriptor m_event_fd;
+			detail::unique_descriptor m_uring_fd = {};
+			detail::unique_descriptor m_event_fd = {};
 
 			/* Memory mappings of io_uring queues. */
-			detail::system_mmap m_cq_mmap;
-			detail::system_mmap m_sq_mmap;
-			detail::system_mmap m_sqe_mmap;
+			detail::system_mmap m_cq_mmap = {};
+			detail::system_mmap m_sq_mmap = {};
+			detail::system_mmap m_sqe_mmap = {};
 
 			/* State of io_uring queues. */
 			cq_state_t m_cq = {};
@@ -330,6 +320,7 @@ namespace rod
 			time_point m_next_timeout = {};
 
 			std::uint32_t m_active_timers = 0;
+			bool m_timer_started = false;
 			bool m_timer_pending = false;
 			bool m_wait_pending = false;
 			bool m_stop_pending = false;
@@ -480,7 +471,6 @@ namespace rod
 
 			static void _notify_start(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_start_consumer(); }
 			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_value(); }
-			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
 			static void _notify_request_stop(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_request_stop(); }
 
 			template<typename Rcv1>
@@ -492,27 +482,15 @@ namespace rod
 			{
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
-				if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
-					return;
 
-				if (complete_base::_res >= 0)
+				if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
+					set_stopped(std::move(_rcv));
+				else if (complete_base::_res >= 0)
 					[[likely]] set_value(std::move(_rcv), static_cast<std::size_t>(complete_base::_res));
-				else if (const auto err = static_cast<int>(-complete_base::_res); err == ECANCELED)
+				else if (const auto err = static_cast<int>(-complete_base::_res); err != ECANCELED)
 					set_error(std::move(_rcv), std::error_code{err, std::system_category()});
 				else
 					set_stopped(std::move(_rcv));
-			}
-			void _complete_stopped() noexcept
-			{
-				if (complete_base::_notify_func)
-				{
-					stop_base::_notify_func = _notify_stopped;
-					_ctx.schedule_consumer(static_cast<stop_base *>(this));
-				}
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
-					set_stopped(std::move(_rcv));
-				else
-					std::terminate();
 			}
 
 			void _start() noexcept
@@ -544,12 +522,14 @@ namespace rod
 				if (_flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched)
 					return; /* Already completed on a different thread */
 
-				stop_base::_notify_func = _notify_stopped;
-				if (!_ctx.cancel_io_event(static_cast<stop_base *>(this)))
-				{
-					stop_base::_notify_func = _notify_request_stop;
+				std::error_code err;
+				stop_base::_notify_func = _notify_request_stop;
+				if (!_ctx.is_consumer_thread())
+					_ctx.schedule_producer(static_cast<stop_base *>(this), err);
+				else if (!_ctx.cancel_io_event(static_cast<stop_base *>(this)))
 					_ctx.schedule_waitlist(static_cast<stop_base *>(this));
-				}
+
+				if (err) [[unlikely]] std::terminate();
 			}
 
 			using _stop_cb_t = stop_cb<env_of_t<Rcv>, &type::_request_stop>;
