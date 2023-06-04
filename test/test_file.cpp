@@ -14,7 +14,7 @@ const auto data = std::string_view{"hello, world"};
 void test_basic_file(auto mode)
 {
 	auto buff = std::string(data.size() * 2, '\0');
-	rod::system_context ctx = {};
+	rod::run_loop ctx = {};
 	std::error_code err = {};
 
 	if (mode & basic_file_t::noreplace)
