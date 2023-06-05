@@ -140,6 +140,39 @@ namespace rod
 			return *this;
 		}
 
+		template<std::integral auto I> requires(I < 2)
+		friend constexpr auto &get(packed_pair<T0, T1> &p) noexcept
+		{
+			if constexpr (I == 0)
+				return p.first;
+			else
+				return p.second;
+		}
+		template<std::integral auto I> requires(I < 2)
+		friend constexpr auto &&get(packed_pair<T0, T1> &&p) noexcept
+		{
+			if constexpr (I == 0)
+				return std::move(p.first);
+			else
+				return std::move(p.second);
+		}
+		template<std::integral auto I> requires(I < 2)
+		friend constexpr const auto &get(const packed_pair<T0, T1> &p) noexcept
+		{
+			if constexpr (I == 0)
+				return p.first;
+			else
+				return p.second;
+		}
+		template<std::integral auto I> requires(I < 2)
+		friend constexpr const auto &&get(const packed_pair<T0, T1> &&p) noexcept
+		{
+			if constexpr (I == 0)
+				return std::move(p.first);
+			else
+				return std::move(p.second);
+		}
+
 		constexpr void swap(packed_pair &other) noexcept(std::is_nothrow_swappable_v<T0> && std::is_nothrow_swappable_v<T1>)
 		{
 			using std::swap;
@@ -158,3 +191,20 @@ namespace rod
 	[[nodiscard]] constexpr P make_packed_pair(T0 &&v0, T1 &&v1) noexcept(std::is_nothrow_constructible_v<P, T0, T1>) { return P{std::forward<T0>(v0), std::forward<T1>(v1)}; }
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
+
+#ifdef ROD_TOPLEVEL_NAMESPACE
+template<typename T0,  typename T1>
+struct std::tuple_size<ROD_TOPLEVEL_NAMESPACE::rod::packed_pair<T0, T1>> : std::integral_constant<std::size_t, 2> {};
+template<typename T0, typename T1>
+struct std::tuple_element<0, ROD_TOPLEVEL_NAMESPACE::rod::packed_pair<T0, T1>> { using type = T0; };
+template<typename T0, typename T1>
+struct std::tuple_element<1, ROD_TOPLEVEL_NAMESPACE::rod::packed_pair<T0, T1>> { using type = T1; };
+#else
+template<typename T0,  typename T1>
+struct std::tuple_size<rod::packed_pair<T0, T1>> : std::integral_constant<std::size_t, 2> {};
+template<typename T0, typename T1>
+struct std::tuple_element<0, rod::packed_pair<T0, T1>> { using type = T0; };
+template<typename T0, typename T1>
+struct std::tuple_element<1, rod::packed_pair<T0, T1>> { using type = T1; };
+#endif
+

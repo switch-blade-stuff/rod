@@ -38,7 +38,7 @@ namespace rod::detail
 			return req - rem;
 	}
 
-	system_mmap system_mmap::map(void *hint, std::size_t size, int fd, std::size_t off, int mode, int prot, std::error_code &err) noexcept
+	system_mmap system_mmap::map(void *hint, std::size_t size, int fd, std::size_t off, int mode, std::error_code &err) noexcept
 	{
 		/* Align the file offset and use the difference as the base offset. */
 		const auto base_off = off - align_pagesize(false, off, err);
@@ -47,10 +47,19 @@ namespace rod::detail
 		else
 			size += base_off;
 
+		int flags = 0;
+		if (fd < 0) flags |= MAP_ANONYMOUS;
+		if (mode & mapmode::copy) flags |= MAP_PRIVATE;
+
+		int prot = 0;
+		if (mode & mapmode::exec) prot |= PROT_EXEC;
+		if (mode & mapmode::read) prot |= PROT_READ;
+		if (mode & mapmode::write) prot |= PROT_WRITE;
+
 #if PTRDIFF_MAX >= INT64_MAX
-		const auto data = ::mmap64(hint, size, prot, mode, fd, static_cast<off64_t>(off - base_off));
+		const auto data = ::mmap64(hint, size, prot, flags, fd, static_cast<off64_t>(off - base_off));
 #else
-		const auto data = ::mmap(hint, size, prot, mode, fd, static_cast<off64_t>(off - base_off));
+		const auto data = ::mmap(hint, size, prot, flags, fd, static_cast<off64_t>(off - base_off));
 #endif
 		if (data) [[likely]]
 			return system_mmap{data, size, static_cast<std::size_t>(base_off)};

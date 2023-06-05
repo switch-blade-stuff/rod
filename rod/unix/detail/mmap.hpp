@@ -20,25 +20,17 @@ namespace rod::detail
 	class system_mmap
 	{
 	public:
-		enum mapprot : int
-		{
-			exec = PROT_EXEC,
-			read = PROT_READ,
-			write = PROT_WRITE,
-			_default = read | write,
-		};
 		enum mapmode : int
 		{
-			copy = MAP_PRIVATE,
-			shared = MAP_SHARED,
-			_anon = MAP_ANONYMOUS,
+			exec = 0b001,
+			read = 0b010,
+			write = 0b100,
+			copy = 0b1000,
+			_default = read | write,
 		};
 
-		static ROD_PUBLIC system_mmap map(void *addr, std::size_t n, int fd, std::size_t off, int mode, int prot, std::error_code &err) noexcept;
-		static system_mmap map(void *addr, std::size_t n, int fd, std::size_t off, int mode, std::error_code &err) noexcept { return map(addr, n, fd, off, mode, mapprot::_default, err); }
-
-		static system_mmap map(void *addr, std::size_t n, int mode, std::error_code &err) noexcept { return map(addr, n, mode, mapprot::_default, err); }
-		static system_mmap map(void *addr, std::size_t n, int mode, int prot, std::error_code &err) noexcept { return map(addr, n, -1, 0, mode | mapmode::_anon, prot, err); }
+		static ROD_PUBLIC system_mmap map(void *hint, std::size_t size, int fd, std::size_t off, int mode, std::error_code &err) noexcept;
+		static system_mmap map(void *hint, std::size_t size, int mode, std::error_code &err) noexcept { return map(addr, n, -1, 0, mode, err); }
 
 	public:
 		system_mmap(const system_mmap &) = delete;

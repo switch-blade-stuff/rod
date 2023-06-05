@@ -81,8 +81,8 @@ namespace rod::detail
 			return unique_io_handle::release(hnd);
 		}
 
+		ROD_PUBLIC std::error_code resize(std::size_t n) noexcept;
 		ROD_PUBLIC std::size_t size(std::error_code &err) const noexcept;
-		ROD_PUBLIC std::size_t resize(std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
 		ROD_PUBLIC std::error_code flush() noexcept;

@@ -111,6 +111,26 @@ namespace rod::detail
 			return open(buff.c_str(), mode, prot, err);
 	}
 
+	std::size_t system_file::size(std::error_code &err) const noexcept
+	{
+		if (::stat stat = {}; !::fstat(native_handle(), &stat)) [[likely]]
+			return (err = {}, static_cast<std::size_t>(stat.st_size));
+		else
+			return (err = {errno, std::system_category()}, 0);
+	}
+	std::error_code system_file::resize(std::size_t n) noexcept
+	{
+#if SIZE_MAX >= UINT64_MAX
+		const auto res = ::ftruncate64(native_handle(), static_cast<off64_t>(n));
+#else
+		const auto res = ::ftruncate(native_handle(), static_cast<off_t>(n));
+#endif
+		if (res) [[unlikely]]
+			return {errno, std::system_category()};
+		else
+			return {};
+	}
+
 	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX

@@ -69,6 +69,8 @@ namespace rod::detail
 		using unique_descriptor::is_open;
 		using unique_descriptor::native_handle;
 
+		ROD_PUBLIC std::error_code resize(std::size_t n) noexcept;
+		ROD_PUBLIC std::size_t size(std::error_code &err) const noexcept;
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
 		ROD_PUBLIC std::error_code flush() noexcept;

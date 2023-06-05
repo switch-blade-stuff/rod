@@ -7,7 +7,6 @@
 #include "file.hpp"
 
 #define NOMINMAX
-
 #include <windows.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
@@ -79,33 +78,36 @@ namespace rod::detail
 		else
 			off = static_cast<std::size_t>(res);
 #endif
-		return system_file{hnd, off};
+
+		if (err) [[unlikely]]
+			return (::CloseHandle(hnd), system_file{});
+		else
+			return system_file{hnd, off};
 	}
 
+	std::error_code system_file::resize(std::size_t n) noexcept
+	{
+		std::error_code err;
+		LARGE_INTEGER oldpos = {.QuadPart = tell_or_getptr(err)};
+		LARGE_INTEGER endpos = {.QuadPart = n};
+
+		if (!err) [[likely]]
+		{
+			if (!::SetFilePointerEx(native_handle(), endpos, nullptr, FILE_BEGIN))
+				err = {static_cast<int>(::GetLastError()), std::system_category()};
+			else if (!::SetEndOfFile(native_handle()) || !::SetFilePointerEx(native_handle(), oldpos, nullptr, FILE_BEGIN))
+				err = {static_cast<int>(::GetLastError()), std::system_category()};
+			else
+				m_offset = static_cast<std::size_t>(oldpos.QuadPart);
+		}
+		return err;
+	}
 	std::size_t system_file::size(std::error_code &err) const noexcept
 	{
 		if (LARGE_INTEGER result = {}; !::GetFileSizeEx(native_handle(), &result)) [[unlikely]]
 			return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
 		else
 			return (err = {}, static_cast<std::size_t>(result.QuadPart));
-	}
-	std::size_t system_file::resize(std::size_t n, std::error_code &err) noexcept
-	{
-		LARGE_INTEGER oldpos = {.QuadPart = tell_or_getptr(err)};
-		LARGE_INTEGER endpos = {.QuadPart = n};
-		LARGE_INTEGER newsize = {};
-
-		if (err)
-			return 0;
-		else if (!::SetFilePointerEx(native_handle(), endpos, &newsize, FILE_BEGIN))
-			return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
-		else if (!::SetEndOfFile(native_handle()) || !::SetFilePointerEx(native_handle(), oldpos, nullptr, FILE_BEGIN))
-			return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
-		else [[likely]]
-		{
-			m_offset = static_cast<std::size_t>(oldpos.QuadPart);
-			return static_cast<std::size_t>(newsize.QuadPart);
-		}
 	}
 
 	inline std::size_t system_file::tell_or_getptr(std::error_code &err) const noexcept
