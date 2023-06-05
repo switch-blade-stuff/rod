@@ -80,21 +80,21 @@ namespace rod
 		struct io_cmd<schedule_read_some_at_t>::type : io_cmd<schedule_read_some_t>::type
 		{
 			template<typename T>
-			constexpr type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
+			constexpr type(int fd, std::size_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
 			
 			std::size_t operator()(std::error_code &err) noexcept { return fd.read_at(buff.data(), buff.size(), off, err); }
 			
-			std::ptrdiff_t off;
+			std::size_t off;
 		};
 		template<>
 		struct io_cmd<schedule_write_some_at_t>::type : io_cmd<schedule_write_some_t>::type
 		{
 			template<typename T>
-			constexpr type(int fd, std::ptrdiff_t off, std::span<T> buff) noexcept : io_cmd<schedule_write_some_t>::type(fd, buff), off(off) {}
+			constexpr type(int fd, std::size_t off, std::span<T> buff) noexcept : io_cmd<schedule_write_some_t>::type(fd, buff), off(off) {}
 
 			std::size_t operator()(std::error_code &err) noexcept { return fd.write_at(buff.data(), buff.size(), off, err); }
 
-			std::ptrdiff_t off;
+			std::size_t off;
 		};
 
 		struct operation_base
@@ -596,9 +596,9 @@ namespace rod
 			friend auto tag_invoke(schedule_read_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return _io_sender_t<schedule_read_some_t>{*sch._ctx, fd, buff}; }
 			template<typename Buff>
 			friend auto tag_invoke(schedule_write_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return _io_sender_t<schedule_write_some_t>{*sch._ctx, fd, buff}; }
-			template<std::convertible_to<std::ptrdiff_t> Pos, typename Buff>
+			template<std::convertible_to<std::size_t> Pos, typename Buff>
 			friend auto tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return _io_sender_t<schedule_read_some_at_t>{*sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
-			template<std::convertible_to<std::ptrdiff_t> Pos, typename Buff>
+			template<std::convertible_to<std::size_t> Pos, typename Buff>
 			friend auto tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return _io_sender_t<schedule_write_some_at_t>{*sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
 
 			template<typename Snd, typename Dst>
@@ -617,7 +617,7 @@ namespace rod
 					return schedule_write_some(sch, fd, std::move(src));
 				});
 			}
-			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Dst>
+			template<typename Snd, std::convertible_to<std::size_t> Pos, typename Dst>
 			friend decltype(auto) tag_invoke(async_read_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Dst &&dst)
 			{
 				return let_value(std::forward<Snd>(snd), [sch, fd, pos, dst = std::forward<Dst>(dst)]()
@@ -625,7 +625,7 @@ namespace rod
 					return schedule_read_some_at(sch, fd, pos, std::move(dst));
 				});
 			}
-			template<typename Snd, std::convertible_to<std::ptrdiff_t> Pos, typename Src>
+			template<typename Snd, std::convertible_to<std::size_t> Pos, typename Src>
 			friend decltype(auto) tag_invoke(async_write_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Src &&src)
 			{
 				return let_value(std::forward<Snd>(snd), [sch, fd, pos, src = std::forward<Src>(src)]()

@@ -41,7 +41,8 @@ namespace rod::detail
 			ate = 0b0001'0000,
 			app = 0b0010'0000,
 			trunc = 0b0100'0000,
-			noreplace = 0b1000'0000,
+			nocreate = 0b0'1000'0000,
+			noreplace = 0b1'0000'0000,
 		};
 		enum seekdir : int
 		{
@@ -74,8 +75,8 @@ namespace rod::detail
 		ROD_PUBLIC std::error_code flush() noexcept;
 		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 
 		constexpr void swap(system_file &other) noexcept { unique_descriptor::swap(other); }
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }

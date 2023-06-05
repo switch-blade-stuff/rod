@@ -119,7 +119,7 @@ namespace rod::_io_uring
 		if (err) throw std::system_error(err, "write(event_fd)");
 	}
 
-	inline bool context::submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::ptrdiff_t off) noexcept
+	inline bool context::submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::size_t off) noexcept
 	{
 		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
 		{

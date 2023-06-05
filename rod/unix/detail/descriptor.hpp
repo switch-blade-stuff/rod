@@ -30,8 +30,8 @@ namespace rod::detail
 
 		ROD_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 
 		[[nodiscard]] constexpr bool is_open() const noexcept { return m_fd > -1; }
 		[[nodiscard]] constexpr int native_handle() const noexcept { return m_fd; }

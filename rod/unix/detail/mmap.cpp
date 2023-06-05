@@ -38,7 +38,7 @@ namespace rod::detail
 			return req - rem;
 	}
 
-	system_mmap system_mmap::map(void *hint, std::size_t size, int fd, std::ptrdiff_t off, int mode, int prot, std::error_code &err) noexcept
+	system_mmap system_mmap::map(void *hint, std::size_t size, int fd, std::size_t off, int mode, int prot, std::error_code &err) noexcept
 	{
 		/* Align the file offset and use the difference as the base offset. */
 		const auto base_off = off - align_pagesize(false, off, err);

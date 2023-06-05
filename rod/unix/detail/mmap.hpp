@@ -33,8 +33,8 @@ namespace rod::detail
 			_anon = MAP_ANONYMOUS,
 		};
 
-		static ROD_PUBLIC system_mmap map(void *addr, std::size_t n, int fd, std::ptrdiff_t off, int mode, int prot, std::error_code &err) noexcept;
-		static system_mmap map(void *addr, std::size_t n, int fd, std::ptrdiff_t off, int mode, std::error_code &err) noexcept { return map(addr, n, fd, off, mode, mapprot::_default, err); }
+		static ROD_PUBLIC system_mmap map(void *addr, std::size_t n, int fd, std::size_t off, int mode, int prot, std::error_code &err) noexcept;
+		static system_mmap map(void *addr, std::size_t n, int fd, std::size_t off, int mode, std::error_code &err) noexcept { return map(addr, n, fd, off, mode, mapprot::_default, err); }
 
 		static system_mmap map(void *addr, std::size_t n, int mode, std::error_code &err) noexcept { return map(addr, n, mode, mapprot::_default, err); }
 		static system_mmap map(void *addr, std::size_t n, int mode, int prot, std::error_code &err) noexcept { return map(addr, n, -1, 0, mode | mapmode::_anon, prot, err); }

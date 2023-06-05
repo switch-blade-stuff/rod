@@ -60,7 +60,7 @@ namespace rod::detail
 			return (err = {}, static_cast<std::size_t>(res));
 	}
 
-	std::size_t basic_descriptor::read_at(void *dst, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept
+	std::size_t basic_descriptor::read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX
 		const auto res = ::pread64(m_fd, dst, n, static_cast<off64_t>(off));
@@ -72,7 +72,7 @@ namespace rod::detail
 		else
 			return (err = {}, static_cast<std::size_t>(res));
 	}
-	std::size_t basic_descriptor::write_at(const void *src, std::size_t n, std::ptrdiff_t off, std::error_code &err) noexcept
+	std::size_t basic_descriptor::write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX
 		const auto res = ::pwrite64(m_fd, src, n, static_cast<off64_t>(off));

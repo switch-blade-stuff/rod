@@ -96,10 +96,10 @@ namespace rod
 			 * @param[in] mode Mode flags to use for the mapping.
 			 * @return `mmap_region` handle to the created mapping.
 			 * @throw std::system_error On failure to map memory. */
-			[[nodiscard]] static region map(native_file_handle file, std::ptrdiff_t off, std::size_t size, mapmode mode) { return map(nullptr, file, off, size, mode); }
+			[[nodiscard]] static region map(native_file_handle file, std::size_t off, std::size_t size, mapmode mode) { return map(nullptr, file, off, size, mode); }
 			/** @copydoc map
 			 * @param[in] hint Pointer to a memory location used as a mapping hint. */
-			[[nodiscard]] static region map(void *hint, native_file_handle file, std::ptrdiff_t off, std::size_t size, mapmode mode)
+			[[nodiscard]] static region map(void *hint, native_file_handle file, std::size_t off, std::size_t size, mapmode mode)
 			{
 				std::error_code err;
 				if (auto res = map(hint, file, off, size, mode, err); err)
@@ -109,7 +109,7 @@ namespace rod
 			}
 			/** @copydoc map
 			 * @param[in] prot Protection flags to use for the mapping. */
-			[[nodiscard]] static region map(void *hint, native_file_handle file, std::ptrdiff_t off, std::size_t size, mapmode mode, mapprot prot)
+			[[nodiscard]] static region map(void *hint, native_file_handle file, std::size_t off, std::size_t size, mapmode mode, mapprot prot)
 			{
 				std::error_code err;
 				if (auto res = map(hint, file, off, size, mode, prot, err); err)
@@ -125,13 +125,13 @@ namespace rod
 			 * @param[in] mode Mode flags to use for the mapping.
 			 * @param[out] err Reference to the error code set on failure to map memory.
 			 * @return `mmap_region` handle to the created mapping. */
-			[[nodiscard]] static region map(native_file_handle file, std::ptrdiff_t off, std::size_t size, mapmode mode, std::error_code &err) { return map(nullptr, file, off, size, mode, err); }
+			[[nodiscard]] static region map(native_file_handle file, std::size_t off, std::size_t size, mapmode mode, std::error_code &err) { return map(nullptr, file, off, size, mode, err); }
 			/** @copydoc map
 			 * @param[in] hint Pointer to a memory location used as a mapping hint. */
-			[[nodiscard]] static region map(void *hint, native_file_handle file, std::ptrdiff_t off, std::size_t size, mapmode mode, std::error_code &err) { return {native_t::map(hint, size, file, off, mode, err)}; }
+			[[nodiscard]] static region map(void *hint, native_file_handle file, std::size_t off, std::size_t size, mapmode mode, std::error_code &err) { return {native_t::map(hint, size, file, off, mode, err)}; }
 			/** @copydoc map
 			 * @param[in] prot Protection flags to use for the mapping. */
-			[[nodiscard]] static region map(void *hint, native_file_handle file, std::ptrdiff_t off, std::size_t size, mapmode mode, mapprot prot, std::error_code &err) { return {native_t::map(hint, size, file, off, mode, prot, err)}; }
+			[[nodiscard]] static region map(void *hint, native_file_handle file, std::size_t off, std::size_t size, mapmode mode, mapprot prot, std::error_code &err) { return {native_t::map(hint, size, file, off, mode, prot, err)}; }
 
 		private:
 			constexpr region(native_t &&mmap) noexcept : m_mmap(std::move(mmap)) {}

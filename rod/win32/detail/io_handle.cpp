@@ -4,8 +4,6 @@
 
 #include "io_handle.hpp"
 
-#include <Windows.h>
-
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {

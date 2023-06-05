@@ -63,7 +63,7 @@ namespace rod::detail
 	}
 	system_file system_file::open(const char *path, int mode, int prot, std::error_code &err) noexcept
 	{
-		int flags = O_CREAT | O_CLOEXEC | O_NONBLOCK;
+		int flags = O_CLOEXEC | O_NONBLOCK;
 		switch (mode & (openmode::in | openmode::out))
 		{
 			case openmode::out | openmode::in:
@@ -80,6 +80,7 @@ namespace rod::detail
 		if (mode & openmode::app) flags |= O_APPEND;
 		if (mode & openmode::trunc) flags |= O_TRUNC;
 		if (mode & openmode::direct) flags |= O_DIRECT;
+		if (mode & openmode::nocreate) flags |= O_CREAT;
 		if (mode & openmode::noreplace) flags |= O_EXCL;
 
 		const auto fd = ::open(path, flags, prot);
