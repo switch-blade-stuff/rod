@@ -67,28 +67,27 @@ namespace rod::detail
 		constexpr explicit system_file(unique_io_handle &&hnd, std::size_t off) noexcept : unique_io_handle(std::move(hnd)), m_offset(off) {}
 
 		using unique_io_handle::close;
-		using unique_io_handle::release;
 		using unique_io_handle::is_open;
 		using unique_io_handle::native_handle;
 
-		ROD_PUBLIC std::size_t tell(std::error_code &err) noexcept;
+		void *release() noexcept
+		{
+			m_offset = std::numeric_limits<std::size_t>::max();
+			return unique_io_handle::release();
+		}
+		void *release(void *hnd) noexcept
+		{
+			m_offset = std::numeric_limits<std::size_t>::max();
+			return unique_io_handle::release(hnd);
+		}
+
+		ROD_PUBLIC std::size_t size(std::error_code &err) const noexcept;
+		ROD_PUBLIC std::size_t resize(std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
 		ROD_PUBLIC std::error_code flush() noexcept;
-		std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
-		{
-			if (const auto pos = tell(err); !err) [[likely]]
-				return sync_read_at(dst, n, pos, err);
-			else
-				return 0;
-		}
-		std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
-		{
-			if (const auto pos = tell(err); !err) [[likely]]
-				return sync_write_at(src, n, pos, err);
-			else
-				return 0;
-		}
+		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
+		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 

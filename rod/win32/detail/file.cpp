@@ -7,7 +7,6 @@
 #include "file.hpp"
 
 #define NOMINMAX
-
 #include <windows.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
@@ -101,16 +100,11 @@ namespace rod::detail
 		}
 		return m_offset;
 	}
-
-	std::size_t system_file::tell(std::error_code &err) noexcept
-	{
-		return m_offset = tell_or_getptr(err);
-	}
 	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
 		if (dir == seekdir::cur)
 		{
-			off += static_cast<std::ptrdiff_t>(m_offset);
+			off += static_cast<std::ptrdiff_t>(tell_or_getptr(err));
 			dir = seekdir::beg;
 		}
 
@@ -134,6 +128,20 @@ namespace rod::detail
 			return {static_cast<int>(::GetLastError()), std::system_category()};
 		else
 			return {};
+	}
+	std::size_t system_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
+	{
+		if (const auto pos = tell_or_getptr(err); !err) [[likely]]
+			return sync_read_at(dst, n, pos, err);
+		else
+			return 0;
+	}
+	std::size_t system_file::sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
+	{
+		if (const auto pos = tell_or_getptr(err); !err) [[likely]]
+			return sync_write_at(src, n, pos, err);
+		else
+			return 0;
 	}
 	std::size_t system_file::sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept
 	{
@@ -165,7 +173,7 @@ namespace rod::detail
 			if (err_code == ERROR_HANDLE_EOF)
 				break;
 		}
-		m_offset += total;
+		m_offset = off + total;
 		return total;
 	}
 	std::size_t system_file::sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept
@@ -199,6 +207,7 @@ namespace rod::detail
 			if (err_code == ERROR_HANDLE_EOF)
 				break;
 		}
+		m_offset = off + total;
 		return total;
 	}
 }

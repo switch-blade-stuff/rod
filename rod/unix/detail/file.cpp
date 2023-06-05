@@ -111,18 +111,6 @@ namespace rod::detail
 			return open(buff.c_str(), mode, prot, err);
 	}
 
-	std::size_t system_file::tell(std::error_code &err) const noexcept
-	{
-#if SIZE_MAX >= UINT64_MAX
-		const auto res = ::lseek64(native_handle(), 0, SEEK_CUR);
-#else
-		const auto res = ::lseek(native_handle(), 0, SEEK_CUR);
-#endif
-		if (res < 0) [[unlikely]]
-			return (err = {errno, std::system_category()}, 0);
-		else
-			return (err = {}, static_cast<std::size_t>(res));
-	}
 	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX

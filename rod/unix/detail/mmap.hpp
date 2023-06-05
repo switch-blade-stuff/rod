@@ -15,6 +15,8 @@
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
+	/* TODO: Implement a generic memory map interface. */
+
 	class system_mmap
 	{
 	public:

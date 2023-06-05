@@ -360,21 +360,14 @@ namespace rod
 			 * @return New absolute position within the file. */
 			std::size_t seek(std::ptrdiff_t off, seekdir dir, std::error_code &err) noexcept { return m_file.seek(off, dir, err); }
 
-			/** @brief Returns the current position within the file.
+			/** @brief Returns the current position within the file. Equivalent to `seek(0, cur)`.
 			 * @return Current absolute position within the file.
 			 * @throw std::system_error On failure to get position of the file. */
-			[[nodiscard]] std::size_t tell()
-			{
-				std::error_code err;
-				if (auto res = tell(err); err)
-					throw std::system_error(err, "rod::basic_file::tell");
-				else
-					return res;
-			}
+			[[nodiscard]] std::size_t tell() { return seek(0, cur); }
 			/** @copybrief tell
 			 * @param[out] err Reference to the error code set on failure to get position of the file.
 			 * @return Current absolute position within the file. */
-			[[nodiscard]] std::size_t tell(std::error_code &err) noexcept { return m_file.tell(err); }
+			[[nodiscard]] std::size_t tell(std::error_code &err) noexcept { return seek(0, cur, err); }
 
 			/** Checks if the file is open. */
 			[[nodiscard]] bool is_open() const noexcept { return m_file.is_open(); }
