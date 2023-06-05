@@ -5,17 +5,51 @@
 #include <Windows.h>
 
 #include "file.hpp"
-#include "rod/unix/detail/file.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
-	system_file system_file::open(const char *path, int mode, std::error_code &err) noexcept
+	constexpr DWORD share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
+
+	system_file system_file::open(const char *path, int mode, int prot, std::error_code &err) noexcept
 	{
-		::MultiByteToWideChar();
+		const auto size = ::MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
+		if (!size) [[unlikely]] return (err = {static_cast<int>(::GetLastError()), std::system_category()}, system_file{});
+
+		auto buff = std::wstring(static_cast<std::size_t>(size), '\0');
+		if (!::MultiByteToWideChar(CP_UTF8, 0, path, -1, buff.data(), buff.size()))
+			[[unlikely]] return (err = {static_cast<int>(::GetLastError()), std::system_category()}, system_file{});
+		else
+			return open(buff.c_str(), mode, prot, err);
 	}
-	system_file system_file::open(const wchar_t *path, int mode, std::error_code &err) noexcept
+	system_file system_file::open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept
 	{
+		DWORD access = 0;
+		if (mode & openmode::in) access |= FILE_GENERIC_READ;
+		if (mode & openmode::out)
+		{
+			access |= FILE_GENERIC_WRITE;
+			if (mode & openmode::app)
+				access ^= FILE_WRITE_DATA;
+			else if (!(mode & openmode::ate))
+				access ^= FILE_APPEND_DATA;
+		}
+
+		DWORD disp;
+		if (mode & openmode::noreplace)
+			disp = CREATE_NEW;
+		else if (mode & openmode::trunc)
+			disp = CREATE_ALWAYS;
+		else
+			disp = OPEN_ALWAYS;
+
+		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS | FILE_FLAG_OVERLAPPED;
+		if (mode & openmode::direct) flags |= FILE_FLAG_WRITE_THROUGH;
+
+		const auto res = ::CreateFileW(path, access, share, nullptr, disp, flags, nullptr);
+		if (!res) [[unlikely]] return (err = {static_cast<int>(::GetLastError()), std::system_category()}, system_file{});
+
+		return system_file{res};
 	}
 
 	std::size_t system_file::tell(std::error_code &err) const noexcept
