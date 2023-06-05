@@ -8,9 +8,6 @@
 
 #ifdef _WIN32
 
-#define NOMINMAX
-#include <windows.h>
-
 #include <system_error>
 #include <utility>
 
@@ -19,22 +16,24 @@ namespace rod::detail
 {
 	class basic_io_handle
 	{
+		static void *invalid_handle() noexcept { return reinterpret_cast<void *>(static_cast<std::uintptr_t>(-1)); }
+
 	public:
 		constexpr basic_io_handle() noexcept = default;
 		constexpr explicit basic_io_handle(void *handle) noexcept : m_handle(handle) {}
 
-		constexpr void *release() noexcept { return std::exchange(m_handle, nullptr); }
+		void *release(void *hnd = invalid_handle()) noexcept { return std::exchange(m_handle, hnd); }
 
 		ROD_PUBLIC std::error_code close() noexcept;
 
-		[[nodiscard]] bool is_open() const noexcept { return m_handle != INVALID_HANDLE_VALUE; }
+		[[nodiscard]] bool is_open() const noexcept { return m_handle != invalid_handle(); }
 		[[nodiscard]] void *native_handle() const noexcept { return m_handle; }
 
 		constexpr void swap(basic_io_handle &other) noexcept { std::swap(m_handle, other.m_handle); }
 		friend constexpr void swap(basic_io_handle &a, basic_io_handle &b) noexcept { a.swap(b); }
 
 	private:
-		void *m_handle = INVALID_HANDLE_VALUE;
+		void *m_handle = invalid_handle();
 	};
 
 	class unique_io_handle : basic_io_handle

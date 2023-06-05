@@ -319,7 +319,7 @@ namespace rod
 			constexpr basic_file &operator=(basic_file &&other) noexcept { return (m_file = std::move(other.m_file), *this); }
 
 			/** Initializes the file from a native file handle. */
-			constexpr explicit basic_file(native_handle_type file) noexcept : m_file(file) {}
+			explicit basic_file(native_handle_type file) noexcept : m_file(file) {}
 
 			/** @brief Closes the file handle.
 			 * @param[out] err Reference to the error code set on failure to close the file. */
@@ -329,9 +329,9 @@ namespace rod
 			void close() { if (auto err = m_file.close(); err) throw std::system_error(err, "rod::basic_file::close"); }
 
 			/** Releases the underlying native file handle without closing. */
-			constexpr native_handle_type release() noexcept { return m_file.release(); }
+			native_handle_type release() noexcept { return m_file.release(); }
 			/** Releases the underlying native file handle without closing and replaces it with the specified handle. */
-			constexpr native_handle_type release(native_handle_type new_file) noexcept { return m_file.release(new_file); }
+			native_handle_type release(native_handle_type new_file) noexcept { return m_file.release(new_file); }
 
 			/** @brief Flushes modified file data to the underlying device.
 			 * @param[out] err Reference to the error code set on failure to flush the file. */

@@ -2,7 +2,13 @@
  * Created by switchblade on 2023-05-18.
  */
 
+#ifdef _WIN32
+
 #include "file.hpp"
+
+#define NOMINMAX
+
+#include <windows.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
@@ -102,6 +108,12 @@ namespace rod::detail
 	}
 	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
+		if (dir == seekdir::cur)
+		{
+			off += static_cast<std::ptrdiff_t>(m_offset);
+			dir = seekdir::beg;
+		}
+
 #if SIZE_MAX >= UINT64_MAX
 		auto high = static_cast<LONG>(off >> std::numeric_limits<LONG>::digits);
 		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), &high, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
@@ -123,16 +135,72 @@ namespace rod::detail
 		else
 			return {};
 	}
-	std::size_t system_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
-	{
-		if (const auto pos = tell(err); !err) [[likely]]
-			return sync_read_at(dst, n, pos, err);
-		else
-			return 0;
-	}
 	std::size_t system_file::sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept
 	{
-		return 0;
+		std::size_t total = 0;
+		for (DWORD n_done = 0, err_code = 0; total < n;)
+		{
+			OVERLAPPED overlapped = {};
+			overlapped.Offset = static_cast<DWORD>(off + total);
+#if SIZE_MAX >= UINT64_MAX
+			overlapped.OffsetHigh = static_cast<DWORD>((off + total) << std::numeric_limits<DWORD>::digits);
+#endif
+
+			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
+			if (!::ReadFile(native_handle(), static_cast<std::byte *>(dst) + total, n_done, nullptr, &overlapped))
+				if (err_code = ::GetLastError(); err_code != ERROR_IO_PENDING) [[unlikely]]
+				{
+					err = {static_cast<int>(err_code), std::system_category()};
+					break;
+				}
+
+			if (!::GetOverlappedResultEx(native_handle(), &overlapped, &n_done, INFINITE, false))
+				if (err_code = ::GetLastError(); err_code != ERROR_HANDLE_EOF) [[unlikely]]
+				{
+					err = {static_cast<int>(err_code), std::system_category()};
+					break;
+				}
+
+			total += n_done;
+			if (err_code == ERROR_HANDLE_EOF)
+				break;
+		}
+		m_offset += total;
+		return total;
+	}
+	std::size_t system_file::sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept
+	{
+		std::size_t total = 0;
+		for (DWORD n_done = 0, err_code = 0; total < n;)
+		{
+			OVERLAPPED overlapped = {};
+			overlapped.Offset = static_cast<DWORD>(off + total);
+#if SIZE_MAX >= UINT64_MAX
+			overlapped.OffsetHigh = static_cast<DWORD>((off + total) << std::numeric_limits<DWORD>::digits);
+#endif
+
+
+			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
+			if (!::WriteFile(native_handle(), static_cast<const std::byte *>(src) + total, n_done, nullptr, &overlapped))
+				if (err_code = ::GetLastError(); err_code != ERROR_IO_PENDING) [[unlikely]]
+				{
+					err = {static_cast<int>(err_code), std::system_category()};
+					break;
+				}
+
+			if (!::GetOverlappedResultEx(native_handle(), &overlapped, &n_done, INFINITE, false))
+				if (err_code = ::GetLastError(); err_code != ERROR_HANDLE_EOF) [[unlikely]]
+				{
+					err = {static_cast<int>(err_code), std::system_category()};
+					break;
+				}
+
+			total += n_done;
+			if (err_code == ERROR_HANDLE_EOF)
+				break;
+		}
+		return total;
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
+#endif

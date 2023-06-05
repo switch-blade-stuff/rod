@@ -75,8 +75,20 @@ namespace rod::detail
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
 		ROD_PUBLIC std::error_code flush() noexcept;
-		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
+		std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
+		{
+			if (const auto pos = tell(err); !err) [[likely]]
+				return sync_read_at(dst, n, pos, err);
+			else
+				return 0;
+		}
+		std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
+		{
+			if (const auto pos = tell(err); !err) [[likely]]
+				return sync_write_at(src, n, pos, err);
+			else
+				return 0;
+		}
 		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 

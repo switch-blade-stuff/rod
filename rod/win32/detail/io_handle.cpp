@@ -2,7 +2,12 @@
  * Created by switchblade on 2023-05-20.
  */
 
+#ifdef _WIN32
+
 #include "io_handle.hpp"
+
+#define NOMINMAX
+#include <windows.h>
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
@@ -11,3 +16,4 @@ namespace rod::detail
 	unique_io_handle::~unique_io_handle() { if (is_open()) ::CloseHandle(release()); }
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
+#endif

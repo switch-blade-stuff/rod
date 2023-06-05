@@ -28,7 +28,6 @@ namespace rod::detail
 		enum mapmode : int
 		{
 			copy = MAP_PRIVATE,
-			stack = MAP_STACK | MAP_GROWSDOWN,
 			shared = MAP_SHARED,
 			_anon = MAP_ANONYMOUS,
 		};

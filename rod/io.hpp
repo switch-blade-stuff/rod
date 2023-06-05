@@ -14,7 +14,6 @@
 #endif
 
 #include "file.hpp"
-#include "mmap.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
