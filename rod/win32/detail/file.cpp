@@ -187,7 +187,6 @@ namespace rod::detail
 			overlapped.OffsetHigh = static_cast<DWORD>((off + total) << std::numeric_limits<DWORD>::digits);
 #endif
 
-
 			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
 			if (!::WriteFile(native_handle(), static_cast<const std::byte *>(src) + total, n_done, nullptr, &overlapped))
 				if (err_code = ::GetLastError(); err_code != ERROR_IO_PENDING) [[unlikely]]
