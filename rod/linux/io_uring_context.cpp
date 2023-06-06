@@ -63,7 +63,7 @@ namespace rod::_io_uring
 			m_cq.tail = reinterpret_cast<unsigned *>(bytes + params.cq_off.tail);
 			m_cq.head = reinterpret_cast<unsigned *>(bytes + params.cq_off.head);
 			m_cq.size = params.cq_entries;
-			m_cq_mmap.release(data, size);
+			m_cq_mmap.release(data, data, size);
 		}
 		{
 			const auto size = params.sq_entries * sizeof(std::uint32_t) + params.sq_off.array;
@@ -77,7 +77,7 @@ namespace rod::_io_uring
 			m_sq.tail = reinterpret_cast<unsigned *>(bytes + params.sq_off.tail);
 			m_sq.head = reinterpret_cast<unsigned *>(bytes + params.sq_off.head);
 			m_sq.size = params.sq_entries;
-			m_sq_mmap.release(data, size);
+			m_sq_mmap.release(data, data, size);
 		}
 		{
 			const auto size = params.sq_entries * sizeof(io_uring_sqe);
@@ -85,7 +85,7 @@ namespace rod::_io_uring
 			if (!data) throw_errno("mmap");
 
 			m_sq.entries = static_cast<io_uring_sqe *>(data);
-			m_sqe_mmap.release(data, size);
+			m_sqe_mmap.release(data, data, size);
 		}
 	}
 	context::~context() = default;

@@ -50,7 +50,7 @@ namespace rod::detail
 			end = SEEK_END,
 		};
 
-		static ROD_PUBLIC system_file reopen(native_handle_type fd, int mode, std::error_code &err) noexcept;
+		static ROD_PUBLIC system_file reopen(native_handle_type hnd, int mode, std::error_code &err) noexcept;
 		static ROD_PUBLIC system_file open(const char *path, int mode, int prot, std::error_code &err) noexcept;
 		static ROD_PUBLIC system_file open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept;
 
@@ -83,9 +83,13 @@ namespace rod::detail
 
 		ROD_PUBLIC std::error_code resize(std::size_t n) noexcept;
 		ROD_PUBLIC std::size_t size(std::error_code &err) const noexcept;
+
+		ROD_PUBLIC std::size_t tell(std::error_code &err) const noexcept;
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
-		ROD_PUBLIC std::error_code flush() noexcept;
+		ROD_PUBLIC std::error_code sync() noexcept;
+		std::error_code flush() noexcept { return sync(); }
+
 		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
@@ -99,8 +103,6 @@ namespace rod::detail
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }
 
 	private:
-		std::size_t tell_or_getptr(std::error_code &err) const noexcept;
-
 		std::size_t m_offset = std::numeric_limits<std::size_t>::max();
 	};
 }

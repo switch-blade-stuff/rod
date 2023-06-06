@@ -28,22 +28,26 @@ void test_basic_file(auto mode)
 	{
 		const auto write_n = rod::write_some(file, rod::as_byte_buffer(data), err);
 		TEST_ASSERT(!err && write_n == data.size());
+		TEST_ASSERT(file.size() == data.size());
 
 		const auto pos = file.seek(0, basic_file_t::beg, err);
 		TEST_ASSERT(!err && pos == 0);
 
 		const auto read_n = rod::read_some(file, rod::as_byte_buffer(buff), err);
 		TEST_ASSERT(!err && read_n == data.size());
+		TEST_ASSERT(read_n == file.size());
 		TEST_ASSERT(buff.find(data) == 0);
 	}
 	{
 		const auto write_n = rod::write_some_at(file, data.size(), rod::as_byte_buffer(data), err);
 		TEST_ASSERT(!err && write_n == data.size());
+		TEST_ASSERT(file.size() == data.size() * 2);
 
 		std::fill(buff.begin(), buff.end(), '\0');
 		const auto read_n = rod::read_some_at(file, 0, rod::as_byte_buffer(buff), err);
 		TEST_ASSERT(!err && read_n == data.size() * 2);
 		TEST_ASSERT(buff.find(data) != buff.rfind(data));
+		TEST_ASSERT(read_n == file.size());
 		TEST_ASSERT(buff.find(data) == 0);
 	}
 	{
@@ -53,7 +57,7 @@ void test_basic_file(auto mode)
 		           | rod::then([](auto n) { TEST_ASSERT(n == data.size()); })
 		           | rod::then([&]() { file.seek(0, basic_file_t::beg); })
 		           | rod::async_read_some(file, rod::as_byte_buffer(buff))
-		           | rod::then([](auto n) { TEST_ASSERT(n == data.size() * 2); })
+		           | rod::then([&](auto n) { TEST_ASSERT(n == file.size()); })
 		           | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
 		rod::sync_wait(snd);
 	}

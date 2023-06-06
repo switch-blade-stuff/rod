@@ -71,9 +71,12 @@ namespace rod::detail
 
 		ROD_PUBLIC std::error_code resize(std::size_t n) noexcept;
 		ROD_PUBLIC std::size_t size(std::error_code &err) const noexcept;
+		ROD_PUBLIC std::size_t tell(std::error_code &err) const noexcept;
 		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
-		ROD_PUBLIC std::error_code flush() noexcept;
+		ROD_PUBLIC std::error_code sync() noexcept;
+		std::error_code flush() noexcept { return sync(); }
+
 		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;

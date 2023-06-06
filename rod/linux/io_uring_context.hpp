@@ -306,9 +306,9 @@ namespace rod
 			detail::unique_descriptor m_event_fd = {};
 
 			/* Memory mappings of io_uring queues. */
-			detail::system_mmap m_cq_mmap = {};
-			detail::system_mmap m_sq_mmap = {};
-			detail::system_mmap m_sqe_mmap = {};
+			detail::mmap_handle m_cq_mmap = {};
+			detail::mmap_handle m_sq_mmap = {};
+			detail::mmap_handle m_sqe_mmap = {};
 
 			/* State of io_uring queues. */
 			cq_state_t m_cq = {};

@@ -8,6 +8,7 @@
 #include "detail/adaptors/write_some.hpp"
 
 #include <filesystem>
+#include <cassert>
 #include <cstdio>
 
 /* Platform-specific implementations. */
@@ -78,15 +79,13 @@ namespace rod
 			constexpr void _complete() noexcept((std::is_nothrow_move_constructible_v<Args> && ...))
 			{
 				std::apply([&]<typename... Vs>(Vs &&...vs) noexcept((std::is_nothrow_move_constructible_v<Args> && ...))
-				           {
-					           std::error_code err;
-					           const auto res = T{}(std::forward<Vs>(vs)..., err);
-					           if (err) [[unlikely]]
-								           set_error(std::move(_op->_rcv), err);
-					           else
-						           set_value(std::move(_op->_rcv), res);
-
-				           }, std::move(_op->_args));
+				{
+					std::error_code err;
+					if (const auto res = T{}(std::forward<Vs>(vs)..., err); err)
+						[[unlikely]] set_error(std::move(_op->_rcv), err);
+					else
+						set_value(std::move(_op->_rcv), res);
+				}, std::move(_op->_args));
 			}
 
 			_operation_base_t *_op;
@@ -125,7 +124,7 @@ namespace rod
 			std::tuple<Args...> _args;
 		};
 
-		/** Unbuffered file handle (such as a regular posix file descriptor). */
+		/** Basic filesystem file handle (such as a POSIX file descriptor or Win32 HANDLE). */
 		class basic_file
 		{
 			using native_t = detail::system_file;
@@ -236,7 +235,8 @@ namespace rod
 			 * @param[in] mode Mode flags to use for the opened file.
 			 * @param[in] prot Protection flags to use for the opened file.
 			 * @return `basic_file` handle to the opened file.
-			 * @throw std::system_error On failure to open the file.  */
+			 * @throw std::system_error On failure to open the file.
+			 * @note Protection flags are currently ignored under Win32. */
 			[[nodiscard]] static basic_file open(const char *path, openmode mode, fileprot prot)
 			{
 				std::error_code err;
@@ -266,7 +266,8 @@ namespace rod
 			 * @param[in] mode Mode flags to use for the opened file.
 			 * @param[in] prot Protection flags to use for the opened file.
 			 * @param[out] err Reference to the error code set on failure to open the file.
-			 * @return `basic_file` handle to the opened file, or a closed file handle if an error has occurred. */
+			 * @return `basic_file` handle to the opened file, or a closed file handle if an error has occurred.
+			 * @note Protection flags are currently ignored under Win32. */
 			[[nodiscard]] static basic_file open(const char *path, openmode mode, fileprot prot, std::error_code &err) noexcept { return {native_t::open(path, mode | binary, prot, err)}; }
 			/** @copydoc open */
 			[[nodiscard]] static basic_file open(const wchar_t *path, openmode mode, fileprot prot, std::error_code &err) noexcept { return {native_t::open(path, mode | binary, prot, err)}; }
@@ -333,12 +334,35 @@ namespace rod
 			/** Releases the underlying native file handle without closing and replaces it with the specified handle. */
 			native_handle_type release(native_handle_type new_file) noexcept { return m_file.release(new_file); }
 
-			/** @brief Flushes modified file data to the underlying device.
+			/** @brief Synchronizes file with the underlying device.
+			 * @param[out] err Reference to the error code set on failure to synchronize the file. */
+			void sync(std::error_code &err) noexcept { err = m_file.sync(); }
+			/** @copybrief flush
+			 * @throw std::system_error On failure to flush the file. */
+			void sync() { if (const auto err = m_file.sync(); err) throw std::system_error(err, "rod::basic_file::sync"); }
+
+			/** @brief Flushes file buffers.
 			 * @param[out] err Reference to the error code set on failure to flush the file. */
 			void flush(std::error_code &err) noexcept { err = m_file.flush(); }
 			/** @copybrief flush
 			 * @throw std::system_error On failure to flush the file. */
-			void flush() { if (auto err = m_file.flush(); err) throw std::system_error(err, "rod::basic_file::flush"); }
+			void flush() { if (const auto err = m_file.flush(); err) throw std::system_error(err, "rod::basic_file::flush"); }
+
+			/** @brief Returns the current position within the file. Equivalent to `seek(0, cur)`.
+			 * @return Current absolute position within the file.
+			 * @throw std::system_error On failure to get position of the file. */
+			[[nodiscard]] std::size_t tell() const
+			{
+				std::error_code err;
+				if (auto res = tell(err); err)
+					throw std::system_error(err, "rod::basic_file::tell");
+				else
+					return res;
+			}
+			/** @copybrief tell
+			 * @param[out] err Reference to the error code set on failure to get position of the file.
+			 * @return Current absolute position within the file. */
+			[[nodiscard]] std::size_t tell(std::error_code &err) const noexcept { return m_file.tell(err); }
 
 			/** @brief Seeks to the specified offset within the file starting at the specified position.
 			 * @param[in] off Offset into the file starting at \a dir.
@@ -360,14 +384,32 @@ namespace rod
 			 * @return New absolute position within the file. */
 			std::size_t seek(std::ptrdiff_t off, seekdir dir, std::error_code &err) noexcept { return m_file.seek(off, dir, err); }
 
-			/** @brief Returns the current position within the file. Equivalent to `seek(0, cur)`.
-			 * @return Current absolute position within the file.
-			 * @throw std::system_error On failure to get position of the file. */
-			[[nodiscard]] std::size_t tell() { return seek(0, cur); }
+			/** @brief Returns the size of the file.
+			 * @return Current size of the file as reported by the filesystem.
+			 * @throw std::system_error On failure to get size of the file. */
+			[[nodiscard]] std::size_t size() const
+			{
+				std::error_code err;
+				if (auto res = size(err); err)
+					throw std::system_error(err, "rod::basic_file::size");
+				else
+					return res;
+			}
 			/** @copybrief tell
-			 * @param[out] err Reference to the error code set on failure to get position of the file.
-			 * @return Current absolute position within the file. */
-			[[nodiscard]] std::size_t tell(std::error_code &err) noexcept { return seek(0, cur, err); }
+			 * @param[out] err Reference to the error code set on failure to get size of the file.
+			 * @return Current size of the file as reported by the filesystem. */
+			[[nodiscard]] std::size_t size(std::error_code &err) const noexcept { return m_file.size(err); }
+
+			/** @brief Re-sizes the file to the specified amount of bytes.
+			 * @param[in] new_size New size of the file in bytes.
+			 * @throw std::system_error On failure to seek the file. */
+			void resize(std::size_t new_size) { if (const auto err = m_file.resize(new_size); err) throw std::system_error(err, "rod::basic_file::resize"); }
+			/** @copybrief seek
+			 * @param[in] off Offset into the file starting at \a dir.
+			 * @param[in] dir Base direction to seek from.
+			 * @param[out] err Reference to the error code set on failure to seek the file.
+			 * @return New absolute position within the file. */
+			void resize(std::size_t new_size, std::error_code &err) noexcept { err = m_file.resize(new_size); }
 
 			/** Checks if the file is open. */
 			[[nodiscard]] bool is_open() const noexcept { return m_file.is_open(); }
@@ -454,9 +496,6 @@ namespace rod
 			native_t m_file = {};
 		};
 
-//		/** Buffered file handle. */
-//		class file;
-
 		template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires(!detail::callable<T, Snd, typename basic_file::native_handle_type, Buff>)
 		inline auto tag_invoke(T, Snd &&snd, F &&f, Buff &&buff) noexcept(detail::nothrow_decay_copyable<Snd>::value && detail::nothrow_decay_copyable<Buff>::value)
 		{
@@ -484,6 +523,5 @@ namespace rod
 	}
 
 	using _file::basic_file;
-//	using _file::file;
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

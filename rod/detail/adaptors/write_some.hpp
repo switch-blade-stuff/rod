@@ -61,10 +61,10 @@ namespace rod
 			}
 		};
 
-		template<typename Snd>
-		concept write_some_sender = sender_of<Snd, set_value_t(std::size_t)> || sender_of<Snd, set_value_t(std::size_t, std::error_code)>;
 		template<typename T, typename Snd, typename... Args>
 		concept value_overload = detail::tag_invocable_with_completion_scheduler<T, set_value_t, Snd, Snd, Args...>;
+		template<typename Snd>
+		concept write_some_sender = sender_of<Snd, set_value_t(std::size_t)>;
 
 		template<typename Snd>
 		using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
@@ -174,7 +174,7 @@ namespace rod
 	 * @param[in] snd Input sender who's value completion channel will be used for the async write operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] src Contiguous input range of integral values.
-	 * @return Sender completing either with the amount of bytes written and an optional error code, or an error on write failure. */
+	 * @return Sender completing with the amount of bytes written or an optional error code on write failure. */
 	inline constexpr auto async_write_some = async_write_some_t{};
 
 	using _write_some::async_write_some_at_t;
@@ -185,7 +185,7 @@ namespace rod
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
 	 * @param[in] src Contiguous input range of integral values.
-	 * @return Sender completing either with the amount of bytes written and an optional error code, or an error on write failure. */
+	 * @return Sender completing with the amount of bytes written or an optional error code on write failure. */
 	inline constexpr auto async_write_some_at = async_write_some_at_t{};
 
 	using _write_some::schedule_write_some_t;
@@ -195,7 +195,7 @@ namespace rod
 	 * @param[in] sch Scheduler used to schedule the write operation.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing on \a sch either with the amount of bytes written and an optional error code, or an error on write failure. */
+	 * @return Sender completing on \a sch with the amount of bytes written or an optional error code on write failure. */
 	inline constexpr auto schedule_write_some = schedule_write_some_t{};
 
 	using _write_some::schedule_write_some_at_t;
@@ -206,7 +206,7 @@ namespace rod
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return Sender completing on \a sch either with the amount of bytes written and an optional error code, or an error on write failure. */
+	 * @return Sender completing on \a sch with the amount of bytes written or an optional error code on write failure. */
 	inline constexpr auto schedule_write_some_at = schedule_write_some_at_t{};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

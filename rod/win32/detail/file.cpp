@@ -84,11 +84,49 @@ namespace rod::detail
 		else
 			return system_file{hnd, off};
 	}
+	system_file system_file::reopen(native_handle_type hnd, int mode, std::error_code &err) noexcept
+	{
+		DWORD access = 0;
+		if (mode & openmode::in) access |= FILE_GENERIC_READ;
+		if (mode & openmode::out)
+		{
+			access |= FILE_GENERIC_WRITE;
+			if (mode & openmode::app)
+				access ^= FILE_WRITE_DATA;
+			else if (!(mode & openmode::ate))
+				access ^= FILE_APPEND_DATA;
+		}
+
+		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS | FILE_FLAG_OVERLAPPED;
+		if (mode & openmode::direct) flags |= FILE_FLAG_WRITE_THROUGH;
+
+		hnd = ::ReOpenFile(hnd, access, share, flags);
+		if (hnd == INVALID_HANDLE_VALUE) [[unlikely]] return (err = {static_cast<int>(::GetLastError()), std::system_category()}, system_file{});
+
+		auto off = std::numeric_limits<std::size_t>::max();
+#if SIZE_MAX >= UINT64_MAX
+		LONG high = 0;
+		if (const auto res = ::SetFilePointer(hnd, 0, &high, FILE_CURRENT); res != INVALID_SET_FILE_POINTER)
+			[[likely]] off = (static_cast<std::size_t>(res) | (static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits));
+		else
+			err = {static_cast<int>(::GetLastError()), std::system_category()};
+#else
+		if (const auto res = ::SetFilePointer(hnd, 0, nullptr, FILE_CURRENT); res == INVALID_SET_FILE_POINTER)
+			[[unlikely]] err = {static_cast<int>(::GetLastError()), std::system_category()};
+		else
+			off = static_cast<std::size_t>(res);
+#endif
+
+		if (err) [[unlikely]]
+			return (::CloseHandle(hnd), system_file{});
+		else
+			return system_file{hnd, off};
+	}
 
 	std::error_code system_file::resize(std::size_t n) noexcept
 	{
 		std::error_code err;
-		LARGE_INTEGER oldpos = {.QuadPart = tell_or_getptr(err)};
+		LARGE_INTEGER oldpos = {.QuadPart = tell(err)};
 		LARGE_INTEGER endpos = {.QuadPart = n};
 
 		if (!err) [[likely]]
@@ -110,7 +148,7 @@ namespace rod::detail
 			return (err = {}, static_cast<std::size_t>(result.QuadPart));
 	}
 
-	inline std::size_t system_file::tell_or_getptr(std::error_code &err) const noexcept
+	std::size_t system_file::tell(std::error_code &err) const noexcept
 	{
 		if (m_offset == std::numeric_limits<std::size_t>::max()) [[unlikely]]
 		{
@@ -133,7 +171,7 @@ namespace rod::detail
 	{
 		if (dir == seekdir::cur)
 		{
-			off += static_cast<std::ptrdiff_t>(tell_or_getptr(err));
+			off += static_cast<std::ptrdiff_t>(tell(err));
 			dir = seekdir::beg;
 		}
 
@@ -151,7 +189,7 @@ namespace rod::detail
 #endif
 	}
 
-	std::error_code system_file::flush() noexcept
+	std::error_code system_file::sync() noexcept
 	{
 		if (!::FlushFileBuffers(native_handle())) [[unlikely]]
 			return {static_cast<int>(::GetLastError()), std::system_category()};
@@ -160,14 +198,14 @@ namespace rod::detail
 	}
 	std::size_t system_file::sync_read(void *dst, std::size_t n, std::error_code &err) noexcept
 	{
-		if (const auto pos = tell_or_getptr(err); !err) [[likely]]
+		if (const auto pos = tell(err); !err) [[likely]]
 			return sync_read_at(dst, n, pos, err);
 		else
 			return 0;
 	}
 	std::size_t system_file::sync_write(const void *src, std::size_t n, std::error_code &err) noexcept
 	{
-		if (const auto pos = tell_or_getptr(err); !err) [[likely]]
+		if (const auto pos = tell(err); !err) [[likely]]
 			return sync_write_at(src, n, pos, err);
 		else
 			return 0;

@@ -80,8 +80,8 @@ namespace rod::detail
 		if (mode & openmode::app) flags |= O_APPEND;
 		if (mode & openmode::trunc) flags |= O_TRUNC;
 		if (mode & openmode::direct) flags |= O_DIRECT;
-		if (mode & openmode::nocreate) flags |= O_CREAT;
 		if (mode & openmode::noreplace) flags |= O_EXCL;
+		if (!(mode & openmode::nocreate)) flags |= O_CREAT;
 
 		const auto fd = ::open(path, flags, prot);
 		if (fd < 0) [[unlikely]] goto fail;
@@ -131,6 +131,18 @@ namespace rod::detail
 			return {};
 	}
 
+	std::size_t system_file::tell(std::error_code &err) const noexcept
+	{
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto res = ::lseek64(native_handle(), 0, seekdir::beg);
+#else
+		const auto res = ::lseek(native_handle(), 0, seekdir::beg);
+#endif
+		if (res < 0) [[unlikely]]
+			return (err = {errno, std::system_category()}, 0);
+		else
+			return (err = {}, static_cast<std::size_t>(res));
+	}
 	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX
@@ -144,7 +156,7 @@ namespace rod::detail
 			return (err = {}, static_cast<std::size_t>(res));
 	}
 
-	std::error_code system_file::flush() noexcept
+	std::error_code system_file::sync() noexcept
 	{
 		if (::fsync(native_handle())) [[unlikely]]
 			return {errno, std::system_category()};
