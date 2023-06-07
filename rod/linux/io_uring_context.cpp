@@ -43,74 +43,74 @@ namespace rod::_io_uring
 			if (auto fd = io_uring_setup(entries, &params); fd < 0)
 				throw_errno("io_uring_setup");
 			else
-				m_uring_fd.release(fd);
+				_uring_fd.release(fd);
 		}
 		{
 			if (const auto fd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC); fd < 0)
 				throw_errno("eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC)");
 			else
-				m_event_fd.release(fd);
+				_event_fd.release(fd);
 		}
 		{
 			const auto size = params.cq_entries * sizeof(io_uring_cqe) + params.cq_off.cqes;
-			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, m_uring_fd.native_handle(), IORING_OFF_CQ_RING);
+			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, _uring_fd.native_handle(), IORING_OFF_CQ_RING);
 			if (!data) throw_errno("mmap");
 
 			const auto bytes = static_cast<std::byte *>(data);
-			m_cq.entries = reinterpret_cast<io_uring_cqe *>(bytes + params.cq_off.cqes);
-			m_cq.overflow = reinterpret_cast<unsigned *>(bytes + params.cq_off.overflow);
-			m_cq.mask = *reinterpret_cast<unsigned *>(bytes + params.cq_off.ring_mask);
-			m_cq.tail = reinterpret_cast<unsigned *>(bytes + params.cq_off.tail);
-			m_cq.head = reinterpret_cast<unsigned *>(bytes + params.cq_off.head);
-			m_cq.size = params.cq_entries;
-			m_cq_mmap.release(data, data, size);
+			_cq.entries = reinterpret_cast<io_uring_cqe *>(bytes + params.cq_off.cqes);
+			_cq.overflow = reinterpret_cast<unsigned *>(bytes + params.cq_off.overflow);
+			_cq.mask = *reinterpret_cast<unsigned *>(bytes + params.cq_off.ring_mask);
+			_cq.tail = reinterpret_cast<unsigned *>(bytes + params.cq_off.tail);
+			_cq.head = reinterpret_cast<unsigned *>(bytes + params.cq_off.head);
+			_cq.size = params.cq_entries;
+			_cq_mmap.release(data, size);
 		}
 		{
 			const auto size = params.sq_entries * sizeof(std::uint32_t) + params.sq_off.array;
-			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, m_uring_fd.native_handle(), IORING_OFF_SQ_RING);
+			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, _uring_fd.native_handle(), IORING_OFF_SQ_RING);
 			if (!data) throw_errno("mmap");
 
 			const auto bytes = static_cast<std::byte *>(data);
-			m_sq.idx_data = reinterpret_cast<unsigned *>(bytes + params.sq_off.array);
-			m_sq.dropped = reinterpret_cast<unsigned *>(bytes + params.sq_off.dropped);
-			m_sq.mask = *reinterpret_cast<unsigned *>(bytes + params.sq_off.ring_mask);
-			m_sq.tail = reinterpret_cast<unsigned *>(bytes + params.sq_off.tail);
-			m_sq.head = reinterpret_cast<unsigned *>(bytes + params.sq_off.head);
-			m_sq.size = params.sq_entries;
-			m_sq_mmap.release(data, data, size);
+			_sq.idx_data = reinterpret_cast<unsigned *>(bytes + params.sq_off.array);
+			_sq.dropped = reinterpret_cast<unsigned *>(bytes + params.sq_off.dropped);
+			_sq.mask = *reinterpret_cast<unsigned *>(bytes + params.sq_off.ring_mask);
+			_sq.tail = reinterpret_cast<unsigned *>(bytes + params.sq_off.tail);
+			_sq.head = reinterpret_cast<unsigned *>(bytes + params.sq_off.head);
+			_sq.size = params.sq_entries;
+			_sq_mmap.release(data, size);
 		}
 		{
 			const auto size = params.sq_entries * sizeof(io_uring_sqe);
-			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, m_uring_fd.native_handle(), IORING_OFF_SQES);
+			const auto data = ::mmap(nullptr, size, mmap_prot, mmap_mode, _uring_fd.native_handle(), IORING_OFF_SQES);
 			if (!data) throw_errno("mmap");
 
-			m_sq.entries = static_cast<io_uring_sqe *>(data);
-			m_sqe_mmap.release(data, data, size);
+			_sq.entries = static_cast<io_uring_sqe *>(data);
+			_sqe_mmap.release(data, size);
 		}
 	}
-	context::~context() = default;
+	context::~context() { assert(!is_consumer_thread()); }
 
-	void context::request_stop() { m_stop_source.request_stop(); }
-	bool context::is_consumer_thread() const noexcept { return m_consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
+	void context::request_stop() { _stop_source.request_stop(); }
+	bool context::is_consumer_thread() const noexcept { return _consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
 	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
 		assert(!node->_next);
-		if (m_producer_queue.push(node))
+		if (_producer_queue.push(node))
 		{
 			const std::uint64_t token = 1;
-			m_event_fd.write(&token, sizeof(token), err);
+			_event_fd.write(&token, sizeof(token), err);
 		}
 	}
 	void context::schedule_consumer(operation_base *node) noexcept
 	{
 		assert(!node->_next);
-		m_consumer_queue.push_back(node);
+		_consumer_queue.push_back(node);
 	}
 	void context::schedule_waitlist(operation_base *node) noexcept
 	{
 		assert(!node->_next);
-		m_waitlist_queue.push_back(node);
+		_waitlist_queue.push_back(node);
 	}
 	void context::schedule_producer(operation_base *node)
 	{
@@ -138,17 +138,17 @@ namespace rod::_io_uring
 		{
 			sq[idx] = {};
 			sq[idx].opcode = IORING_OP_TIMEOUT;
-			sq[idx].addr = std::bit_cast<std::uintptr_t>(&m_ktime);
+			sq[idx].addr = std::bit_cast<std::uintptr_t>(&_ktime);
 			sq[idx].user_data = event_id::timer_timeout;
 #ifdef IORING_TIMEOUT_ABS
 		    sq[idx].timeout_flags = IORING_TIMEOUT_ABS;
 #else
 			sq[idx].rw_flags = 1;
 #endif
-			m_ktime.tv_sec = timeout.seconds();
-			m_ktime.tv_nsec = timeout.nanoseconds();
+			_ktime.tv_sec = timeout.seconds();
+			_ktime.tv_nsec = timeout.nanoseconds();
 		});
-		return (m_active_timers += res, res);
+		return (_active_timers += res, res);
 	}
 	inline bool context::cancel_timer_event() noexcept
 	{
@@ -164,15 +164,15 @@ namespace rod::_io_uring
 	{
 		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
 		{
-			if (!m_producer_queue.try_terminate())
+			if (!_producer_queue.try_terminate())
 			{
-				m_consumer_queue.merge_back(std::move(m_producer_queue));
+				_consumer_queue.merge_back(std::move(_producer_queue));
 				return false;
 			}
 
 			sq[idx] = {};
 			sq[idx].opcode = IORING_OP_POLL_ADD;
-			sq[idx].fd = m_event_fd.native_handle();
+			sq[idx].fd = _event_fd.native_handle();
 			sq[idx].user_data = event_id::queue_dispatch;
 			sq[idx].poll_events = POLL_IN;
 			return true;
@@ -215,19 +215,19 @@ namespace rod::_io_uring
 		assert(!node->_timer_next);
 		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
-		m_timer_pending |= m_timers.insert(node) == node;
+		_timer_pending |= _timers.insert(node) == node;
 	}
 	void context::del_timer(timer_node *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
-		m_timer_pending |= m_timers.front() == node;
-		m_timers.erase(node);
+		_timer_pending |= _timers.front() == node;
+		_timers.erase(node);
 	}
 
 	inline void context::acquire_consumer_queue()
 	{
-		const auto tail = std::atomic_ref{*m_cq.tail}.load(std::memory_order_acquire);
-		const auto head = std::atomic_ref{*m_cq.head}.load(std::memory_order_acquire);
+		const auto tail = std::atomic_ref{*_cq.tail}.load(std::memory_order_acquire);
+		const auto head = std::atomic_ref{*_cq.head}.load(std::memory_order_acquire);
 		const auto num = tail - head;
 		if (!num) return;
 
@@ -235,11 +235,11 @@ namespace rod::_io_uring
 		consumer_queue_t tmp_queue;
 
 		for (std::uint32_t i = 0; i < num; ++i)
-			switch (auto &event = m_cq.entries[(head + i) & m_cq.mask]; event.user_data)
+			switch (auto &event = _cq.entries[(head + i) & _cq.mask]; event.user_data)
 			{
 			case event_id::timer_timeout: /* Timer elapsed notification event. */
-				m_timer_pending |= (event.res != ECANCELED);
-				m_timer_started = --m_active_timers;
+				_timer_pending |= (event.res != ECANCELED);
+				_timer_started = --_active_timers;
 				[[fallthrough]];
 			case event_id::timer_cancel:
 				break;
@@ -249,10 +249,10 @@ namespace rod::_io_uring
 				std::uint64_t token;
 				if (event.res < 0)
 					throw std::system_error(std::error_code{-event.res, std::system_category()}, "read(event_fd)");
-				else if (m_event_fd.read(&token, sizeof(token), err); err)
+				else if (_event_fd.read(&token, sizeof(token), err); err)
 					throw std::system_error(err, "read(event_fd)");
 				else
-					m_wait_pending = false;
+					_wait_pending = false;
 				break;
 			}
 			default: /* IO operation event. */
@@ -261,19 +261,19 @@ namespace rod::_io_uring
 				tmp_queue.push_back(node);
 			}
 
-		m_consumer_queue.merge_back(std::move(tmp_queue));
-		std::atomic_ref{*m_cq.head}.store(tail, std::memory_order_release);
-		m_cq.pending -= num;
+		_consumer_queue.merge_back(std::move(tmp_queue));
+		std::atomic_ref{*_cq.head}.store(tail, std::memory_order_release);
+		_cq.pending -= num;
 	}
 	inline void context::acquire_elapsed_timers()
 	{
-		if (!m_timer_pending)
+		if (!_timer_pending)
 			return;
 
-		if (!m_timers.empty())
-			for (const auto now = clock::now(); !m_timers.empty() && m_timers.front()->_tp <= now;)
+		if (!_timers.empty())
+			for (const auto now = clock::now(); !_timers.empty() && _timers.front()->_tp <= now;)
 			{
-				const auto node = m_timers.pop_front();
+				const auto node = _timers.pop_front();
 
 				/* Handle timer cancellation. */
 				if (node->_stop_possible())
@@ -285,89 +285,93 @@ namespace rod::_io_uring
 			}
 
 		/* Disarm or start a timeout event. */
-		if (m_timers.empty())
+		if (_timers.empty())
 		{
-			if (m_timer_started && cancel_timer_event())
+			if (_timer_started && cancel_timer_event())
 			{
-				m_timer_started = false;
-				m_timer_pending = false;
+				_timer_started = false;
+				_timer_pending = false;
 			}
 			return;
 		}
 
-		if (const auto next_timeout = m_timers.front()->_tp; m_timer_started)
+		if (const auto next_timeout = _timers.front()->_tp; _timer_started)
 		{
-			if (m_next_timeout >= next_timeout)
-				m_timer_pending = false;
-			else if (cancel_timer_event() && (m_timer_started = submit_timer_event(next_timeout)))
+			if (_next_timeout >= next_timeout)
+				_timer_pending = false;
+			else if (cancel_timer_event() && (_timer_started = submit_timer_event(next_timeout)))
 			{
-				m_next_timeout = next_timeout;
-				m_timer_pending = false;
+				_next_timeout = next_timeout;
+				_timer_pending = false;
 			}
 		}
-		else if ((m_timer_started = submit_timer_event(next_timeout)))
+		else if ((_timer_started = submit_timer_event(next_timeout)))
 		{
-			m_next_timeout = next_timeout;
-			m_timer_pending = false;
+			_next_timeout = next_timeout;
+			_timer_pending = false;
 		}
 	}
 	inline void context::uring_enter()
 	{
-		const auto has_pending = m_sq.pending || !m_consumer_queue.empty();
-		if (!has_pending && !m_wait_pending) m_wait_pending = submit_queue_event();
+		const auto has_pending = _sq.pending || !_consumer_queue.empty();
+		if (!has_pending && !_wait_pending) _wait_pending = submit_queue_event();
 
 		std::uint32_t count = 0, flags = 0;
-		if (!has_pending && (m_wait_pending || m_cq.pending + m_sq.pending == m_cq.size))
+		if (!has_pending && (_wait_pending || _cq.pending + _sq.pending == _cq.size))
 		{
 			flags = IORING_ENTER_GETEVENTS;
 			count = 1;
 		}
 
-		if (const auto res = ::io_uring_enter(m_uring_fd.native_handle(), m_sq.pending, count, flags, nullptr); res < 0)
-			throw std::system_error(std::error_code{-res, std::system_category()}, "io_uring_enter");
-		else
+		for (;;)
 		{
-			m_sq.pending -= res;
-			m_cq.pending += res;
+			if (const auto res = ::io_uring_enter(_uring_fd.native_handle(), _sq.pending, count, flags, nullptr); res >= 0)
+			{
+				_sq.pending -= res;
+				_cq.pending += res;
+				break;
+			}
+			else if (const auto err = std::error_code{-res, std::system_category()}; err.value() != EINTR)
+				throw std::system_error(err, "io_uring_enter");
 		}
 	}
 
 	void context::run()
 	{
 		/* Make sure only one thread is allowed to run at a given time. */
-		if (std::thread::id id = {}; !m_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
-			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `io_uring_context::run` at a given time");
+		if (std::thread::id id = {}; !_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
+			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run` at a given time");
 
-		struct tid_guard
+		struct thread_guard
 		{
-			~tid_guard() { tid.store(std::thread::id{}, std::memory_order_release); }
+			~thread_guard() { tid.store(std::thread::id{}, std::memory_order_release); }
 			std::atomic<std::thread::id> &tid;
-		} g = {m_consumer_tid};
+		} g = {_consumer_tid};
 
 		for (;;)
 		{
-			for (auto queue = std::move(m_consumer_queue); !queue.empty();)
+			for (auto queue = std::move(_consumer_queue); !queue.empty();)
 				queue.pop_front()->_notify();
-			if (std::exchange(m_stop_pending, false)) [[unlikely]]
+			if (std::exchange(_stop_pending, false)) [[unlikely]]
 				return;
 
 			acquire_consumer_queue();
 			acquire_elapsed_timers();
 
 			/* Handle producer & waitlist queue items. */
-			if (!m_wait_pending && !m_producer_queue.empty())
-				m_consumer_queue.merge_back(std::move(m_producer_queue));
-			while (!m_waitlist_queue.empty() && m_sq.pending < m_sq.size && m_cq.pending + m_sq.pending < m_cq.size)
-				m_waitlist_queue.pop_front()->_notify();
+			if (!_wait_pending && !_producer_queue.empty())
+				_consumer_queue.merge_back(std::move(_producer_queue));
+			while (!_waitlist_queue.empty() && _sq.pending < _sq.size && _cq.pending + _sq.pending < _cq.size)
+				_waitlist_queue.pop_front()->_notify();
 
-			if (m_consumer_queue.empty() || m_sq.pending)
+			if (_consumer_queue.empty() || _sq.pending)
 				uring_enter();
 		}
 	}
 	void context::finish()
 	{
 		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
-		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->m_stop_pending = true; };
+		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->_stop_pending = true; };
 		schedule(this);
 	}
 }

@@ -31,10 +31,10 @@ namespace rod
 			[[nodiscard]] inline Task<result_type> get_return_object() noexcept;
 
 			template<typename V> requires std::constructible_from<T, V>
-			constexpr void return_value(V &&value) noexcept(std::is_nothrow_constructible_v<T, V>) { m_state.emplace(std::forward<V>(value)); }
+			constexpr void return_value(V &&value) noexcept(std::is_nothrow_constructible_v<T, V>) { _state.emplace(std::forward<V>(value)); }
 
-			[[nodiscard]] lvalue_result result() & { return (Base::rethrow_exception(), *m_state); }
-			[[nodiscard]] rvalue_result result() && { return (Base::rethrow_exception(), std::move(*m_state)); }
+			[[nodiscard]] lvalue_result result() & { return (Base::rethrow_exception(), *_state); }
+			[[nodiscard]] rvalue_result result() && { return (Base::rethrow_exception(), std::move(*_state)); }
 
 			template<typename U>
 			[[nodiscard]] decltype(auto) await_transform(U &&value)
@@ -43,7 +43,7 @@ namespace rod
 			}
 
 		private:
-			state_t m_state;
+			state_t _state;
 		};
 		template<template<typename> typename Task, typename Base, typename T>
 		class promise<Task, Base, T &> : public Base
@@ -54,8 +54,8 @@ namespace rod
 		public:
 			[[nodiscard]] Task<result_type> get_return_object() noexcept;
 
-			constexpr void return_value(T &ref) noexcept { m_result = &ref; }
-			result_type result() { return (Base::rethrow_exception(), *m_result); }
+			constexpr void return_value(T &ref) noexcept { _result = &ref; }
+			result_type result() { return (Base::rethrow_exception(), *_result); }
 
 			template<typename U>
 			[[nodiscard]] decltype(auto) await_transform(U &&value)
@@ -64,7 +64,7 @@ namespace rod
 			}
 
 		private:
-			T *m_result = nullptr;
+			T *_result = nullptr;
 		};
 		template<template<typename> typename Task, typename Base>
 		class promise<Task, Base, void> : public Base
@@ -104,7 +104,7 @@ namespace rod
 					template<typename P>
 					__declspec(noinline) void await_suspend(std::coroutine_handle<P> h) noexcept
 					{
-						if (auto &p = h.promise(); p.m_has_cont.test_and_set())
+						if (auto &p = h.promise(); p._has_cont.test_and_set())
 							h.promise().continuation().resume();
 					}
 #endif
@@ -114,23 +114,23 @@ namespace rod
 				constexpr std::suspend_always initial_suspend() noexcept { return {}; }
 				constexpr final_awaiter final_suspend() noexcept { return {}; }
 
-				void unhandled_exception() noexcept { m_err = std::current_exception(); }
-				void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
+				void unhandled_exception() noexcept { _err = std::current_exception(); }
+				void rethrow_exception() { if (_err) std::rethrow_exception(std::move(_err)); }
 
 				template<typename P>
 				auto next(std::coroutine_handle<P> next) noexcept
 				{
 					sender_base::set_continuation(next);
 #ifndef ROD_HAS_INLINE_RESUME
-					return !m_has_cont.test_and_set();
+					return !_has_cont.test_and_set();
 #endif
 				}
 
 			private:
-				std::exception_ptr m_err = {};
+				std::exception_ptr _err = {};
 
 #ifndef ROD_HAS_INLINE_RESUME
-				std::atomic_flag m_has_cont = {};
+				std::atomic_flag _has_cont = {};
 #endif
 			};
 
@@ -142,24 +142,24 @@ namespace rod
 				using result_type = typename promise_type::result_type;
 
 			private:
-				awaitable(std::coroutine_handle<promise_type> h) noexcept : m_handle(h) {}
+				awaitable(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
 			public:
-				bool await_ready() const noexcept { return !m_handle || m_handle.done(); }
-				result_type await_resume() { return m_handle.promise().result(); }
+				bool await_ready() const noexcept { return !_handle || _handle.done(); }
+				result_type await_resume() { return _handle.promise().result(); }
 
 				template<typename P>
 				auto await_suspend(std::coroutine_handle<P> next) noexcept
 				{
 #ifndef ROD_HAS_INLINE_RESUME
-					return (m_handle.resume(), m_handle.promise().next(next));
+					return (_handle.resume(), _handle.promise().next(next));
 #else
-					return (m_handle.promise().next(next), m_handle);
+					return (_handle.promise().next(next), _handle);
 #endif
 				}
 
 			private:
-				std::coroutine_handle<promise_type> m_handle = {};
+				std::coroutine_handle<promise_type> _handle = {};
 			};
 
 		public:
@@ -169,23 +169,23 @@ namespace rod
 			task(const task &) = delete;
 			task &operator=(const task &) = delete;
 
-			explicit task(std::coroutine_handle<promise_type> h) noexcept : m_handle(h) {}
+			explicit task(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
-			task(task &&other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+			task(task &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			task &operator=(task &&other) noexcept { return (swap(other), *this); }
-			~task() { if (m_handle) m_handle.destroy(); }
+			~task() { if (_handle) _handle.destroy(); }
 
 			/** Checks if the task has completed execution. */
-			[[nodiscard]] bool ready() const noexcept { return !m_handle || m_handle.done(); }
+			[[nodiscard]] bool ready() const noexcept { return !_handle || _handle.done(); }
 
-			awaitable operator co_await() const & noexcept { return {m_handle}; }
-			awaitable operator co_await() const && noexcept { return {m_handle}; }
+			awaitable operator co_await() const & noexcept { return {_handle}; }
+			awaitable operator co_await() const && noexcept { return {_handle}; }
 
-			void swap(task &other) noexcept { std::swap(m_handle, other.m_handle); }
+			void swap(task &other) noexcept { std::swap(_handle, other._handle); }
 			friend void swap(task &a, task &b) noexcept { a.swap(b); }
 
 		private:
-			std::coroutine_handle<promise_type> m_handle = {};
+			std::coroutine_handle<promise_type> _handle = {};
 		};
 
 		template<typename T>
@@ -196,22 +196,22 @@ namespace rod
 				using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
 
 				template<typename P>
-				explicit task_node(std::coroutine_handle<P> h, task_node *next = {}) noexcept : m_cont(h), m_next(next) { bind(h); }
+				explicit task_node(std::coroutine_handle<P> h, task_node *next = {}) noexcept : _cont(h), _next(next) { bind(h); }
 
-				[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return m_stop_func(m_cont.address()); }
+				[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return _stop_func(_cont.address()); }
 
 				template<typename P>
 				void bind(std::coroutine_handle<P> h) noexcept
 				{
 					if constexpr (requires { h.unhandled_stopped(); })
-						m_stop_func = [](void *p) noexcept { return std::coroutine_handle<P>::from_address(p).promise().unhandled_stopped(); };
+						_stop_func = [](void *p) noexcept { return std::coroutine_handle<P>::from_address(p).promise().unhandled_stopped(); };
 					else
-						m_stop_func = {};
+						_stop_func = {};
 				}
 
-				std::coroutine_handle<> m_cont = {};
-				stop_func m_stop_func = {};
-				task_node *m_next = {};
+				std::coroutine_handle<> _cont = {};
+				stop_func _stop_func = {};
+				task_node *_next = {};
 			};
 
 			class promise_base
@@ -234,29 +234,29 @@ namespace rod
 				constexpr std::suspend_always initial_suspend() noexcept { return {}; }
 				constexpr final_awaiter final_suspend() noexcept { return {}; }
 
-				void unhandled_exception() noexcept { m_err = std::current_exception(); }
-				void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
+				void unhandled_exception() noexcept { _err = std::current_exception(); }
+				void rethrow_exception() { if (_err) std::rethrow_exception(std::move(_err)); }
 
 				[[nodiscard]] inline std::coroutine_handle<> unhandled_stopped() noexcept;
 
-				bool ready() const noexcept { return m_queue.load(std::memory_order_acquire) == this; }
-				bool release() noexcept { return m_refs.fetch_sub(1, std::memory_order_acq_rel) == 1; }
-				void acquire() noexcept { m_refs.fetch_add(1, std::memory_order_relaxed); }
+				bool ready() const noexcept { return _queue.load(std::memory_order_acquire) == this; }
+				bool release() noexcept { return _refs.fetch_sub(1, std::memory_order_acq_rel) == 1; }
+				void acquire() noexcept { _refs.fetch_add(1, std::memory_order_relaxed); }
 
 				bool try_push(std::coroutine_handle<> h, task_node &node) noexcept
 				{
 					/* Eagerly start the coroutine to prevent recursive stack overflow. */
-					auto old = m_queue.load(std::memory_order_acquire);
-					if (old == &m_queue && m_queue.compare_exchange_strong(old, nullptr, std::memory_order_acq_rel, std::memory_order_acquire))
+					auto old = _queue.load(std::memory_order_acquire);
+					if (old == &_queue && _queue.compare_exchange_strong(old, nullptr, std::memory_order_acq_rel, std::memory_order_acquire))
 					{
 						h.resume();
-						old = m_queue.load(std::memory_order_acquire);
+						old = _queue.load(std::memory_order_acquire);
 					}
 
 					while (old != this)
 					{
-						node.m_next = static_cast<task_node *>(old);
-						if (m_queue.compare_exchange_weak(old, &node, std::memory_order_acq_rel, std::memory_order_acquire))
+						node._next = static_cast<task_node *>(old);
+						if (_queue.compare_exchange_weak(old, &node, std::memory_order_acq_rel, std::memory_order_acquire))
 							return true;
 					}
 					return false;
@@ -266,12 +266,12 @@ namespace rod
 				template<std::invocable<task_node *> F>
 				void for_each(F &&func) noexcept
 				{
-					if (const auto queue = m_queue.exchange(this, std::memory_order_acq_rel); queue)
+					if (const auto queue = _queue.exchange(this, std::memory_order_acq_rel); queue)
 					{
 						auto node = static_cast<task_node *>(queue);
 						for (;;)
 						{
-							const auto next = node->m_next;
+							const auto next = node->_next;
 							if (next == nullptr) break;
 
 							func(node);
@@ -282,9 +282,9 @@ namespace rod
 					}
 				}
 
-				std::atomic<std::size_t> m_refs = 1;
-				std::atomic<void *> m_queue = &m_queue;
-				std::exception_ptr m_err;
+				std::atomic<std::size_t> _refs = 1;
+				std::atomic<void *> _queue = &_queue;
+				std::exception_ptr _err;
 			};
 
 			class awaitable
@@ -295,18 +295,18 @@ namespace rod
 				using result_type = typename promise_type::result_type;
 
 			private:
-				awaitable(std::coroutine_handle<promise_type> h) noexcept : m_handle(h) {}
+				awaitable(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
 			public:
-				bool await_ready() const noexcept { return !m_handle || m_handle.done(); }
-				result_type await_resume() { return m_handle.promise().result(); }
+				bool await_ready() const noexcept { return !_handle || _handle.done(); }
+				result_type await_resume() { return _handle.promise().result(); }
 
 				template<typename P>
-				auto await_suspend(std::coroutine_handle<P> next) { return ((m_node.m_cont = next), m_handle.promise().try_push(m_handle, m_node)); }
+				auto await_suspend(std::coroutine_handle<P> next) { return ((_node._cont = next), _handle.promise().try_push(_handle, _node)); }
 
 			private:
-				std::coroutine_handle<promise_type> m_handle = {};
-				task_node m_node = {};
+				std::coroutine_handle<promise_type> _handle = {};
+				task_node _node = {};
 			};
 
 		public:
@@ -315,26 +315,26 @@ namespace rod
 		public:
 			shared_task() = delete;
 
-			explicit shared_task(std::coroutine_handle<promise_type> h) : m_handle(h) {}
+			explicit shared_task(std::coroutine_handle<promise_type> h) : _handle(h) {}
 
-			shared_task(shared_task &&other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+			shared_task(shared_task &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			shared_task &operator=(shared_task &&other) noexcept
 			{
 				if (this != &other) swap(other);
 				return *this;
 			}
 
-			shared_task(const shared_task &other) noexcept : m_handle(other.m_handle)
+			shared_task(const shared_task &other) noexcept : _handle(other._handle)
 			{
-				if (m_handle) m_handle.promise().acquire();
+				if (_handle) _handle.promise().acquire();
 			}
 			shared_task& operator=(const shared_task &other) noexcept
 			{
-				if (m_handle != other.m_handle)
+				if (_handle != other._handle)
 				{
 					destroy();
-					if ((m_handle = other.m_handle))
-						m_handle.promise().acquire();
+					if ((_handle = other._handle))
+						_handle.promise().acquire();
 				}
 
 				return *this;
@@ -343,20 +343,20 @@ namespace rod
 			~shared_task() { destroy(); }
 
 			/** Checks if the task has completed execution. */
-			[[nodiscard]] bool ready() const noexcept { return !m_handle || m_handle.promise().ready(); }
+			[[nodiscard]] bool ready() const noexcept { return !_handle || _handle.promise().ready(); }
 
-			awaitable operator co_await() const & noexcept { return {m_handle}; }
-			awaitable operator co_await() const && noexcept { return {m_handle}; }
+			awaitable operator co_await() const & noexcept { return {_handle}; }
+			awaitable operator co_await() const && noexcept { return {_handle}; }
 
-			void swap(shared_task &other) noexcept { std::swap(m_handle, other.m_handle); }
+			void swap(shared_task &other) noexcept { std::swap(_handle, other._handle); }
 			friend void swap(shared_task &a, shared_task &b) noexcept { a.swap(b); }
 
-			[[nodiscard]] friend bool operator==(const shared_task <T> &a, const shared_task<T> &b) noexcept { return a.m_handle == b.m_handle; }
+			[[nodiscard]] friend bool operator==(const shared_task <T> &a, const shared_task<T> &b) noexcept { return a._handle == b._handle; }
 
 		private:
-			void destroy() noexcept { if (m_handle && m_handle.promise().release()) m_handle.destroy(); }
+			void destroy() noexcept { if (_handle && _handle.promise().release()) _handle.destroy(); }
 
-			std::coroutine_handle<promise_type> m_handle = {};
+			std::coroutine_handle<promise_type> _handle = {};
 		};
 
 		template<typename T>
@@ -370,7 +370,7 @@ namespace rod
 		template<typename P>
 		void shared_task<T>::promise_base::final_awaiter::await_suspend(std::coroutine_handle<P> h) noexcept
 		{
-			h.promise().for_each([](task_node *node) { node->m_cont.resume(); });
+			h.promise().for_each([](task_node *node) { node->_cont.resume(); });
 		}
 
 		template<template<typename> typename Task, typename Base, typename T>

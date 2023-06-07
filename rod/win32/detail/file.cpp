@@ -136,7 +136,7 @@ namespace rod::detail
 			else if (!::SetEndOfFile(native_handle()) || !::SetFilePointerEx(native_handle(), oldpos, nullptr, FILE_BEGIN))
 				err = {static_cast<int>(::GetLastError()), std::system_category()};
 			else
-				m_offset = static_cast<std::size_t>(oldpos.QuadPart);
+				_offset = static_cast<std::size_t>(oldpos.QuadPart);
 		}
 		return err;
 	}
@@ -150,22 +150,22 @@ namespace rod::detail
 
 	std::size_t system_file::tell(std::error_code &err) const noexcept
 	{
-		if (m_offset == std::numeric_limits<std::size_t>::max()) [[unlikely]]
+		if (_offset == std::numeric_limits<std::size_t>::max()) [[unlikely]]
 		{
 #if SIZE_MAX >= UINT64_MAX
 			LONG high = 0;
 			if (const auto res = ::SetFilePointer(native_handle(), 0, &high, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
 				return (err = {}, static_cast<std::size_t>(res) | (static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits));
 			else
-				return (err = {static_cast<int>(::GetLastError()), std::system_category()}, m_offset);
+				return (err = {static_cast<int>(::GetLastError()), std::system_category()}, _offset);
 #else
 			if (const auto res = ::SetFilePointer(native_handle(), 0, nullptr, FILE_CURRENT); res == INVALID_SET_FILE_POINTER) [[unlikely]]
-				return (err = {static_cast<int>(::GetLastError()), std::system_category()}, m_offset);
+				return (err = {static_cast<int>(::GetLastError()), std::system_category()}, _offset);
 			else
 				return (err = {}, static_cast<std::size_t>(res));
 #endif
 		}
-		return m_offset;
+		return _offset;
 	}
 	std::size_t system_file::seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept
 	{
@@ -178,14 +178,14 @@ namespace rod::detail
 #if SIZE_MAX >= UINT64_MAX
 		auto high = static_cast<LONG>(off >> std::numeric_limits<LONG>::digits);
 		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), &high, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
-			return (err = {}, m_offset = (static_cast<std::size_t>(res) | (static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits)));
+			return (err = {}, _offset = (static_cast<std::size_t>(res) | (static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits)));
 		else
 			return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
 #else
 		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), nullptr, dir); res == INVALID_SET_FILE_POINTER) [[unlikely]]
 			return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
 		else
-			return (err = {}, m_offset = static_cast<std::size_t>(res));
+			return (err = {}, _offset = static_cast<std::size_t>(res));
 #endif
 	}
 
@@ -240,7 +240,7 @@ namespace rod::detail
 			if (err_code == ERROR_HANDLE_EOF)
 				break;
 		}
-		m_offset = off + total;
+		_offset = off + total;
 		return total;
 	}
 	std::size_t system_file::sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept
@@ -273,7 +273,7 @@ namespace rod::detail
 			if (err_code == ERROR_HANDLE_EOF)
 				break;
 		}
-		m_offset = off + total;
+		_offset = off + total;
 		return total;
 	}
 }

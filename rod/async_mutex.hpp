@@ -27,27 +27,27 @@ namespace rod
 			friend class async_mutex;
 
 		public:
-			explicit awaiter(async_mutex &mtx) noexcept : m_mtx(mtx) {}
+			explicit awaiter(async_mutex &mtx) noexcept : _mtx(mtx) {}
 
 			constexpr void await_resume() const noexcept {}
 			constexpr bool await_ready() const noexcept { return false; }
 			bool await_suspend(std::coroutine_handle<> cont) noexcept
 			{
-				m_cont = cont;
-				for (auto state = m_mtx.m_state.load(std::memory_order_acquire);;)
+				_cont = cont;
+				for (auto state = _mtx._state.load(std::memory_order_acquire);;)
 				{
 					if (!state)
 					{
-						if (m_mtx.m_state.compare_exchange_weak(
-								state, &m_mtx.m_state,
+						if (_mtx._state.compare_exchange_weak(
+								state, &_mtx._state,
 								std::memory_order_acquire,
 								std::memory_order_relaxed))
 							return false;
 						continue;
 					}
 
-					m_next = static_cast<awaiter *>(state);
-					if (m_mtx.m_state.compare_exchange_weak(
+					_next = static_cast<awaiter *>(state);
+					if (_mtx._state.compare_exchange_weak(
 							state, this,
 							std::memory_order_release,
 							std::memory_order_relaxed))
@@ -56,11 +56,11 @@ namespace rod
 			}
 
 		private:
-			std::coroutine_handle<> m_cont = {};
-			awaiter *m_next = {};
+			std::coroutine_handle<> _cont = {};
+			awaiter *_next = {};
 
 		protected:
-			async_mutex &m_mtx;
+			async_mutex &_mtx;
 		};
 		class guard_awaiter : public awaiter
 		{
@@ -91,41 +91,41 @@ namespace rod
 		bool try_lock() noexcept
 		{
 			void *old = nullptr;
-			return m_state.compare_exchange_strong(old, &m_state, std::memory_order_acquire, std::memory_order_relaxed);
+			return _state.compare_exchange_strong(old, &_state, std::memory_order_acquire, std::memory_order_relaxed);
 		}
 		/** Unlocks the mutex and resumes the next waiting coroutine inside this call. */
 		void unlock()
 		{
-			auto front = m_queue;
+			auto front = _queue;
 			if (!front)
 			{
-				void *state = &m_state;
-				if (m_state.compare_exchange_strong(
+				void *state = &_state;
+				if (_state.compare_exchange_strong(
 						state, nullptr,
 						std::memory_order_release,
 						std::memory_order_relaxed))
 					return;
 
-				state = m_state.exchange(&m_state, std::memory_order_acquire);
+				state = _state.exchange(&_state, std::memory_order_acquire);
 				for (auto node = static_cast<awaiter *>(state);;)
 				{
-					const auto next = node->m_next;
-					node->m_next = std::exchange(front, node);
+					const auto next = node->_next;
+					node->_next = std::exchange(front, node);
 					if (!(node = next))
 						break;
 				}
 			}
 
 			/* Un-link & resume the blocked coroutine. */
-			m_queue = front->m_next;
-			front->m_cont.resume();
+			_queue = front->_next;
+			front->_cont.resume();
 		}
 
 	private:
-		/* m_state == &m_state - locked with no waiters.
-		 * m_state == nullptr - not locked. */
-		std::atomic<void *> m_state = {};
-		awaiter *m_queue = {};
+		/* _state == &_state - locked with no waiters.
+		 * _state == nullptr - not locked. */
+		std::atomic<void *> _state = {};
+		awaiter *_queue = {};
 	};
 
 	/** RAII lock guard for the `async_mutex` mutex type. */
@@ -135,17 +135,17 @@ namespace rod
 		async_lock_guard(const async_lock_guard &) = delete;
 		async_lock_guard &operator=(const async_lock_guard &) = delete;
 
-		async_lock_guard(async_lock_guard &&other) noexcept : m_mtx(std::exchange(other.m_mtx, {})) {}
-		async_lock_guard(async_mutex &mtx, std::adopt_lock_t) noexcept : m_mtx(&mtx) {}
-		~async_lock_guard() { if (m_mtx) m_mtx->unlock(); }
+		async_lock_guard(async_lock_guard &&other) noexcept : _mtx(std::exchange(other._mtx, {})) {}
+		async_lock_guard(async_mutex &mtx, std::adopt_lock_t) noexcept : _mtx(&mtx) {}
+		~async_lock_guard() { if (_mtx) _mtx->unlock(); }
 
 	private:
-		async_mutex *m_mtx;
+		async_mutex *_mtx;
 	};
 
 	async_lock_guard async_mutex::guard_awaiter::await_resume() const noexcept
 	{
-		return {m_mtx, std::adopt_lock};
+		return {_mtx, std::adopt_lock};
 	}
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

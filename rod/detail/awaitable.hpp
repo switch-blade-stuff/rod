@@ -96,34 +96,34 @@ namespace rod
 			using result_t = std::variant<std::monostate, result_or_unit<S, P>, std::exception_ptr>;
 			using handle_t = std::coroutine_handle<P>;
 
-			constexpr type(result_t *result, handle_t handle) : m_result_ptr(result), m_cont_handle(handle) {}
+			constexpr type(result_t *result, handle_t handle) : _result_ptr(result), _cont_handle(handle) {}
 
 		public:
 			using is_receiver = std::true_type;
 
-			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>) { return get_env(std::as_const(r.m_cont_handle.promise())); }
+			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>) { return get_env(std::as_const(r._cont_handle.promise())); }
 
 			template<typename... Vs> requires std::constructible_from<result_or_unit<S, P>, Vs...>
 			friend void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
 			{
-				try { r.m_result_ptr->template emplace<1>(std::forward<Vs>(vs)...); }
-				catch (...) { r.m_result_ptr->template emplace<2>(std::current_exception()); }
-				r.m_cont_handle.resume();
+				try { r._result_ptr->template emplace<1>(std::forward<Vs>(vs)...); }
+				catch (...) { r._result_ptr->template emplace<2>(std::current_exception()); }
+				r._cont_handle.resume();
 			}
 			template<typename Err>
 			friend void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
 			{
-				r.m_result_ptr->template emplace<2>(detail::as_except_ptr(std::forward<Err>(err)));
-				r.m_cont_handle.resume();
+				r._result_ptr->template emplace<2>(detail::as_except_ptr(std::forward<Err>(err)));
+				r._cont_handle.resume();
 			}
 			friend void tag_invoke(set_stopped_t, type &&r) noexcept
 			{
-				static_cast<std::coroutine_handle<>>(r.m_cont_handle.promise().unhandled_stopped()).resume();
+				static_cast<std::coroutine_handle<>>(r._cont_handle.promise().unhandled_stopped()).resume();
 			}
 
 		private:
-			result_t *m_result_ptr;
-			handle_t m_cont_handle;
+			result_t *_result_ptr;
+			handle_t _cont_handle;
 		};
 
 		template<typename S, typename P>
@@ -133,28 +133,28 @@ namespace rod
 			using receiver_t = typename receiver<S, P>::type;
 
 		public:
-			constexpr type(S &&s, std::coroutine_handle<P> h) : m_state(connect(std::forward<S>(s), receiver_t{&m_result, h})) {}
+			constexpr type(S &&s, std::coroutine_handle<P> h) : _state(connect(std::forward<S>(s), receiver_t{&_result, h})) {}
 
 			[[nodiscard]] constexpr bool await_ready() const noexcept { return false; }
-			void await_suspend(std::coroutine_handle<P>) noexcept { start(m_state); }
+			void await_suspend(std::coroutine_handle<P>) noexcept { start(_state); }
 
 			constexpr value_t<S, P> await_resume()
 			{
-				switch (m_result.index())
+				switch (_result.index())
 				{
 				case 1:
 					if constexpr (!std::is_void_v<value_t<S, P>>)
-						return std::forward<value_t<S, P>>(std::get<1>(m_result));
+						return std::forward<value_t<S, P>>(std::get<1>(_result));
 					else
 						return;
-				case 2: std::rethrow_exception(std::get<2>(m_result));
+				case 2: std::rethrow_exception(std::get<2>(_result));
 				default: [[unlikely]] std::terminate();
 				}
 			}
 
 		private:
-			connect_result_t<S, receiver_t> m_state;
-			result_t m_result = {};
+			connect_result_t<S, receiver_t> _state;
+			result_t _result = {};
 		};
 
 		template<typename S, typename P>
@@ -256,38 +256,38 @@ namespace rod
 			awaitable_operation(const awaitable_operation &) = delete;
 			awaitable_operation &operator=(const awaitable_operation &) = delete;
 
-			awaitable_operation(awaitable_operation &&other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+			awaitable_operation(awaitable_operation &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			awaitable_operation &operator=(awaitable_operation &&other) noexcept
 			{
-				if (&other != this) std::exchange(m_handle, other.m_handle).destroy();
+				if (&other != this) std::exchange(_handle, other._handle).destroy();
 				return *this;
 			}
 
-			explicit awaitable_operation(std::coroutine_handle<> handle) noexcept : m_handle(handle) {}
+			explicit awaitable_operation(std::coroutine_handle<> handle) noexcept : _handle(handle) {}
 
-			~awaitable_operation() { if (m_handle) m_handle.destroy(); }
+			~awaitable_operation() { if (_handle) _handle.destroy(); }
 
-			friend void tag_invoke(start_t, awaitable_operation &op) noexcept { op.m_handle.resume(); }
+			friend void tag_invoke(start_t, awaitable_operation &op) noexcept { op._handle.resume(); }
 
 		private:
-			std::coroutine_handle<> m_handle = {};
+			std::coroutine_handle<> _handle = {};
 		};
 
 		template<typename R>
 		class awaitable_promise
 		{
 		public:
-			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(p.m_rcv); }
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(p._rcv); }
 
 		public:
-			awaitable_promise(auto &, R &r) noexcept : m_rcv(r) {}
+			awaitable_promise(auto &, R &r) noexcept : _rcv(r) {}
 
 			[[noreturn]] std::suspend_always final_suspend() noexcept { std::terminate(); }
 			[[noreturn]] void unhandled_exception() noexcept { std::terminate(); }
 			[[noreturn]] void return_void() noexcept { std::terminate(); }
 
 			[[nodiscard]] auto get_return_object() noexcept { return awaitable_operation<R>{std::coroutine_handle<awaitable_promise>::from_promise(*this)}; }
-			[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return (set_stopped(std::move(m_rcv)), std::noop_coroutine()); }
+			[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return (set_stopped(std::move(_rcv)), std::noop_coroutine()); }
 			constexpr std::suspend_always initial_suspend() noexcept { return {}; }
 
 			template<typename A>
@@ -297,7 +297,7 @@ namespace rod
 			}
 
 		private:
-			R &m_rcv;
+			R &_rcv;
 		};
 
 		template<typename F>
@@ -357,7 +357,7 @@ namespace rod
 		template<typename Other> requires(!std::same_as<Other, void>)
 		constexpr void set_continuation(std::coroutine_handle<Other> h) noexcept
 		{
-			m_cont = h;
+			_cont = h;
 			bind(h);
 		}
 		template<typename T>
@@ -366,21 +366,21 @@ namespace rod
 			return as_awaitable(std::forward<T>(value), static_cast<P &>(*this));
 		}
 
-		[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return m_stop_func(m_cont.address()); }
-		[[nodiscard]] std::coroutine_handle<> continuation() const noexcept { return m_cont; }
+		[[nodiscard]] std::coroutine_handle<> unhandled_stopped() noexcept { return _stop_func(_cont.address()); }
+		[[nodiscard]] std::coroutine_handle<> continuation() const noexcept { return _cont; }
 
 	private:
 		template<typename Other>
 		void bind(std::coroutine_handle<Other> h) noexcept
 		{
 			if constexpr (requires { h.unhandled_stopped(); })
-				m_stop_func = [](void *p) noexcept -> std::coroutine_handle<> { return std::coroutine_handle<Other>::from_address(p).promise().unhandled_stopped(); };
+				_stop_func = [](void *p) noexcept -> std::coroutine_handle<> { return std::coroutine_handle<Other>::from_address(p).promise().unhandled_stopped(); };
 			else
-				m_stop_func = [](void *) noexcept -> std::coroutine_handle<> { std::terminate(); };
+				_stop_func = [](void *) noexcept -> std::coroutine_handle<> { std::terminate(); };
 		}
 
-		std::coroutine_handle<> m_cont = {};
-		stop_func m_stop_func = {};
+		std::coroutine_handle<> _cont = {};
+		stop_func _stop_func = {};
 	};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -200,9 +200,9 @@ namespace rod
 			ROD_PUBLIC void finish();
 
 			/** Returns copy of the stop source associated with the context. */
-			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return m_stop_source; }
+			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_source; }
 			/** Returns a stop token of the stop source associated with the context. */
-			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return m_stop_source.get_token(); }
+			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_source.get_token(); }
 			/** Sends a stop request to the stop source associated with the context. */
 			ROD_PUBLIC void request_stop();
 
@@ -244,30 +244,30 @@ namespace rod
 			void epoll_wait();
 
 			/* TID of the current consumer thread. */
-			std::atomic<std::thread::id> m_consumer_tid = {};
+			std::atomic<std::thread::id> _consumer_tid = {};
 
 			/* Descriptors used for EPOLL notifications. */
-			detail::unique_descriptor m_epoll_fd = {};
-			detail::unique_descriptor m_timer_fd = {};
-			detail::unique_descriptor m_event_fd = {};
+			detail::unique_descriptor _epoll_fd = {};
+			detail::unique_descriptor _timer_fd = {};
+			detail::unique_descriptor _event_fd = {};
 
 			/* EPOLL event buffer. */
-			std::size_t m_buff_size;
-			void *m_event_buff;
+			std::size_t _buff_size;
+			void *_event_buff;
 
-			in_place_stop_source m_stop_source;
+			in_place_stop_source _stop_source;
 			/* Queue of operations pending for dispatch by consumer thread. */
-			consumer_queue_t m_consumer_queue;
+			consumer_queue_t _consumer_queue;
 			/* Queue of operation pending for acquisition by consumer thread. */
-			producer_queue_t m_producer_queue;
+			producer_queue_t _producer_queue;
 			/* Priority queue of pending timers. */
-			timer_queue_t m_timers;
+			timer_queue_t _timers;
 
-			time_point m_next_timeout = {};
-			bool m_timer_started = false;
-			bool m_timer_pending = false;
-			bool m_wait_pending = false;
-			bool m_stop_pending = false;
+			time_point _next_timeout = {};
+			bool _timer_started = false;
+			bool _timer_pending = false;
+			bool _wait_pending = false;
+			bool _stop_pending = false;
 		};
 
 		template<typename Rcv>

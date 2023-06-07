@@ -6,6 +6,7 @@
 
 #include "file.hpp"
 
+#include <sys/stat.h>
 #include <unistd.h>
 #include <climits>
 #include <limits>
@@ -113,7 +114,7 @@ namespace rod::detail
 
 	std::size_t system_file::size(std::error_code &err) const noexcept
 	{
-		if (::stat stat = {}; !::fstat(native_handle(), &stat)) [[likely]]
+		if (struct stat stat = {}; !::fstat(native_handle(), &stat)) [[likely]]
 			return (err = {}, static_cast<std::size_t>(stat.st_size));
 		else
 			return (err = {errno, std::system_category()}, 0);
@@ -189,11 +190,11 @@ namespace rod::detail
 			return res;
 		}
 	}
-	std::size_t system_file::sync_read_at(void *dst, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
+	std::size_t system_file::sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept
 	{
 		for (;;)
 		{
-			const auto res = unique_descriptor::read_at(dst, n, pos, err);
+			const auto res = unique_descriptor::read_at(dst, n, off, err);
 			if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
 			{
 				unique_descriptor::poll_read(-1, err);
@@ -202,11 +203,11 @@ namespace rod::detail
 			return res;
 		}
 	}
-	std::size_t system_file::sync_write_at(const void *src, std::size_t n, std::ptrdiff_t pos, std::error_code &err) noexcept
+	std::size_t system_file::sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept
 	{
 		for (;;)
 		{
-			const auto res = unique_descriptor::write_at(src, n, pos, err);
+			const auto res = unique_descriptor::write_at(src, n, off, err);
 			if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
 			{
 				unique_descriptor::poll_read(-1, err);

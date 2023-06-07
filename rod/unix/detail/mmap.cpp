@@ -5,6 +5,7 @@
 #ifdef __unix__
 
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "mmap.hpp"
@@ -28,46 +29,38 @@ namespace rod::detail
 		}();
 		return size;
 	}
-	template<typename I>
-	static I align_pagesize(bool up, I req, std::error_code &err) noexcept
+	static std::size_t align_pagesize(std::size_t req, std::error_code &err) noexcept
 	{
-		if (const auto mult = get_pagesize(err); !mult) [[unlikely]]
-			return mult;
-		else if (const auto rem = static_cast<I>(req % mult); rem && up)
-			return req + static_cast<I>(mult) - rem;
+		if (const auto mult = get_pagesize(err); mult) [[likely]]
+			return req - static_cast<std::size_t>(req % mult);
 		else
-			return req - rem;
+			return mult;
 	}
-
-	inline std::error_code try_resize_descriptor(int fd, std::size_t new_size) noexcept
+	static std::error_code try_resize_descriptor(int fd, std::size_t new_size) noexcept
 	{
-		if (::stat stat = {}; ::fstat(native_handle(), &stat)) [[unlikely]]
+		if (struct stat stat = {}; ::fstat(fd, &stat)) [[unlikely]]
 			return {errno, std::system_category()};
-		else if (static_cast<std::size_t>(stat.st_size) < size)
+		else if (static_cast<std::size_t>(stat.st_size) < new_size)
 		{
 #if SIZE_MAX >= UINT64_MAX
-			if (::ftruncate64(fd, static_cast<off64_t>(size))) [[unlikely]]
+			if (::ftruncate64(fd, static_cast<off64_t>(new_size))) [[unlikely]]
 				return {errno, std::system_category()};
 #else
-			if (::ftruncate(fd, static_cast<off_t>(size))) [[unlikely]]
+			if (::ftruncate(fd, static_cast<off_t>(new_size))) [[unlikely]]
 				return {errno, std::system_category()};
 #endif
 		}
 		return {};
 	}
 
-	mmap_handle mmap_handle::map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept
+	system_mmap system_mmap::map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept
 	{
-		/* Align the file offset to page size. */
-		const auto base_off = off - align_pagesize(false, off, err);
-		if (err)
-			[[unlikely]] return mmap_handle{};
+		/* Align the file offset to page size & resize if needed. */
+		const auto base_off = off - align_pagesize(off, err);
+		if (err || ((mode & mapmode::expand) && (err = try_resize_descriptor(fd, size + off))))
+			[[unlikely]] return system_mmap{};
 		else
-			 size += base_off
-
-		/* Expand the underlying file if needed. */
-		if ((mode & mapmode::expand) && (err = try_resize_descriptor(fd, size + off)))
-			 return mmap_handle{};
+			 size += base_off;
 
 		int flags = 0;
 		if (fd < 0) flags |= MAP_ANONYMOUS;
@@ -79,22 +72,17 @@ namespace rod::detail
 		if (mode & mapmode::write) prot |= PROT_WRITE;
 
 #if PTRDIFF_MAX >= INT64_MAX
-		const auto data = ::mmap64(size, prot, flags, fd, static_cast<off64_t>(off - base_off));
+		const auto data = ::mmap64(nullptr, size, prot, flags, fd, static_cast<off64_t>(off - base_off));
 #else
-		const auto data = ::mmap(size, prot, flags, fd, static_cast<off64_t>(off - base_off));
+		const auto data = ::mmap(nullptr, size, prot, flags, fd, static_cast<off64_t>(off - base_off));
 #endif
 		if (data) [[likely]]
-			return shared_mmap{static_cast<std::byte *>(data), base_off, size};
+			return system_mmap{static_cast<std::byte *>(data), base_off, size};
 		else
-			return (err = {errno, std::system_category()}, shared_mmap{});
+			return (err = {errno, std::system_category()}, system_mmap{});
 	}
 
-	mmap_handle::~mmap_handle()
-	{
-		const auto [data, size] = release();
-		if (data) ::munmap(data, size);
-	}
-	std::error_code mmap_handle::unmap() noexcept
+	std::error_code system_mmap::unmap() noexcept
 	{
 		const auto [data, size] = release();
 		if (data && ::munmap(data, size)) [[unlikely]]
@@ -102,34 +90,11 @@ namespace rod::detail
 		else
 			return {};
 	}
-
-	static shared_mmap shared_mmap::open(const char *name, std::size_t size, int mode, int prot, std::error_code &err) noexcept
+	system_mmap::~system_mmap()
 	{
-		const int flags = O_CREAT | (mode & mapmode::write) ? O_RDWR : O_RDONLY;
-		if (const auto fd = shm_open(name, flags, prot); fd < 0) [[unlikely]]
-			return (err = {errno, std::system_category()}, shared_mmap{});
-		else
-		{
-			auto result = map(fd, 0, size, mode | mapmode::expand, err);
-			if (err) [[unlikely]] ::close(fd);
-			return result;
-		}
+		const auto [data, size] = release();
+		if (data) ::munmap(data, size);
 	}
-	static shared_mmap shared_mmap::open(const wchar_t *name, std::size_t size, int mode, int prot, std::error_code &err) noexcept
-	{
-		auto state = std::mbstate_t{};
-		auto res = std::wcsrtombs(nullptr, &path, 0, &state);
-		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
-			return (err = {errno, std::system_category()}, system_file{});
-
-		auto buff = std::string(res, '\0');
-		res = std::wcsrtombs(buff.data(), &path, buff.size(), &state);
-		if (res == static_cast<std::size_t>(-1)) [[unlikely]]
-			return (err = {errno, std::system_category()}, system_file{});
-		else
-			return open(buff.c_str(), size, mode, prot, err);
-	}
-
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

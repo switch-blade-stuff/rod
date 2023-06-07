@@ -125,13 +125,13 @@ namespace rod
 		/** Returns a stop token associated with this stop source. */
 		[[nodiscard]] constexpr in_place_stop_token get_token() const noexcept;
 		/** Checks if stop has been requested. */
-		[[nodiscard]] bool stop_requested() const noexcept { return m_flags.load(std::memory_order_acquire) & status_t::has_req; }
+		[[nodiscard]] bool stop_requested() const noexcept { return _flags.load(std::memory_order_acquire) & status_t::has_req; }
 
 		/** Sends a stop request via this stop source. */
 		bool request_stop() noexcept
 		{
 			if (!try_lock(status_t::has_req)) return false;
-			for (m_tid = std::this_thread::get_id(); m_nodes; lock())
+			for (_tid = std::this_thread::get_id(); _nodes; lock())
 			{
 				const auto node = pop();
 				unlock(status_t::has_req);
@@ -147,15 +147,15 @@ namespace rod
 	private:
 		status_t lock() noexcept
 		{
-			for (auto flags = m_flags.load(std::memory_order_relaxed);;)
+			for (auto flags = _flags.load(std::memory_order_relaxed);;)
 			{
 				while (flags & status_t::is_busy)
 				{
-					m_flags.wait(flags, std::memory_order_acq_rel);
-					flags = m_flags.load(std::memory_order_relaxed);
+					_flags.wait(flags, std::memory_order_acq_rel);
+					flags = _flags.load(std::memory_order_relaxed);
 				}
 
-				if (m_flags.compare_exchange_weak(
+				if (_flags.compare_exchange_weak(
 						flags, static_cast<status_t>(flags | status_t::is_busy),
 						std::memory_order_acq_rel, std::memory_order_relaxed))
 					return flags;
@@ -163,20 +163,20 @@ namespace rod
 		}
 		void unlock(status_t val = {}) noexcept
 		{
-			m_flags.store(val, std::memory_order_release);
-			m_flags.notify_one();
+			_flags.store(val, std::memory_order_release);
+			_flags.notify_one();
 		}
 		bool try_lock(status_t val = {}) noexcept
 		{
-			for (auto flags = m_flags.load(std::memory_order_relaxed);;)
+			for (auto flags = _flags.load(std::memory_order_relaxed);;)
 			{
-				for (; flags; flags = m_flags.load(std::memory_order_relaxed))
+				for (; flags; flags = _flags.load(std::memory_order_relaxed))
 				{
 					if (flags & status_t::has_req) return false;
-					if (flags & status_t::is_busy) m_flags.wait(flags, std::memory_order_acq_rel);
+					if (flags & status_t::is_busy) _flags.wait(flags, std::memory_order_acq_rel);
 				}
 
-				if (m_flags.compare_exchange_weak(
+				if (_flags.compare_exchange_weak(
 						flags, static_cast<status_t>(val | status_t::is_busy),
 						std::memory_order_acq_rel, std::memory_order_relaxed))
 					return true;
@@ -185,9 +185,9 @@ namespace rod
 
 		[[nodiscard]] node_t *pop() noexcept
 		{
-			const auto node = m_nodes;
-			m_nodes = node->next_node;
-			if (m_nodes) m_nodes->this_ptr = &m_nodes;
+			const auto node = _nodes;
+			_nodes = node->next_node;
+			if (_nodes) _nodes->this_ptr = &_nodes;
 			node->this_ptr = {};
 			return node;
 		}
@@ -199,10 +199,10 @@ namespace rod
 				return;
 			}
 
-			node->next_node = m_nodes;
-			node->this_ptr = &m_nodes;
-			if (m_nodes) m_nodes->this_ptr = &node->next_node;
-			m_nodes = node;
+			node->next_node = _nodes;
+			node->this_ptr = &_nodes;
+			if (_nodes) _nodes->this_ptr = &node->next_node;
+			_nodes = node;
 
 			unlock();
 		}
@@ -216,7 +216,7 @@ namespace rod
 			}
 			else
 			{
-				const auto tid = m_tid;
+				const auto tid = _tid;
 				unlock(old);
 
 				if (tid != std::this_thread::get_id())
@@ -226,9 +226,9 @@ namespace rod
 			}
 		}
 
-		std::atomic<status_t> m_flags = {};
-		std::thread::id m_tid = {};
-		node_t *m_nodes = {};
+		std::atomic<status_t> _flags = {};
+		std::thread::id _tid = {};
+		node_t *_nodes = {};
 	};
 
 	/** Stop token used to query for stop requests of the associated `in_place_stop_source`. */
@@ -243,24 +243,24 @@ namespace rod
 		using callback_type = in_place_stop_callback<CB>;
 
 	private:
-		constexpr in_place_stop_token(in_place_stop_source *src) noexcept : m_src(src) {}
+		constexpr in_place_stop_token(in_place_stop_source *src) noexcept : _src(src) {}
 
 	public:
 		constexpr in_place_stop_token() noexcept = default;
 		constexpr ~in_place_stop_token() noexcept = default;
 
 		/** Checks if the associated stop source has been requested to stop. */
-		[[nodiscard]] bool stop_requested() const noexcept { return m_src && m_src->stop_requested(); }
+		[[nodiscard]] bool stop_requested() const noexcept { return _src && _src->stop_requested(); }
 		/** Checks if the associated stop source can be requested to stop. */
-		[[nodiscard]] constexpr bool stop_possible() const noexcept { return m_src && m_src->stop_possible(); }
+		[[nodiscard]] constexpr bool stop_possible() const noexcept { return _src && _src->stop_possible(); }
 
-		constexpr void swap(in_place_stop_token &other) noexcept { std::swap(m_src, other.m_src); }
+		constexpr void swap(in_place_stop_token &other) noexcept { std::swap(_src, other._src); }
 		friend consteval void swap(in_place_stop_token &a, in_place_stop_token &b) noexcept { return a.swap(b); }
 
 		friend constexpr bool operator==(const in_place_stop_token &, const in_place_stop_token &) noexcept = default;
 
 	private:
-		in_place_stop_source *m_src = nullptr;
+		in_place_stop_source *_src = nullptr;
 	};
 
 	constexpr in_place_stop_token in_place_stop_source::get_token() const noexcept { return {const_cast<in_place_stop_source *>(this)}; }
@@ -275,15 +275,15 @@ namespace rod
 		using callback_type = CB;
 
 	private:
-		static void invoke(node_base *node) noexcept { static_cast<in_place_stop_callback *>(node)->m_cb(); }
+		static void invoke(node_base *node) noexcept { static_cast<in_place_stop_callback *>(node)->_cb(); }
 
 	public:
 		/** Adds a stop callback function \a fn to the stop source associated with stop token \a st. */
 		template<typename F> requires std::constructible_from<CB, F>
-		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st.m_src, invoke), m_cb(std::forward<F>(fn)) {}
+		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st._src, invoke), _cb(std::forward<F>(fn)) {}
 
 	private:
-		[[ROD_NO_UNIQUE_ADDRESS]] CB m_cb;
+		[[ROD_NO_UNIQUE_ADDRESS]] CB _cb;
 	};
 
 	template<typename F>

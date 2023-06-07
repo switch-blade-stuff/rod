@@ -28,40 +28,40 @@ namespace rod::detail
 	{
 	public:
 		constexpr shared_handle() noexcept = default;
-		constexpr shared_handle(T *ptr) noexcept : m_ptr(ptr) {}
+		constexpr shared_handle(T *ptr) noexcept : _ptr(ptr) {}
 
-		shared_handle(const shared_handle &other) noexcept : m_ptr(other.acquire()) {}
+		shared_handle(const shared_handle &other) noexcept : _ptr(other.acquire()) {}
 		shared_handle &operator=(const shared_handle &other) noexcept
 		{
 			if (this != &other)
 			{
 				release();
-				m_ptr = other.acquire();
+				_ptr = other.acquire();
 			}
 			return *this;
 		}
 
-		constexpr shared_handle(shared_handle &&other) noexcept { std::swap(m_ptr, other.m_ptr); }
-		constexpr shared_handle &operator=(shared_handle &&other) noexcept { return (std::swap(m_ptr, other.m_ptr), *this); }
+		constexpr shared_handle(shared_handle &&other) noexcept { std::swap(_ptr, other._ptr); }
+		constexpr shared_handle &operator=(shared_handle &&other) noexcept { return (std::swap(_ptr, other._ptr), *this); }
 
 		~shared_handle() { release(); }
 
 		void reset()
 		{
 			release();
-			m_ptr = {};
+			_ptr = {};
 		}
 
-		[[nodiscard]] constexpr T *get() const noexcept { return m_ptr; }
+		[[nodiscard]] constexpr T *get() const noexcept { return _ptr; }
 		[[nodiscard]] constexpr T *operator->() const noexcept { return get(); }
 		[[nodiscard]] constexpr T &operator*() const noexcept { return *get(); }
 		[[nodiscard]] constexpr operator bool() const noexcept { return get(); }
 
 	private:
-		auto acquire() const noexcept { return m_ptr ? static_cast<T *>(static_cast<shared_base *>(m_ptr)->acquire()) : m_ptr; }
-		void release() { if (m_ptr && static_cast<shared_base *>(m_ptr)->release()) delete m_ptr; }
+		auto acquire() const noexcept { return _ptr ? static_cast<T *>(static_cast<shared_base *>(_ptr)->acquire()) : _ptr; }
+		void release() { if (_ptr && static_cast<shared_base *>(_ptr)->release()) delete _ptr; }
 
-		T *m_ptr = {};
+		T *_ptr = {};
 	};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

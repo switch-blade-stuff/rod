@@ -18,9 +18,9 @@ namespace rod::detail
 	{
 	public:
 		constexpr basic_descriptor() noexcept = default;
-		constexpr explicit basic_descriptor(int fd) noexcept : m_fd(fd) {}
+		constexpr explicit basic_descriptor(int fd) noexcept : _fd(fd) {}
 
-		constexpr int release(int fd = -1) noexcept { return std::exchange(m_fd, fd); }
+		constexpr int release(int fd = -1) noexcept { return std::exchange(_fd, fd); }
 
 		ROD_PUBLIC std::error_code close() noexcept;
 
@@ -33,14 +33,14 @@ namespace rod::detail
 		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 
-		[[nodiscard]] constexpr bool is_open() const noexcept { return m_fd > -1; }
-		[[nodiscard]] constexpr int native_handle() const noexcept { return m_fd; }
+		[[nodiscard]] constexpr bool is_open() const noexcept { return _fd > -1; }
+		[[nodiscard]] constexpr int native_handle() const noexcept { return _fd; }
 
-		constexpr void swap(basic_descriptor &other) noexcept { std::swap(m_fd, other.m_fd); }
+		constexpr void swap(basic_descriptor &other) noexcept { std::swap(_fd, other._fd); }
 		friend constexpr void swap(basic_descriptor &a, basic_descriptor &b) noexcept { a.swap(b); }
 
 	private:
-		int m_fd = -1;
+		int _fd = -1;
 	};
 
 	class unique_descriptor : basic_descriptor

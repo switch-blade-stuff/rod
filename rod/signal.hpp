@@ -59,36 +59,36 @@ namespace rod
 		/** Initializes an empty signal. */
 		constexpr basic_signal() noexcept = default;
 		/** Initializes an empty signal using the specified allocator. */
-		constexpr explicit basic_signal(const allocator_type &alloc) noexcept : m_nodes(alloc) {}
+		constexpr explicit basic_signal(const allocator_type &alloc) noexcept : _nodes(alloc) {}
 
-		constexpr basic_signal(basic_signal &&other) noexcept(std::is_nothrow_move_constructible_v<storage_t>) : m_nodes(std::move(other.m_nodes))
+		constexpr basic_signal(basic_signal &&other) noexcept(std::is_nothrow_move_constructible_v<storage_t>) : _nodes(std::move(other._nodes))
 		{
-			std::swap(m_head, other.m_head);
-			std::swap(m_slot, other.m_slot);
+			std::swap(_head, other._head);
+			std::swap(_slot, other._slot);
 		}
 		constexpr basic_signal &operator=(basic_signal &&other) noexcept(std::is_nothrow_move_assignable_v<storage_t>)
 		{
 			if (this != &other)
 			{
-				m_nodes = std::move(other.m_nodes);
-				m_head = std::exchange(other.m_head, npos);
-				m_slot = std::exchange(other.m_slot, npos);
+				_nodes = std::move(other._nodes);
+				_head = std::exchange(other._head, npos);
+				_slot = std::exchange(other._slot, npos);
 			}
 			return *this;
 		}
 
 		/** Checks if the signal is empty (has no associated listeners). */
-		[[nodiscard]] constexpr bool empty() const noexcept { return m_head == npos; }
+		[[nodiscard]] constexpr bool empty() const noexcept { return _head == npos; }
 		/** Returns copy of the signal's allocator. */
-		[[nodiscard]] constexpr allocator_type get_allocator() noexcept { return allocator_type{m_nodes.get_allocator()}; }
+		[[nodiscard]] constexpr allocator_type get_allocator() noexcept { return allocator_type{_nodes.get_allocator()}; }
 
 		/** Invokes all associated listeners with \a args. */
 		template<typename... Args>
 		constexpr void emit(Args &&...args) requires std::invocable<Func, Args...>
 		{
-			for (auto pos = m_head; pos != npos;)
+			for (auto pos = _head; pos != npos;)
 			{
-				auto &node = m_nodes[pos];
+				auto &node = _nodes[pos];
 				pos = node.next;
 
 				std::invoke(*node.value, args...);
@@ -99,9 +99,9 @@ namespace rod
 		template<typename A, typename... Args, typename R = std::invoke_result_t<Func, Args...>>
 		constexpr void accumulate(A acc, Args &&...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...> && std::invocable<A, R>)
 		{
-			for (auto pos = m_head; pos != npos;)
+			for (auto pos = _head; pos != npos;)
 			{
-				auto &node = m_nodes[pos];
+				auto &node = _nodes[pos];
 				pos = node.next;
 
 				const auto invoke = [&]() -> decltype(auto) { return std::invoke(acc, std::invoke(*node.value, args...)); };
@@ -117,9 +117,9 @@ namespace rod
 		template<typename... Args, typename R = std::invoke_result_t<Func, Args...>>
 		[[nodiscard]] generator<R> generate(Args ...args) requires(!std::same_as<R, void> && std::invocable<Func, Args...>)
 		{
-			for (auto pos = m_head; pos != npos;)
+			for (auto pos = _head; pos != npos;)
 			{
-				auto &node = m_nodes[pos];
+				auto &node = _nodes[pos];
 				pos = node.next;
 
 				co_yield std::invoke(*node.value, args...);
@@ -130,53 +130,53 @@ namespace rod
 		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>) { swap(*this, other); }
 		friend constexpr void swap(basic_signal &a, basic_signal &b) noexcept(std::is_nothrow_swappable_v<storage_t>)
 		{
-			std::swap(a.m_nodes, b.m_nodes);
-			std::swap(a.m_head, b.m_head);
-			std::swap(a.m_slot, b.m_slot);
+			std::swap(a._nodes, b._nodes);
+			std::swap(a._head, b._head);
+			std::swap(a._slot, b._slot);
 		}
 
 	private:
 		template<typename... Args>
 		constexpr size_type emplace(Args &&...args)
 		{
-			/* If m_slot == npos, node array is contiguous and next free is m_last + 1 or 0 if m_last == npos. */
+			/* If _slot == npos, node array is contiguous and next free is _last + 1 or 0 if _last == npos. */
 			size_type result;
-			if (m_slot != npos)
+			if (_slot != npos)
 			{
-				result = m_slot;
-				m_slot = m_nodes[result].next;
-				m_nodes[result].value.emplace(std::forward<Args>(args)...);
+				result = _slot;
+				_slot = _nodes[result].next;
+				_nodes[result].value.emplace(std::forward<Args>(args)...);
 			}
 			else
 			{
-				result = m_nodes.size();
-				m_nodes.emplace_back(std::forward<Args>(args)...);
+				result = _nodes.size();
+				_nodes.emplace_back(std::forward<Args>(args)...);
 			}
-			if (m_head != npos)
+			if (_head != npos)
 			{
-				m_nodes[m_head].prev = result;
-				m_nodes[result].next = m_head;
+				_nodes[_head].prev = result;
+				_nodes[result].next = _head;
 			}
-			return (m_head = result);
+			return (_head = result);
 		}
 		constexpr void erase(size_type pos) noexcept(std::is_nothrow_destructible_v<value_type>)
 		{
-			assert(pos < m_nodes.size());
+			assert(pos < _nodes.size());
 
-			auto &node = m_nodes[pos];
-			if (m_head == pos) m_head = node.next;
-			if (node.prev != npos) m_nodes[node.prev].next = node.next;
-			if (node.next != npos) m_nodes[node.next].prev = node.prev;
+			auto &node = _nodes[pos];
+			if (_head == pos) _head = node.next;
+			if (node.prev != npos) _nodes[node.prev].next = node.next;
+			if (node.next != npos) _nodes[node.next].prev = node.prev;
 
 			node.value.reset();
-			node.next = m_slot;
+			node.next = _slot;
 			node.prev = npos;
-			m_slot = pos;
+			_slot = pos;
 		}
 
-		storage_t m_nodes = {};
-		size_type m_head = npos;
-		size_type m_slot = npos;
+		storage_t _nodes = {};
+		size_type _head = npos;
+		size_type _slot = npos;
 	};
 
 	/** Alias of `basic_signal` that uses `delegate` as it's listener type. */
@@ -210,7 +210,7 @@ namespace rod
 
 	public:
 		/** Initializes a sink for signal \a signal. */
-		constexpr sink(Signal &signal) noexcept : m_signal(&signal) {}
+		constexpr sink(Signal &signal) noexcept : _signal(&signal) {}
 
 		/** Inserts a copy-constructed listener into the associated signal's queue and returns an index to the inserted element. */
 		constexpr size_type insert(const value_type &value) const requires std::copy_constructible<value_type> { return emplace(value); }
@@ -224,17 +224,17 @@ namespace rod
 
 		/** Inserts an in-place constructed listener into the associated signal's queue and returns an index to the inserted element. */
 		template<typename... Args>
-		constexpr size_type emplace(Args &&...args) const requires std::constructible_from<value_type, Args...> { return m_signal->emplace(std::forward<Args>(args)...); }
+		constexpr size_type emplace(Args &&...args) const requires std::constructible_from<value_type, Args...> { return _signal->emplace(std::forward<Args>(args)...); }
 
 		/** Removes listener at index \a idx. */
-		constexpr void erase(size_type idx) const noexcept(std::is_nothrow_destructible_v<value_type>) { m_signal->erase(idx); }
+		constexpr void erase(size_type idx) const noexcept(std::is_nothrow_destructible_v<value_type>) { _signal->erase(idx); }
 		/** @copydoc erase */
 		constexpr void operator-=(size_type idx) const noexcept(std::is_nothrow_destructible_v<value_type>) { erase(idx); }
 
 		[[nodiscard]] constexpr bool operator==(const sink &) const noexcept = default;
 
 	private:
-		Signal *m_signal;
+		Signal *_signal;
 	};
 
 	template<typename Signal>

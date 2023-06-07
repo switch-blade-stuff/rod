@@ -35,26 +35,26 @@ namespace rod
 			constexpr std::suspend_always initial_suspend() const noexcept { return {}; }
 			constexpr std::suspend_always final_suspend() const noexcept { return {}; }
 
-			void unhandled_exception() { m_err = std::current_exception(); }
-			void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
+			void unhandled_exception() { _err = std::current_exception(); }
+			void rethrow_exception() { if (_err) std::rethrow_exception(std::move(_err)); }
 			void return_void() {}
 
 			std::suspend_always yield_value(value_type &value) noexcept requires(!std::is_rvalue_reference_v<T>)
 			{
-				m_result = std::addressof(value);
+				_result = std::addressof(value);
 				return {};
 			}
 			std::suspend_always yield_value(value_type &&value) noexcept
 			{
-				m_result = std::addressof(value);
+				_result = std::addressof(value);
 				return {};
 			}
 
-			reference value() const noexcept { return *static_cast<value_type *>(m_result); }
+			reference value() const noexcept { return *static_cast<value_type *>(_result); }
 
 		private:
-			std::exception_ptr m_err;
-			void *m_result = nullptr;
+			std::exception_ptr _err;
+			void *_result = nullptr;
 		};
 
 		struct sentinel {};
@@ -72,7 +72,7 @@ namespace rod
 			using difference_type = std::ptrdiff_t;
 
 		private:
-			generator_iterator(std::coroutine_handle<generator_promise<T>> h) noexcept : m_handle(h) { next(); }
+			generator_iterator(std::coroutine_handle<generator_promise<T>> h) noexcept : _handle(h) { next(); }
 
 		public:
 			generator_iterator() noexcept = default;
@@ -80,25 +80,25 @@ namespace rod
 			void operator++(int) { operator++(); }
 			generator_iterator &operator++() { return (next(), *this); }
 
-			[[nodiscard]] reference operator*() const noexcept { return m_handle.promise().value(); }
+			[[nodiscard]] reference operator*() const noexcept { return _handle.promise().value(); }
 			[[nodiscard]] pointer operator->() const noexcept { return std::addressof(operator*()); }
 
 			[[nodiscard]] friend bool operator==(const generator_iterator &i, sentinel) noexcept { return i.done(); }
 			[[nodiscard]] friend bool operator==(sentinel, const generator_iterator &i) noexcept { return i.done(); }
 
 		private:
-			[[nodiscard]] bool done() const noexcept { return !m_handle || m_handle.done(); }
+			[[nodiscard]] bool done() const noexcept { return !_handle || _handle.done(); }
 
 			void next()
 			{
-				if (m_handle)
+				if (_handle)
 				{
-					m_handle.resume();
-					if (m_handle.done()) m_handle.promise().rethrow_exception();
+					_handle.resume();
+					if (_handle.done()) _handle.promise().rethrow_exception();
 				}
 			}
 
-			std::coroutine_handle<generator_promise<T>> m_handle = {};
+			std::coroutine_handle<generator_promise<T>> _handle = {};
 		};
 
 		template<typename T>
@@ -115,22 +115,22 @@ namespace rod
 			generator(const generator &) = delete;
 			generator &operator=(const generator &) = delete;
 
-			explicit generator(std::coroutine_handle<promise_type> h) noexcept : m_handle(h) {}
+			explicit generator(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
-			generator(generator &&other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+			generator(generator &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			generator &operator=(generator &&other) noexcept { return (swap(other), *this); }
-			~generator() { if (m_handle) m_handle.destroy(); }
+			~generator() { if (_handle) _handle.destroy(); }
 
 			/** Returns input iterator used to obtain values yielded by the generator. */
-			[[nodiscard]] iterator begin() { return {m_handle}; }
+			[[nodiscard]] iterator begin() { return {_handle}; }
 			/** Returns sentinel for the `begin` iterator. */
 			[[nodiscard]] sentinel end() noexcept { return {}; }
 
-			void swap(generator &other) noexcept { std::swap(m_handle, other.m_handle); }
+			void swap(generator &other) noexcept { std::swap(_handle, other._handle); }
 			friend void swap(generator &a, generator &b) noexcept { a.swap(b); }
 
 		private:
-			std::coroutine_handle<promise_type> m_handle;
+			std::coroutine_handle<promise_type> _handle;
 		};
 
 		template<typename T>
@@ -184,16 +184,16 @@ namespace rod
 			inline yield_awaiter final_suspend() noexcept;
 			constexpr void return_void() noexcept {}
 
-			constexpr bool done() const noexcept { return m_result == nullptr; }
-			void rethrow_exception() { if (m_err) std::rethrow_exception(std::move(m_err)); }
+			constexpr bool done() const noexcept { return _result == nullptr; }
+			void rethrow_exception() { if (_err) std::rethrow_exception(std::move(_err)); }
 			void unhandled_exception() noexcept
 			{
-				m_err = std::current_exception();
+				_err = std::current_exception();
 #ifndef ROD_HAS_INLINE_RESUME
 				/* Rethrow & terminate if an exception is received during a cancelled state,
 				 * since the caller does not exist anymore and as such cannot handle the error. */
-				if (m_state.load(std::memory_order_acquire) == cancelled)
-					std::rethrow_exception(std::move(m_err));
+				if (_state.load(std::memory_order_acquire) == cancelled)
+					std::rethrow_exception(std::move(_err));
 #endif
 			}
 
@@ -201,13 +201,13 @@ namespace rod
 			{
 #ifndef ROD_HAS_INLINE_RESUME
 				/* Since we are stopping, there is no ready value. */
-				m_state.store(consumer_running, std::memory_order_release);
+				_state.store(consumer_running, std::memory_order_release);
 #endif
-				return m_stop_func(m_consumer.address());
+				return _stop_func(_consumer.address());
 			}
 
 #ifndef ROD_HAS_INLINE_RESUME
-			bool cancel() noexcept { return m_state.exchange(cancelled, std::memory_order_acq_rel) == (value_ready | producer_suspended); }
+			bool cancel() noexcept { return _state.exchange(cancelled, std::memory_order_acq_rel) == (value_ready | producer_suspended); }
 #endif
 
 		protected:
@@ -217,26 +217,26 @@ namespace rod
 			void bind(std::coroutine_handle<Other> h) noexcept
 			{
 				if constexpr (requires { h.unhandled_stopped(); })
-					m_stop_func = [](void *p) noexcept -> std::coroutine_handle<> { return std::coroutine_handle<Other>::from_address(p).promise().unhandled_stopped(); };
+					_stop_func = [](void *p) noexcept -> std::coroutine_handle<> { return std::coroutine_handle<Other>::from_address(p).promise().unhandled_stopped(); };
 				else
-					m_stop_func = [](void *) noexcept -> std::coroutine_handle<> { std::terminate(); };
+					_stop_func = [](void *) noexcept -> std::coroutine_handle<> { std::terminate(); };
 			}
 
 #ifndef ROD_HAS_INLINE_RESUME
 			std::size_t resume_consumer(std::size_t state = (value_ready | consumer_running)) noexcept
 			{
-				m_state.store(state, std::memory_order_relaxed);
-				m_consumer.resume();
-				return m_state.load(std::memory_order_acquire);
+				_state.store(state, std::memory_order_relaxed);
+				_consumer.resume();
+				return _state.load(std::memory_order_acquire);
 			}
 
-			std::atomic<std::size_t> m_state = value_ready | producer_suspended;
+			std::atomic<std::size_t> _state = value_ready | producer_suspended;
 #endif
 
-			std::coroutine_handle<> m_consumer = {};
-			std::exception_ptr m_err = {};
-			stop_func m_stop_func = {};
-			void *m_result = {};
+			std::coroutine_handle<> _consumer = {};
+			std::exception_ptr _err = {};
+			stop_func _stop_func = {};
+			void *_result = {};
 		};
 
 		class next_awaiter
@@ -246,13 +246,13 @@ namespace rod
 #endif
 
 		protected:
-			next_awaiter(promise_base &promise, std::coroutine_handle<> producer) noexcept : m_producer(producer), m_promise(&promise)
+			next_awaiter(promise_base &promise, std::coroutine_handle<> producer) noexcept : _producer(producer), _promise(&promise)
 			{
 #ifndef ROD_HAS_INLINE_RESUME
-				auto state = promise.m_state.load(std::memory_order_acquire);
+				auto state = promise._state.load(std::memory_order_acquire);
 				if (state == (state_t::value_ready | state_t::producer_suspended))
 					state = resume_producer();
-				m_state = state;
+				_state = state;
 #endif
 			}
 
@@ -264,22 +264,22 @@ namespace rod
 			template<typename P>
 			std::coroutine_handle<> await_suspend(std::coroutine_handle<P> consumer) noexcept
 			{
-				m_promise->m_consumer = consumer;
-				m_promise->bind(consumer);
-				return m_producer;
+				_promise->_consumer = consumer;
+				_promise->bind(consumer);
+				return _producer;
 			}
 #else
-			constexpr bool await_ready() const noexcept { return m_state == (state_t::value_ready | state_t::producer_suspended); }
+			constexpr bool await_ready() const noexcept { return _state == (state_t::value_ready | state_t::producer_suspended); }
 			template<typename P>
 			__declspec(noinline) bool await_suspend(std::coroutine_handle<P> consumer) noexcept
 			{
-				auto state = m_state;
-				m_promise->m_consumer = consumer;
-				m_promise->bind(consumer);
+				auto state = _state;
+				_promise->_consumer = consumer;
+				_promise->bind(consumer);
 
 				if (state == (state_t::value_ready | state_t::producer_running))
 				{
-					if (m_promise->m_state.compare_exchange_strong(
+					if (_promise->_state.compare_exchange_strong(
 							state, state_t::consumer_suspended,
 							std::memory_order_release,
 							std::memory_order_acquire))
@@ -289,7 +289,7 @@ namespace rod
 					if (state == (state_t::value_ready | state_t::producer_suspended))
 						return false;
 				}
-				return m_promise->m_state.compare_exchange_strong(
+				return _promise->_state.compare_exchange_strong(
 						state, state_t::consumer_suspended,
 						std::memory_order_release,
 						std::memory_order_relaxed);
@@ -300,16 +300,16 @@ namespace rod
 #ifndef ROD_HAS_INLINE_RESUME
 			std::size_t resume_producer(std::size_t state = state_t::consumer_running) noexcept
 			{
-				m_promise->m_state.store(state, std::memory_order_relaxed);
-				m_producer.resume();
-				return m_promise->m_state.load(std::memory_order_acquire);
+				_promise->_state.store(state, std::memory_order_relaxed);
+				_producer.resume();
+				return _promise->_state.load(std::memory_order_acquire);
 			}
 
-			std::size_t m_state = {};
+			std::size_t _state = {};
 #endif
 
-			std::coroutine_handle<> m_producer = {};
-			promise_base *m_promise = nullptr;
+			std::coroutine_handle<> _producer = {};
+			promise_base *_promise = nullptr;
 		};
 
 		class yield_awaiter
@@ -320,27 +320,27 @@ namespace rod
 
 		public:
 #ifdef ROD_HAS_INLINE_RESUME
-			yield_awaiter(std::coroutine_handle<> consumer) noexcept : m_consumer(consumer) {}
+			yield_awaiter(std::coroutine_handle<> consumer) noexcept : _consumer(consumer) {}
 
 			constexpr bool await_ready() const noexcept { return false; }
-			std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept { return m_consumer; }
+			std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept { return _consumer; }
 #else
-			yield_awaiter(promise_base &promise, std::size_t state) noexcept : m_promise(&promise), m_state(state) {}
+			yield_awaiter(promise_base &promise, std::size_t state) noexcept : _promise(&promise), _state(state) {}
 
-			constexpr bool await_ready() const noexcept { return m_state == state_t{}; }
+			constexpr bool await_ready() const noexcept { return _state == state_t{}; }
 			__declspec(noinline) bool await_suspend(std::coroutine_handle<> producer) noexcept
 			{
-				auto state = m_state;
+				auto state = _state;
 				if (state == state_t::consumer_running)
 				{
-					if (m_promise->m_state.compare_exchange_strong(
+					if (_promise->_state.compare_exchange_strong(
 							state, state_t::value_ready | state_t::producer_suspended,
 							std::memory_order_release, std::memory_order_acquire))
 						return true;
 
 					if (state == state_t::consumer_suspended)
 					{
-						state = m_promise->resume_consumer();
+						state = _promise->resume_consumer();
 						if (state == state_t::consumer_suspended)
 							return false;
 					}
@@ -349,7 +349,7 @@ namespace rod
 				if (state == (state_t::value_ready | state_t::producer_running))
 				{
 					/* Consumer is running and a value has been yielded, try to suspend the producer. */
-					if (m_promise->m_state.compare_exchange_strong(
+					if (_promise->_state.compare_exchange_strong(
 							state, state_t::value_ready | state_t::producer_suspended,
 							std::memory_order_release, std::memory_order_acquire))
 						return true;
@@ -368,10 +368,10 @@ namespace rod
 
 		private:
 #ifdef ROD_HAS_INLINE_RESUME
-			std::coroutine_handle<> m_consumer;
+			std::coroutine_handle<> _consumer;
 #else
-			promise_base *m_promise;
-			std::size_t m_state;
+			promise_base *_promise;
+			std::size_t _state;
 #endif
 		};
 
@@ -395,16 +395,16 @@ namespace rod
 
 			yield_awaiter yield_value(value_type &value) noexcept requires(!std::is_rvalue_reference_v<T>)
 			{
-				m_result = std::addressof(value);
+				_result = std::addressof(value);
 				return await_yield();
 			}
 			yield_awaiter yield_value(value_type &&value) noexcept
 			{
-				m_result = std::addressof(value);
+				_result = std::addressof(value);
 				return await_yield();
 			}
 
-			constexpr reference value() const noexcept { return static_cast<reference>(*static_cast<T *>(m_result)); }
+			constexpr reference value() const noexcept { return static_cast<reference>(*static_cast<T *>(_result)); }
 		};
 
 		template<typename T>
@@ -417,7 +417,7 @@ namespace rod
 		public:
 			constexpr begin_awaiter() noexcept = default;
 
-			bool await_ready() const noexcept { return !m_producer || next_awaiter::await_ready(); }
+			bool await_ready() const noexcept { return !_producer || next_awaiter::await_ready(); }
 
 			inline generator_iterator<T> await_resume();
 		};
@@ -426,13 +426,13 @@ namespace rod
 		{
 			friend class generator_iterator<T>;
 
-			iterator_awaiter(generator_iterator<T> &iter) noexcept : next_awaiter(iter.m_handle.promise(), iter.m_handle), m_iter(iter) {}
+			iterator_awaiter(generator_iterator<T> &iter) noexcept : next_awaiter(iter._handle.promise(), iter._handle), _iter(iter) {}
 
 		public:
 			inline generator_iterator<T> &await_resume();
 
 		private:
-			generator_iterator<T> &m_iter;
+			generator_iterator<T> &_iter;
 		};
 
 		template<typename T>
@@ -450,20 +450,20 @@ namespace rod
 			using difference_type = std::ptrdiff_t;
 
 		private:
-			generator_iterator(std::coroutine_handle<generator_promise<T>> h) noexcept : m_handle(h) {}
+			generator_iterator(std::coroutine_handle<generator_promise<T>> h) noexcept : _handle(h) {}
 
 		public:
 			constexpr generator_iterator() noexcept = default;
 
 			iterator_awaiter<T> operator++() noexcept { return {*this}; }
 
-			[[nodiscard]] reference operator*() const noexcept { return m_handle.promise().value(); }
+			[[nodiscard]] reference operator*() const noexcept { return _handle.promise().value(); }
 			[[nodiscard]] pointer operator->() const noexcept { return std::addressof(operator*()); }
 
-			[[nodiscard]] bool operator==(const generator_iterator &other) const noexcept { return m_handle == other.m_handle; }
+			[[nodiscard]] bool operator==(const generator_iterator &other) const noexcept { return _handle == other._handle; }
 
 		private:
-			std::coroutine_handle<generator_promise<T>> m_handle = {};
+			std::coroutine_handle<generator_promise<T>> _handle = {};
 		};
 
 		template<typename T>
@@ -478,43 +478,43 @@ namespace rod
 			generator_task(const generator_task &) = delete;
 			generator_task &operator=(const generator_task &) = delete;
 
-			explicit generator_task(std::coroutine_handle<promise_type> h) noexcept : m_handle(h) {}
+			explicit generator_task(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
-			generator_task(generator_task &&other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+			generator_task(generator_task &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			generator_task &operator=(generator_task &&other) noexcept { return (swap(other), *this); }
 
 
 #ifdef ROD_HAS_INLINE_RESUME
-			~generator_task() { if (m_handle) m_handle.destroy(); }
+			~generator_task() { if (_handle) _handle.destroy(); }
 #else
-			~generator_task() { if (m_handle && m_handle.promise().cancel()) m_handle.destroy(); }
+			~generator_task() { if (_handle && _handle.promise().cancel()) _handle.destroy(); }
 #endif
 
 			/** Returns awaiter object that suspends until a result has been yielded by the generator, then returns an input iterator. */
-			[[nodiscard]] begin_awaiter<T> begin() noexcept { return m_handle ? begin_awaiter<T>{m_handle} : begin_awaiter<T>{}; }
+			[[nodiscard]] begin_awaiter<T> begin() noexcept { return _handle ? begin_awaiter<T>{_handle} : begin_awaiter<T>{}; }
 			/** Returns sentinel for the iterator produced by the `begin` awaiter. */
 			[[nodiscard]] iterator end() noexcept { return iterator{}; }
 
-			void swap(generator_task &other) noexcept { std::swap(m_handle, other.m_handle); }
+			void swap(generator_task &other) noexcept { std::swap(_handle, other._handle); }
 			friend void swap(generator_task &a, generator_task &b) noexcept { a.swap(b); }
 
 		private:
-			std::coroutine_handle<promise_type> m_handle;
+			std::coroutine_handle<promise_type> _handle;
 		};
 
 		yield_awaiter promise_base::await_yield() noexcept
 		{
 #ifdef ROD_HAS_INLINE_RESUME
-			return yield_awaiter{m_consumer};
+			return yield_awaiter{_consumer};
 #else
-			auto state = m_state.load(std::memory_order_acquire);
+			auto state = _state.load(std::memory_order_acquire);
 			if (state == state_t{}) state = resume_consumer();
 			return yield_awaiter{*this, state};
 #endif
 		}
 		yield_awaiter promise_base::final_suspend() noexcept
 		{
-			m_result = nullptr;
+			_result = nullptr;
 			return await_yield();
 		}
 
@@ -524,24 +524,24 @@ namespace rod
 		template<typename T>
 		generator_iterator<T> begin_awaiter<T>::await_resume()
 		{
-			if (!m_promise)
+			if (!_promise)
 				return generator_iterator<T>{};
-			else if (m_promise->done())
+			else if (_promise->done())
 			{
-				m_promise->rethrow_exception();
+				_promise->rethrow_exception();
 				return generator_iterator<T>{};
 			}
-			return {std::coroutine_handle<generator_promise<T>>::from_promise(*static_cast<generator_promise<T> *>(m_promise))};
+			return {std::coroutine_handle<generator_promise<T>>::from_promise(*static_cast<generator_promise<T> *>(_promise))};
 		}
 		template<typename T>
 		generator_iterator<T> &iterator_awaiter<T>::await_resume()
 		{
-			if (m_promise->done())
+			if (_promise->done())
 			{
-				m_iter = generator_iterator<T>{};
-				m_promise->rethrow_exception();
+				_iter = generator_iterator<T>{};
+				_promise->rethrow_exception();
 			}
-			return m_iter;
+			return _iter;
 		}
 	}
 

@@ -63,8 +63,8 @@ namespace rod::detail
 		constexpr explicit system_file(native_handle_type hnd) noexcept : unique_io_handle(hnd) {}
 		constexpr explicit system_file(unique_io_handle &&hnd) noexcept : unique_io_handle(std::move(hnd)) {}
 
-		constexpr explicit system_file(native_handle_type hnd, std::size_t off) noexcept : unique_io_handle(hnd), m_offset(off) {}
-		constexpr explicit system_file(unique_io_handle &&hnd, std::size_t off) noexcept : unique_io_handle(std::move(hnd)), m_offset(off) {}
+		constexpr explicit system_file(native_handle_type hnd, std::size_t off) noexcept : unique_io_handle(hnd), _offset(off) {}
+		constexpr explicit system_file(unique_io_handle &&hnd, std::size_t off) noexcept : unique_io_handle(std::move(hnd)), _offset(off) {}
 
 		using unique_io_handle::close;
 		using unique_io_handle::is_open;
@@ -72,12 +72,12 @@ namespace rod::detail
 
 		void *release() noexcept
 		{
-			m_offset = std::numeric_limits<std::size_t>::max();
+			_offset = std::numeric_limits<std::size_t>::max();
 			return unique_io_handle::release();
 		}
 		void *release(void *hnd) noexcept
 		{
-			m_offset = std::numeric_limits<std::size_t>::max();
+			_offset = std::numeric_limits<std::size_t>::max();
 			return unique_io_handle::release(hnd);
 		}
 
@@ -98,12 +98,12 @@ namespace rod::detail
 		constexpr void swap(system_file &other) noexcept
 		{
 			unique_io_handle::swap(other);
-			std::swap(m_offset, other.m_offset);
+			std::swap(_offset, other._offset);
 		}
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }
 
 	private:
-		std::size_t m_offset = std::numeric_limits<std::size_t>::max();
+		std::size_t _offset = std::numeric_limits<std::size_t>::max();
 	};
 }
 ROD_TOPLEVEL_NAMESPACE_CLOSE

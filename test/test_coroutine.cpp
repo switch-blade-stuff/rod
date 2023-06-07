@@ -23,9 +23,9 @@ struct test_coroutine
 		void return_void() {}
 	};
 
-	~test_coroutine() { (m_handle.resume(), m_handle.destroy()); }
+	~test_coroutine() { (_handle.resume(), _handle.destroy()); }
 
-	std::coroutine_handle<promise_type> m_handle;
+	std::coroutine_handle<promise_type> _handle;
 };
 
 int main()

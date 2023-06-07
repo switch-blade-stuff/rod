@@ -13,6 +13,7 @@
 #include "linux/io_uring_context.hpp"
 #endif
 
+#include "thread_pool.hpp"
 #include "file.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN

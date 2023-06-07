@@ -178,17 +178,17 @@ namespace rod
 				time_point now;
 				for (;;)
 				{
-					if (m_timers.load(std::memory_order_acquire))
+					if (_timers.load(std::memory_order_acquire))
 						now = clock::now();
 					while (!consumer_queue.empty())
 						consumer_queue.pop_front()->_notify(now);
 
-					if (const auto front = m_producer_queue.front(); !front)
-						m_producer_queue.wait();
-					else if (front != m_producer_queue.sentinel())
+					if (const auto front = _producer_queue.front(); !front)
+						_producer_queue.wait();
+					else if (front != _producer_queue.sentinel())
 					{
-						consumer_queue = std::move(m_producer_queue);
-						m_producer_queue.notify_all();
+						consumer_queue = std::move(_producer_queue);
+						_producer_queue.notify_all();
 					}
 					else
 						break;
@@ -207,27 +207,27 @@ namespace rod
 			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */
 			void finish()
 			{
-				m_producer_queue.terminate();
-				m_producer_queue.notify_all();
+				_producer_queue.terminate();
+				_producer_queue.notify_all();
 			}
 
 			/** Returns copy of the stop source associated with the run loop. */
-			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return m_stop_source; }
+			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_source; }
 			/** Returns a stop token of the stop source associated with the run loop. */
-			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return m_stop_source.get_token(); }
+			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_source.get_token(); }
 			/** Sends a stop request to the stop source associated with the run loop. */
-			void request_stop() { m_stop_source.request_stop(); }
+			void request_stop() { _stop_source.request_stop(); }
 
 		private:
 			void schedule(operation_base *node) noexcept
 			{
-				m_producer_queue.push(node);
-				m_producer_queue.notify_all();
+				_producer_queue.push(node);
+				_producer_queue.notify_all();
 			}
 
-			in_place_stop_source m_stop_source = {};
-			producer_queue_t m_producer_queue = {};
-			std::atomic<std::size_t> m_timers = {};
+			in_place_stop_source _stop_source = {};
+			producer_queue_t _producer_queue = {};
+			std::atomic<std::size_t> _timers = {};
 		};
 
 		constexpr in_place_stop_token tag_invoke(get_stop_token_t, const env &s) noexcept { return s._loop->get_stop_token(); }
@@ -239,7 +239,7 @@ namespace rod
 		template<typename R>
 		void timer_operation<R>::type::_start() noexcept
 		{
-			_loop->m_timers.fetch_add(1, std::memory_order_acq_rel);
+			_loop->_timers.fetch_add(1, std::memory_order_acq_rel);
 			_loop->schedule(this);
 		}
 		template<typename R>
@@ -247,12 +247,12 @@ namespace rod
 		{
 			if (rod::get_stop_token(get_env(_rcv)).stop_requested())
 			{
-				_loop->m_timers.fetch_sub(1, std::memory_order_acq_rel);
+				_loop->_timers.fetch_sub(1, std::memory_order_acq_rel);
 				set_stopped(std::move(_rcv));
 			}
 			else if (now >= _timeout)
 			{
-				_loop->m_timers.fetch_sub(1, std::memory_order_acq_rel);
+				_loop->_timers.fetch_sub(1, std::memory_order_acq_rel);
 				set_value(std::move(_rcv));
 			}
 			else

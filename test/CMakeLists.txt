@@ -18,6 +18,8 @@ function(make_test NAME FILE)
         target_compile_options(${TEST_PROJECT} PRIVATE /W3 /WX)
     else ()
         target_compile_options(${TEST_PROJECT} PRIVATE -Wall -Wextra -Wpedantic -Werror -Wno-unknown-pragmas -Wno-ignored-attributes)
+#        target_compile_options(${TEST_PROJECT} PRIVATE -fsanitize=address)
+#        target_link_options(${TEST_PROJECT} PRIVATE -fsanitize=address)
     endif ()
 
     # Add as test

@@ -31,10 +31,10 @@ namespace rod
 
 		public:
 			constexpr time_point() noexcept = default;
-			constexpr time_point(std::int64_t sec, long long nsec) noexcept : m_sec(sec), m_nsec(nsec) { normalize(); }
+			constexpr time_point(std::int64_t sec, long long nsec) noexcept : _sec(sec), _nsec(nsec) { normalize(); }
 
-			[[nodiscard]] constexpr std::int64_t seconds() const noexcept { return m_sec; }
-			[[nodiscard]] constexpr long long nanoseconds() const noexcept { return m_nsec; }
+			[[nodiscard]] constexpr std::int64_t seconds() const noexcept { return _sec; }
+			[[nodiscard]] constexpr long long nanoseconds() const noexcept { return _nsec; }
 
 			template<typename Rep, typename Ratio>
 			constexpr time_point &operator+=(const std::chrono::duration<Rep, Ratio> &d) noexcept
@@ -42,8 +42,8 @@ namespace rod
 				const auto sec = std::chrono::duration_cast<std::chrono::seconds>(d);
 				const auto rem = std::chrono::duration_cast<std::chrono::nanoseconds>(d - sec);
 
-				m_sec += sec.count();
-				m_nsec += rem.count();
+				_sec += sec.count();
+				_nsec += rem.count();
 				return normalize();
 			}
 			template<typename Rep, typename Ratio>
@@ -52,12 +52,12 @@ namespace rod
 				const auto sec = std::chrono::duration_cast<std::chrono::seconds>(d);
 				const auto rem = std::chrono::duration_cast<std::chrono::nanoseconds>(d - sec);
 
-				m_sec -= sec.count();
-				m_nsec -= rem.count();
+				_sec -= sec.count();
+				_nsec -= rem.count();
 				return normalize();
 			}
 
-			friend constexpr duration operator-(const time_point &a, const time_point &b) noexcept { return duration{(a.m_sec - b.m_sec) * 10'000'000 + (a.m_nsec - b.m_nsec) / 100}; }
+			friend constexpr duration operator-(const time_point &a, const time_point &b) noexcept { return duration{(a._sec - b._sec) * 10'000'000 + (a._nsec - b._nsec) / 100}; }
 			template<typename Rep, typename Period>
 			friend constexpr time_point operator+(const time_point &a, std::chrono::duration<Rep, Period> b) noexcept
 			{
@@ -75,13 +75,13 @@ namespace rod
 
 			friend constexpr bool operator==(const time_point &a, const time_point &b) noexcept
 			{
-				return a.m_sec == b.m_sec && a.m_nsec == b.m_nsec;
+				return a._sec == b._sec && a._nsec == b._nsec;
 			}
 			friend constexpr auto operator<=>(const time_point &a, const time_point &b) noexcept
 			{
-				if (a.m_sec < b.m_sec || (a.m_sec == b.m_sec && a.m_nsec < b.m_nsec))
+				if (a._sec < b._sec || (a._sec == b._sec && a._nsec < b._nsec))
 					return std::weak_ordering::less;
-				else if (a.m_sec > b.m_sec || (a.m_sec == b.m_sec && a.m_nsec > b.m_nsec))
+				else if (a._sec > b._sec || (a._sec == b._sec && a._nsec > b._nsec))
 					return std::weak_ordering::greater;
 				else
 					return std::weak_ordering::equivalent;
@@ -91,25 +91,25 @@ namespace rod
 			constexpr time_point &normalize() noexcept
 			{
 				constexpr std::int64_t scale = 1'000'000'000;
-				const auto overflow = m_nsec / scale;
+				const auto overflow = _nsec / scale;
 
-				m_sec += overflow;
-				m_nsec -= overflow * scale;
-				if (m_sec < 0 && m_nsec > 0)
+				_sec += overflow;
+				_nsec -= overflow * scale;
+				if (_sec < 0 && _nsec > 0)
 				{
-					m_sec += 1;
-					m_nsec -= scale;
+					_sec += 1;
+					_nsec -= scale;
 				}
-				else if (m_sec > 0 && m_nsec < 0)
+				else if (_sec > 0 && _nsec < 0)
 				{
-					m_sec -= 1;
-					m_nsec += scale;
+					_sec -= 1;
+					_nsec += scale;
 				}
 				return *this;
 			}
 
-			std::int64_t m_sec = {};
-			long long m_nsec = {};
+			std::int64_t _sec = {};
+			long long _nsec = {};
 		};
 
 		static constexpr bool is_steady = true;

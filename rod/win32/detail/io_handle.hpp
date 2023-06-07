@@ -20,20 +20,20 @@ namespace rod::detail
 
 	public:
 		constexpr basic_io_handle() noexcept = default;
-		constexpr explicit basic_io_handle(void *handle) noexcept : m_handle(handle) {}
+		constexpr explicit basic_io_handle(void *handle) noexcept : _handle(handle) {}
 
-		void *release(void *hnd = invalid_handle()) noexcept { return std::exchange(m_handle, hnd); }
+		void *release(void *hnd = invalid_handle()) noexcept { return std::exchange(_handle, hnd); }
 
 		ROD_PUBLIC std::error_code close() noexcept;
 
-		[[nodiscard]] bool is_open() const noexcept { return m_handle != invalid_handle(); }
-		[[nodiscard]] void *native_handle() const noexcept { return m_handle; }
+		[[nodiscard]] bool is_open() const noexcept { return _handle != invalid_handle(); }
+		[[nodiscard]] void *native_handle() const noexcept { return _handle; }
 
-		constexpr void swap(basic_io_handle &other) noexcept { std::swap(m_handle, other.m_handle); }
+		constexpr void swap(basic_io_handle &other) noexcept { std::swap(_handle, other._handle); }
 		friend constexpr void swap(basic_io_handle &a, basic_io_handle &b) noexcept { a.swap(b); }
 
 	private:
-		void *m_handle = invalid_handle();
+		void *_handle = invalid_handle();
 	};
 
 	class unique_io_handle : basic_io_handle

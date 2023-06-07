@@ -312,41 +312,41 @@ namespace rod
 			[[nodiscard]] static basic_file reopen(const basic_file &file, openmode mode, std::error_code &err) noexcept { return reopen(file.native_handle(), mode, err); }
 
 		private:
-			constexpr basic_file(native_t &&file) noexcept : m_file(std::move(file)) {}
+			constexpr basic_file(native_t &&file) noexcept : _file(std::move(file)) {}
 
 		public:
 			constexpr basic_file() noexcept = default;
-			constexpr basic_file(basic_file &&other) noexcept : m_file(std::move(other.m_file)) {}
-			constexpr basic_file &operator=(basic_file &&other) noexcept { return (m_file = std::move(other.m_file), *this); }
+			constexpr basic_file(basic_file &&other) noexcept : _file(std::move(other._file)) {}
+			constexpr basic_file &operator=(basic_file &&other) noexcept { return (_file = std::move(other._file), *this); }
 
 			/** Initializes the file from a native file handle. */
-			explicit basic_file(native_handle_type file) noexcept : m_file(file) {}
+			explicit basic_file(native_handle_type file) noexcept : _file(file) {}
 
 			/** @brief Closes the file handle.
 			 * @param[out] err Reference to the error code set on failure to close the file. */
-			void close(std::error_code &err) noexcept { err = m_file.close(); }
+			void close(std::error_code &err) noexcept { err = _file.close(); }
 			/** @copybrief close
 			 * @throw std::system_error On failure to close the file. */
-			void close() { if (auto err = m_file.close(); err) throw std::system_error(err, "rod::basic_file::close"); }
+			void close() { if (auto err = _file.close(); err) throw std::system_error(err, "rod::basic_file::close"); }
 
 			/** Releases the underlying native file handle without closing. */
-			native_handle_type release() noexcept { return m_file.release(); }
+			native_handle_type release() noexcept { return _file.release(); }
 			/** Releases the underlying native file handle without closing and replaces it with the specified handle. */
-			native_handle_type release(native_handle_type new_file) noexcept { return m_file.release(new_file); }
+			native_handle_type release(native_handle_type new_file) noexcept { return _file.release(new_file); }
 
 			/** @brief Synchronizes file with the underlying device.
 			 * @param[out] err Reference to the error code set on failure to synchronize the file. */
-			void sync(std::error_code &err) noexcept { err = m_file.sync(); }
+			void sync(std::error_code &err) noexcept { err = _file.sync(); }
 			/** @copybrief flush
 			 * @throw std::system_error On failure to flush the file. */
-			void sync() { if (const auto err = m_file.sync(); err) throw std::system_error(err, "rod::basic_file::sync"); }
+			void sync() { if (const auto err = _file.sync(); err) throw std::system_error(err, "rod::basic_file::sync"); }
 
 			/** @brief Flushes file buffers.
 			 * @param[out] err Reference to the error code set on failure to flush the file. */
-			void flush(std::error_code &err) noexcept { err = m_file.flush(); }
+			void flush(std::error_code &err) noexcept { err = _file.flush(); }
 			/** @copybrief flush
 			 * @throw std::system_error On failure to flush the file. */
-			void flush() { if (const auto err = m_file.flush(); err) throw std::system_error(err, "rod::basic_file::flush"); }
+			void flush() { if (const auto err = _file.flush(); err) throw std::system_error(err, "rod::basic_file::flush"); }
 
 			/** @brief Returns the current position within the file. Equivalent to `seek(0, cur)`.
 			 * @return Current absolute position within the file.
@@ -362,7 +362,7 @@ namespace rod
 			/** @copybrief tell
 			 * @param[out] err Reference to the error code set on failure to get position of the file.
 			 * @return Current absolute position within the file. */
-			[[nodiscard]] std::size_t tell(std::error_code &err) const noexcept { return m_file.tell(err); }
+			[[nodiscard]] std::size_t tell(std::error_code &err) const noexcept { return _file.tell(err); }
 
 			/** @brief Seeks to the specified offset within the file starting at the specified position.
 			 * @param[in] off Offset into the file starting at \a dir.
@@ -382,7 +382,7 @@ namespace rod
 			 * @param[in] dir Base direction to seek from.
 			 * @param[out] err Reference to the error code set on failure to seek the file.
 			 * @return New absolute position within the file. */
-			std::size_t seek(std::ptrdiff_t off, seekdir dir, std::error_code &err) noexcept { return m_file.seek(off, dir, err); }
+			std::size_t seek(std::ptrdiff_t off, seekdir dir, std::error_code &err) noexcept { return _file.seek(off, dir, err); }
 
 			/** @brief Returns the size of the file.
 			 * @return Current size of the file as reported by the filesystem.
@@ -398,25 +398,25 @@ namespace rod
 			/** @copybrief tell
 			 * @param[out] err Reference to the error code set on failure to get size of the file.
 			 * @return Current size of the file as reported by the filesystem. */
-			[[nodiscard]] std::size_t size(std::error_code &err) const noexcept { return m_file.size(err); }
+			[[nodiscard]] std::size_t size(std::error_code &err) const noexcept { return _file.size(err); }
 
 			/** @brief Re-sizes the file to the specified amount of bytes.
 			 * @param[in] new_size New size of the file in bytes.
 			 * @throw std::system_error On failure to seek the file. */
-			void resize(std::size_t new_size) { if (const auto err = m_file.resize(new_size); err) throw std::system_error(err, "rod::basic_file::resize"); }
+			void resize(std::size_t new_size) { if (const auto err = _file.resize(new_size); err) throw std::system_error(err, "rod::basic_file::resize"); }
 			/** @copybrief seek
 			 * @param[in] off Offset into the file starting at \a dir.
 			 * @param[in] dir Base direction to seek from.
 			 * @param[out] err Reference to the error code set on failure to seek the file.
 			 * @return New absolute position within the file. */
-			void resize(std::size_t new_size, std::error_code &err) noexcept { err = m_file.resize(new_size); }
+			void resize(std::size_t new_size, std::error_code &err) noexcept { err = _file.resize(new_size); }
 
 			/** Checks if the file is open. */
-			[[nodiscard]] bool is_open() const noexcept { return m_file.is_open(); }
+			[[nodiscard]] bool is_open() const noexcept { return _file.is_open(); }
 			/** Returns the underlying native file handle. */
-			[[nodiscard]] native_handle_type native_handle() const noexcept { return m_file.native_handle(); }
+			[[nodiscard]] native_handle_type native_handle() const noexcept { return _file.native_handle(); }
 
-			constexpr void swap(basic_file &other) noexcept { m_file.swap(other.m_file); }
+			constexpr void swap(basic_file &other) noexcept { _file.swap(other._file); }
 			friend constexpr void swap(basic_file &a, basic_file &b) noexcept { a.swap(b); }
 
 		public:
@@ -426,7 +426,7 @@ namespace rod
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto dst_ptr = std::to_address(std::ranges::begin(buff));
 				const auto dst_max = std::ranges::size(buff) * sizeof(value_t);
-				return f.m_file.sync_read(static_cast<void *>(dst_ptr), dst_max, err);
+				return f._file.sync_read(static_cast<void *>(dst_ptr), dst_max, err);
 			}
 			template<reference_to<basic_file> F, typename Buff>
 			friend std::size_t tag_invoke(write_some_t, F &&f, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
@@ -434,7 +434,7 @@ namespace rod
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto src_ptr = std::to_address(std::ranges::begin(buff));
 				const auto src_max = std::ranges::size(buff) * sizeof(value_t);
-				return f.m_file.sync_write(static_cast<const void *>(src_ptr), src_max, err);
+				return f._file.sync_write(static_cast<const void *>(src_ptr), src_max, err);
 			}
 			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, typename Buff>
 			friend std::size_t tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
@@ -442,7 +442,7 @@ namespace rod
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto dst_ptr = std::to_address(std::ranges::begin(buff));
 				const auto dst_max = std::ranges::size(buff) * sizeof(value_t);
-				return f.m_file.sync_read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err);
+				return f._file.sync_read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err);
 			}
 			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, typename Buff>
 			friend std::size_t tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
@@ -450,7 +450,7 @@ namespace rod
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto src_ptr = std::to_address(std::ranges::begin(buff));
 				const auto src_max = std::ranges::size(buff) * sizeof(value_t);
-				return f.m_file.sync_write_at(static_cast<const void *>(src_ptr), src_max, static_cast<std::ptrdiff_t>(pos), err);
+				return f._file.sync_write_at(static_cast<const void *>(src_ptr), src_max, static_cast<std::ptrdiff_t>(pos), err);
 			}
 
 			template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires detail::callable<T, Snd, native_handle_type, Buff>
@@ -493,7 +493,7 @@ namespace rod
 			}
 
 		private:
-			native_t m_file = {};
+			native_t _file = {};
 		};
 
 		template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires(!detail::callable<T, Snd, typename basic_file::native_handle_type, Buff>)

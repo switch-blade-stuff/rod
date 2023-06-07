@@ -44,15 +44,15 @@ namespace rod
 		public:
 			[[nodiscard]] void *data() noexcept { return bytes(); }
 			[[nodiscard]] const void *data() const noexcept { return bytes(); }
-			[[nodiscard]] constexpr std::byte *bytes() noexcept { return m_bytes.data(); }
-			[[nodiscard]] constexpr const std::byte *bytes() const noexcept { return m_bytes.data(); }
+			[[nodiscard]] constexpr std::byte *bytes() noexcept { return _bytes.data(); }
+			[[nodiscard]] constexpr const std::byte *bytes() const noexcept { return _bytes.data(); }
 
 			constexpr void swap(delegate_storage &other) noexcept
 			{
 				/* std::swap creates a manual byte copy loop. */
-				auto tmp = m_bytes;
-				m_bytes = other.m_bytes;
-				other.m_bytes = tmp;
+				auto tmp = _bytes;
+				_bytes = other._bytes;
+				other._bytes = tmp;
 			}
 			template<std::size_t OtherSize> requires(OtherSize <= Size)
 			constexpr void copy(const delegate_storage<OtherSize> &other) noexcept
@@ -61,7 +61,7 @@ namespace rod
 			}
 
 		private:
-			std::array<std::byte, Size> m_bytes = {};
+			std::array<std::byte, Size> _bytes = {};
 		};
 		template<>
 		class delegate_storage<0>
@@ -306,30 +306,30 @@ namespace rod
 		template<typename R, typename... Args>
 		delegate(R (*func)(Args...)) { init_func(typename traits_t::arg_types{}, func); }
 		/** Initializes the delegate from an invoker callback and a data pointer. */
-		delegate(native_function_t invoke, void *data) noexcept : m_invoke(invoke), m_data_flags(std::bit_cast<std::uintptr_t>(data)) {}
+		delegate(native_function_t invoke, void *data) noexcept : _invoke(invoke), _data_flags(std::bit_cast<std::uintptr_t>(data)) {}
 		/** Initializes the delegate from a member function and instance pointers. */
 		template<typename T, auto Mem>
 		delegate(bind_member_t<Mem>, T &&instance) { init_obj_mem<Mem>(typename traits_t::arg_types{}, std::forward<T>(instance)); }
 
 		/** Checks if the delegate is empty. */
-		[[nodiscard]] constexpr operator bool() const noexcept { return m_invoke != nullptr; }
+		[[nodiscard]] constexpr operator bool() const noexcept { return _invoke != nullptr; }
 
 		/** Resets the delegate to an empty state. */
 		void reset()
 		{
 			destroy();
-			m_invoke = {};
-			m_data_flags = {};
+			_invoke = {};
+			_data_flags = {};
 		}
 
 		/** Returns pointer to the data of the delegate. */
-		[[nodiscard]] void *data() const noexcept { return std::bit_cast<void *>(m_data_flags & ~flags_t::flags_mask); }
+		[[nodiscard]] void *data() const noexcept { return std::bit_cast<void *>(_data_flags & ~flags_t::flags_mask); }
 		/** Returns pointer to the C-style invoker function of the delegate. */
-		[[nodiscard]] native_function_t native_function() const noexcept { return m_invoke; }
+		[[nodiscard]] native_function_t native_function() const noexcept { return _invoke; }
 
 		/** Invokes the underlying functor with \a args. */
 		template<typename... Args>
-		auto invoke(Args &&...args) const -> std::invoke_result_t<native_function_t, void *, Args...> { return m_invoke(data(), std::forward<Args>(args)...); }
+		auto invoke(Args &&...args) const -> std::invoke_result_t<native_function_t, void *, Args...> { return _invoke(data(), std::forward<Args>(args)...); }
 		/** @copydoc invoke */
 		template<typename... Args>
 		auto operator()(Args &&...args) const -> std::invoke_result_t<native_function_t, void *, Args...> { return invoke(std::forward<Args>(args)...); }
@@ -338,42 +338,42 @@ namespace rod
 		void swap(delegate &other) noexcept
 		{
 			storage_t::swap(other);
-			std::swap(m_invoke, other.m_invoke);
+			std::swap(_invoke, other._invoke);
 
 			const auto a_data = this->make_swapped_data(other);
 			const auto b_data = other.make_swapped_data(*this);
-			this->m_data_flags = a_data;
-			other.m_data_flags = b_data;
+			this->_data_flags = a_data;
+			other._data_flags = b_data;
 		}
 
 	private:
 		constexpr flags_t flags(flags_t value) const noexcept
 		{
-			m_data_flags = (m_data_flags & ~flags_t::flags_mask) | value;
+			_data_flags = (_data_flags & ~flags_t::flags_mask) | value;
 			return value;
 		}
-		[[nodiscard]] constexpr flags_t flags() const noexcept { return static_cast<flags_t>(m_data_flags & flags_t::flags_mask); }
+		[[nodiscard]] constexpr flags_t flags() const noexcept { return static_cast<flags_t>(_data_flags & flags_t::flags_mask); }
 
 		[[nodiscard]] auto make_swapped_data(const delegate &other) const noexcept
 		{
-			if (other.m_data_flags & flags_t::is_local)
+			if (other._data_flags & flags_t::is_local)
 				return std::bit_cast<std::uintptr_t>(storage_t::data()) | other.flags();
 			else
-				return other.m_data_flags;
+				return other._data_flags;
 		}
 
 		template<typename... Args, typename FR, typename... FArgs>
 		void init_func(type_list_t<Args...>, FR (*func)(FArgs...)) requires traits_t::template is_invocable<FR (*)(FArgs...)>
 		{
-			m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return reinterpret_cast<FR (*)(FArgs...)>(ptr)(args...); };
-			m_data_flags = std::bit_cast<std::uintptr_t>(func);
+			_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return reinterpret_cast<FR (*)(FArgs...)>(ptr)(args...); };
+			_data_flags = std::bit_cast<std::uintptr_t>(func);
 		}
 
 		template<typename T, typename... Args>
 		void init_ref(type_list_t<Args...>, T &func) requires traits_t::template is_invocable<T>
 		{
-			m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(*static_cast<T *>(ptr), args...); };
-			m_data_flags = std::bit_cast<std::uintptr_t>(&func);
+			_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(*static_cast<T *>(ptr), args...); };
+			_data_flags = std::bit_cast<std::uintptr_t>(&func);
 		}
 		template<typename T, typename... Args, typename... TArgs>
 		void init_value(type_list_t<Args...>, TArgs &&...args) requires traits_t::template is_invocable<T> && std::constructible_from<T, TArgs...>
@@ -383,22 +383,22 @@ namespace rod
 				const auto ptr = static_cast<T *>(storage_t::data());
 				new(std::launder(ptr)) T(std::forward<TArgs>(args)...);
 
-				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(*static_cast<const T *>(ptr), args...); };
-				m_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned | flags_t::is_local;
+				_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(*static_cast<const T *>(ptr), args...); };
+				_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned | flags_t::is_local;
 			}
 			else
 			{
 				const auto ptr = new heap_data<T>(std::forward<TArgs>(args)...);
-				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(static_cast<const heap_data<T> *>(ptr)->value, args...); };
-				m_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned;
+				_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(static_cast<const heap_data<T> *>(ptr)->value, args...); };
+				_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned;
 			}
 		}
 
 		template<auto Mem, typename... Args, typename T>
 		void init_obj_mem(type_list_t<Args...>, T *instance) requires(detail::check_member<F, T *, Mem>::value && alignof(T) > flags_t::flags_bits)
 		{
-			m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, *static_cast<T *>(ptr), args...); };
-			m_data_flags = std::bit_cast<std::uintptr_t>(instance);
+			_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, *static_cast<T *>(ptr), args...); };
+			_data_flags = std::bit_cast<std::uintptr_t>(instance);
 		}
 		template<auto Mem, typename... Args, typename T, typename U = std::decay_t<T>>
 		void init_obj_mem(type_list_t<Args...>, T &&instance) requires detail::check_member<F, std::remove_cvref_t<T>, Mem>::value
@@ -408,60 +408,60 @@ namespace rod
 				const auto ptr = static_cast<U *>(storage_t::data());
 				new(std::launder(ptr)) U(std::forward<T>(instance));
 
-				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, *static_cast<const U *>(ptr), args...); };
-				m_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned | flags_t::is_local;
+				_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, *static_cast<const U *>(ptr), args...); };
+				_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned | flags_t::is_local;
 			}
 			else
 			{
 				const auto ptr = new heap_data<U>(std::forward<T>(instance));
-				m_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, static_cast<const heap_data<U> *>(ptr)->value, args...); };
-				m_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned;
+				_invoke = [](void *ptr, Args ...args) -> typename traits_t::return_type { return std::invoke(Mem, static_cast<const heap_data<U> *>(ptr)->value, args...); };
+				_data_flags = std::bit_cast<std::uintptr_t>(ptr) | flags_t::is_owned;
 			}
 		}
 
 		template<std::size_t OtherBuffer>
 		void move_from(delegate<F, OtherBuffer> &other) noexcept(OtherBuffer <= Buffer)
 		{
-			m_invoke = std::exchange(other.m_invoke, {});
+			_invoke = std::exchange(other._invoke, {});
 
 			/* Reference, heap-allocated, and small buffer delegates can be moved via thin copy. */
 			if (const auto new_flags = other.flags(); !(new_flags & flags_t::is_owned))
-				m_data_flags = other.m_data_flags;
+				_data_flags = other._data_flags;
 			else if ((new_flags & flags_t::is_local) && OtherBuffer <= Buffer)
 			{
-				m_data_flags = std::bit_cast<std::uintptr_t>(storage_t::data()) | new_flags;
+				_data_flags = std::bit_cast<std::uintptr_t>(storage_t::data()) | new_flags;
 				storage_t::copy(other);
 			}
 			else
 			{
 				/* Allocate new object with default copy & fake deleter. */
 				auto *buff = make_heap_buffer<OtherBuffer>();
-				m_data_flags = std::bit_cast<std::uintptr_t>(buff) | flags_t::is_owned;
+				_data_flags = std::bit_cast<std::uintptr_t>(buff) | flags_t::is_owned;
 				buff->value.copy(other);
 			}
-			other.m_data_flags = {};
+			other._data_flags = {};
 		}
 		template<std::size_t OtherBuffer>
 		void copy_from(const delegate<F, OtherBuffer> &other)
 		{
-			m_invoke = other.m_invoke;
+			_invoke = other._invoke;
 
 			if (const auto new_flags = other.flags(); !new_flags)
-				m_data_flags = other.m_data_flags;
+				_data_flags = other._data_flags;
 			else if (new_flags == flags_t::is_owned)
 			{
 				auto data = static_cast<heap_data<void> *>(other.data())->copy();
-				m_data_flags = std::bit_cast<std::uintptr_t>(data) | new_flags;
+				_data_flags = std::bit_cast<std::uintptr_t>(data) | new_flags;
 			}
 			else if constexpr (OtherBuffer <= Buffer)
 			{
-				m_data_flags = std::bit_cast<std::uintptr_t>(storage_t::data()) | new_flags;
+				_data_flags = std::bit_cast<std::uintptr_t>(storage_t::data()) | new_flags;
 				storage_t::copy(other);
 			}
 			else
 			{
 				auto *data = make_heap_buffer<OtherBuffer>(other);
-				m_data_flags = std::bit_cast<std::uintptr_t>(data) | flags_t::is_owned;
+				_data_flags = std::bit_cast<std::uintptr_t>(data) | flags_t::is_owned;
 				data->value.copy(other);
 			}
 		}
@@ -470,12 +470,12 @@ namespace rod
 			if (flags() == flags_t::is_owned)
 			{
 				static_cast<heap_data<void> *>(data())->destroy();
-				m_data_flags = {};
+				_data_flags = {};
 			}
 		}
 
-		native_function_t m_invoke = {};
-		std::uintptr_t m_data_flags = {};
+		native_function_t _invoke = {};
+		std::uintptr_t _data_flags = {};
 	};
 
 	template<typename F, std::size_t N>

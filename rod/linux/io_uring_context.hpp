@@ -228,9 +228,9 @@ namespace rod
 			ROD_PUBLIC void finish();
 
 			/** Returns copy of the stop source associated with the context. */
-			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return m_stop_source; }
+			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_source; }
 			/** Returns a stop token of the stop source associated with the context. */
-			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return m_stop_source.get_token(); }
+			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_source.get_token(); }
 			/** Sends a stop request to the stop source associated with the context. */
 			ROD_PUBLIC void request_stop();
 
@@ -238,23 +238,23 @@ namespace rod
 			template<typename F>
 			bool submit_sqe(F &&init) noexcept
 			{
-				if (m_cq.pending + m_sq.pending >= m_cq.size)
+				if (_cq.pending + _sq.pending >= _cq.size)
 					return false;
 
-				const auto tail = std::atomic_ref{*m_sq.tail}.load(std::memory_order_acquire);
-				const auto head = std::atomic_ref{*m_sq.head}.load(std::memory_order_acquire);
-				if (m_cq.size <= tail - head)
+				const auto tail = std::atomic_ref{*_sq.tail}.load(std::memory_order_acquire);
+				const auto head = std::atomic_ref{*_sq.head}.load(std::memory_order_acquire);
+				if (_cq.size <= tail - head)
 					return false;
 
-				const auto idx = tail & m_sq.mask;
+				const auto idx = tail & _sq.mask;
 				if constexpr (std::is_void_v<std::invoke_result_t<F, io_uring_sqe *, decltype(idx)>>)
-					init(m_sq.entries, idx);
-				else if (!init(m_sq.entries, idx))
+					init(_sq.entries, idx);
+				else if (!init(_sq.entries, idx))
 					return false;
 
-				m_sq.pending++;
-				m_sq.idx_data[idx] = idx;
-				std::atomic_ref{*m_sq.tail}.store(tail + 1, std::memory_order_release);
+				_sq.pending++;
+				_sq.idx_data[idx] = idx;
+				std::atomic_ref{*_sq.tail}.store(tail + 1, std::memory_order_release);
 				return true;
 			}
 
@@ -299,39 +299,39 @@ namespace rod
 			void uring_enter();
 
 			/* TID of the current consumer thread. */
-			std::atomic<std::thread::id> m_consumer_tid = {};
+			std::atomic<std::thread::id> _consumer_tid = {};
 
 			/* Descriptors used for io_uring notifications. */
-			detail::unique_descriptor m_uring_fd = {};
-			detail::unique_descriptor m_event_fd = {};
+			detail::unique_descriptor _uring_fd = {};
+			detail::unique_descriptor _event_fd = {};
 
 			/* Memory mappings of io_uring queues. */
-			detail::mmap_handle m_cq_mmap = {};
-			detail::mmap_handle m_sq_mmap = {};
-			detail::mmap_handle m_sqe_mmap = {};
+			detail::system_mmap _cq_mmap = {};
+			detail::system_mmap _sq_mmap = {};
+			detail::system_mmap _sqe_mmap = {};
 
 			/* State of io_uring queues. */
-			cq_state_t m_cq = {};
-			sq_state_t m_sq = {};
+			cq_state_t _cq = {};
+			sq_state_t _sq = {};
 
-			in_place_stop_source m_stop_source;
+			in_place_stop_source _stop_source;
 			/* Queue of operations waiting for more space in the IO queues. */
-			consumer_queue_t m_waitlist_queue;
+			consumer_queue_t _waitlist_queue;
 			/* Queue of operations pending for dispatch by consumer thread. */
-			consumer_queue_t m_consumer_queue;
+			consumer_queue_t _consumer_queue;
 			/* Queue of operation pending for acquisition by consumer thread. */
-			producer_queue_t m_producer_queue;
+			producer_queue_t _producer_queue;
 			/* Priority queue of pending timers. */
-			timer_queue_t m_timers;
+			timer_queue_t _timers;
 
-			kernel_timespec_t m_ktime = {};
-			time_point m_next_timeout = {};
+			kernel_timespec_t _ktime = {};
+			time_point _next_timeout = {};
 
-			std::uint32_t m_active_timers = 0;
-			bool m_timer_started = false;
-			bool m_timer_pending = false;
-			bool m_wait_pending = false;
-			bool m_stop_pending = false;
+			std::uint32_t _active_timers = 0;
+			bool _timer_started = false;
+			bool _timer_pending = false;
+			bool _wait_pending = false;
+			bool _stop_pending = false;
 		};
 		
 		template<typename Rcv>
