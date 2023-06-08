@@ -135,7 +135,7 @@ namespace rod
 			template<decays_to<scheduler> T, decays_to<time_point> TP>
 			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), s._loop}; }
 			template<decays_to<scheduler> T, typename Dur>
-			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
+			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
 			/** Returns the current time point of the clock used by the run loop. */
 			[[nodiscard]] time_point now() const noexcept { return clock::now(); }

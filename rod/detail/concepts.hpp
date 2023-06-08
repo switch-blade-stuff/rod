@@ -183,10 +183,10 @@ namespace rod
 
 	inline namespace _schedule
 	{
-		struct schedule_in_t
+		struct schedule_after_t
 		{
-			template<typename S, typename Dur> requires tag_invocable<schedule_in_t, S, Dur>
-			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, Dur &&dur) const noexcept(nothrow_tag_invocable<schedule_in_t, S, Dur>)
+			template<typename S, typename Dur> requires tag_invocable<schedule_after_t, S, Dur>
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, Dur &&dur) const noexcept(nothrow_tag_invocable<schedule_after_t, S, Dur>)
 			{
 				return tag_invoke(*this, std::forward<S>(sch), std::forward<Dur>(dur));
 			}
@@ -197,10 +197,10 @@ namespace rod
 	 * @param sch Scheduler to create a sender from.
 	 * @param dur Duration specifying the difference from now until completion of the scheduler.
 	 * @return Sender created from \a sch. */
-	inline constexpr auto schedule_in = schedule_in_t{};
-	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule_in(S, Dur)`. */
+	inline constexpr auto schedule_after = schedule_after_t{};
+	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule_after(S, Dur)`. */
 	template<typename S, typename Dur>
-	using schedule_in_result_t = decltype(schedule_in(std::declval<S>(), std::declval<Dur>()));
+	using schedule_after_result_t = decltype(schedule_after(std::declval<S>(), std::declval<Dur>()));
 
 	inline namespace _schedule
 	{

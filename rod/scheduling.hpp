@@ -30,8 +30,10 @@
 #include "detail/run_loop.hpp"
 #include "detail/awaitable.hpp"
 
+#include "detail/execute.hpp"
 #include "detail/sync_wait.hpp"
 #include "detail/ensure_started.hpp"
 #include "detail/start_detached.hpp"
+#include "detail/receiver_adaptor.hpp"
 
 #include "stop_token.hpp"

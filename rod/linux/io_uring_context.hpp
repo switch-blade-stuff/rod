@@ -635,14 +635,14 @@ namespace rod
 			using _io_sender_t = typename io_sender<Op>::type;
 
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::weakly_parallel; }
-			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
+			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 
 			template<decays_to<scheduler> T>
 			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{*s._ctx}; }
 			template<decays_to<scheduler> T, decays_to<time_point> TP>
 			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), *s._ctx}; }
 			template<decays_to<scheduler> T, typename Dur>
-			friend constexpr auto tag_invoke(schedule_in_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
+			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
 			template<typename Buff>
 			friend auto tag_invoke(schedule_read_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return _io_sender_t<schedule_read_some_t>{*sch._ctx, fd, buff}; }

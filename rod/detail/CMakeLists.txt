@@ -5,6 +5,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/factories/CMakeLists.txt)
 
 list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/config.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/execute.hpp
         ${CMAKE_CURRENT_LIST_DIR}/shared_ref.hpp
         ${CMAKE_CURRENT_LIST_DIR}/environment.hpp
         ${CMAKE_CURRENT_LIST_DIR}/atomic_queue.hpp
