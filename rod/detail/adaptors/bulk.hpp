@@ -7,7 +7,7 @@
 #include <functional>
 
 #include "../queries/completion.hpp"
-#include "../concepts.hpp"
+#include "../receiver_adaptor.hpp"
 #include "closure.hpp"
 
 ROD_TOPLEVEL_NAMESPACE_OPEN
@@ -16,39 +16,37 @@ namespace rod
 	namespace _bulk
 	{
 		template<typename, typename, typename>
-		struct receiver { struct type; };
+		struct receiver { class type; };
 		template<typename, typename, typename>
 		struct sender { struct type; };
 
 		template<typename Rcv, typename Shape, typename F>
-		struct receiver<Rcv, Shape, F>::type
+		class receiver<Rcv, Shape, F>::type : public receiver_adaptor<type, Rcv>
 		{
-			using is_receiver = std::true_type;
+			friend receiver_adaptor<type, Rcv>;
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._rcv); }
+		public:
+			constexpr type(Rcv rcv, Shape shape, F fn) : receiver_adaptor<type, Rcv>(std::move(rcv)), _shape(shape), _fn(std::move(fn)) {}
 
-			template<decays_to<set_value_t> C, typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...> && detail::callable<C, Rcv, Args...>
-			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r._set_value(std::forward<Args>(args)...); }
-			template<detail::completion_channel C, typename... Args> requires(!std::same_as<C, set_value_t> && detail::callable<C, Rcv, Args...>)
-			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._rcv), std::forward<Args>(args)...); }
-
+		private:
 			template<typename... Args>
-			constexpr void _set_value(Args &&...args) noexcept
+			void set_value(Args &&...args) && noexcept requires detail::callable<F, Shape, Args &...> try
 			{
-				const auto do_invoke = [&]()
-				{
-					for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
-					set_value(std::move(_rcv), std::forward<Args>(args)...);
-				};
-
-				if constexpr (!std::is_nothrow_invocable_v<F, Shape, detail::decayed_ref<Args>...>)
-					try { do_invoke(); } catch (...) { set_error(std::move(_rcv), std::current_exception()); }
-				else
-					do_invoke();
+				for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
+				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
+			}
+			catch (...)
+			{
+				rod::set_error(std::move(receiver_adaptor<type, Rcv>::base()), std::current_exception());
+			}
+			template<typename... Args>
+			void set_value(Args &&...args) && noexcept requires detail::nothrow_callable<F, Shape, Args &...>
+			{
+				for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
+				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Shape _shape;
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
 			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
 		};
 
@@ -68,14 +66,13 @@ namespace rod
 			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, E, _error_signs_t<copy_cvref_t<T, Snd>, E>>;
 
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
-
 			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, _receiver_t<Rcv>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_callable<connect_t, copy_cvref_t<T, Snd>, _receiver_t<Rcv>>)
 			{
-				return connect(std::forward<T>(s)._snd, _receiver_t<Rcv>{s._shape, std::move(rcv), std::forward<T>(s)._fn});
+				return connect(std::forward<T>(s)._snd, _receiver_t<Rcv>{std::move(rcv), s._shape, std::forward<T>(s)._fn});
 			}
 
 			[[ROD_NO_UNIQUE_ADDRESS]] Shape _shape;
