@@ -67,7 +67,7 @@ namespace rod
 			template<detail::completion_channel C, typename... Args>
 			inline void _complete(C, Args &&...) noexcept;
 
-			typename shared_state<Snd, Env>::type &_state;
+			typename shared_state<Snd, Env>::type *_state;
 		};
 
 		template<typename, typename, typename>
@@ -88,7 +88,7 @@ namespace rod
 			using bind_data = typename detail::bind_front<std::variant, std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>::template type<Ts...>;
 			using data_t = unique_tuple_t<detail::apply_tuple_list_t<bind_data, detail::concat_tuples_t<values_list, errors_list>>>;
 
-			type(Snd &&snd) : _env(get_env(snd)), _state(connect(std::forward<Snd>(snd), receiver_t{*this})) {}
+			type(Snd &&snd) : _env(get_env(snd)), _state(connect(std::forward<Snd>(snd), receiver_t{this})) {}
 
 			void notify() noexcept
 			{
@@ -114,13 +114,13 @@ namespace rod
 		template<typename Snd, typename Env>
 		typename env<Env>::type receiver<Snd, Env>::type::_get_env() const noexcept
 		{
-			return {_state._stop_src.get_token(), &_state._env};
+			return {_state->_stop_src.get_token(), &_state->_env};
 		}
 		template<typename Snd, typename Env>
 		template<detail::completion_channel C, typename... Args>
 		void receiver<Snd, Env>::type::_complete(C c, Args &&...args) noexcept
 		{
-			auto &state = _state;
+			auto &state = *_state;
 			try { state._data.template emplace<detail::decayed_tuple<C, Args...>>(c, std::forward<Args>(args)...); }
 			catch (...) { state._data.template emplace<std::tuple<set_error_t, std::exception_ptr>>(set_error, std::current_exception()); }
 			state.notify();
