@@ -173,25 +173,22 @@ namespace rod
 			/** Blocks the current thread until `finish` is called and executes scheduled operations. */
 			void run()
 			{
-				/* Use a stack-local consumer queue to allow multithreaded invocation of `run`. */
-				consumer_queue_t consumer_queue;
-				time_point now;
-				for (;;)
+				for (time_point now;;)
 				{
 					if (_timers.load(std::memory_order_acquire))
 						now = clock::now();
-					while (!consumer_queue.empty())
-						consumer_queue.pop_front()->_notify(now);
 
-					if (const auto front = _producer_queue.front(); !front)
-						_producer_queue.wait();
-					else if (front != _producer_queue.sentinel())
+					for (;;)
 					{
-						consumer_queue = std::move(_producer_queue);
-						_producer_queue.notify_all();
+						if (const auto front = _producer_queue.front(); !front)
+							_producer_queue.wait();
+						else if (front == _producer_queue.sentinel())
+							return;
+
+						const auto node = _producer_queue.pop();
+						_producer_queue.notify_one();
+						node->_notify(now);
 					}
-					else
-						break;
 				}
 			}
 			/** Blocks the current thread until stopped via \a tok and executes scheduled operations.

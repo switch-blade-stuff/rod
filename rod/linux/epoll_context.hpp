@@ -276,17 +276,10 @@ namespace rod
 			static void _bind_notify(operation_base *ptr) noexcept
 			{
 				auto &op = *static_cast<type *>(ptr);
-
-				/* Stop the top-level receiver if necessary. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
-					if (get_stop_token(get_env(op._rcv)).stop_requested())
-					{
-						set_stopped(std::move(op._rcv));
-						return;
-					}
-
-				/* Complete the top-level receiver. */
-				set_value(std::move(op._rcv));
+				if (get_stop_token(get_env(op._rcv)).stop_requested())
+					set_stopped(std::move(op._rcv));
+				else
+					set_value(std::move(op._rcv));
 			}
 
 			template<typename Rcv1>
