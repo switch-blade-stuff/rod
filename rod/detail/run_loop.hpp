@@ -178,14 +178,12 @@ namespace rod
 					if (_timers.load(std::memory_order_acquire))
 						now = clock::now();
 
-					for (;;)
+					if (const auto node = _producer_queue.pop(); !node)
+						_producer_queue.wait();
+					else if (node == _producer_queue.sentinel())
+						break;
+					else
 					{
-						if (const auto front = _producer_queue.front(); !front)
-							_producer_queue.wait();
-						else if (front == _producer_queue.sentinel())
-							return;
-
-						const auto node = _producer_queue.pop();
 						_producer_queue.notify_one();
 						node->_notify(now);
 					}
