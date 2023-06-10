@@ -13,7 +13,6 @@
 #include "queries/completion.hpp"
 #include "concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -307,7 +306,7 @@ namespace rod
 			[[noreturn]] void await_resume() noexcept { std::terminate(); }
 			void await_suspend(std::coroutine_handle<>) noexcept { suspend(); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] F suspend;
+			ROD_NO_UNIQUE_ADDRESS F suspend;
 		};
 		template<typename F>
 		connect_awaiter(F &&) -> connect_awaiter<std::decay_t<F>>;
@@ -383,5 +382,4 @@ namespace rod
 		stop_func _stop_func = {};
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

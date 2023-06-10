@@ -10,7 +10,6 @@
 
 #include "utility.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -104,7 +103,7 @@ namespace rod
 				};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] T value;
+			ROD_NO_UNIQUE_ADDRESS T value;
 		};
 
 		/* Ugly mess to strip instance qualifiers from function signatures. Unfortunately, remove_cvref_t does not work for functions. */
@@ -498,4 +497,3 @@ namespace rod
 		return {bind_member<Mem>, std::forward<T>(instance)};
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -6,7 +6,6 @@
 
 #include "../concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Enum defining forward progress guarantee constants. */
@@ -30,4 +29,3 @@ namespace rod
 	/** Customization point object used to obtain a forward progress guarantee from the passed scheduler. */
 	inline constexpr auto get_forward_progress_guarantee = get_forward_progress_guarantee_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

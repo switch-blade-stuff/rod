@@ -8,7 +8,6 @@
 
 #include "utility.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Pair with support for Empty Base Optimization (EBO). */
@@ -181,8 +180,8 @@ namespace rod
 		}
 		friend constexpr void swap(packed_pair &a, packed_pair &b) noexcept(std::is_nothrow_swappable_v<packed_pair>) { return a.swap(b); }
 		
-		[[ROD_NO_UNIQUE_ADDRESS]] first_type first;
-		[[ROD_NO_UNIQUE_ADDRESS]] second_type second;
+		ROD_NO_UNIQUE_ADDRESS first_type first;
+		ROD_NO_UNIQUE_ADDRESS second_type second;
 	};
 
 	template<instance_of<std::reference_wrapper> T0, instance_of<std::reference_wrapper> T1, typename P = packed_pair<T0 &, T1 &>>
@@ -190,21 +189,10 @@ namespace rod
 	template<typename T0, typename T1, typename P = packed_pair<std::decay_t<T0>, std::decay_t<T1>>>
 	[[nodiscard]] constexpr P make_packed_pair(T0 &&v0, T1 &&v1) noexcept(std::is_nothrow_constructible_v<P, T0, T1>) { return P{std::forward<T0>(v0), std::forward<T1>(v1)}; }
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 
-#ifdef ROD_TOPLEVEL_NAMESPACE
-template<typename T0,  typename T1>
-struct std::tuple_size<ROD_TOPLEVEL_NAMESPACE::rod::packed_pair<T0, T1>> : std::integral_constant<std::size_t, 2> {};
-template<typename T0, typename T1>
-struct std::tuple_element<0, ROD_TOPLEVEL_NAMESPACE::rod::packed_pair<T0, T1>> { using type = T0; };
-template<typename T0, typename T1>
-struct std::tuple_element<1, ROD_TOPLEVEL_NAMESPACE::rod::packed_pair<T0, T1>> { using type = T1; };
-#else
 template<typename T0,  typename T1>
 struct std::tuple_size<rod::packed_pair<T0, T1>> : std::integral_constant<std::size_t, 2> {};
 template<typename T0, typename T1>
 struct std::tuple_element<0, rod::packed_pair<T0, T1>> { using type = T0; };
 template<typename T0, typename T1>
 struct std::tuple_element<1, rod::packed_pair<T0, T1>> { using type = T1; };
-#endif
-

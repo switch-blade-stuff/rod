@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <poll.h>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	std::error_code basic_descriptor::close() noexcept
@@ -87,5 +86,4 @@ namespace rod::detail
 
 	unique_descriptor::~unique_descriptor() { if (is_open()) ::close(release()); }
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

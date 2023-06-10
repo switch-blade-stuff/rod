@@ -8,7 +8,6 @@
 
 #include "basic_queue.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	template<typename Node, Node *Node::*Next>
@@ -71,4 +70,3 @@ namespace rod::detail
 		std::atomic<void *> head = {};
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

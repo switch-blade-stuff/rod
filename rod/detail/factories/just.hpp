@@ -10,7 +10,6 @@
 #include "../adaptors/bulk.hpp"
 #include "../concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _just
@@ -29,8 +28,8 @@ namespace rod
 		{
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op._rcv), std::move(vals)...); }, op._values); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] std::tuple<Ts...> _values;
-			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
+			ROD_NO_UNIQUE_ADDRESS std::tuple<Ts...> _values;
+			ROD_NO_UNIQUE_ADDRESS R _rcv;
 		};
 		template<typename C, movable_value... Ts>
 		struct sender<C, Ts...>::type
@@ -55,7 +54,7 @@ namespace rod
 				return operation_t{std::move(s._values), std::forward<R>(r)};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] std::tuple<Ts...> _values;
+			ROD_NO_UNIQUE_ADDRESS std::tuple<Ts...> _values;
 		};
 	}
 
@@ -180,4 +179,3 @@ namespace rod
 	 * @return Result of `just(args...) | bulk(shape, fn)`. */
 	inline constexpr auto just_bulk = just_bulk_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

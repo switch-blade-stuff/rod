@@ -15,7 +15,6 @@
 
 #include "file.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 #if defined(ROD_HAS_LIBURING)
@@ -26,4 +25,3 @@ namespace rod
 	using system_context = run_loop;
 #endif
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

@@ -12,7 +12,6 @@
 #include <fcntl.h>
 #include <utility>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	class system_mmap
@@ -75,5 +74,4 @@ namespace rod::detail
 		std::size_t _size = {};
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

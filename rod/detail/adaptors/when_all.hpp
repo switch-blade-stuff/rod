@@ -12,7 +12,6 @@
 #include "into_variant.hpp"
 #include "transfer.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _when_all
@@ -88,7 +87,7 @@ namespace rod
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
+			ROD_NO_UNIQUE_ADDRESS Env _env;
 			in_place_stop_token _token;
 		};
 
@@ -170,9 +169,9 @@ namespace rod
 				_errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err));
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
-			[[ROD_NO_UNIQUE_ADDRESS]] Vals _vals = {};
-			[[ROD_NO_UNIQUE_ADDRESS]] Errs _errs = no_error{};
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Vals _vals = {};
+			ROD_NO_UNIQUE_ADDRESS Errs _errs = no_error{};
 
 			std::atomic<std::size_t> _count;
 			std::atomic<state_t> _state;
@@ -311,7 +310,7 @@ namespace rod
 				return _operation_t<T, Rcv>{std::forward<T>(s)._snds, std::move(rcv)};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] std::tuple<Snds...> _snds;
+			ROD_NO_UNIQUE_ADDRESS std::tuple<Snds...> _snds;
 		};
 
 		class when_all_t
@@ -390,4 +389,3 @@ namespace rod
 	using _when_all::when_all_with_variant_t;
 	using _when_all::transfer_when_all_with_variant_t;
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

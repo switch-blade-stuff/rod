@@ -7,7 +7,6 @@
 #include "../queries/scheduler.hpp"
 #include "../concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _on
@@ -35,7 +34,7 @@ namespace rod
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
+			ROD_NO_UNIQUE_ADDRESS Env _env;
 		};
 
 		template<typename Sch, typename Snd, typename Rcv>
@@ -59,9 +58,9 @@ namespace rod
 
 			[[nodiscard]] constexpr auto _do_connect() { return connect(schedule(_sch), _receiver_t{this}); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Sch _sch;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			_state_t _state;
 		};
 
@@ -149,8 +148,8 @@ namespace rod
 				return _operation_t<Rcv>{std::forward<T>(s)._sch, std::forward<T>(s)._snd, std::move(rcv)};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS Sch _sch;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
 		class on_t
@@ -180,4 +179,3 @@ namespace rod
 	 * @return Sender adaptor for \a snd that starts on \a sch. */
 	inline constexpr auto on = _on::on_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

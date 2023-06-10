@@ -20,7 +20,6 @@
 #include "../unix/monotonic_clock.hpp"
 #include "../unix/detail/file.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _epoll
@@ -294,7 +293,7 @@ namespace rod
 				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			context &_ctx;
 		};
 		template<typename Rcv>
@@ -390,8 +389,8 @@ namespace rod
 
 			using _stop_cb_t = stop_cb<env_of_t<Rcv>, &type::_request_stop>;
 
-			[[ROD_NO_UNIQUE_ADDRESS]] _stop_cb_t _stop_cb;
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS _stop_cb_t _stop_cb;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
 		template<typename Op, typename Rcv>
 		struct io_operation<Op, Rcv>::type : private complete_base, private stop_base
@@ -486,8 +485,8 @@ namespace rod
 
 			using _stop_cb_t = stop_cb<env_of_t<Rcv>, &type::_request_stop>;
 
-			[[ROD_NO_UNIQUE_ADDRESS]] _stop_cb_t _stop_cb;
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS _stop_cb_t _stop_cb;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			std::atomic<int> _flags = {};
 			_io_cmd_t _cmd;
 			context &_ctx;
@@ -646,5 +645,4 @@ namespace rod
 
 	static_assert(rod::scheduler<decltype(std::declval<epoll_context>().get_scheduler())>);
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

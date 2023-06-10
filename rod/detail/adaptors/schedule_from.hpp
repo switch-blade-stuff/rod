@@ -8,7 +8,6 @@
 
 #include "../concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _schedule_from
@@ -71,8 +70,8 @@ namespace rod
 				return Q{}(get_env(e._snd), std::forward<Args>(args)...);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS Sch _sch;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
 		template<typename Sch, typename Snd, typename Rcv>
@@ -142,8 +141,8 @@ namespace rod
 				}, _data);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Sch _sch;
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Sch _sch;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			_state1_t _state1;
 			_state2_t _state2;
 			_data_t _data;
@@ -189,7 +188,7 @@ namespace rod
 				return {std::forward<T>(s)._env._sch, std::forward<T>(s)._env._snd, std::move(rcv)};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] _env_t _env;
+			ROD_NO_UNIQUE_ADDRESS _env_t _env;
 		};
 
 		class schedule_from_t
@@ -217,4 +216,3 @@ namespace rod
 	 * @warning This CPO is meant for customization of schedulers, use `transfer` instead. */
 	inline constexpr auto schedule_from = schedule_from_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

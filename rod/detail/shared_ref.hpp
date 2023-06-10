@@ -10,7 +10,6 @@
 
 #include "config.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	/* Lightweight shared reference counter implementation for cases where shared_ptr is overkill. */
@@ -64,4 +63,3 @@ namespace rod::detail
 		T *_ptr = {};
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

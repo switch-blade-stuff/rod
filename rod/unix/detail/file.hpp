@@ -11,7 +11,6 @@
 
 #include "descriptor.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	class system_file : unique_descriptor
@@ -86,5 +85,4 @@ namespace rod::detail
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

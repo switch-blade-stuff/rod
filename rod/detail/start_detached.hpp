@@ -10,7 +10,6 @@
 #include "shared_ref.hpp"
 #include "concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _start_detached
@@ -87,4 +86,3 @@ namespace rod
 	 * @note If the sender completes via the error channel, `std::terminate` is called. */
 	inline constexpr auto start_detached = start_detached_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

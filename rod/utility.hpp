@@ -10,7 +10,6 @@
 
 #include "tag.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Concept used to check if type \a T is a movable value type. */
@@ -79,7 +78,7 @@ namespace rod
 			operator type() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
 			type operator()() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] F func;
+			ROD_NO_UNIQUE_ADDRESS F func;
 		};
 		template<typename F>
 		implicit_eval(F) -> implicit_eval<F>;
@@ -219,4 +218,3 @@ namespace rod
 		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

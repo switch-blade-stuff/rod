@@ -10,7 +10,6 @@
 
 #include "detail/factories/read.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Concept used to define a stoppable token type. */
@@ -283,7 +282,7 @@ namespace rod
 		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st._src, invoke), _cb(std::forward<F>(fn)) {}
 
 	private:
-		[[ROD_NO_UNIQUE_ADDRESS]] CB _cb;
+		ROD_NO_UNIQUE_ADDRESS CB _cb;
 	};
 
 	template<typename F>
@@ -291,4 +290,3 @@ namespace rod
 
 	static_assert(stoppable_token<in_place_stop_token>);
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

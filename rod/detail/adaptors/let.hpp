@@ -10,7 +10,6 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _let
@@ -57,8 +56,8 @@ namespace rod
 			using _state_t = std::variant<std::monostate, deduce_state_t<R, F, Ts>...>;
 			using _result_t = std::variant<std::monostate, Ts...>;
 
-			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
-			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
+			ROD_NO_UNIQUE_ADDRESS R _rcv;
+			ROD_NO_UNIQUE_ADDRESS F _fn;
 			_state_t _state = std::monostate{};
 			_result_t _res = std::monostate{};
 		};
@@ -147,8 +146,8 @@ namespace rod
 				return _operation_t<T, R>{std::forward<T>(s)._snd, std::move(rcv), std::forward<T>(s)._fn};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] S _snd;
-			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
+			ROD_NO_UNIQUE_ADDRESS S _snd;
+			ROD_NO_UNIQUE_ADDRESS F _fn;
 		};
 
 		template<typename C>
@@ -214,5 +213,4 @@ namespace rod
 	 * @return Sender who's stop completion channel starts a new operation using the sender returned by \a fn. */
 	inline constexpr auto let_stopped = let_stopped_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 

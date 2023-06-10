@@ -11,7 +11,6 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _split
@@ -104,7 +103,7 @@ namespace rod
 
 			in_place_stop_source _stop_src;
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
+			ROD_NO_UNIQUE_ADDRESS Env _env;
 			state_t _state;
 
 			std::atomic<void *> _queue = {};
@@ -182,7 +181,7 @@ namespace rod
 				}
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 
 			detail::shared_handle<_shared_state_t> _state;
 			_stop_cb_t _stop_cb = {};
@@ -253,4 +252,3 @@ namespace rod
 	 * @note Splitting a sender requires dynamic allocation of shared state. */
 	inline constexpr auto split = split_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

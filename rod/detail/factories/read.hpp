@@ -7,7 +7,6 @@
 #include "../queries/completion.hpp"
 #include "../concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _read
@@ -26,7 +25,7 @@ namespace rod
 				detail::rcv_try_invoke(std::move(rcv), set_value, std::move(rcv), T{}(get_env(rcv)));
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] R receiver;
+			ROD_NO_UNIQUE_ADDRESS R receiver;
 		};
 		template<typename T>
 		struct sender<T>::type
@@ -58,4 +57,3 @@ namespace rod
 	 * @return Sender that completes via `set_value(tag_invoke(query, env))` or `set_error(std::current_exception())` if the former throws an exception. */
 	inline constexpr auto read = read_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

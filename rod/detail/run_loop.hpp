@@ -13,7 +13,6 @@
 #include "../stop_token.hpp"
 #include "atomic_queue.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _run_loop
@@ -68,7 +67,7 @@ namespace rod
 
 			inline void _start() noexcept;
 
-			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
+			ROD_NO_UNIQUE_ADDRESS R _rcv;
 		};
 		template<typename R>
 		struct timer_operation<R>::type : operation_base
@@ -85,7 +84,7 @@ namespace rod
 			inline void _start() noexcept;
 			inline void _complete(time_point now) noexcept;
 
-			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
+			ROD_NO_UNIQUE_ADDRESS R _rcv;
 			time_point _timeout;
 		};
 
@@ -262,4 +261,3 @@ namespace rod
 
 	static_assert(scheduler<decltype(std::declval<run_loop>().get_scheduler())>);
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

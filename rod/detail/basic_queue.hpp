@@ -8,7 +8,6 @@
 
 #include "config.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	template<typename Node, Node *Node::*Next>
@@ -67,4 +66,3 @@ namespace rod::detail
 		Node *tail = {};
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

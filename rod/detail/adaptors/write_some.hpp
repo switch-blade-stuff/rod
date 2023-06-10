@@ -6,7 +6,6 @@
 
 #include "../io_buffer.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _write_some
@@ -209,4 +208,3 @@ namespace rod
 	 * @return Sender completing on \a sch with the amount of bytes written or an optional error code on write failure. */
 	inline constexpr auto schedule_write_some_at = schedule_write_some_at_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

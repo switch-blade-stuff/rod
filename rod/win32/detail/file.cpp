@@ -9,7 +9,6 @@
 #define NOMINMAX
 #include <windows.h>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	constexpr DWORD share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
@@ -277,5 +276,4 @@ namespace rod::detail
 		return total;
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

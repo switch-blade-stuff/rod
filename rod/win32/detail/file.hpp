@@ -10,7 +10,6 @@
 
 #include "io_handle.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	class system_file : unique_io_handle
@@ -106,5 +105,4 @@ namespace rod::detail
 		std::size_t _offset = std::numeric_limits<std::size_t>::max();
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

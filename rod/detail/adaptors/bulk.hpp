@@ -10,7 +10,6 @@
 #include "../receiver_adaptor.hpp"
 #include "closure.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _bulk
@@ -46,8 +45,8 @@ namespace rod
 				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Shape _shape;
-			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
+			ROD_NO_UNIQUE_ADDRESS Shape _shape;
+			ROD_NO_UNIQUE_ADDRESS F _fn;
 		};
 
 		template<typename Snd, typename Shape, typename F>
@@ -75,9 +74,9 @@ namespace rod
 				return connect(std::forward<T>(s)._snd, _receiver_t<Rcv>{std::move(rcv), s._shape, std::forward<T>(s)._fn});
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Shape _shape;
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
-			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
+			ROD_NO_UNIQUE_ADDRESS Shape _shape;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS F _fn;
 		};
 
 		class bulk_t
@@ -123,4 +122,3 @@ namespace rod
 	 * @return Sender that invokes \a fn \a shape times with value results of \a snd, then forwards the value channel results to connected receiver. */
 	inline constexpr auto bulk = bulk_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

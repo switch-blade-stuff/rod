@@ -10,7 +10,6 @@
 
 #include "../scheduling.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace detail
@@ -54,4 +53,3 @@ namespace rod
 		return as_byte_buffer(std::begin(data), std::end(data));
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

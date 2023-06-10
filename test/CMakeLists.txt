@@ -6,12 +6,7 @@ function(make_test NAME FILE)
     set(TEST_PROJECT "${PROJECT_NAME}-${NAME}")
 
     add_executable(${TEST_PROJECT} ${FILE})
-
-    if (${ROD_BUILD_SHARED})
-        target_link_libraries(${TEST_PROJECT} PRIVATE rod-shared)
-    elseif (${ROD_BUILD_STATIC})
-        target_link_libraries(${TEST_PROJECT} PRIVATE rod-static)
-    endif ()
+    target_link_libraries(${TEST_PROJECT} PRIVATE rod)
 
     # Enable max error reporting
     if (MSVC)

@@ -20,7 +20,6 @@
 #error Unkonwn file platform
 #endif
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _file
@@ -38,7 +37,7 @@ namespace rod
 		template<typename T, typename Rcv, typename... Args>
 		struct sync_operation_base
 		{
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			std::tuple<Args...> _args;
 		};
 
@@ -120,7 +119,7 @@ namespace rod
 				return _operation_t<U, Rcv>(std::forward<U>(s)._snd, std::move(r), std::forward<U>(s)._args);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 			std::tuple<Args...> _args;
 		};
 
@@ -524,4 +523,3 @@ namespace rod
 
 	using _file::basic_file;
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

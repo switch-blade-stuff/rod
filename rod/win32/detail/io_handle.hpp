@@ -11,7 +11,6 @@
 #include <system_error>
 #include <utility>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	class basic_io_handle

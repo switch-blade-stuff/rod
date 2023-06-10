@@ -19,7 +19,6 @@
  * Neither CLang's -fsanitize=address nor -fsanitize=memory cause this deadlock, and neither does it
  * happen under normal operation. I have no clue what the hell is happening when running through Valgrind. */
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::_io_uring
 {
 #if SIZE_MAX >= UINT64_MAX
@@ -375,5 +374,4 @@ namespace rod::_io_uring
 		schedule(this);
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

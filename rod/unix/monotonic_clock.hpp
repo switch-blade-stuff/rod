@@ -11,7 +11,6 @@
 
 #include "../detail/config.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	/** Clock type representing the `CLOCK_MONOTONIC` clock of the `clock_gettime` syscall. */
@@ -117,5 +116,4 @@ namespace rod
 		static ROD_PUBLIC time_point now() noexcept;
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

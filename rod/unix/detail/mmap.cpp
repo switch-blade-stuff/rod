@@ -10,7 +10,6 @@
 
 #include "mmap.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	static std::size_t get_pagesize(std::error_code &err) noexcept
@@ -96,5 +95,4 @@ namespace rod::detail
 		if (data) ::munmap(data, size);
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

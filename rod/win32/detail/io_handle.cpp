@@ -9,7 +9,6 @@
 #define NOMINMAX
 #include <windows.h>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	unique_io_handle::~unique_io_handle() { if (is_open()) ::CloseHandle(release()); }
@@ -21,5 +20,4 @@ namespace rod::detail
 			return {};
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

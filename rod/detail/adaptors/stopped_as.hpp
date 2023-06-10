@@ -11,7 +11,6 @@
 #include "closure.hpp"
 #include "let.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _stopped_as
@@ -58,7 +57,7 @@ namespace rod
 
 			friend void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			connect_result_t<Snd, _receiver_t> _state;
 		};
 
@@ -117,7 +116,7 @@ namespace rod
 				return {std::forward<T>(s)._snd, std::move(rcv)};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
 		class stopped_as_optional_t
@@ -172,4 +171,3 @@ namespace rod
 	 * @note Resulting sender never completes via the stop channel. */
 	inline constexpr auto stopped_as_error = stopped_as_error_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

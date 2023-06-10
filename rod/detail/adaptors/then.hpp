@@ -10,7 +10,6 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _then
@@ -64,8 +63,8 @@ namespace rod
 		template<typename R, typename F>
 		struct storage<R, F>::type
 		{
-			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
-			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
+			ROD_NO_UNIQUE_ADDRESS R _rcv;
+			ROD_NO_UNIQUE_ADDRESS F _fn;
 		};
 
 		template<typename, typename, typename, typename>
@@ -90,7 +89,7 @@ namespace rod
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] _storage_t _storage;
+			ROD_NO_UNIQUE_ADDRESS _storage_t _storage;
 			_state_t _state;
 		};
 
@@ -158,8 +157,8 @@ namespace rod
 				return _operation_t<T, Rcv>(std::forward<T>(s)._snd, std::move(r), std::forward<T>(s)._fn);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] S _snd;
-			[[ROD_NO_UNIQUE_ADDRESS]] F _fn;
+			ROD_NO_UNIQUE_ADDRESS S _snd;
+			ROD_NO_UNIQUE_ADDRESS F _fn;
 		};
 
 		template<typename C>
@@ -228,4 +227,3 @@ namespace rod
 	 * @return Sender completing via the value channel with results of \a fn. */
 	inline constexpr auto upon_stopped = upon_stopped_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

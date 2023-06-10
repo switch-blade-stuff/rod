@@ -9,7 +9,6 @@
 
 #include "detail/config.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	template<typename T>
@@ -80,4 +79,3 @@ namespace rod
 	template<typename T>
 	concept is_forwarding_query = forwarding_query(T{});
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

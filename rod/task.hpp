@@ -10,7 +10,6 @@
 
 #include "scheduling.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _task
@@ -388,5 +387,4 @@ namespace rod
 	template<typename T = void>
 	using shared_task = _task::shared_task<T>;
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

@@ -4,17 +4,42 @@
 
 #pragma once
 
-#include "api.hpp"
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+#define ROD_HIDDEN
+#define ROD_VISIBLE
+#if defined(_MSC_VER)
+#define ROD_API_EXPORT __declspec(dllexport)
+#define ROD_API_IMPORT __declspec(dllimport)
+#elif defined(__clang__) || defined(__GNUC__)
+#define ROD_API_EXPORT __attribute__((dllexport))
+#define ROD_API_IMPORT __attribute__((dllimport))
+#endif
+#elif __GNUC__ >= 4
+#define ROD_HIDDEN __attribute__((visibility("hidden")))
+#define ROD_VISIBLE __attribute__((visibility("default")))
+#define ROD_API_EXPORT ROD_VISIBLE
+#define ROD_API_IMPORT ROD_VISIBLE
+#else
+#define ROD_HIDDEN
+#define ROD_VISIBLE
+#define ROD_API_EXPORT
+#define ROD_API_IMPORT
+#endif
+
+#if defined(ROD_EXPORT)
+#define ROD_PUBLIC ROD_API_EXPORT
+#else
+#define ROD_PUBLIC ROD_API_IMPORT
+#endif
 
 /* MSVC does not support standard no_unique_address */
 #if defined(_MSC_VER) && _MSC_VER >= 1929
-#define ROD_NO_UNIQUE_ADDRESS msvc::no_unique_address
+#define ROD_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
 #else
-#define ROD_NO_UNIQUE_ADDRESS no_unique_address
+#define ROD_NO_UNIQUE_ADDRESS [[no_unique_address]]
 #endif
 
 #if !defined(ROD_NO_COROUTINES) && defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L
-
 #ifndef ROD_HAS_COROUTINES
 #define ROD_HAS_COROUTINES
 #endif
@@ -46,5 +71,4 @@
 #elif defined(ROD_HAS_LIBURING)
 #undef ROD_HAS_LIBURING
 #endif
-
 #endif

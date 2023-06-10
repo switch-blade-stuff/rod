@@ -7,7 +7,6 @@
 #include "start_detached.hpp"
 #include "adaptors/then.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _execute
@@ -28,4 +27,3 @@ namespace rod
 	 * @param fn Functor to execute on \a sch. */
 	inline constexpr auto execute = execute_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

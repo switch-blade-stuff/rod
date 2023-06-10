@@ -11,7 +11,6 @@
 #include <climits>
 #include <limits>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	system_file system_file::reopen(native_handle_type fd, int mode, std::error_code &err) noexcept
@@ -217,5 +216,4 @@ namespace rod::detail
 		}
 	}
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif

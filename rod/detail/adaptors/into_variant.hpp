@@ -8,7 +8,6 @@
 #include "../concepts.hpp"
 #include "closure.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _into_variant
@@ -42,7 +41,7 @@ namespace rod
 			template<detail::completion_channel C, typename... Args>  requires(!std::same_as<C, set_value_t> && detail::callable<C, R, Args...>)
 			friend constexpr void tag_invoke(set_error_t, type &&r, Args &&...args) noexcept { C{}(std::move(r._rcv), std::forward<Args>(args)...); }
 
-			[[ROD_NO_UNIQUE_ADDRESS]] R _rcv;
+			ROD_NO_UNIQUE_ADDRESS R _rcv;
 		};
 
 		template<typename S>
@@ -70,7 +69,7 @@ namespace rod
 				return connect(std::move(s._snd), _receiver_t<Rcv>{std::move(rcv)});
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] S _snd;
+			ROD_NO_UNIQUE_ADDRESS S _snd;
 		};
 
 		class into_variant_t
@@ -97,4 +96,3 @@ namespace rod
 	inline constexpr auto into_variant = into_variant_t{};
 
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

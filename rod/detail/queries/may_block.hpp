@@ -6,7 +6,6 @@
 
 #include "../factories/read.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	inline namespace _execute_may_block_caller
@@ -23,4 +22,3 @@ namespace rod
 	/** Customization point object used to check if a call to `execute(s, f)` with scheduler `s` and an invocable `f` could block the current thread. */
 	inline constexpr auto execute_may_block_caller = execute_may_block_caller_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

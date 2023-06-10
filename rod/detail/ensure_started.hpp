@@ -11,7 +11,6 @@
 #include "shared_ref.hpp"
 #include "concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _ensure_started
@@ -75,7 +74,7 @@ namespace rod
 					op->_notify(op);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Env env;
+			ROD_NO_UNIQUE_ADDRESS Env env;
 			data_t data = std::tuple<set_stopped_t>{};
 
 			in_place_stop_source stop_src = {};
@@ -162,7 +161,7 @@ namespace rod
 			}
 
 			detail::shared_handle<_shared_state_t> _state;
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			_stop_cb_t _on_stop = {};
 		};
 
@@ -234,4 +233,3 @@ namespace rod
 	 * @return Sender that completes with the completion results of the eagerly-started operation. */
 	inline constexpr auto ensure_started = ensure_started_t{};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

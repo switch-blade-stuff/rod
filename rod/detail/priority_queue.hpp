@@ -9,7 +9,6 @@
 
 #include "config.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	/* Priority queue implemented as a sorted list. While a more complex data structure will give better
@@ -74,4 +73,3 @@ namespace rod::detail
 		Node *head = {};
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

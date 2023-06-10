@@ -36,8 +36,8 @@ namespace rod
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Env _env;
-			[[ROD_NO_UNIQUE_ADDRESS]] Tok _tok;
+			ROD_NO_UNIQUE_ADDRESS Env _env;
+			ROD_NO_UNIQUE_ADDRESS Tok _tok;
 		};
 
 		template<typename Rcv, typename Tok>
@@ -55,8 +55,8 @@ namespace rod
 					set_stopped(std::move(_rcv));
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Rcv _rcv;
-			[[ROD_NO_UNIQUE_ADDRESS]] Tok _tok;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
+			ROD_NO_UNIQUE_ADDRESS Tok _tok;
 			std::atomic_flag _is_done = {};
 		};
 
@@ -115,8 +115,8 @@ namespace rod
 				return _operation_t<T, Rcv>{std::move(s._snd), std::move(s._tok), std::move(rcv)};
 			}
 
-			[[ROD_NO_UNIQUE_ADDRESS]] Snd _snd;
-			[[ROD_NO_UNIQUE_ADDRESS]] Tok _tok;
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
+			ROD_NO_UNIQUE_ADDRESS Tok _tok;
 		};
 
 		struct with_stop_token_t

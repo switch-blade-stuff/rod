@@ -8,7 +8,6 @@
 
 #include "environment.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _channels
@@ -247,4 +246,3 @@ namespace rod
 		{ tag_invoke(tag, get_env(schedule(std::forward<S>(s)))) } -> std::same_as<std::remove_cvref_t<S>>;
 	} && std::equality_comparable<std::remove_cvref_t<S>> && std::copy_constructible<std::remove_cvref_t<S>>;
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

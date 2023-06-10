@@ -6,7 +6,6 @@
 
 #include "concepts.hpp"
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod
 {
 	namespace _receiver_adaptor
@@ -42,7 +41,7 @@ namespace rod
 			constexpr const Base &&base() const && noexcept { return std::move(_base); }
 
 		private:
-			[[ROD_NO_UNIQUE_ADDRESS]] Base _base = {};
+			ROD_NO_UNIQUE_ADDRESS Base _base = {};
 		};
 
 		template<typename Child, typename Base>
@@ -132,4 +131,3 @@ namespace rod
 	template<typename Child, typename Base = _receiver_adaptor::default_base>
 	using receiver_adaptor = typename _receiver_adaptor::receiver_adaptor<Child, Base>::type;
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE

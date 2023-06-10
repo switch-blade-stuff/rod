@@ -11,7 +11,6 @@
 #include <system_error>
 #include <utility>
 
-ROD_TOPLEVEL_NAMESPACE_OPEN
 namespace rod::detail
 {
 	class basic_descriptor
@@ -76,5 +75,4 @@ namespace rod::detail
 		friend constexpr void swap(unique_descriptor &a, unique_descriptor &b) noexcept { a.swap(b); }
 	};
 }
-ROD_TOPLEVEL_NAMESPACE_CLOSE
 #endif
