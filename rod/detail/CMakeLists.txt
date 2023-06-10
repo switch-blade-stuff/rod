@@ -18,4 +18,8 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/ensure_started.hpp
         ${CMAKE_CURRENT_LIST_DIR}/start_detached.hpp
         ${CMAKE_CURRENT_LIST_DIR}/receiver_adaptor.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/thread_pool.hpp
         ${CMAKE_CURRENT_LIST_DIR}/io_buffer.hpp)
+
+list(APPEND ROD_SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/thread_pool.cpp)

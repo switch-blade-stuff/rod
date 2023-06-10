@@ -17,39 +17,46 @@ namespace rod
 {
 	namespace _run_loop
 	{
-		struct operation_base;
-		struct scheduler;
+		class operation_base;
+		class scheduler;
 		class run_loop;
 
 		using clock = std::chrono::system_clock;
 		using time_point = typename clock::time_point;
 
 		template<typename>
-		struct timer_operation { struct type; };
+		struct timer_operation { class type; };
 		template<typename>
-		struct operation { struct type; };
-		struct timer_sender;
-		struct sender;
+		struct operation { class type; };
+		class timer_sender;
+		class sender;
 
 		struct env { run_loop *_loop; };
 
-		struct operation_base
+		class operation_base
 		{
-			using _notify_func_t = void (*)(operation_base *, time_point) noexcept;
+			friend class run_loop;
 
-			constexpr operation_base(run_loop *loop, _notify_func_t notify = {}) noexcept : _notify_func(notify), _loop(loop) {}
+			using notify_func_t = void (*)(operation_base *, time_point) noexcept;
 
+		protected:
+			constexpr operation_base(run_loop *loop, notify_func_t notify = {}) noexcept : _notify_func(notify), _loop(loop) {}
+
+		private:
 			void _notify(time_point now) noexcept { _notify_func(this, now); }
 
-			_notify_func_t _notify_func;
+		protected:
+			notify_func_t _notify_func;
 			operation_base *_next = {};
 			run_loop *_loop;
 		};
 
 		template<typename R>
-		struct operation<R>::type : operation_base
+		class operation<R>::type : operation_base
 		{
-			static void _notify_complete(operation_base *p, time_point) noexcept
+			friend sender;
+
+			static void notify_complete(operation_base *p, time_point) noexcept
 			{
 				auto &rcv = static_cast<type *>(p)->_rcv;
 				if (rod::get_stop_token(get_env(rcv)).stop_requested())
@@ -58,88 +65,122 @@ namespace rod
 					set_value(std::move(rcv));
 			}
 
+			constexpr type(run_loop *loop, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, notify_complete), _rcv(std::move(rcv)) {}
+
+		public:
 			type() = delete;
 			type(const type &) = delete;
 
-			constexpr type(run_loop *loop, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, _notify_complete), _rcv(std::move(rcv)) {}
+			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
-			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
-
-			inline void _start() noexcept;
+		private:
+			inline void start() noexcept;
 
 			ROD_NO_UNIQUE_ADDRESS R _rcv;
 		};
 		template<typename R>
-		struct timer_operation<R>::type : operation_base
+		class timer_operation<R>::type : operation_base
 		{
-			static void _notify_complete(operation_base *p, time_point now) noexcept { static_cast<type *>(p)->_complete(now); }
+			friend timer_sender;
 
+			static void notify_complete(operation_base *p, time_point now) noexcept { static_cast<type *>(p)->complete(now); }
+			constexpr type(run_loop *loop, time_point timeout, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, notify_complete), _rcv(std::move(rcv)), _timeout(timeout) {}
+
+		public:
 			type() = delete;
 			type(const type &) = delete;
 
-			constexpr type(run_loop *loop, time_point timeout, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, _notify_complete), _rcv(std::move(rcv)), _timeout(timeout) {}
+			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
-			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
-
-			inline void _start() noexcept;
-			inline void _complete(time_point now) noexcept;
+		private:
+			inline void start() noexcept;
+			inline void complete(time_point now) noexcept;
 
 			ROD_NO_UNIQUE_ADDRESS R _rcv;
 			time_point _timeout;
 		};
 
-		struct sender
+		class sender
 		{
+			friend scheduler;
+
+		public:
 			using is_sender = std::true_type;
 
-			using _signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
+		private:
+			using signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
 			template<typename R>
-			using _operation_t = typename operation<std::decay_t<R>>::type;
+			using operation_t = typename operation<std::decay_t<R>>::type;
 
+			constexpr sender(run_loop *loop) noexcept : _loop(loop) {}
+
+		public:
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._loop}; }
 			template<decays_to<sender> T, typename E>
-			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
+			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<decays_to<sender> T, typename R>
-			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(detail::nothrow_decay_copyable<R>::value) { return {s._loop, std::forward<R>(rcv)}; }
+			template<decays_to<sender> T, typename Rcv>
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
+
+		private:
+			template<typename Rcv>
+			operation_t<Rcv> connect(Rcv &&rcv) { return {_loop, std::forward<Rcv>(rcv)}; }
 
 			run_loop *_loop;
 		};
-		struct timer_sender
+		class timer_sender
 		{
+			friend scheduler;
+
+		public:
 			using is_sender = std::true_type;
 
-			using _signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
+		private:
+			using signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
 			template<typename R>
-			using _operation_t = typename timer_operation<std::decay_t<R>>::type;
+			using operation_t = typename timer_operation<std::decay_t<R>>::type;
 
+			constexpr timer_sender(run_loop *loop, time_point timeout) noexcept : _timeout(timeout), _loop(loop) {}
+
+		public:
 			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {s._loop}; }
 			template<decays_to<timer_sender> T, typename E>
-			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
+			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<decays_to<timer_sender> T, typename R>
-			friend constexpr _operation_t<R> tag_invoke(connect_t, T &&s, R &&rcv) noexcept(detail::nothrow_decay_copyable<R>::value) { return {s._loop, s._timeout, std::forward<R>(rcv)};; }
+			template<decays_to<timer_sender> T, typename Rcv>
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
+
+		private:
+			template<typename Rcv>
+			operation_t<Rcv> connect(Rcv &&rcv) { return {_loop, _timeout, std::forward<Rcv>(rcv)}; }
 
 			time_point _timeout;
 			run_loop *_loop;
 		};
 
-		struct scheduler
+		class scheduler
 		{
-			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
-			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
-
-			template<decays_to<scheduler> T>
-			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{s._loop}; }
-			template<decays_to<scheduler> T, decays_to<time_point> TP>
-			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), s._loop}; }
-			template<decays_to<scheduler> T, typename Dur>
-			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
+		public:
+			constexpr scheduler(run_loop *loop) noexcept : _loop(loop) {}
 
 			/** Returns the current time point of the clock used by the run loop. */
 			[[nodiscard]] time_point now() const noexcept { return clock::now(); }
 
 			constexpr bool operator==(const scheduler &) const noexcept = default;
+
+			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
+			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
+
+			template<decays_to<scheduler> T>
+			friend constexpr sender tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
+			template<decays_to<scheduler> T, decays_to<time_point> Tp>
+			friend constexpr timer_sender tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return s.schedule_at(std::forward<Tp>(tp)); }
+			template<decays_to<scheduler> T, typename Dur>
+			friend constexpr timer_sender tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return s.schedule_at(std::forward<T>(s), s.now() + dur); }
+
+		private:
+			auto schedule() noexcept { return sender{_loop}; }
+			auto schedule_at(time_point tp) noexcept { return timer_sender{_loop, tp}; }
 
 			run_loop *_loop;
 		};
@@ -219,7 +260,7 @@ namespace rod
 			void schedule(operation_base *node) noexcept
 			{
 				_producer_queue.push(node);
-				_producer_queue.notify_all();
+				_producer_queue.notify_one();
 			}
 
 			in_place_stop_source _stop_source = {};
@@ -232,15 +273,15 @@ namespace rod
 		constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return e._loop->get_scheduler(); }
 
 		template<typename R>
-		void operation<R>::type::_start() noexcept { _loop->schedule(this); }
+		void operation<R>::type::start() noexcept { _loop->schedule(this); }
 		template<typename R>
-		void timer_operation<R>::type::_start() noexcept
+		void timer_operation<R>::type::start() noexcept
 		{
 			_loop->_timers.fetch_add(1, std::memory_order_acq_rel);
 			_loop->schedule(this);
 		}
 		template<typename R>
-		void timer_operation<R>::type::_complete(time_point now) noexcept
+		void timer_operation<R>::type::complete(time_point now) noexcept
 		{
 			if (rod::get_stop_token(get_env(_rcv)).stop_requested())
 			{

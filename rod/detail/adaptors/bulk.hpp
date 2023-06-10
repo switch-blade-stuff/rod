@@ -25,7 +25,7 @@ namespace rod
 			friend receiver_adaptor<type, Rcv>;
 
 		public:
-			constexpr type(Rcv rcv, Shape shape, F fn) : receiver_adaptor<type, Rcv>(std::move(rcv)), _shape(shape), _fn(std::move(fn)) {}
+			constexpr type(Rcv rcv, Shape shape, F fn) : receiver_adaptor<type, Rcv>(std::move(rcv)), _fn(std::move(fn)), _shape(shape) {}
 
 		private:
 			template<typename... Args>
@@ -45,8 +45,8 @@ namespace rod
 				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
 			}
 
-			ROD_NO_UNIQUE_ADDRESS Shape _shape;
 			ROD_NO_UNIQUE_ADDRESS F _fn;
+			Shape _shape;
 		};
 
 		template<typename Snd, typename Shape, typename F>
@@ -74,9 +74,9 @@ namespace rod
 				return connect(std::forward<T>(s)._snd, _receiver_t<Rcv>{std::move(rcv), s._shape, std::forward<T>(s)._fn});
 			}
 
-			ROD_NO_UNIQUE_ADDRESS Shape _shape;
 			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 			ROD_NO_UNIQUE_ADDRESS F _fn;
+			Shape _shape;
 		};
 
 		class bulk_t
@@ -102,7 +102,7 @@ namespace rod
 			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && !tag_invocable<bulk_t, Snd, Shape, F>)
 			[[nodiscard]] constexpr sender_t<Snd, Shape, F> operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Shape, F>, Shape, Snd, F>)
 			{
-				return sender_t<Snd, Shape, F>{std::move(shape), std::forward<Snd>(snd), std::forward<F>(fn)};
+				return sender_t<Snd, Shape, F>{std::forward<Snd>(snd), std::forward<F>(fn), std::move(shape)};
 			}
 
 			template<std::integral Shape, movable_value F>
