@@ -145,29 +145,6 @@ namespace rod
 		private:
 			union { Alloc _alloc; };
 		};
-		template<typename Promise, typename Alloc> requires(std::is_empty_v<Alloc> && !std::is_final_v<Alloc>)
-		class with_allocator_promise<Promise, Alloc> : public Promise, std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise<Promise, Alloc>>
-		{
-			using alloc_type = std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
-			using alloc_traits = std::allocator_traits<alloc_type>;
-
-		public:
-			template<decays_to<Alloc> A, typename... Args>
-			static constexpr void *operator new(std::size_t n, std::allocator_arg_t, A &&a, Args &&...)
-			{
-				auto alloc = alloc_type{std::forward<A>(a)};
-				auto *mem = static_cast<with_allocator_promise *>(alloc_traits::allocate(alloc, n / sizeof(with_allocator_promise)));
-				std::construct_at(static_cast<alloc_type *>(mem), std::move(alloc));
-				return mem;
-			}
-			static constexpr void operator delete(void *ptr, std::size_t n)
-			{
-				auto *mem = static_cast<with_allocator_promise *>(ptr);
-				auto alloc = std::move(*static_cast<alloc_type *>(mem));
-				std::destroy_at(static_cast<alloc_type *>(mem));
-				alloc_traits::deallocate(alloc, mem, n / sizeof(with_allocator_promise));
-			}
-		};
 	}
 
 	namespace _as_awaitable
