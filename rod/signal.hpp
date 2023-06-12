@@ -5,6 +5,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <cassert>
 
 #include "detail/config.hpp"

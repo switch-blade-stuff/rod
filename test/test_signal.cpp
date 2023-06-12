@@ -18,8 +18,12 @@ int main()
 
 	invoked = 0;
 	auto l1 = sink += [&] { return ++invoked; };
+#ifdef ROD_HAS_COROUTINES
 	for (auto i : signal.generate())
 		TEST_ASSERT(i == invoked);
+#else
+	signal.emit();
+#endif
 	TEST_ASSERT(invoked == 2);
 
 	sink -= l1;

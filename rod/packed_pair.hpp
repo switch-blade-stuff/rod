@@ -179,7 +179,7 @@ namespace rod
 			swap(second, other.second);
 		}
 		friend constexpr void swap(packed_pair &a, packed_pair &b) noexcept(std::is_nothrow_swappable_v<packed_pair>) { return a.swap(b); }
-		
+
 		ROD_NO_UNIQUE_ADDRESS first_type first;
 		ROD_NO_UNIQUE_ADDRESS second_type second;
 	};

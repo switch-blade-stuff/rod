@@ -332,11 +332,11 @@ namespace rod
 			bool _wait_pending = false;
 			bool _stop_pending = false;
 		};
-		
+
 		template<typename Rcv>
 		struct operation<Rcv>::type : operation_base
 		{
-			static void _bind_notify(operation_base *ptr) noexcept
+			static void _notify_complete(operation_base *ptr) noexcept
 			{
 				auto &op = *static_cast<type *>(ptr);
 				if (get_stop_token(get_env(op._rcv)).stop_requested())
@@ -345,8 +345,8 @@ namespace rod
 					set_value(std::move(op._rcv));
 			}
 
-			template<typename Rcv1>
-			constexpr type(context &ctx, Rcv1 &&rcv) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx) { _notify_func = _bind_notify; }
+			template<typename Rcv2>
+			constexpr type(context &ctx, Rcv2 &&rcv) : _rcv(std::forward<Rcv2>(rcv)), _ctx(ctx) { _notify_func = _notify_complete; }
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -466,8 +466,8 @@ namespace rod
 			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
 			static void _notify_request_stop(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_request_stop(); }
 
-			template<typename Rcv1>
-			type(context &ctx, Rcv1 &&rcv, _io_cmd_t cmd) : _rcv(std::forward<Rcv1>(rcv)), _cmd(std::move(cmd)), _ctx(ctx) {}
+			template<typename Rcv2>
+			type(context &ctx, Rcv2 &&rcv, _io_cmd_t cmd) : _rcv(std::forward<Rcv2>(rcv)), _cmd(std::move(cmd)), _ctx(ctx) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 

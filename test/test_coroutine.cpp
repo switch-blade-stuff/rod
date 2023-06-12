@@ -7,6 +7,8 @@
 
 #include "common.hpp"
 
+#ifdef ROD_HAS_COROUTINES
+
 template<typename T>
 inline rod::task<T> async_return(T value) { co_return value; };
 
@@ -55,3 +57,4 @@ int main()
 			TEST_ASSERT(*curr == i);
 	}();
 }
+#endif

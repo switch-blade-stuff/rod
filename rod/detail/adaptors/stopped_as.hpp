@@ -15,107 +15,134 @@ namespace rod
 {
 	namespace _stopped_as
 	{
+		class stopped_as_optional_t;
+
 		template<typename, typename>
-		struct operation { struct type; };
+		struct operation { class type; };
 		template<typename, typename>
-		struct receiver { struct type; };
+		struct receiver { class type; };
 		template<typename>
-		struct sender { struct type; };
+		struct sender { class type; };
 
 		template<typename Snd, typename Rcv>
-		struct receiver<Snd, Rcv>::type
+		class receiver<Snd, Rcv>::type
 		{
+		public:
 			using is_receiver = std::true_type;
-			using _operation_t = typename operation<Snd, Rcv>::type;
-			using _value_t = std::decay_t<detail::single_sender_value_type<Snd, env_of_t<Rcv>>>;
 
+		private:
+			using value_t = std::decay_t<detail::single_sender_value_type<Snd, env_of_t<Rcv>>>;
+			using operation_t = typename operation<Snd, Rcv>::type;
+
+			constexpr type(operation_t *op) noexcept : _op(op) {}
+
+		public:
 			template<decays_to<type> T, typename V>
-			friend constexpr void tag_invoke(set_value_t, T &&r, V &&value) noexcept { r._set_value(std::forward<V>(value)); }
+			friend constexpr void tag_invoke(set_value_t, T &&r, V &&value) noexcept { r.set_value(std::forward<V>(value)); }
 			template<decays_to<type> T, typename Err>
-			friend constexpr void tag_invoke(set_error_t, T &&r, Err &&err) noexcept { r._set_error(std::forward<Err>(err)); }
+			friend constexpr void tag_invoke(set_error_t, T &&r, Err &&err) noexcept { r.set_error(std::forward<Err>(err)); }
 			template<decays_to<type> T>
-			friend constexpr void tag_invoke(set_stopped_t, T &&r) noexcept { r._set_stopped(); }
+			friend constexpr void tag_invoke(set_stopped_t, T &&r) noexcept { r.set_stopped(); }
 
+		private:
 			template<typename V>
-			constexpr void _set_value(V &&value) noexcept;
+			constexpr void set_value(V &&value) noexcept;
 			template<typename Err>
-			constexpr void _set_error(Err &&err) noexcept;
-			constexpr void _set_stopped() noexcept;
+			constexpr void set_error(Err &&err) noexcept;
+			constexpr void set_stopped() noexcept;
 
-			_operation_t *_op = {};
+			operation_t *_op = {};
 		};
 
 		template<typename Snd, typename Rcv>
-		struct operation<Snd, Rcv>::type
+		class operation<Snd, Rcv>::type
 		{
-			using _receiver_t = typename receiver<Snd, Rcv>::type;
+			friend sender<std::decay_t<Snd>>::type;
+			friend receiver<Snd, Rcv>::type;
 
+			using receiver_t = typename receiver<Snd, Rcv>::type;
+			using state_t = connect_result_t<Snd, receiver_t>;
+
+			template<typename Snd2>
+			constexpr type(Snd2 &&snd, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && detail::nothrow_callable<connect_t, Snd2, receiver_t>) : _rcv(std::forward<Rcv>(rcv)), _state(connect(std::forward<Snd2>(snd), receiver_t{this})) {}
+
+		public:
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			constexpr type(Snd &&snd, Rcv &&rcv) : _rcv(std::forward<Rcv>(rcv)), _state(connect(std::forward<Snd>(snd), _receiver_t{this})) {}
-
 			friend void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
+		private:
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
-			connect_result_t<Snd, _receiver_t> _state;
+			state_t _state;
 		};
 
 		template<typename Snd, typename Rcv>
 		template<typename V>
-		constexpr void receiver<Snd, Rcv>::type::_set_value(V &&value) noexcept
+		constexpr void receiver<Snd, Rcv>::type::set_value(V &&value) noexcept
 		{
-			static_assert(std::constructible_from<_value_t, V>);
-			static_assert(detail::callable<set_value_t, Rcv, std::optional<_value_t>>);
+			static_assert(std::constructible_from<value_t, V>);
+			static_assert(detail::callable<set_value_t, Rcv, std::optional<value_t>>);
 
-			const auto do_set_value = [&]() { set_value(std::move(_op->_rcv), std::optional<_value_t>{std::forward<V>(value)}); };
-			if constexpr (!std::is_nothrow_constructible_v<std::optional<_value_t>, V>)
+			const auto do_set_value = [&]() { set_value(std::move(_op->_rcv), std::optional<value_t>{std::forward<V>(value)}); };
+			if constexpr (!std::is_nothrow_constructible_v<std::optional<value_t>, V>)
 				try { do_set_value(); } catch (...) { set_error(std::move(_op->_rcv), std::current_exception()); }
 			else
 				do_set_value();
 		}
 		template<typename Snd, typename Rcv>
 		template<typename Err>
-		constexpr void receiver<Snd, Rcv>::type::_set_error(Err &&err) noexcept
+		constexpr void receiver<Snd, Rcv>::type::set_error(Err &&err) noexcept
 		{
 			static_assert(detail::callable<set_error_t, Rcv, Err>);
 			set_error(std::move(_op->_rcv), std::forward<Err>(err));
 		}
 		template<typename Snd, typename Rcv>
-		constexpr void receiver<Snd, Rcv>::type::_set_stopped() noexcept
+		constexpr void receiver<Snd, Rcv>::type::set_stopped() noexcept
 		{
-			static_assert(detail::callable<set_value_t, Rcv, std::optional<_value_t>>);
-			set_value(std::move(_op->_rcv), std::optional<_value_t>{std::nullopt});
+			static_assert(detail::callable<set_value_t, Rcv, std::optional<value_t>>);
+			set_value(std::move(_op->_rcv), std::optional<value_t>{std::nullopt});
 		}
 
 		template<typename Snd>
-		struct sender<Snd>::type
+		class sender<Snd>::type
 		{
+			friend stopped_as_optional_t;
+
+		public:
 			using is_sender = std::true_type;
 
+		private:
 			template<typename T, typename Rcv>
-			using _operation_t = typename operation<copy_cvref_t<T, Snd>, Rcv>::type;
+			using operation_t = typename operation<copy_cvref_t<T, Snd>, Rcv>::type;
 			template<typename T, typename Rcv>
-			using _receiver_t = typename receiver<copy_cvref_t<T, Snd>, Rcv>::type;
+			using receiver_t = typename receiver<copy_cvref_t<T, Snd>, Rcv>::type;
 
 			template<typename T>
-			using _error_signs_t = completion_signatures<set_error_t(T)>;
+			using error_signs_t = completion_signatures<set_error_t(T)>;
 			template<typename... Ts>
-			using _value_signs_t = completion_signatures<set_value_t(std::optional<std::decay_t<Ts>>...)>;
+			using value_signs_t = completion_signatures<set_value_t(std::optional<std::decay_t<Ts>>...)>;
 			template<typename T, typename Env>
-			using _signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, Env, completion_signatures<set_error_t(std::exception_ptr)>, _value_signs_t, _error_signs_t, completion_signatures<>>;
-
-			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
-			template<decays_to<type> T, typename Env>
-			friend constexpr _signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+			using signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, Env, completion_signatures<set_error_t(std::exception_ptr)>, value_signs_t, error_signs_t, completion_signatures<>>;
 
 			template<decays_to<type> T, typename Rcv>
-			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv)
+			constexpr static auto connect(T &&s, Rcv &&rcv) { return operation_t<T, Rcv>{std::forward<T>(s)._snd, std::forward<Rcv>(rcv)}; }
+
+			template<typename Snd2>
+			constexpr type(Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Snd, Snd2>) : _snd(std::forward<Snd2>(snd)) {}
+
+		public:
+			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			template<decays_to<type> T, typename Env>
+			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+
+			template<decays_to<type> T, typename Rcv> requires detail::single_sender<copy_cvref_t<T, Snd>, env_of_t<Rcv>>
+			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, Snd>, Rcv>)
 			{
-				static_assert(detail::single_sender<copy_cvref_t<T, Snd>, env_of_t<Rcv>>);
-				return {std::forward<T>(s)._snd, std::move(rcv)};
+				return connect(std::forward<T>(s), std::move(rcv));
 			}
 
+		private:
 			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
@@ -136,18 +163,9 @@ namespace rod
 
 		public:
 			template<rod::sender Snd, movable_value Err>
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Err err) const
-			{
-				return snd | let_stopped([e = std::move(err)]() mutable noexcept(std::is_nothrow_move_constructible_v<Err>)
-				{
-					return just_error(std::move(e));
-				});
-			}
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Err err) const { return let_stopped(snd, [e = std::move(err)]() mutable noexcept(std::is_nothrow_move_constructible_v<Err>) { return just_error(std::move(e)); }); }
 			template<movable_value Err>
-			[[nodiscard]] constexpr back_adaptor<Err> operator()(Err &&err) const noexcept(std::is_nothrow_move_constructible_v<Err>)
-			{
-				return back_adaptor<Err>{*this, std::move(err)};
-			}
+			[[nodiscard]] constexpr back_adaptor<Err> operator()(Err &&err) const noexcept(std::is_nothrow_move_constructible_v<Err>) { return back_adaptor<Err>{*this, std::forward<Err>(err)}; }
 		};
 	}
 

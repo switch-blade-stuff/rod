@@ -57,7 +57,7 @@ int main()
 
 		const auto start = sch.now();
 		const auto timeout = start + 50ms;
-		rod::sync_wait(rod::schedule_at(sch, timeout) | rod::then([&]() { TEST_ASSERT(sch.now() >= timeout); }));
+		rod::sync_wait(rod::transfer_when_all(sch, rod::schedule_at(sch, timeout), rod::on(sch, rod::just())) | rod::then([&]() { TEST_ASSERT(sch.now() >= timeout); }));
 		loop.finish();
 	}
 }

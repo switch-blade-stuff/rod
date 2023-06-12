@@ -58,7 +58,7 @@ namespace rod
 		{
 			template<typename T>
 			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::begin(buff), std::end(buff)) {}
-			
+
 			std::size_t operator()(std::error_code &err) noexcept { return fd.read(buff.data(), buff.size(), err); }
 
 			detail::basic_descriptor fd;
@@ -69,7 +69,7 @@ namespace rod
 		{
 			template<typename T>
 			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::cbegin(buff), std::cend(buff)) {}
-			
+
 			std::size_t operator()(std::error_code &err) noexcept { return fd.write(buff.data(), buff.size(), err); }
 
 			detail::basic_descriptor fd;
@@ -80,9 +80,9 @@ namespace rod
 		{
 			template<typename T>
 			constexpr type(int fd, std::size_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
-			
+
 			std::size_t operator()(std::error_code &err) noexcept { return fd.read_at(buff.data(), buff.size(), off, err); }
-			
+
 			std::size_t off;
 		};
 		template<>
@@ -157,7 +157,7 @@ namespace rod
 			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::_timer_prev, &timer_base::_timer_next>;
 			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
 			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
-			
+
 			template<typename Op>
 			using io_cmd_t = typename io_cmd<Op>::type;
 
@@ -272,7 +272,7 @@ namespace rod
 		template<typename Rcv>
 		struct operation<Rcv>::type : operation_base
 		{
-			static void _bind_notify(operation_base *ptr) noexcept
+			static void _notify_complete(operation_base *ptr) noexcept
 			{
 				auto &op = *static_cast<type *>(ptr);
 				if (get_stop_token(get_env(op._rcv)).stop_requested())
@@ -281,8 +281,8 @@ namespace rod
 					set_value(std::move(op._rcv));
 			}
 
-			template<typename Rcv1>
-			constexpr type(context &ctx, Rcv1 &&rcv) : _rcv(std::forward<Rcv1>(rcv)), _ctx(ctx) { _notify_func = _bind_notify; }
+			template<typename Rcv2>
+			constexpr type(context &ctx, Rcv2 &&rcv) : _rcv(std::forward<Rcv2>(rcv)), _ctx(ctx) { _notify_func = _notify_complete; }
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -401,8 +401,8 @@ namespace rod
 			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_value(); }
 			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
 
-			template<typename Rcv1>
-			explicit type(context &ctx, Rcv1 &&rcv, _io_cmd_t cmd) : _rcv(std::forward<Rcv1>(rcv)), _cmd(std::move(cmd)), _ctx(ctx) {}
+			template<typename Rcv2>
+			explicit type(context &ctx, Rcv2 &&rcv, _io_cmd_t cmd) : _rcv(std::forward<Rcv2>(rcv)), _cmd(std::move(cmd)), _ctx(ctx) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 

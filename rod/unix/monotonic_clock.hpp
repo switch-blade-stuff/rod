@@ -24,7 +24,7 @@ namespace rod
 		{
 		public:
 			using duration = typename monotonic_clock::duration;
-			
+
 			static constexpr time_point max() noexcept { return {std::numeric_limits<std::int64_t>::max(), 999'999'999}; }
 			static constexpr time_point min() noexcept { return {std::numeric_limits<std::int64_t>::min(), -999'999'999}; }
 

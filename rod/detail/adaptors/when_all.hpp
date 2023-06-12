@@ -16,6 +16,8 @@ namespace rod
 {
 	namespace _when_all
 	{
+		class when_all_t;
+
 		struct no_error {};
 		template<typename C, typename Rcv>
 		struct complete_for
@@ -386,6 +388,30 @@ namespace rod
 	inline constexpr auto when_all = when_all_t{};
 
 	using _when_all::transfer_when_all_t;
+
+	/** Customization point object used to adapt a group of child senders into a sender that only completes once all children complete
+	 * via the value channel, or once at least one of the children completes via the error or stop channels, and then transfer the resulting
+	 * sender to complete on a different scheduler.
+	 * @param sch Scheduler that will be used for completion of the grouped sender.
+	 * @param snd Parameter pack of child senders.
+	 * @return Sender representing grouped state of it's children completing on \a sch. */
+	inline constexpr auto transfer_when_all = transfer_when_all_t{};
+
 	using _when_all::when_all_with_variant_t;
+
+	/** Customization point object used to adapt a group of child senders into a variant sender that only completes once all children complete
+	 * via the value channel, or once at least one of the children completes via the error or stop channels.
+	 * @param snd Parameter pack of child senders.
+	 * @return Variant sender representing grouped state of it's children. */
+	inline constexpr auto when_all_with_variant = when_all_with_variant_t{};
+
 	using _when_all::transfer_when_all_with_variant_t;
+
+	/** Customization point object used to adapt a group of child senders into a variant sender that only completes once all children complete
+	 * via the value channel, or once at least one of the children completes via the error or stop channels, and then transfer the resulting
+	 * variant sender to complete on a different scheduler.
+	 * @param sch Scheduler that will be used for completion of the grouped sender.
+	 * @param snd Parameter pack of child senders.
+	 * @return Variant sender representing grouped state of it's children completing on \a sch. */
+	inline constexpr auto transfer_when_all_with_variant = transfer_when_all_with_variant_t{};
 }

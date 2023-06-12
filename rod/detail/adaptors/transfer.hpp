@@ -43,9 +43,9 @@ namespace rod
 		};
 	}
 
-	/** Customization point object used to adapt a sender to use a different completion scheduler for the value & stop channels.
+	/** Customization point object used to adapt a sender to use a different completion scheduler.
 	 * @param snd Input sender to adapt to the specified completion scheduler. If omitted, creates a pipe-able sender adaptor.
-	 * @param sch Scheduler that will be used for the value & stop channels.
-	 * @return Sender completing on \a sch via the value & stop channels. */
+	 * @param sch Scheduler that will be used for completion of \a snd.
+	 * @return Sender completing on \a sch. */
 	inline constexpr auto transfer = transfer_t{};
 }

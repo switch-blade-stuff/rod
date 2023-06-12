@@ -5,7 +5,7 @@
 #pragma once
 
 #include "../queries/completion.hpp"
-#include "../concepts.hpp"
+#include "../receiver_adaptor.hpp"
 #include "closure.hpp"
 
 namespace rod
@@ -15,74 +15,80 @@ namespace rod
 		template<typename S, typename E> requires sender_in<S, E>
 		using into_variant_type = value_types_of_t<S, E>;
 
-		template<typename R, typename V>
-		struct receiver { struct type; };
-		template<typename S>
-		struct sender { struct type; };
+		template<typename, typename>
+		struct receiver { class type; };
+		template<typename>
+		struct sender { class type; };
 
-		template<typename R, typename V>
-		struct receiver<R, V>::type
+		template<typename Rcv, typename V>
+		class receiver<Rcv, V>::type : receiver_adaptor<type, Rcv>
 		{
-			using is_receiver = std::true_type;
+			friend receiver_adaptor<type, Rcv>;
 
-			friend constexpr env_of_t<R> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(r._rcv); }
+		public:
+			constexpr type(Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : receiver_adaptor<type, Rcv>(std::forward<Rcv>(rcv)) {}
 
-			template<decays_to<set_value_t> C, typename... Args> requires std::constructible_from<V, std::tuple<Args &&...>>
-			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept
+		private:
+			template<typename... Args> requires(!detail::all_nothrow_decay_copyable<Args...>::value && std::constructible_from<V, std::tuple<Args &&...>>)
+			constexpr void set_value(Args &&...args) noexcept
 			{
-				if constexpr (!detail::all_nothrow_decay_copyable<Args...>::value)
-				{
-					try { set_value(std::move(r._rcv), V{std::tuple<Args &&...>{std::forward<Args>(args)...}}); }
-					catch (...) { set_error(std::move(r._rcv), std::current_exception()); }
-				}
-				else
-					set_value(std::move(r._rcv), V{std::tuple<Args &&...>{std::forward<Args>(args)...}});
+				try { set_value(std::move(receiver_adaptor<type, Rcv>::base()), V{std::tuple<Args &&...>{std::forward<Args>(args)...}}); }
+				catch (...) { set_error(std::move(receiver_adaptor<type, Rcv>::base()), std::current_exception()); }
 			}
-			template<detail::completion_channel C, typename... Args>  requires(!std::same_as<C, set_value_t> && detail::callable<C, R, Args...>)
-			friend constexpr void tag_invoke(set_error_t, type &&r, Args &&...args) noexcept { C{}(std::move(r._rcv), std::forward<Args>(args)...); }
-
-			ROD_NO_UNIQUE_ADDRESS R _rcv;
+			template<typename... Args> requires detail::all_nothrow_decay_copyable<Args...>::value && std::constructible_from<V, std::tuple<Args &&...>>
+			constexpr void set_value(Args &&...args) noexcept
+			{
+				set_value(std::move(receiver_adaptor<type, Rcv>::base()), V{std::tuple<Args &&...>{std::forward<Args>(args)...}});
+			}
 		};
 
-		template<typename S>
-		struct sender<S>::type
+		template<typename Snd>
+		class sender<Snd>::type
 		{
+		public:
 			using is_sender = std::true_type;
 
-			template<typename R>
-			using _receiver_t = typename receiver<R, into_variant_type<S, env_of_t<R>>>::type;
+		private:
+			template<typename Rcv>
+			using receiver_t = typename receiver<Rcv, into_variant_type<Snd, env_of_t<Rcv>>>::type;
 
 			template<typename E, typename...>
-			using _value_signs_t = set_value_t(into_variant_type<S, E>);
+			using value_signs_t = set_value_t(into_variant_type<Snd, E>);
 			template<typename E>
-			using _error_signs_t = std::conditional_t<value_types_of_t<S, E, detail::all_nothrow_decay_copyable, std::conjunction>::value, completion_signatures<>, completion_signatures<set_error_t(std::exception_ptr)>>;
+			using error_signs_t = std::conditional_t<value_types_of_t<Snd, E, detail::all_nothrow_decay_copyable, std::conjunction>::value, completion_signatures<>, completion_signatures<set_error_t(std::exception_ptr)>>;
 			template<typename E>
-			using _signs_t = make_completion_signatures<S, E, _error_signs_t<E>, detail::bind_front<_value_signs_t, E>::template type>;
+			using signs_t = make_completion_signatures<Snd, E, error_signs_t<E>, detail::bind_front<value_signs_t, E>::template type>;
 
-			friend constexpr env_of_t<S> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const S &>) { return get_env(s._snd); }
-			template<typename E>
-			friend constexpr _signs_t<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
+		public:
+			template<typename Snd2>
+			constexpr type(Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Snd, Snd2>) : _snd(std::forward<Snd2>(snd)) {}
 
-			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<S, _receiver_t<Rcv>>
-			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_callable<connect_t, S, _receiver_t<Rcv>>)
+		public:
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			template<typename E>
+			friend constexpr signs_t<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
+
+			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>>
+			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t<Rcv>> && std::is_nothrow_move_constructible_v<Rcv>)
 			{
-				return connect(std::move(s._snd), _receiver_t<Rcv>{std::move(rcv)});
+				return connect(std::move(s._snd), receiver_t<Rcv>{std::move(rcv)});
 			}
 
-			ROD_NO_UNIQUE_ADDRESS S _snd;
+		private:
+			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
 		class into_variant_t
 		{
 			using back_adaptor = detail::back_adaptor<into_variant_t>;
-			template<typename S>
-			using sender_t = typename sender<std::decay_t<S>>::type;
+			template<typename Snd>
+			using sender_t = typename sender<std::decay_t<Snd>>::type;
 
 		public:
-			template<rod::sender S>
-			[[nodiscard]] constexpr sender_t<S> operator()(S &&snd) const noexcept(std::is_nothrow_constructible_v<sender_t<S>, S>)
+			template<rod::sender Snd>
+			[[nodiscard]] constexpr sender_t<Snd> operator()(Snd &&snd) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd>, Snd>)
 			{
-				return sender_t<S>{std::forward<S>(snd)};
+				return sender_t<Snd>{std::forward<Snd>(snd)};
 			}
 			[[nodiscard]] constexpr back_adaptor operator()() const noexcept { return {}; }
 		};

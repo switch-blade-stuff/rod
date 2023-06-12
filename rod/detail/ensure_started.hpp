@@ -127,7 +127,7 @@ namespace rod
 			using _stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
 			using _shared_state_t = typename shared_state<Snd, Env>::type;
 
-			static void _bind_notify(operation_base *ptr) noexcept
+			static void _notify_complete(operation_base *ptr) noexcept
 			{
 				auto *op = static_cast<type *>(ptr);
 				op->_on_stop.reset();
@@ -142,7 +142,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			type(Rcv &&rcv, detail::shared_handle<_shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
-					: operation_base{_bind_notify}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
+					: operation_base{_notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
 			~type() { if (!_state->state1.load(std::memory_order_acquire)) _state->detach(); }
 
 			friend void tag_invoke(start_t, type &op) noexcept
