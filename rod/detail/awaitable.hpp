@@ -75,9 +75,9 @@ namespace rod
 
 		/* Promise wrapper with support for custom allocators. */
 		template<typename Promise, typename Alloc>
-		class promise_with_allocator : public Promise
+		class with_allocator_promise : public Promise
 		{
-			using alloc_type = std::allocator_traits<Alloc>::template rebind_alloc<promise_with_allocator>;
+			using alloc_type = std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
 			using alloc_traits = std::allocator_traits<alloc_type>;
 
 			constexpr static std::size_t offset(std::size_t n) noexcept
@@ -87,7 +87,7 @@ namespace rod
 			}
 			constexpr static std::size_t align_size(std::size_t n) noexcept
 			{
-				const auto mult = std::max(sizeof(promise_with_allocator), sizeof(alloc_type));
+				const auto mult = std::max(sizeof(with_allocator_promise), sizeof(alloc_type));
 				const auto size = offset(n) + sizeof(alloc_type);
 				const auto rem = size % mult;
 				return size + (rem ? mult - rem : 0);
@@ -106,7 +106,7 @@ namespace rod
 					return ::operator new(n);
 				else
 				{
-					const auto num = align_size(n) / sizeof(promise_with_allocator);
+					const auto num = align_size(n) / sizeof(with_allocator_promise);
 					auto rebound_alloc = alloc_type{std::forward<A>(alloc)};
 					const auto ptr = alloc_traits::allocate(rebound_alloc, num);
 					try
@@ -130,25 +130,25 @@ namespace rod
 					auto alloc = std::move(*alloc_ptr(ptr, n));
 					std::destroy_at(alloc_ptr(ptr, n));
 
-					const auto num = align_size(n) / sizeof(promise_with_allocator);
-					alloc_traits::deallocate(alloc, static_cast<promise_with_allocator *>(ptr), num);
+					const auto num = align_size(n) / sizeof(with_allocator_promise);
+					alloc_traits::deallocate(alloc, static_cast<with_allocator_promise *>(ptr), num);
 				}
 			}
 
-			constexpr promise_with_allocator() noexcept {}
-			constexpr promise_with_allocator(promise_with_allocator &&) noexcept {}
-			constexpr promise_with_allocator &operator=(promise_with_allocator &&) noexcept {}
-			constexpr promise_with_allocator(const promise_with_allocator &) noexcept {}
-			constexpr promise_with_allocator &operator=(const promise_with_allocator &) noexcept {}
-			constexpr ~promise_with_allocator() {}
+			constexpr with_allocator_promise() noexcept {}
+			constexpr with_allocator_promise(with_allocator_promise &&) noexcept {}
+			constexpr with_allocator_promise &operator=(with_allocator_promise &&) noexcept {}
+			constexpr with_allocator_promise(const with_allocator_promise &) noexcept {}
+			constexpr with_allocator_promise &operator=(const with_allocator_promise &) noexcept {}
+			constexpr ~with_allocator_promise() {}
 
 		private:
 			union { Alloc _alloc; };
 		};
 		template<typename Promise, typename Alloc> requires std::is_empty_v<Alloc>
-		class promise_with_allocator<Promise, Alloc> : public Promise
+		class with_allocator_promise<Promise, Alloc> : public Promise
 		{
-			using alloc_type = std::allocator_traits<Alloc>::template rebind_alloc<promise_with_allocator>;
+			using alloc_type = std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
 			using alloc_traits = std::allocator_traits<alloc_type>;
 
 		public:
@@ -160,7 +160,7 @@ namespace rod
 				else
 				{
 					auto bound_alloc = alloc_type{std::forward<A>(alloc)};
-					return alloc_traits::allocate(bound_alloc, n / sizeof(promise_with_allocator));
+					return alloc_traits::allocate(bound_alloc, n / sizeof(with_allocator_promise));
 				}
 			}
 			static constexpr void operator delete(void *ptr, std::size_t n)
@@ -170,7 +170,7 @@ namespace rod
 				else
 				{
 					auto bound_alloc = alloc_type{};
-					alloc_traits::deallocate(bound_alloc, static_cast<promise_with_allocator *>(ptr), n / sizeof(promise_with_allocator));
+					alloc_traits::deallocate(bound_alloc, static_cast<with_allocator_promise *>(ptr), n / sizeof(with_allocator_promise));
 				}
 			}
 		};

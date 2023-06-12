@@ -87,7 +87,7 @@ namespace rod
 		public:
 			friend constexpr env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &> && std::is_nothrow_constructible_v<env_t, env_of_t<Rcv>, Tok>) { return r.get_env(); }
 
-			template<detail::completion_channel C, typename... Args> requires(requires(type &&r, Args &&...args) { r._op->complete(C{}, std::forward<Args>(args)...); })
+			template<typename C, typename... Args> requires(requires(type &&r, Args &&...args) { r._op->complete(C{}, std::forward<Args>(args)...); })
 			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r._op->complete(C{}, std::forward<Args>(args)...); }
 
 		private:

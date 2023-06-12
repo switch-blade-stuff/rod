@@ -400,15 +400,15 @@ namespace rod
 template<typename T, typename... Args>
 struct std::coroutine_traits<rod::task<T>, Args...> { using promise_type = typename rod::task<T>::promise_type; };
 template<typename T, typename Alloc, typename... Args>
-struct std::coroutine_traits<rod::task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::task<T>::promise_type, std::decay_t<Alloc>>; };
+struct std::coroutine_traits<rod::task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::with_allocator_promise<typename rod::task<T>::promise_type, std::decay_t<Alloc>>; };
 template<typename T, typename U, typename Alloc, typename... Args>
-struct std::coroutine_traits<rod::task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::task<T>::promise_type, std::decay_t<Alloc>>; };
+struct std::coroutine_traits<rod::task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::with_allocator_promise<typename rod::task<T>::promise_type, std::decay_t<Alloc>>; };
 
 template<typename T, typename... Args>
 struct std::coroutine_traits<rod::shared_task<T>, Args...> { using promise_type = typename rod::shared_task<T>::promise_type; };
 template<typename T, typename Alloc, typename... Args>
-struct std::coroutine_traits<rod::shared_task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::shared_task<T>::promise_type, std::decay_t<Alloc>>; };
+struct std::coroutine_traits<rod::shared_task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::with_allocator_promise<typename rod::shared_task<T>::promise_type, std::decay_t<Alloc>>; };
 template<typename T, typename U, typename Alloc, typename... Args>
-struct std::coroutine_traits<rod::shared_task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::shared_task<T>::promise_type, std::decay_t<Alloc>>; };
+struct std::coroutine_traits<rod::shared_task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::with_allocator_promise<typename rod::shared_task<T>::promise_type, std::decay_t<Alloc>>; };
 
 #endif

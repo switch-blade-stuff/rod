@@ -26,8 +26,6 @@ namespace rod
 		struct operation_base;
 
 		template<typename Snd, typename Env>
-		struct shared_state { struct type; };
-		template<typename Snd, typename Env>
 		struct receiver { struct type; };
 		template<typename Snd, typename Env>
 		struct sender { struct type; };
@@ -53,7 +51,7 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		struct shared_state<Snd, Env>::type : public detail::shared_base
+		struct shared_state : public detail::shared_base
 		{
 			using receiver_t = typename receiver<Snd, Env>::type;
 			using state_t = connect_result_t<Snd, receiver_t>;
@@ -63,9 +61,9 @@ namespace rod
 			using error_data_t = detail::gather_signatures_t<set_error_t, Snd, env_t, detail::bind_front<detail::decayed_tuple, set_value_t>::template type, std::variant>;
 			using data_t = unique_tuple_t<detail::concat_tuples_t<std::variant<std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>, value_data_t, error_data_t>>;
 
-			constexpr type(Snd &&snd) : env(get_env(snd)), state2(do_connect(std::forward<Snd>(snd))) { start(state2); }
+			constexpr shared_state(Snd &&snd) : env(get_env(snd)), state2(connect(std::forward<Snd>(snd))) { start(state2); }
 
-			inline auto do_connect(Snd &&) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t>);
+			inline auto connect(Snd &&) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t>);
 			void detach() noexcept { stop_src.request_stop(); }
 			void notify() noexcept
 			{
@@ -86,8 +84,6 @@ namespace rod
 		struct receiver<Snd, Env>::type
 		{
 			using is_receiver = std::true_type;
-
-			using _shared_state_t = typename shared_state<Snd, Env>::type;
 			using _env_t = typename env<Env>::type;
 
 			friend _env_t tag_invoke(get_env_t, const type &r) noexcept { return {r._state->stop_src.get_token(), &r._state->env}; }
@@ -112,20 +108,19 @@ namespace rod
 				r._state.reset();
 			}
 
-			detail::shared_handle<_shared_state_t> _state;
+			detail::shared_handle<shared_state<Snd, Env>> _state;
 		};
 
 		template<typename Snd, typename Env>
-		auto shared_state<Snd, Env>::type::do_connect(Snd &&snd) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t>)
+		auto shared_state<Snd, Env>::connect(Snd &&snd) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t>)
 		{
-			return connect(std::forward<Snd>(snd), receiver_t{static_cast<type *>(this->acquire())});
+			return connect(std::forward<Snd>(snd), receiver_t{static_cast<shared_state *>(this->acquire())});
 		}
 
 		template<typename Snd, typename Rcv, typename Env>
 		struct operation<Snd, Rcv, Env>::type : operation_base
 		{
 			using _stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
-			using _shared_state_t = typename shared_state<Snd, Env>::type;
 
 			static void _notify_complete(operation_base *ptr) noexcept
 			{
@@ -141,7 +136,7 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			type(Rcv &&rcv, detail::shared_handle<_shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
+			type(Rcv &&rcv, detail::shared_handle<shared_state<Snd, Env>> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
 					: operation_base{_notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
 			~type() { if (!_state->state1.load(std::memory_order_acquire)) _state->detach(); }
 
@@ -160,7 +155,7 @@ namespace rod
 				}
 			}
 
-			detail::shared_handle<_shared_state_t> _state;
+			detail::shared_handle<shared_state<Snd, Env>> _state;
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			_stop_cb_t _on_stop = {};
 		};
@@ -171,7 +166,6 @@ namespace rod
 		{
 			using is_sender = std::true_type;
 
-			using _shared_state_t = typename shared_state<Snd, Env>::type;
 			template<typename Rcv>
 			using _operation_t = typename operation<Snd, Rcv, Env>::type;
 			using _env_t = typename env<Env>::type;
@@ -182,18 +176,21 @@ namespace rod
 			using _error_signs_t = completion_signatures<set_error_t(std::decay_t<T> &&)>;
 			using _signs_t = make_completion_signatures<Snd, _env_t, completion_signatures<set_error_t(std::exception_ptr &&)>, _value_signs_t, _error_signs_t>;
 
-			type(Snd snd) : _state(new _shared_state_t{std::move(snd)}) {}
+			constexpr type(Snd snd) : _state(new shared_state<Snd, Env>{std::move(snd)}) {}
+			constexpr type(detail::shared_handle<shared_state<Snd, Env>> state) noexcept : _state(std::move(state)) {}
+			
 			~type() { if (_state) _state->detach(); }
 
 			template<decays_to<type> T>
 			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, auto) noexcept { return {}; }
 			template<decays_to<type> T, receiver_of<_signs_t> Rcv>
-			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
-			{
-				return _operation_t<Rcv>{std::move(rcv), std::forward<T>(s)._state};
-			}
+			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) { return _operation_t<Rcv>{std::move(rcv), s._state}; }
 
-			detail::shared_handle<_shared_state_t> _state;
+			/* Since we already have a reference counted state, there is no need to split it further. */
+			template<decays_to<type> T>
+			friend constexpr type tag_invoke(split_t, T &&s) noexcept { return type{std::forward(s)._state}; }
+
+			detail::shared_handle<shared_state<Snd, Env>> _state;
 		};
 
 		class ensure_started_t

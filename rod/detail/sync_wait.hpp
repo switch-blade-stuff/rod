@@ -26,8 +26,8 @@ namespace rod
 			scheduler_t sch;
 		};
 
-		template<typename S, template<typename...> typename T = type_list_t, template<typename...> typename V = std::type_identity_t>
-		using sync_wait_types = value_types_of_t<S, env, T, V>;
+		template<typename S, template<typename...> typename T = type_list_t>
+		using sync_wait_types = value_types_of_t<S, env, std::type_identity_t, T>;
 
 		template<typename... Ts>
 		using state_t = std::variant<std::monostate, std::tuple<Ts...>, std::exception_ptr, set_stopped_t>;
@@ -107,7 +107,7 @@ namespace rod
 
 				/* Start the sender chain & wait for it to finish executing. */
 				{
-					auto op = connect(std::forward<S>(snd), receiver_t<S>{&state, &loop});
+					auto op = connect(std::forward<S>(snd), receiver_t<S>(&state, &loop));
 					start(op);
 					loop.run();
 				}
@@ -125,7 +125,7 @@ namespace rod
 		class sync_wait_with_variant_t
 		{
 			template<typename S>
-			using result_t = sync_wait_types<S, std::tuple, std::variant>;
+			using result_t = value_types_of_t<S, env, std::tuple, std::variant>;
 
 		public:
 			template<sender_in<env> S> requires detail::tag_invocable_with_completion_scheduler<sync_wait_with_variant_t, set_value_t, S, S>
