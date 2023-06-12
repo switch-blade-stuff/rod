@@ -6,8 +6,8 @@
 
 namespace rod::_thread_pool
 {
-	basic_thread_pool::basic_thread_pool() : basic_thread_pool(std::thread::hardware_concurrency()) {}
-	basic_thread_pool::basic_thread_pool(std::size_t size) : _workers(size)
+	thread_pool::thread_pool() : thread_pool(std::thread::hardware_concurrency()) {}
+	thread_pool::thread_pool(std::size_t size) : _workers(size)
 	{
 		try
 		{
@@ -17,24 +17,18 @@ namespace rod::_thread_pool
 		catch (...)
 		{
 			stop_all();
-			join_all();
 			throw;
 		}
 	}
-	basic_thread_pool::~basic_thread_pool()
-	{
-		stop_all();
-		join_all();
-	}
+	thread_pool::~thread_pool() { stop_all(); }
 
-	void basic_thread_pool::finish() noexcept
+	void thread_pool::finish() noexcept
 	{
 		stop_all();
-		join_all();
 		_workers.clear();
 	}
 
-	void basic_thread_pool::worker_main(std::size_t id) noexcept
+	void thread_pool::worker_main(std::size_t id) noexcept
 	{
 		for (operation_base *node;;)
 		{
@@ -42,20 +36,18 @@ namespace rod::_thread_pool
 			 * This will prevent tasks from piling up on a single thread queue. */
 			for (std::size_t i = id; i + 1 != id ; i = (i + 1) % size())
 			{
-				auto &queue = _workers[i].queue;
-				if (node = queue.pop(); node == queue.sentinel())
-					return;
-				else if (node)
+				auto &worker = _workers[i];
+				if ((node = worker.try_pop()))
 					break;
 			}
 
-			if (!node)
-				_workers[id].queue.wait();
-			else
+			if (node || (node = _workers[id].pop()))
 				node->notify(id);
+			else
+				break;
 		}
 	}
-	void basic_thread_pool::schedule(operation_base *node) noexcept
+	void thread_pool::schedule(operation_base *node) noexcept
 	{
 		const auto next = _next.fetch_add(1, std::memory_order_acq_rel) % size();
 
@@ -67,7 +59,7 @@ namespace rod::_thread_pool
 		}
 		_workers[next].push(node);
 	}
-	void basic_thread_pool::schedule_bulk(operation_base *nodes, std::size_t n) noexcept
+	void thread_pool::schedule_bulk(operation_base *nodes, std::size_t n) noexcept
 	{
 		for (std::size_t i = 0; i < n; ++i) _workers[i % size()].push(nodes + i);
 	}

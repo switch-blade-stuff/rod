@@ -25,7 +25,7 @@ namespace rod
 			friend receiver_adaptor<type, Rcv>;
 
 		public:
-			constexpr type(Rcv rcv, Shape shape, F fn) : receiver_adaptor<type, Rcv>(std::move(rcv)), _fn(std::move(fn)), _shape(shape) {}
+			constexpr type(Rcv rcv, Shape shape, F fn) : receiver_adaptor<type, Rcv>(std::move(rcv)), _shape(shape), _fn(std::move(fn)) {}
 
 		private:
 			template<typename... Args>
@@ -45,8 +45,8 @@ namespace rod
 				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
 			}
 
+			Shape _shape = {};
 			ROD_NO_UNIQUE_ADDRESS F _fn;
-			Shape _shape;
 		};
 
 		template<typename Snd, typename Shape, typename F>
@@ -55,7 +55,7 @@ namespace rod
 			using is_sender = std::true_type;
 
 			template<typename Rcv>
-			using _receiver_t = typename receiver<Rcv, Shape, F>::type;
+			using _receiver_t = typename receiver<std::decay_t<Rcv>, std::decay_t<Shape>, std::decay_t<F>>::type;
 
 			template<typename... Ts>
 			using _test_nothrow = std::is_nothrow_invocable<F, Shape, detail::decayed_ref<Ts>...>;

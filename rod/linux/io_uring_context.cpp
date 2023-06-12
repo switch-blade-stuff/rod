@@ -209,14 +209,14 @@ namespace rod::_io_uring
 		});
 	}
 
-	void context::add_timer(timer_node *node) noexcept
+	void context::add_timer(timer_base *node) noexcept
 	{
 		assert(!node->_timer_next);
 		assert(!node->_timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		_timer_pending |= _timers.insert(node) == node;
 	}
-	void context::del_timer(timer_node *node) noexcept
+	void context::del_timer(timer_base *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		_timer_pending |= _timers.front() == node;

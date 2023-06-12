@@ -18,10 +18,10 @@
 namespace rod
 {
 #if defined(ROD_HAS_LIBURING)
-	using system_context = io_uring_context;
+	using io_context = io_uring_context;
 #elif defined(ROD_HAS_EPOLL)
-	using system_context = epoll_context;
+	using io_context = epoll_context;
 #else
-	using system_context = run_loop;
+	using io_context = run_loop;
 #endif
 }

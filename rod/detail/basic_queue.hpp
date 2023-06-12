@@ -55,6 +55,7 @@ namespace rod::detail
 		}
 
 		[[nodiscard]] constexpr bool empty() const noexcept { return !head; }
+		[[nodiscard]] constexpr Node *front() const noexcept { return head; }
 
 		constexpr void swap(basic_queue &other) noexcept
 		{

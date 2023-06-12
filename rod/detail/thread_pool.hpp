@@ -8,7 +8,7 @@
 
 namespace rod::_thread_pool
 {
-	class basic_thread_pool;
+	class thread_pool;
 	class operation_base;
 	class scheduler;
 
@@ -26,11 +26,11 @@ namespace rod::_thread_pool
 
 	class sender;
 
-	struct env { basic_thread_pool *_pool; };
+	struct env { thread_pool *_pool; };
 
 	class operation_base
 	{
-		friend class basic_thread_pool;
+		friend class thread_pool;
 
 		using notify_func_t = void (*)(operation_base *, std::size_t) noexcept;
 
@@ -103,7 +103,7 @@ namespace rod::_thread_pool
 
 		using data_t = value_types_of_t<Snd, env_of_t<Rcv>, detail::decayed_tuple, detail::variant_or_empty>;
 
-		type(basic_thread_pool *pool, Rcv rcv, Shape shape, Fn fn) : pool(pool), rcv(std::move(rcv)), fn(std::move(fn)), shape(shape), tasks(required_threads(), task_t{this}) {}
+		type(thread_pool *pool, Rcv rcv, Shape shape, Fn fn) : pool(pool), rcv(std::move(rcv)), fn(std::move(fn)), shape(shape), tasks(required_threads(), task_t{this}) {}
 
 		std::size_t required_threads() const noexcept { return std::min(shape, static_cast<Shape>(pool->size())); }
 		template<typename F>
@@ -111,7 +111,7 @@ namespace rod::_thread_pool
 
 		inline void start() noexcept;
 
-		basic_thread_pool *pool;
+		thread_pool *pool;
 
 		ROD_NO_UNIQUE_ADDRESS data_t data;
 		ROD_NO_UNIQUE_ADDRESS Rcv rcv;
@@ -177,7 +177,7 @@ namespace rod::_thread_pool
 				set_value(std::move(rcv));
 		}
 
-		constexpr type(basic_thread_pool *pool, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : operation_base(notify_complete), _rcv(std::move(rcv)), _pool(pool) {}
+		constexpr type(thread_pool *pool, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : operation_base(notify_complete), _rcv(std::move(rcv)), _pool(pool) {}
 
 	public:
 		type() = delete;
@@ -189,7 +189,7 @@ namespace rod::_thread_pool
 		inline void start() noexcept;
 
 		ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
-		basic_thread_pool *_pool;
+		thread_pool *_pool;
 	};
 	template<typename Snd, typename Rcv, typename Shape, typename Fn>
 	class bulk_operation<Snd, Rcv, Shape, Fn>::type
@@ -206,7 +206,7 @@ namespace rod::_thread_pool
 		using connect_state_t = connect_result_t<Snd, receiver_t>;
 
 		template<typename Snd0, typename Fn0>
-		type(basic_thread_pool *pool, Snd0 &&snd, Rcv rcv, Shape shape, Fn0 &&fn) : _shared_state(pool, std::move(rcv), shape, std::forward<Fn0>(fn)), _connect_state{connect(std::forward<Snd0>(snd), receiver_t{&_shared_state})} {}
+		type(thread_pool *pool, Snd0 &&snd, Rcv rcv, Shape shape, Fn0 &&fn) : _shared_state(pool, std::move(rcv), shape, std::forward<Fn0>(fn)), _connect_state{connect(std::forward<Snd0>(snd), receiver_t{&_shared_state})} {}
 
 	public:
 		type(type &&) = delete;
@@ -219,7 +219,7 @@ namespace rod::_thread_pool
 		shared_state_t _shared_state;
 	};
 
-	class basic_thread_pool
+	class thread_pool
 	{
 		template<typename, typename, typename, typename, typename>
 		friend struct bulk_shared_state;
@@ -228,49 +228,74 @@ namespace rod::_thread_pool
 
 		struct worker_t
 		{
-			using task_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
+			using task_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
 
-			void start(basic_thread_pool *pool, std::size_t id) noexcept { thread = std::thread{[=]() { pool->worker_main(id); }}; }
+			void start(thread_pool *pool, std::size_t id) noexcept
+			{
+				thread = std::jthread{[=]() { pool->worker_main(id); }};
+			}
+			void stop() noexcept
+			{
+				const auto g = std::unique_lock{mtx};
+				if (thread.joinable())
+				{
+					stop_req = true;
+					cnd.notify_one();
+				}
+			}
+
+			operation_base *pop() noexcept
+			{
+				auto g = std::unique_lock{mtx};
+				while (queue.empty())
+				{
+					if (stop_req) [[unlikely]]
+						return nullptr;
+					cnd.wait(g);
+				}
+				return queue.pop_front();
+			}
+			operation_base *try_pop() noexcept
+			{
+				if (const auto g = std::unique_lock{mtx, std::try_to_lock}; g && !queue.empty())
+					return queue.pop_front();
+				else
+					return nullptr;
+			}
 
 			void push(operation_base *node) noexcept
 			{
-				queue.push(node);
-				queue.notify_one();
+				const auto g = std::unique_lock{mtx};
+				queue.push_back(node);
+				if (queue.head == node)
+					cnd.notify_one();
 			}
 			bool try_push(operation_base *node) noexcept
 			{
-				if (void *old = nullptr; queue.head.compare_exchange_strong(old, node, std::memory_order_acq_rel))
+				if (const auto g = std::unique_lock{mtx, std::try_to_lock}; g)
 				{
-					queue.notify_one();
+					queue.push_back(node);
+					if (queue.head == node)
+						cnd.notify_one();
 					return true;
 				}
 				return false;
 			}
 
-			void join() noexcept
-			{
-				if (thread.joinable())
-					thread.join();
-			}
-			void stop() noexcept
-			{
-				if (thread.joinable())
-				{
-					queue.terminate();
-					queue.notify_one();
-				}
-			}
-			
+			std::mutex mtx;
+			std::condition_variable cnd;
+
+			std::jthread thread;
 			task_queue_t queue;
-			std::thread thread;
+			bool stop_req = {};
 		};
 
 	public:
 		/** Initializes thread pool with a default number of threads. */
-		ROD_PUBLIC basic_thread_pool();
+		ROD_PUBLIC thread_pool();
 		/** Initializes thread pool with `size` threads. */
-		ROD_PUBLIC basic_thread_pool(std::size_t size);
-		ROD_PUBLIC ~basic_thread_pool();
+		ROD_PUBLIC thread_pool(std::size_t size);
+		ROD_PUBLIC ~thread_pool();
 
 		/** Changes the internal state to stopped and terminates worker threads.
 		 * @note After a call to `finish` the thread pool will no longer be dispatching scheduled operations. */
@@ -283,7 +308,6 @@ namespace rod::_thread_pool
 
 	protected:
 		void stop_all() noexcept { for (auto &worker : _workers) { worker.stop(); } }
-		void join_all() noexcept { for (auto &worker : _workers) { worker.join(); } }
 
 		ROD_PUBLIC void worker_main(std::size_t id) noexcept;
 		ROD_PUBLIC void schedule(operation_base *node) noexcept;
@@ -305,7 +329,7 @@ namespace rod::_thread_pool
 		template<typename Rcv>
 		using operation_t = typename operation<Rcv>::type;
 
-		constexpr sender(basic_thread_pool *pool) noexcept : _pool(pool) {}
+		constexpr sender(thread_pool *pool) noexcept : _pool(pool) {}
 
 	public:
 		friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._pool}; }
@@ -316,7 +340,7 @@ namespace rod::_thread_pool
 		friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return {s._pool, std::move(rcv)}; }
 
 	private:
-		basic_thread_pool *_pool;
+		thread_pool *_pool;
 	};
 	template<typename Snd, typename Shape, typename Fn>
 	class bulk_sender<Snd, Shape, Fn>::type
@@ -343,7 +367,7 @@ namespace rod::_thread_pool
 		using operation_t = typename bulk_operation<copy_cvref_t<T, Snd>, std::decay_t<Rcv>, Shape, Fn>::type;
 
 		template<typename Snd0, typename Fn0>
-		constexpr type(basic_thread_pool *pool, Snd0 &&snd, Shape shape, Fn0 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd0> && std::is_nothrow_constructible_v<Fn, Fn0>)
+		constexpr type(thread_pool *pool, Snd0 &&snd, Shape shape, Fn0 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd0> && std::is_nothrow_constructible_v<Fn, Fn0>)
 				: _snd(std::forward<Snd0>(snd)), _fn(std::forward<Fn0>(fn)), _pool(pool), _shape(shape) {}
 
 	public:
@@ -360,19 +384,19 @@ namespace rod::_thread_pool
 	private:
 		ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		ROD_NO_UNIQUE_ADDRESS Fn _fn;
-		basic_thread_pool *_pool;
+		thread_pool *_pool;
 		Shape _shape;
 	};
 
 	class scheduler
 	{
-		friend class basic_thread_pool;
+		friend class thread_pool;
 
 		template<typename Snd, typename Shape, typename Fn>
 		using bulk_sender_t = typename bulk_sender<std::decay_t<Snd>, Shape, Fn>::type;
 
 	public:
-		constexpr scheduler(basic_thread_pool *pool) noexcept : _pool(pool) {}
+		constexpr scheduler(thread_pool *pool) noexcept : _pool(pool) {}
 
 		constexpr bool operator==(const scheduler &) const noexcept = default;
 
@@ -389,7 +413,7 @@ namespace rod::_thread_pool
 		template<typename Snd, typename Shape, typename Fn>
 		auto schedule_bulk(Snd &&snd, Shape shape, Fn &&fn) noexcept { return bulk_sender_t<Snd, Shape, Fn>{std::forward<Snd>(snd), shape, std::forward<Fn>(fn)}; }
 
-		basic_thread_pool *_pool;
+		thread_pool *_pool;
 	};
 
 	template<typename Rcv>
@@ -397,5 +421,5 @@ namespace rod::_thread_pool
 	template<typename Snd, typename Rcv, typename Shape, typename Fn, typename ThrowTag>
 	void bulk_shared_state<Snd, Rcv, Shape, Fn, ThrowTag>::type::start() noexcept { pool->schedule_bulk(tasks.data(), required_threads()); }
 
-	constexpr scheduler basic_thread_pool::get_scheduler() noexcept { return {this}; }
+	constexpr scheduler thread_pool::get_scheduler() noexcept { return {this}; }
 }

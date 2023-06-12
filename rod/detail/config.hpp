@@ -34,7 +34,7 @@
 
 /* MSVC does not support standard no_unique_address */
 #if defined(_MSC_VER) && _MSC_VER >= 1929
-#define ROD_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#define ROD_NO_UNIQUE_ADDRESS [[no_unique_address]]
 #else
 #define ROD_NO_UNIQUE_ADDRESS [[no_unique_address]]
 #endif

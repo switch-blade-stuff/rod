@@ -10,7 +10,7 @@
 #include "queries/may_block.hpp"
 #include "queries/scheduler.hpp"
 #include "queries/progress.hpp"
-#include "../stop_token.hpp"
+#include "priority_queue.hpp"
 #include "atomic_queue.hpp"
 
 namespace rod
@@ -24,39 +24,45 @@ namespace rod
 		using clock = std::chrono::system_clock;
 		using time_point = typename clock::time_point;
 
-		template<typename>
-		struct timer_operation { class type; };
-		template<typename>
+		template<typename, typename>
 		struct operation { class type; };
-		class timer_sender;
-		class sender;
 
 		struct env { run_loop *_loop; };
 
 		class operation_base
 		{
-			friend class run_loop;
-
-			using notify_func_t = void (*)(operation_base *, time_point) noexcept;
+			friend run_loop;
 
 		protected:
-			constexpr operation_base(run_loop *loop, notify_func_t notify = {}) noexcept : _notify_func(notify), _loop(loop) {}
+			using notify_func_t = void (*)(operation_base *) noexcept;
 
-		private:
-			void _notify(time_point now) noexcept { _notify_func(this, now); }
+			constexpr operation_base(run_loop *loop, notify_func_t notify) noexcept : _notify_func(notify), _loop(loop) {}
 
-		protected:
+			inline void start() noexcept;
+
 			notify_func_t _notify_func;
 			operation_base *_next = {};
 			run_loop *_loop;
 		};
-
-		template<typename R>
-		class operation<R>::type : operation_base
+		class timer_base : public operation_base
 		{
-			friend sender;
+			friend run_loop;
 
-			static void notify_complete(operation_base *p, time_point) noexcept
+		protected:
+			constexpr timer_base(run_loop *loop, notify_func_t notify, time_point tp) noexcept : operation_base(loop, notify), _tp(tp) {}
+
+			inline void start() noexcept;
+
+		private:
+			timer_base *_timer_prev = {};
+			timer_base *_timer_next = {};
+			time_point _tp;
+		};
+
+		template<typename Rcv, typename Base>
+		class operation<Rcv, Base>::type : Base
+		{
+			static void notify_complete(operation_base *p) noexcept
 			{
 				auto &rcv = static_cast<type *>(p)->_rcv;
 				if (rod::get_stop_token(get_env(rcv)).stop_requested())
@@ -65,41 +71,20 @@ namespace rod
 					set_value(std::move(rcv));
 			}
 
-			constexpr type(run_loop *loop, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, notify_complete), _rcv(std::move(rcv)) {}
-
 		public:
 			type() = delete;
 			type(const type &) = delete;
 
-			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
+			template<typename... Args>
+			constexpr type(run_loop *loop, Rcv rcv, Args &&...args) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : Base(loop, notify_complete, std::forward<Args>(args)...), _rcv(std::move(rcv)) {}
+
+			friend void tag_invoke(start_t, type &op) noexcept { op.Base::start(); }
 
 		private:
-			inline void start() noexcept;
-
-			ROD_NO_UNIQUE_ADDRESS R _rcv;
-		};
-		template<typename R>
-		class timer_operation<R>::type : operation_base
-		{
-			friend timer_sender;
-
-			static void notify_complete(operation_base *p, time_point now) noexcept { static_cast<type *>(p)->complete(now); }
-			constexpr type(run_loop *loop, time_point timeout, R rcv) noexcept(std::is_nothrow_move_constructible_v<R>) : operation_base(loop, notify_complete), _rcv(std::move(rcv)), _timeout(timeout) {}
-
-		public:
-			type() = delete;
-			type(const type &) = delete;
-
-			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
-
-		private:
-			inline void start() noexcept;
-			inline void complete(time_point now) noexcept;
-
-			ROD_NO_UNIQUE_ADDRESS R _rcv;
-			time_point _timeout;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
 
+		template<typename OpBase, typename... Args>
 		class sender
 		{
 			friend scheduler;
@@ -108,58 +93,33 @@ namespace rod
 			using is_sender = std::true_type;
 
 		private:
+			template<typename Rcv>
+			using operation_t = typename operation<std::decay_t<Rcv>, OpBase>::type;
 			using signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
-			template<typename R>
-			using operation_t = typename operation<std::decay_t<R>>::type;
 
-			constexpr sender(run_loop *loop) noexcept : _loop(loop) {}
+			constexpr sender(run_loop *loop, Args ...args) noexcept : _args{std::move(args)...}, _loop(loop) {}
 
 		public:
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._loop}; }
-			template<decays_to<sender> T, typename E>
-			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
+			template<decays_to<sender> T, typename Env>
+			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
 			template<decays_to<sender> T, typename Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
 
 		private:
 			template<typename Rcv>
-			operation_t<Rcv> connect(Rcv &&rcv) { return {_loop, std::forward<Rcv>(rcv)}; }
+			auto connect(Rcv &&rcv) { return std::apply([&](auto &...args) { return operation_t<Rcv>{_loop, std::forward<Rcv>(rcv), std::move(args)...}; }, _args); }
 
-			run_loop *_loop;
-		};
-		class timer_sender
-		{
-			friend scheduler;
-
-		public:
-			using is_sender = std::true_type;
-
-		private:
-			using signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
-			template<typename R>
-			using operation_t = typename timer_operation<std::decay_t<R>>::type;
-
-			constexpr timer_sender(run_loop *loop, time_point timeout) noexcept : _timeout(timeout), _loop(loop) {}
-
-		public:
-			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {s._loop}; }
-			template<decays_to<timer_sender> T, typename E>
-			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
-
-			template<decays_to<timer_sender> T, typename Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
-
-		private:
-			template<typename Rcv>
-			operation_t<Rcv> connect(Rcv &&rcv) { return {_loop, _timeout, std::forward<Rcv>(rcv)}; }
-
-			time_point _timeout;
+			ROD_NO_UNIQUE_ADDRESS std::tuple<Args...> _args;
 			run_loop *_loop;
 		};
 
 		class scheduler
 		{
+			using sender_t = sender<operation_base>;
+			using timer_sender_t = sender<timer_base, time_point>;
+
 		public:
 			constexpr scheduler(run_loop *loop) noexcept : _loop(loop) {}
 
@@ -168,19 +128,23 @@ namespace rod
 
 			constexpr bool operator==(const scheduler &) const noexcept = default;
 
+		public:
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
 
 			template<decays_to<scheduler> T>
-			friend constexpr sender tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
-			template<decays_to<scheduler> T, decays_to<time_point> Tp>
-			friend constexpr timer_sender tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return s.schedule_at(std::forward<Tp>(tp)); }
+			friend constexpr sender_t tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
+			template<decays_to<scheduler> T, typename Tp>
+			friend constexpr timer_sender_t tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return s.schedule_at(std::forward<Tp>(tp)); }
 			template<decays_to<scheduler> T, typename Dur>
-			friend constexpr timer_sender tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return s.schedule_at(std::forward<T>(s), s.now() + dur); }
+			friend constexpr timer_sender_t tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return s.schedule_at(s.now() + dur); }
 
 		private:
-			auto schedule() noexcept { return sender{_loop}; }
-			auto schedule_at(time_point tp) noexcept { return timer_sender{_loop, tp}; }
+			auto schedule() noexcept { return sender_t{_loop}; }
+			template<typename Tp> requires decays_to<Tp, time_point>
+			auto schedule_at(Tp &&tp) noexcept { return timer_sender_t{_loop, std::forward<Tp>(tp)}; }
+			template<typename Tp> requires(!decays_to<Tp, time_point>)
+			auto schedule_at(Tp &&tp) noexcept { return timer_sender_t{_loop, clock::now() + tp.time_since_epoch()}; }
 
 			run_loop *_loop;
 		};
@@ -188,18 +152,17 @@ namespace rod
 		/** Generic execution context used to schedule work on a FIFO queue. */
 		class run_loop
 		{
-			template<typename>
-			friend struct _run_loop::operation;
-			template<typename>
-			friend struct _run_loop::timer_operation;
+			friend operation_base;
+			friend timer_base;
 
 		public:
 			using time_point = _run_loop::time_point;
 			using clock = _run_loop::clock;
 
 		private:
-			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
-			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
+			struct timer_cmp { constexpr bool operator()(const timer_base &a, const timer_base &b) const noexcept { return a._tp <= b._tp; }};
+			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::_timer_prev, &timer_base::_timer_next>;
+			using task_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
 
 		public:
 			run_loop(run_loop &&) = delete;
@@ -213,23 +176,46 @@ namespace rod
 			/** Blocks the current thread until `finish` is called and executes scheduled operations. */
 			void run()
 			{
-				for (consumer_queue_t consumer_queue;;)
+				for (task_queue_t local_queue;;)
 				{
-					time_point now;
-					if (_timers.load(std::memory_order_acquire))
-						now = clock::now();
-					while (!consumer_queue.empty())
-						consumer_queue.pop_front()->_notify(now);
-
-					if (const auto front = _producer_queue.front(); !front)
-						_producer_queue.wait();
-					else if (front == _producer_queue.sentinel())
-						break;
-					else
+					while (!local_queue.empty())
 					{
-						consumer_queue = std::move(_producer_queue);
-						_producer_queue.notify_all();
+						auto *node = local_queue.pop_front();
+						node->_notify_func(node);
 					}
+
+					auto g = std::unique_lock{_mtx};
+
+					/* Acquire tasks from the producer queue. */
+					while (!_task_queue.empty())
+					{
+						auto *node = _task_queue.pop_front();
+						local_queue.push_back(node);
+					}
+
+					/* Dispatch elapsed timers. */
+					if (!_timer_queue.empty())
+						for (const auto now = clock::now(); !_timer_queue.empty();)
+						{
+							if (_timer_queue.front()->_tp > now)
+							{
+								_next_timeout = _timer_queue.front()->_tp;
+								break;
+							}
+							auto *node = _timer_queue.pop_front();
+							local_queue.push_back(node);
+						}
+
+					/* Do not wait if we have tasks to dispatch. */
+					if (!local_queue.empty())
+						continue;
+					else if (_is_stopping && is_idle())
+						return;
+
+					if (_timer_queue.empty())
+						_cnd.wait(g, [&]() { return !is_idle() || _is_stopping; });
+					else
+						_cnd.wait_until(g, _next_timeout);
 				}
 			}
 			/** Blocks the current thread until stopped via \a tok and executes scheduled operations.
@@ -245,57 +231,50 @@ namespace rod
 			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */
 			void finish()
 			{
-				_producer_queue.terminate();
-				_producer_queue.notify_all();
+				const auto g = std::unique_lock{_mtx};
+				_is_stopping = true;
+				_cnd.notify_all();
 			}
 
 			/** Returns copy of the stop source associated with the run loop. */
-			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_source; }
+			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_src; }
 			/** Returns a stop token of the stop source associated with the run loop. */
-			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_source.get_token(); }
+			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_src.get_token(); }
 			/** Sends a stop request to the stop source associated with the run loop. */
-			void request_stop() { _stop_source.request_stop(); }
+			void request_stop() { _stop_src.request_stop(); }
 
 		private:
+			constexpr bool is_idle() const noexcept { return _timer_queue.empty() && _task_queue.empty(); }
+
 			void schedule(operation_base *node) noexcept
 			{
-				_producer_queue.push(node);
-				_producer_queue.notify_one();
+				const auto g = std::unique_lock{_mtx};
+				_task_queue.push_back(node);
+				_cnd.notify_one();
+			}
+			void schedule_timer(timer_base *node) noexcept
+			{
+				const auto g = std::unique_lock{_mtx};
+				_timer_queue.insert(node);
+				_cnd.notify_one();
 			}
 
-			in_place_stop_source _stop_source = {};
-			producer_queue_t _producer_queue = {};
-			std::atomic<std::size_t> _timers = {};
+			std::mutex _mtx;
+			std::condition_variable _cnd;
+
+			in_place_stop_source _stop_src;
+			timer_queue_t _timer_queue;
+			task_queue_t _task_queue;
+			time_point _next_timeout;
+			bool _is_stopping = {};
 		};
 
 		constexpr in_place_stop_token tag_invoke(get_stop_token_t, const env &s) noexcept { return s._loop->get_stop_token(); }
 		template<typename T>
 		constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return e._loop->get_scheduler(); }
 
-		template<typename R>
-		void operation<R>::type::start() noexcept { _loop->schedule(this); }
-		template<typename R>
-		void timer_operation<R>::type::start() noexcept
-		{
-			_loop->_timers.fetch_add(1, std::memory_order_acq_rel);
-			_loop->schedule(this);
-		}
-		template<typename R>
-		void timer_operation<R>::type::complete(time_point now) noexcept
-		{
-			if (rod::get_stop_token(get_env(_rcv)).stop_requested())
-			{
-				_loop->_timers.fetch_sub(1, std::memory_order_acq_rel);
-				set_stopped(std::move(_rcv));
-			}
-			else if (now >= _timeout)
-			{
-				_loop->_timers.fetch_sub(1, std::memory_order_acq_rel);
-				set_value(std::move(_rcv));
-			}
-			else
-				_loop->schedule(this);
-		}
+		void operation_base::start() noexcept { _loop->schedule(this); }
+		void timer_base::start() noexcept { _loop->schedule_timer(this); }
 	}
 
 	using _run_loop::run_loop;

@@ -113,8 +113,7 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			template<typename R2>
-			constexpr type(S &&snd, R2 &&rcv, F fn) : _op_base_t{std::forward<R2>(rcv), std::move(fn)}, _state(connect(std::forward<S>(snd), _receiver_t{this})) {}
+			constexpr type(S &&snd, R &&rcv, F fn) : _op_base_t{std::forward<R>(rcv), std::move(fn)}, _state(connect(std::forward<S>(snd), _receiver_t{this})) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
@@ -140,11 +139,8 @@ namespace rod
 			template <decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<decays_to<type> T, rod::receiver R> requires sender_to<copy_cvref_t<T, S>, _receiver_t<T, R>>
-			friend constexpr _operation_t<T, R> tag_invoke(connect_t, T &&s, R rcv)
-			{
-				return _operation_t<T, R>{std::forward<T>(s)._snd, std::move(rcv), std::forward<T>(s)._fn};
-			}
+			template<decays_to<type> T, typename R> requires sender_to<copy_cvref_t<T, S>, _receiver_t<T, R>>
+			friend constexpr _operation_t<T, R> tag_invoke(connect_t, T &&s, R rcv) { return {std::forward<T>(s)._snd, std::move(rcv), std::forward<T>(s)._fn}; }
 
 			ROD_NO_UNIQUE_ADDRESS S _snd;
 			ROD_NO_UNIQUE_ADDRESS F _fn;

@@ -26,7 +26,7 @@ namespace rod
 		template<typename, typename>
 		struct shared_state { struct type; };
 		template<typename, typename>
-		struct receiver { struct type; };
+		struct receiver { class type; };
 		template<typename>
 		struct env { struct type; };
 
@@ -54,19 +54,31 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		struct receiver<Snd, Env>::type
+		class receiver<Snd, Env>::type
 		{
+			template<typename, typename>
+			friend struct shared_state;
+
+		public:
 			using is_receiver = std::true_type;
 
-			friend auto tag_invoke(get_env_t, const type &r) noexcept { return r._get_env(); }
-			template<detail::completion_channel C, typename... Args>
-			friend void tag_invoke(C c, type &&r, Args &&...args) noexcept { r._complete(c, std::forward<Args>(args)...); }
+		private:
+			using shared_state_t = typename shared_state<Snd, Env>::type;
+			using env_t = typename env<Env>::type;
 
-			inline typename env<Env>::type _get_env() const noexcept;
-			template<detail::completion_channel C, typename... Args>
-			inline void _complete(C, Args &&...) noexcept;
+		public:
+			constexpr explicit type(shared_state_t *state) noexcept : _state(state) {}
 
-			typename shared_state<Snd, Env>::type *_state;
+			friend env_t tag_invoke(get_env_t, const type &r) noexcept { return r.get_env(); }
+			template<detail::completion_channel C, typename... Args>
+			friend void tag_invoke(C c, type &&r, Args &&...args) noexcept { r.complete(c, std::forward<Args>(args)...); }
+
+		private:
+			inline env_t get_env() const noexcept;
+			template<detail::completion_channel C, typename... Args>
+			inline void complete(C, Args &&...) noexcept;
+
+			shared_state_t *_state;
 		};
 
 		template<typename, typename, typename>
@@ -111,13 +123,13 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		typename env<Env>::type receiver<Snd, Env>::type::_get_env() const noexcept
+		typename env<Env>::type receiver<Snd, Env>::type::get_env() const noexcept
 		{
 			return {_state->_stop_src.get_token(), &_state->_env};
 		}
 		template<typename Snd, typename Env>
 		template<detail::completion_channel C, typename... Args>
-		void receiver<Snd, Env>::type::_complete(C c, Args &&...args) noexcept
+		void receiver<Snd, Env>::type::complete(C c, Args &&...args) noexcept
 		{
 			auto &state = *_state;
 			try { state._data.template emplace<detail::decayed_tuple<C, Args...>>(c, std::forward<Args>(args)...); }

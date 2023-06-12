@@ -13,39 +13,46 @@ namespace rod
 		struct default_base {};
 
 		template<typename To, typename From>
-		[[nodiscard]] inline copy_cvref_t<From &&, To> base_cast(From &&from) noexcept
+		[[nodiscard]] inline copy_cvref_t<std::add_rvalue_reference_t<From>, To> base_cast(From &&from) noexcept
 		{
-			static_assert(std::is_reference_v<copy_cvref_t<From &&, To>>);
+			static_assert(std::is_reference_v<copy_cvref_t<std::add_rvalue_reference_t<From>, To>>);
 			static_assert(std::is_base_of_v<To, std::decay_t<From>>);
-			return (copy_cvref_t<From &&, To>) std::forward<From>(from);
+			return (copy_cvref_t<std::add_rvalue_reference_t<From>, To>) std::forward<From>(from);
 		}
 
-		template<typename Base>
-		struct adaptor_base { struct type; };
 		template<typename Child, typename Base>
 		struct receiver_adaptor { class type; };
 
-		template<>
-		struct adaptor_base<default_base>::type { };
 		template<typename Base>
-		struct adaptor_base<Base>::type
+		struct adaptor_base
 		{
 		public:
-			constexpr type() noexcept(std::is_nothrow_default_constructible_v<Base>) = default;
-			template<typename T> requires std::constructible_from<Base, T>
-			constexpr explicit type(T &&value) noexcept(std::is_nothrow_constructible_v<Base, T>) : _base(std::forward<T>(value)) {}
+			template<typename... Args> requires std::constructible_from<Base, Args...>
+			constexpr adaptor_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<Base, Args...>) : Base(std::forward<Args>(args)...) {}
 
-			constexpr Base &base() & noexcept { return _base; }
-			constexpr const Base &base() const & noexcept { return _base; }
-			constexpr Base &&base() && noexcept { return std::move(_base); }
-			constexpr const Base &&base() const && noexcept { return std::move(_base); }
+			constexpr decltype(auto) base() & noexcept { return _base; }
+			constexpr decltype(auto) base() const & noexcept { return _base; }
+			constexpr decltype(auto) base() && noexcept { return std::move(_base); }
+			constexpr decltype(auto) base() const && noexcept { return std::move(_base); }
 
 		private:
-			ROD_NO_UNIQUE_ADDRESS Base _base = {};
+			Base _base;
+		};
+		template<typename Base> requires(!std::is_final_v<Base>)
+		struct adaptor_base<Base> : Base
+		{
+		public:
+			template<typename... Args> requires std::constructible_from<Base, Args...>
+			constexpr adaptor_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<Base, Args...>) : Base(std::forward<Args>(args)...) {}
+
+			constexpr decltype(auto) base() & noexcept { return static_cast<Base &>(*this); }
+			constexpr decltype(auto) base() const & noexcept { return static_cast<const Base &>(*this); }
+			constexpr decltype(auto) base() && noexcept { return static_cast<Base &&>(*this); }
+			constexpr decltype(auto) base() const && noexcept { return static_cast<const Base &&>(*this); }
 		};
 
 		template<typename Child, typename Base>
-		class receiver_adaptor<Child, Base>::type : adaptor_base<Base>::type
+		class receiver_adaptor<Child, Base>::type : adaptor_base<Base>
 		{
 			friend Child;
 
@@ -53,7 +60,7 @@ namespace rod
 			static decltype(auto) get_base(T &&value) noexcept
 			{
 				if constexpr (!decays_to<Base, default_base>)
-					return base_cast<typename adaptor_base<Base>::type>(std::forward<T>(value)).base();
+					return base_cast<type>(std::forward<T>(value)).base();
 				else
 					return std::forward<T>(value).base();
 			}
@@ -79,29 +86,28 @@ namespace rod
 			template<typename T>
 			static constexpr bool has_set_stopped() noexcept { return !requires { requires bool(int(T::set_stopped)); }; }
 
-			template<typename T, typename... Args>
-            constexpr static decltype(auto) dispatch_set_value(T &&r, Args &&...args) noexcept
+			template<typename... Args>
+            constexpr static decltype(auto) dispatch_set_value(Child &&r, Args &&...args) noexcept
 			{
-              static_assert(noexcept(std::forward<T>(r).set_value(std::forward<Args>(args)...)));
-              return std::forward<T>(r).set_value(std::forward<Args>(args)...);
+              static_assert(noexcept(std::forward<Child>(r).set_value(std::forward<Args>(args)...)));
+              return std::forward<Child>(r).set_value(std::forward<Args>(args)...);
             }
-			template<typename T, typename Err>
-			constexpr static decltype(auto) dispatch_set_error(T &&r, Err &&err) noexcept
+			template<typename Err>
+			constexpr static decltype(auto) dispatch_set_error(Child &&r, Err &&err) noexcept
 			{
-				static_assert(noexcept(std::forward<T>(r).set_error(std::forward<Err>(err))));
-				return std::forward<T>(r).set_error(std::forward<Err>(err));
+				static_assert(noexcept(std::forward<Child>(r).set_error(std::forward<Err>(err))));
+				return std::forward<Child>(r).set_error(std::forward<Err>(err));
 			}
-			template<typename T>
-			constexpr static decltype(auto) dispatch_set_stopped(T &&r) noexcept
+			constexpr static decltype(auto) dispatch_set_stopped(Child &&r) noexcept
 			{
-				static_assert(noexcept(std::forward<T>(r).set_stopped()));
-				return std::forward<T>(r).set_stopped();
+				static_assert(noexcept(std::forward<Child>(r).set_stopped()));
+				return std::forward<Child>(r).set_stopped();
 			}
 
 		public:
 			using is_receiver = std::true_type;
 
-			using adaptor_base<Base>::type::type;
+			using adaptor_base<Base>::adaptor_base;
 
 			template<std::same_as<get_env_t> Q> requires(has_get_env<Child>())
 			friend decltype(auto) tag_invoke(Q, Child &&r) noexcept { return dispatch_get_env(std::forward<Child>(r)); }
@@ -124,7 +130,7 @@ namespace rod
 			friend void tag_invoke(C, T &&r) noexcept { rod::set_stopped(get_base(std::forward<T>(r))); }
 
 		protected:
-			using adaptor_base<Base>::type::base;
+			using adaptor_base<Base>::base;
 		};
 	}
 

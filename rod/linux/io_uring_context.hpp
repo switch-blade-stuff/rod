@@ -140,14 +140,14 @@ namespace rod
 			operation_base *_next = {};
 			std::ptrdiff_t _res = {};
 		};
-		struct timer_node : operation_base
+		struct timer_base : operation_base
 		{
-			constexpr timer_node(context &ctx, time_point tp, bool can_stop) noexcept : _flags(can_stop ? flags_t::stop_possible : 0), _tp(tp), _ctx(ctx) {}
+			constexpr timer_base(context &ctx, time_point tp, bool can_stop) noexcept : _flags(can_stop ? flags_t::stop_possible : 0), _tp(tp), _ctx(ctx) {}
 
 			[[nodiscard]] bool _stop_possible() const noexcept { return _flags.load(std::memory_order_relaxed) & flags_t::stop_possible; }
 
-			timer_node *_timer_prev = {};
-			timer_node *_timer_next = {};
+			timer_base *_timer_prev = {};
+			timer_base *_timer_next = {};
 			std::atomic<int> _flags = {};
 			time_point _tp = {};
 			context &_ctx;
@@ -183,8 +183,8 @@ namespace rod
 			using clock = _io_uring::clock;
 
 		private:
-			struct timer_cmp { constexpr bool operator()(const timer_node &a, const timer_node &b) const noexcept { return a._tp <= b._tp; }};
-			using timer_queue_t = detail::priority_queue<timer_node, timer_cmp, &timer_node::_timer_prev, &timer_node::_timer_next>;
+			struct timer_cmp { constexpr bool operator()(const timer_base &a, const timer_base &b) const noexcept { return a._tp <= b._tp; }};
+			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::_timer_prev, &timer_base::_timer_next>;
 			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
 			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
 
@@ -290,8 +290,8 @@ namespace rod
 			ROD_PUBLIC bool submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept;
 			ROD_PUBLIC bool cancel_io_event(operation_base *node) noexcept;
 
-			ROD_PUBLIC void add_timer(timer_node *node) noexcept;
-			ROD_PUBLIC void del_timer(timer_node *node) noexcept;
+			ROD_PUBLIC void add_timer(timer_base *node) noexcept;
+			ROD_PUBLIC void del_timer(timer_base *node) noexcept;
 
 			void acquire_consumer_queue();
 			void acquire_elapsed_timers();
@@ -361,13 +361,13 @@ namespace rod
 			context &_ctx;
 		};
 		template<typename Rcv>
-		struct timer_operation<Rcv>::type : timer_node
+		struct timer_operation<Rcv>::type : timer_base
 		{
 			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_value(); }
 			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_stopped(); }
 			static void _notify_request_stop(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_request_stop_consumer(); }
 
-			constexpr type(context &ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_node(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
+			constexpr type(context &ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_base(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
 
@@ -631,8 +631,8 @@ namespace rod
 
 			template<decays_to<scheduler> T>
 			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{*s._ctx}; }
-			template<decays_to<scheduler> T, decays_to<time_point> TP>
-			friend constexpr auto tag_invoke(schedule_at_t, T &&s, TP &&tp) noexcept { return timer_sender{std::forward<TP>(tp), *s._ctx}; }
+			template<decays_to<scheduler> T, decays_to<time_point> Tp>
+			friend constexpr auto tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return timer_sender{std::forward<Tp>(tp), *s._ctx}; }
 			template<decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 

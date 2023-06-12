@@ -32,8 +32,32 @@ namespace rod
 			constexpr time_point() noexcept = default;
 			constexpr time_point(std::int64_t sec, long long nsec) noexcept : _sec(sec), _nsec(nsec) { normalize(); }
 
+			template<typename Clock, typename Dur>
+			constexpr time_point(const std::chrono::time_point<Clock, Dur> &other) noexcept
+			{
+				const auto dur = other.time_since_epoch();
+				const auto sec = std::chrono::duration_cast<std::chrono::seconds>(dur);
+				const auto rem = std::chrono::duration_cast<std::chrono::nanoseconds>(dur - sec);
+
+				_sec = sec.count();
+				_nsec = rem.count();
+				normalize();
+			}
+			template<typename Clock, typename Dur>
+			[[nodiscard]] constexpr operator std::chrono::time_point<Clock, Dur>() const noexcept
+			{
+				return Clock::now() + time_since_epoch();
+			}
+
 			[[nodiscard]] constexpr std::int64_t seconds() const noexcept { return _sec; }
 			[[nodiscard]] constexpr long long nanoseconds() const noexcept { return _nsec; }
+
+			[[nodiscard]] constexpr duration time_since_epoch() const noexcept
+			{
+				const auto sec = std::duration_cast<duration>(std::chrono::seconds{_sec});
+				const auto nsec = std::duration_cast<duration>(std::chrono::nanoseconds{_nsec});
+				return sec + nsec;
+			}
 
 			template<typename Rep, typename Ratio>
 			constexpr time_point &operator+=(const std::chrono::duration<Rep, Ratio> &d) noexcept

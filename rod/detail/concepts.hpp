@@ -205,10 +205,10 @@ namespace rod
 	{
 		struct schedule_at_t
 		{
-			template<typename S, typename TP> requires tag_invocable<schedule_at_t, S, TP>
-			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, TP &&tp) const noexcept(nothrow_tag_invocable<schedule_at_t, S, TP>)
+			template<typename S, typename Tp> requires tag_invocable<schedule_at_t, S, Tp>
+			[[nodiscard]] constexpr rod::sender auto operator()(S &&sch, Tp &&tp) const noexcept(nothrow_tag_invocable<schedule_at_t, S, Tp>)
 			{
-				return tag_invoke(*this, std::forward<S>(sch), std::forward<TP>(tp));
+				return tag_invoke(*this, std::forward<S>(sch), std::forward<Tp>(tp));
 			}
 		};
 	}
@@ -219,8 +219,8 @@ namespace rod
 	 * @return Sender created from \a sch. */
 	inline constexpr auto schedule_at = schedule_at_t{};
 	/** Alias for the sender type of scheduler `S` obtained via a call to `schedule_at(S, TP)`. */
-	template<typename S, typename TP>
-	using schedule_at_result_t = decltype(schedule_at(std::declval<S>(), std::declval<TP>()));
+	template<typename S, typename Tp>
+	using schedule_at_result_t = decltype(schedule_at(std::declval<S>(), std::declval<Tp>()));
 
 	inline namespace _get_completion_scheduler
 	{
