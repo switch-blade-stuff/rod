@@ -51,7 +51,7 @@ namespace rod
 			using result_type = T &;
 
 		public:
-			[[nodiscard]] Task<result_type> get_return_object() noexcept;
+			[[nodiscard]] inline Task<result_type> get_return_object() noexcept;
 
 			constexpr void return_value(T &ref) noexcept { _result = &ref; }
 			result_type result() { return (Base::rethrow_exception(), *_result); }
@@ -72,7 +72,7 @@ namespace rod
 			using result_type = void;
 
 		public:
-			[[nodiscard]] Task<result_type> get_return_object() noexcept;
+			[[nodiscard]] inline Task<result_type> get_return_object() noexcept;
 
 			constexpr void return_void() noexcept {}
 			result_type result() { Base::rethrow_exception(); }
@@ -87,6 +87,9 @@ namespace rod
 		template<typename T>
 		class task
 		{
+			template<typename, typename...>
+			friend struct std::coroutine_traits;
+
 			class promise_base : public with_awaitable_senders<promise_base>
 			{
 				using sender_base = with_awaitable_senders<promise_base>;
@@ -141,7 +144,7 @@ namespace rod
 				using result_type = typename promise_type::result_type;
 
 			private:
-				awaitable(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
+				constexpr awaitable(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
 			public:
 				bool await_ready() const noexcept { return !_handle || _handle.done(); }
@@ -168,20 +171,22 @@ namespace rod
 			task(const task &) = delete;
 			task &operator=(const task &) = delete;
 
-			explicit task(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
-
 			task(task &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			task &operator=(task &&other) noexcept { return (swap(other), *this); }
+
+			template<std::derived_from<promise_type> P>
+			constexpr explicit task(std::coroutine_handle<P> h) noexcept : _handle(std::coroutine_handle<promise_type>::from_address(h.address())) {}
+
 			~task() { if (_handle) _handle.destroy(); }
 
 			/** Checks if the task has completed execution. */
 			[[nodiscard]] bool ready() const noexcept { return !_handle || _handle.done(); }
 
-			awaitable operator co_await() const & noexcept { return {_handle}; }
-			awaitable operator co_await() const && noexcept { return {_handle}; }
+			constexpr awaitable operator co_await() const & noexcept { return {_handle}; }
+			constexpr awaitable operator co_await() const && noexcept { return {_handle}; }
 
-			void swap(task &other) noexcept { std::swap(_handle, other._handle); }
-			friend void swap(task &a, task &b) noexcept { a.swap(b); }
+			constexpr void swap(task &other) noexcept { std::swap(_handle, other._handle); }
+			friend constexpr void swap(task &a, task &b) noexcept { a.swap(b); }
 
 		private:
 			std::coroutine_handle<promise_type> _handle = {};
@@ -190,6 +195,9 @@ namespace rod
 		template<typename T>
 		class shared_task
 		{
+			template<typename, typename...>
+			friend struct std::coroutine_traits;
+
 			struct task_node
 			{
 				using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
@@ -294,7 +302,7 @@ namespace rod
 				using result_type = typename promise_type::result_type;
 
 			private:
-				awaitable(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
+				constexpr awaitable(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
 
 			public:
 				bool await_ready() const noexcept { return !_handle || _handle.done(); }
@@ -313,8 +321,6 @@ namespace rod
 
 		public:
 			shared_task() = delete;
-
-			explicit shared_task(std::coroutine_handle<promise_type> h) : _handle(h) {}
 
 			shared_task(shared_task &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			shared_task &operator=(shared_task &&other) noexcept
@@ -339,18 +345,21 @@ namespace rod
 				return *this;
 			}
 
+			template<std::derived_from<promise_type> P>
+			constexpr explicit shared_task(std::coroutine_handle<P> h) noexcept : _handle(std::coroutine_handle<promise_type>::from_address(h.address())) {}
+
 			~shared_task() { destroy(); }
 
 			/** Checks if the task has completed execution. */
 			[[nodiscard]] bool ready() const noexcept { return !_handle || _handle.promise().ready(); }
 
-			awaitable operator co_await() const & noexcept { return {_handle}; }
-			awaitable operator co_await() const && noexcept { return {_handle}; }
+			constexpr awaitable operator co_await() const & noexcept { return {_handle}; }
+			constexpr awaitable operator co_await() const && noexcept { return {_handle}; }
 
-			void swap(shared_task &other) noexcept { std::swap(_handle, other._handle); }
-			friend void swap(shared_task &a, shared_task &b) noexcept { a.swap(b); }
+			[[nodiscard]] constexpr bool operator==(const shared_task &other) const noexcept { return _handle == other._handle; }
 
-			[[nodiscard]] friend bool operator==(const shared_task <T> &a, const shared_task<T> &b) noexcept { return a._handle == b._handle; }
+			constexpr void swap(shared_task &other) noexcept { std::swap(_handle, other._handle); }
+			friend constexpr void swap(shared_task &a, shared_task &b) noexcept { a.swap(b); }
 
 		private:
 			void destroy() noexcept { if (_handle && _handle.promise().release()) _handle.destroy(); }
@@ -387,4 +396,19 @@ namespace rod
 	template<typename T = void>
 	using shared_task = _task::shared_task<T>;
 }
+
+template<typename T, typename... Args>
+struct std::coroutine_traits<rod::task<T>, Args...> { using promise_type = typename rod::task<T>::promise_type; };
+template<typename T, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::task<T>::promise_type, std::decay_t<Alloc>>; };
+template<typename T, typename U, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::task<T>::promise_type, std::decay_t<Alloc>>; };
+
+template<typename T, typename... Args>
+struct std::coroutine_traits<rod::shared_task<T>, Args...> { using promise_type = typename rod::shared_task<T>::promise_type; };
+template<typename T, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::shared_task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::shared_task<T>::promise_type, std::decay_t<Alloc>>; };
+template<typename T, typename U, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::shared_task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::shared_task<T>::promise_type, std::decay_t<Alloc>>; };
+
 #endif
