@@ -70,17 +70,15 @@ namespace rod
 
 		private:
 			constexpr auto connect() {return detail::implicit_eval{[&]() { return rod::connect(_snd, receiver_t{this}); }}; }
-			constexpr void reconnect() noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>)
+			constexpr void restart() noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>)
 			{
-				std::destroy_at(&_state);
-				std::construct_at(&_state, connect());
-			}
-			constexpr void restart() noexcept
-			{
-				if constexpr (!noexcept(this->reconnect()))
-					try { reconnect(); } catch (...) { complete(set_error, std::current_exception()); }
+				if constexpr (std::is_move_assignable_v<state_t>)
+					_state = connect();
 				else
-					reconnect();
+				{
+					std::destroy_at(&_state);
+					std::construct_at(&_state, connect());
+				}
 				start(_state);
 			}
 
@@ -89,12 +87,20 @@ namespace rod
 			template<typename C, typename... Args> requires decays_to<C, set_value_t> && detail::callable<Pred, Args...>
 			constexpr void complete(C, Args &&...args) noexcept
 			{
-				if (get_stop_token(get_env(_rcv)).stop_requested())
-					set_stopped(std::move(_rcv));
-				else if (!std::invoke(_pred, args...))
-					C{}(std::move(_rcv));
+				const auto restart_or_complete = [&]()
+				{
+					if (get_stop_token(get_env(_rcv)).stop_requested())
+						set_stopped(std::move(_rcv));
+					else if (!std::invoke(_pred, args...))
+						C{}(std::move(_rcv));
+					else
+						restart();
+				};
+
+				if constexpr (!std::is_nothrow_invocable_v<Pred, Args...> && noexcept(restart()))
+					try { restart_or_complete(); } catch(...) { complete(set_error, std::current_exception()); }
 				else
-					restart();
+					restart_or_complete();
 			}
 
 			ROD_NO_UNIQUE_ADDRESS Pred _pred;
