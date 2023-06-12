@@ -8,9 +8,10 @@
 #include "common.hpp"
 
 #ifdef ROD_HAS_COROUTINES
-
 template<typename T>
-inline rod::task<T> async_return(T value) { co_return value; };
+inline rod::task<T> async_return(T value) { co_return value; }
+template<typename T, typename Alloc>
+inline rod::task<T> async_return(std::allocator_arg_t, Alloc &&, T value) { co_return value; }
 
 struct test_coroutine
 {
@@ -29,10 +30,13 @@ struct test_coroutine
 
 	std::coroutine_handle<promise_type> _handle;
 };
+#endif
 
 int main()
 {
+#ifdef ROD_HAS_COROUTINES
 	[]() -> test_coroutine { TEST_ASSERT((co_await async_return(0)) == 0); }();
+	[]() -> test_coroutine { TEST_ASSERT((co_await async_return(std::allocator_arg, std::allocator<void>{}, 0)) == 0); }();
 
 	{
 		int i = 0, j = 5;
@@ -56,5 +60,5 @@ int main()
 		for (auto curr = co_await g.begin(); curr != g.end(); co_await ++curr, ++i)
 			TEST_ASSERT(*curr == i);
 	}();
-}
 #endif
+}

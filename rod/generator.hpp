@@ -103,6 +103,9 @@ namespace rod
 		template<typename T>
 		class generator
 		{
+			template<typename, typename...>
+			friend struct std::coroutine_traits;
+
 			static_assert(!std::same_as<T, void>, "Cannot generate `void`");
 
 		public:
@@ -114,10 +117,12 @@ namespace rod
 			generator(const generator &) = delete;
 			generator &operator=(const generator &) = delete;
 
-			explicit generator(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
-
 			generator(generator &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			generator &operator=(generator &&other) noexcept { return (swap(other), *this); }
+
+			template<std::derived_from<promise_type> P>
+			constexpr explicit generator(std::coroutine_handle<P> h) noexcept : _handle(std::coroutine_handle<promise_type>::from_address(h.address())) {}
+
 			~generator() { if (_handle) _handle.destroy(); }
 
 			/** Returns input iterator used to obtain values yielded by the generator. */
@@ -125,8 +130,8 @@ namespace rod
 			/** Returns sentinel for the `begin` iterator. */
 			[[nodiscard]] sentinel end() noexcept { return {}; }
 
-			void swap(generator &other) noexcept { std::swap(_handle, other._handle); }
-			friend void swap(generator &a, generator &b) noexcept { a.swap(b); }
+			constexpr void swap(generator &other) noexcept { std::swap(_handle, other._handle); }
+			friend constexpr void swap(generator &a, generator &b) noexcept { a.swap(b); }
 
 		private:
 			std::coroutine_handle<promise_type> _handle;
@@ -156,8 +161,8 @@ namespace rod
 
 		class promise_base
 		{
-			friend class yield_awaiter;
-			friend class next_awaiter;
+			friend yield_awaiter;
+			friend next_awaiter;
 
 			using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
 
@@ -468,6 +473,9 @@ namespace rod
 		template<typename T>
 		class generator_task
 		{
+			template<typename, typename...>
+			friend struct std::coroutine_traits;
+
 		public:
 			using promise_type = generator_promise<T>;
 			using iterator = generator_iterator<T>;
@@ -477,11 +485,11 @@ namespace rod
 			generator_task(const generator_task &) = delete;
 			generator_task &operator=(const generator_task &) = delete;
 
-			explicit generator_task(std::coroutine_handle<promise_type> h) noexcept : _handle(h) {}
-
 			generator_task(generator_task &&other) noexcept : _handle(std::exchange(other._handle, {})) {}
 			generator_task &operator=(generator_task &&other) noexcept { return (swap(other), *this); }
 
+			template<std::derived_from<promise_type> P>
+			constexpr explicit generator_task(std::coroutine_handle<P> h) noexcept : _handle(std::coroutine_handle<promise_type>::from_address(h.address())) {}
 
 #ifdef ROD_HAS_INLINE_RESUME
 			~generator_task() { if (_handle) _handle.destroy(); }
@@ -494,8 +502,8 @@ namespace rod
 			/** Returns sentinel for the iterator produced by the `begin` awaiter. */
 			[[nodiscard]] iterator end() noexcept { return iterator{}; }
 
-			void swap(generator_task &other) noexcept { std::swap(_handle, other._handle); }
-			friend void swap(generator_task &a, generator_task &b) noexcept { a.swap(b); }
+			constexpr void swap(generator_task &other) noexcept { std::swap(_handle, other._handle); }
+			friend constexpr void swap(generator_task &a, generator_task &b) noexcept { a.swap(b); }
 
 		private:
 			std::coroutine_handle<promise_type> _handle;
@@ -550,4 +558,19 @@ namespace rod
 	template<typename T>
 	using generator_task = _generator_task::generator_task<T>;
 }
+
+template<typename T, typename... Args>
+struct std::coroutine_traits<rod::generator<T>, Args...> { using promise_type = typename rod::generator<T>::promise_type; };
+template<typename T, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::generator<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::generator<T>::promise_type, std::decay_t<Alloc>>; };
+template<typename T, typename U, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::generator<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::generator<T>::promise_type, std::decay_t<Alloc>>; };
+
+template<typename T, typename... Args>
+struct std::coroutine_traits<rod::generator_task<T>, Args...> { using promise_type = typename rod::generator_task<T>::promise_type; };
+template<typename T, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::generator_task<T>, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::generator_task<T>::promise_type, std::decay_t<Alloc>>; };
+template<typename T, typename U, typename Alloc, typename... Args>
+struct std::coroutine_traits<rod::generator_task<T>, U, std::allocator_arg_t, Alloc, Args...> { using promise_type = rod::detail::promise_with_allocator<typename rod::generator_task<T>::promise_type, std::decay_t<Alloc>>; };
+
 #endif
