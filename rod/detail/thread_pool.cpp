@@ -28,37 +28,32 @@ namespace rod::_thread_pool
 		_workers.clear();
 	}
 
-	void thread_pool::worker_main(std::size_t wid) noexcept
+	void thread_pool::worker_main(std::size_t id) noexcept
 	{
 		for (;;)
 		{
-			std::size_t eid = wid;
-			operation_base *node;
+			operation_base *node = {};
+			std::size_t i = id;
 
-			/* Attempt to retrieve a task from each one of the worker queues.
-			 * This will prevent tasks from piling up on a single thread queue. */
-			for (; eid + 1 != wid ; eid = (eid + 1) % size())
+			/* Attempt to retrieve a task from other workers' queues to release any pressure on slow workers. */
+			for (; !node && (i = (i + 1) % size()) != id;)
 			{
-				if (auto &queue = _workers[eid].queue; (node = queue.pop()) == queue.sentinel())
-					return;
+				node = _workers[i].queue.pop();
+				if (node != _workers[i].queue.sentinel())
+					_workers[i].queue.notify_one();
 				else if (node)
-				{
-					queue.notify_one();
-					break;
-				}
-			}
-
-			while (!node)
-			{
-				auto &queue = _workers[wid].queue;
-				if ((node = queue.pop()) == queue.sentinel())
 					return;
-				else if (!node)
-					queue.wait();
-				else
-					eid = wid;
 			}
-			node->notify_func(node, eid);
+			/* If other workers do not have any work, wait on this worker's queue. */
+			for (; !node; _workers[id].queue.wait(node))
+			{
+				node = _workers[id].queue.pop();
+				if (node != _workers[id].queue.sentinel())
+					i = id;
+				else if (node)
+					return;
+			}
+			node->notify(i);
 		}
 	}
 	void thread_pool::schedule(operation_base *node) noexcept

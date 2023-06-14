@@ -32,6 +32,8 @@ namespace rod
 		{
 			using notify_func_t = void (*)(operation_base *, std::size_t) noexcept;
 
+			void notify(std::size_t id) { std::exchange(notify_func, {})(this, id); }
+
 			notify_func_t notify_func;
 			operation_base *next = {};
 		};
