@@ -21,16 +21,16 @@ namespace rod::detail
 
 		constexpr int release(int fd = -1) noexcept { return std::exchange(_fd, fd); }
 
-		ROD_PUBLIC std::error_code close() noexcept;
+		ROD_API_PUBLIC std::error_code close() noexcept;
 
-		ROD_PUBLIC bool poll_read(int timeout, std::error_code &err) noexcept;
-		ROD_PUBLIC bool poll_write(int timeout, std::error_code &err) noexcept;
-		ROD_PUBLIC bool poll_error(int timeout, std::error_code &err) noexcept;
+		ROD_API_PUBLIC bool poll_read(int timeout, std::error_code &err) noexcept;
+		ROD_API_PUBLIC bool poll_write(int timeout, std::error_code &err) noexcept;
+		ROD_API_PUBLIC bool poll_error(int timeout, std::error_code &err) noexcept;
 
-		ROD_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 
 		[[nodiscard]] constexpr bool is_open() const noexcept { return _fd > -1; }
 		[[nodiscard]] constexpr int native_handle() const noexcept { return _fd; }
@@ -54,7 +54,7 @@ namespace rod::detail
 
 		constexpr explicit unique_descriptor(int fd) noexcept : basic_descriptor(fd) {}
 
-		ROD_PUBLIC ~unique_descriptor();
+		ROD_API_PUBLIC ~unique_descriptor();
 
 		using basic_descriptor::close;
 		using basic_descriptor::release;

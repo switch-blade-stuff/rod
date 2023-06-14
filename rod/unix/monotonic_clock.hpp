@@ -137,7 +137,7 @@ namespace rod
 
 		static constexpr bool is_steady = true;
 
-		static ROD_PUBLIC time_point now() noexcept;
+		static ROD_API_PUBLIC time_point now() noexcept;
 	};
 }
 #endif

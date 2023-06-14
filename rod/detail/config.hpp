@@ -27,9 +27,9 @@
 #endif
 
 #if defined(ROD_EXPORT)
-#define ROD_PUBLIC ROD_API_EXPORT
+#define ROD_API_PUBLIC ROD_API_EXPORT
 #else
-#define ROD_PUBLIC ROD_API_IMPORT
+#define ROD_API_PUBLIC ROD_API_IMPORT
 #endif
 
 /* MSVC does not support standard no_unique_address */

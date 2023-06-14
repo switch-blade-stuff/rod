@@ -168,13 +168,13 @@ namespace rod
 			/** Initializes the EPOLL execution context with a default max number of events.
 			 * @throw std::system_error On failure to initialize descriptors.
 			 * @throw std::bad_alloc On failure to allocate event buffer. */
-			ROD_PUBLIC context();
+			ROD_API_PUBLIC context();
 			/** Initializes the EPOLL execution context with the specified max number of events.
 			 * @param max Maximum size of the internal EPOLL event buffer.
 			 * @throw std::system_error On failure to initialize descriptors.
 			 * @throw std::bad_alloc On failure to allocate event buffer. */
-			ROD_PUBLIC explicit context(std::size_t max);
-			ROD_PUBLIC ~context();
+			ROD_API_PUBLIC explicit context(std::size_t max);
+			ROD_API_PUBLIC ~context();
 
 			/** Returns a scheduler used to schedule work to be executed on the context. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept;
@@ -182,7 +182,7 @@ namespace rod
 			/** Blocks the current thread until `finish` is called and executes scheduled operations.
 			 * @throw std::system_error On implementation-defined internal failures.
 			 * @note Only one thread may call `run`. */
-			ROD_PUBLIC void run();
+			ROD_API_PUBLIC void run();
 			/** Blocks the current thread until stopped via \a tok and executes scheduled operations.
 			 * @param tok Stop token used to stop execution of the internal event loop.
 			 * @throw std::system_error On implementation-defined internal failures.
@@ -196,21 +196,21 @@ namespace rod
 			}
 
 			/** Changes the internal state to stopped and unblocks consumer thread. Any in-progress work will run to completion. */
-			ROD_PUBLIC void finish();
+			ROD_API_PUBLIC void finish();
 
 			/** Returns copy of the stop source associated with the context. */
 			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_source; }
 			/** Returns a stop token of the stop source associated with the context. */
 			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_source.get_token(); }
 			/** Sends a stop request to the stop source associated with the context. */
-			ROD_PUBLIC void request_stop();
+			ROD_API_PUBLIC void request_stop();
 
 		private:
-			[[nodiscard]] ROD_PUBLIC bool is_consumer_thread() const noexcept;
+			[[nodiscard]] ROD_API_PUBLIC bool is_consumer_thread() const noexcept;
 
-			ROD_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
-			ROD_PUBLIC void schedule_consumer(operation_base *node) noexcept;
-			ROD_PUBLIC void schedule_producer(operation_base *node);
+			ROD_API_PUBLIC void schedule_producer(operation_base *node, std::error_code &err) noexcept;
+			ROD_API_PUBLIC void schedule_consumer(operation_base *node) noexcept;
+			ROD_API_PUBLIC void schedule_producer(operation_base *node);
 
 			void schedule(operation_base *node, std::error_code &err) noexcept
 			{
@@ -228,14 +228,14 @@ namespace rod
 			}
 
 			void add_event(auto *data, int flags, int fd) noexcept;
-			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept;
-			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept;
-			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept;
-			ROD_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept;
-			ROD_PUBLIC void del_io(int fd) noexcept;
+			ROD_API_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept;
+			ROD_API_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept;
+			ROD_API_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept;
+			ROD_API_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept;
+			ROD_API_PUBLIC void del_io(int fd) noexcept;
 
-			ROD_PUBLIC void add_timer(timer_base *node) noexcept;
-			ROD_PUBLIC void del_timer(timer_base *node) noexcept;
+			ROD_API_PUBLIC void add_timer(timer_base *node) noexcept;
+			ROD_API_PUBLIC void del_timer(timer_base *node) noexcept;
 
 			bool acquire_producer_queue() noexcept;
 			void acquire_elapsed_timers();

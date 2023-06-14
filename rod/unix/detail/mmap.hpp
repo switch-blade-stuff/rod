@@ -27,7 +27,7 @@ namespace rod::detail
 			_default = read | write,
 		};
 
-		static ROD_PUBLIC system_mmap map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept;
+		static ROD_API_PUBLIC system_mmap map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept;
 		static system_mmap map(std::size_t size, int mode, std::error_code &err) noexcept { return map(-1, 0, size, mode, err); }
 
 	public:
@@ -41,8 +41,8 @@ namespace rod::detail
 		constexpr system_mmap(void *data, std::size_t size) noexcept : system_mmap(data, 0, size) {}
 		constexpr system_mmap(void *data, std::size_t base, std::size_t size) noexcept : _data(static_cast<std::byte *>(data)), _base(base), _size(size) {}
 
-		ROD_PUBLIC ~system_mmap();
-		ROD_PUBLIC std::error_code unmap() noexcept;
+		ROD_API_PUBLIC ~system_mmap();
+		ROD_API_PUBLIC std::error_code unmap() noexcept;
 
 		constexpr std::pair<void *, std::size_t> release() noexcept { return release(nullptr, 0); }
 		constexpr std::pair<void *, std::size_t> release(void *data, std::size_t size) noexcept { return release(data, 0, size); }

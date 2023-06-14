@@ -23,7 +23,7 @@ namespace rod::detail
 
 		void *release(void *hnd = invalid_handle()) noexcept { return std::exchange(_handle, hnd); }
 
-		ROD_PUBLIC std::error_code close() noexcept;
+		ROD_API_PUBLIC std::error_code close() noexcept;
 
 		[[nodiscard]] bool is_open() const noexcept { return _handle != invalid_handle(); }
 		[[nodiscard]] void *native_handle() const noexcept { return _handle; }
@@ -47,7 +47,7 @@ namespace rod::detail
 
 		constexpr explicit unique_io_handle(void *handle) noexcept : basic_io_handle(handle) {}
 
-		ROD_PUBLIC ~unique_io_handle();
+		ROD_API_PUBLIC ~unique_io_handle();
 
 		using basic_io_handle::close;
 		using basic_io_handle::release;

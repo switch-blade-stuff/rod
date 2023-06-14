@@ -276,14 +276,14 @@ namespace rod
 
 		public:
 			/** Initializes thread pool with a default number of threads. */
-			ROD_PUBLIC thread_pool();
+			ROD_API_PUBLIC thread_pool();
 			/** Initializes thread pool with `size` threads. */
-			ROD_PUBLIC thread_pool(std::size_t size);
-			ROD_PUBLIC ~thread_pool();
+			ROD_API_PUBLIC thread_pool(std::size_t size);
+			ROD_API_PUBLIC ~thread_pool();
 
 			/** Changes the internal state to stopped and terminates worker threads.
 			 * @note After a call to `finish` the thread pool will no longer be dispatching scheduled operations. */
-			ROD_PUBLIC void finish() noexcept;
+			ROD_API_PUBLIC void finish() noexcept;
 
 			/** Returns a scheduler used to schedule work to be executed on the thread pool. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept;
@@ -300,9 +300,9 @@ namespace rod
 		protected:
 			void stop_all() noexcept { for (auto &worker: _workers) { worker.stop(); }}
 
-			ROD_PUBLIC void worker_main(std::size_t id) noexcept;
-			ROD_PUBLIC void schedule(operation_base *node) noexcept;
-			ROD_PUBLIC void schedule_bulk(std::span<bulk_task_base> tasks) noexcept;
+			ROD_API_PUBLIC void worker_main(std::size_t id) noexcept;
+			ROD_API_PUBLIC void schedule(operation_base *node) noexcept;
+			ROD_API_PUBLIC void schedule_bulk(std::span<bulk_task_base> tasks) noexcept;
 
 			std::atomic<std::size_t> _next = {};
 			std::vector<worker_t> _workers;

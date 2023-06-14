@@ -50,9 +50,9 @@ namespace rod::detail
 			end = SEEK_END,
 		};
 
-		static ROD_PUBLIC system_file reopen(native_handle_type fd, int mode, std::error_code &err) noexcept;
-		static ROD_PUBLIC system_file open(const char *path, int mode, int prot, std::error_code &err) noexcept;
-		static ROD_PUBLIC system_file open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept;
+		static ROD_API_PUBLIC system_file reopen(native_handle_type fd, int mode, std::error_code &err) noexcept;
+		static ROD_API_PUBLIC system_file open(const char *path, int mode, int prot, std::error_code &err) noexcept;
+		static ROD_API_PUBLIC system_file open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept;
 
 		static system_file open(const char *path, int mode, std::error_code &err) noexcept { return open(path, mode, fileprot::_default, err); }
 		static system_file open(const wchar_t *path, int mode, std::error_code &err) noexcept { return open(path, mode, fileprot::_default, err); }
@@ -68,18 +68,18 @@ namespace rod::detail
 		using unique_descriptor::is_open;
 		using unique_descriptor::native_handle;
 
-		ROD_PUBLIC std::error_code resize(std::size_t n) noexcept;
-		ROD_PUBLIC std::size_t size(std::error_code &err) const noexcept;
-		ROD_PUBLIC std::size_t tell(std::error_code &err) const noexcept;
-		ROD_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::error_code resize(std::size_t n) noexcept;
+		ROD_API_PUBLIC std::size_t size(std::error_code &err) const noexcept;
+		ROD_API_PUBLIC std::size_t tell(std::error_code &err) const noexcept;
+		ROD_API_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
 
-		ROD_PUBLIC std::error_code sync() noexcept;
+		ROD_API_PUBLIC std::error_code sync() noexcept;
 		std::error_code flush() noexcept { return sync(); }
 
-		ROD_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
-		ROD_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_API_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
 
 		constexpr void swap(system_file &other) noexcept { unique_descriptor::swap(other); }
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }
