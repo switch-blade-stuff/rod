@@ -28,23 +28,37 @@ namespace rod::_thread_pool
 		_workers.clear();
 	}
 
-	void thread_pool::worker_main(std::size_t id) noexcept
+	void thread_pool::worker_main(std::size_t wid) noexcept
 	{
-		for (operation_base *node;;)
+		for (;;)
 		{
+			std::size_t eid = wid;
+			operation_base *node;
+
 			/* Attempt to retrieve a task from each one of the worker queues.
 			 * This will prevent tasks from piling up on a single thread queue. */
-			for (std::size_t i = id; i + 1 != id ; i = (i + 1) % size())
+			for (; eid + 1 != wid ; eid = (eid + 1) % size())
 			{
-				auto &worker = _workers[i];
-				if ((node = worker.try_pop()))
+				if (auto &queue = _workers[eid].queue; (node = queue.pop()) == queue.sentinel())
+					return;
+				else if (node)
+				{
+					queue.notify_one();
 					break;
+				}
 			}
 
-			if (node || (node = _workers[id].pop()))
-				node->notify(id);
-			else
-				break;
+			while (!node)
+			{
+				auto &queue = _workers[wid].queue;
+				if ((node = queue.pop()) == queue.sentinel())
+					return;
+				else if (!node)
+					queue.wait();
+				else
+					eid = wid;
+			}
+			node->notify_func(node, eid);
 		}
 	}
 	void thread_pool::schedule(operation_base *node) noexcept
@@ -59,8 +73,14 @@ namespace rod::_thread_pool
 		}
 		_workers[next].push(node);
 	}
-	void thread_pool::schedule_bulk(operation_base *nodes, std::size_t n) noexcept
+	void thread_pool::schedule_bulk(std::span<bulk_task_base> tasks) noexcept
 	{
-		for (std::size_t i = 0; i < n; ++i) _workers[i % size()].push(nodes + i);
+		const auto next = _next.fetch_add(tasks.size(), std::memory_order_acq_rel) % size();
+		for (std::size_t i = 0; i < tasks.size(); ++i)
+		{
+			const auto pos = (next + i) % size();
+			const auto node = &tasks[i];
+			_workers[pos].push(node);
+		}
 	}
 }

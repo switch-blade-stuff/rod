@@ -12,6 +12,7 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/delegate.hpp
         ${CMAKE_CURRENT_LIST_DIR}/packed_pair.hpp
         ${CMAKE_CURRENT_LIST_DIR}/async_mutex.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/stop_token.hpp
         ${CMAKE_CURRENT_LIST_DIR}/scheduling.hpp
         ${CMAKE_CURRENT_LIST_DIR}/generator.hpp
         ${CMAKE_CURRENT_LIST_DIR}/signal.hpp

@@ -28,9 +28,6 @@
 #include "detail/adaptors/let.hpp"
 #include "detail/adaptors/on.hpp"
 
-#include "detail/run_loop.hpp"
-#include "detail/awaitable.hpp"
-
 #include "detail/execute.hpp"
 #include "detail/sync_wait.hpp"
 #include "detail/ensure_started.hpp"
@@ -38,3 +35,7 @@
 #include "detail/receiver_adaptor.hpp"
 
 #include "stop_token.hpp"
+
+#include "detail/run_loop.hpp"
+#include "detail/awaitable.hpp"
+#include "detail/thread_pool.hpp"
