@@ -26,16 +26,18 @@ endif ()
 
 option(BUILD_SHARED_LIBS "Toggles build as a shared library" ON)
 
-# Include library source subdirectory
-set(ROD_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/rod)
-include(${ROD_SOURCE_DIR}/CMakeLists.txt)
-
 # Add library target
 add_library(${PROJECT_NAME})
 
 # Include library source subdirectory
 set(ROD_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/rod)
 include(${ROD_SOURCE_DIR}/CMakeLists.txt)
+
+# Generate CMake export header to be included by config.hpp
+include(GenerateExportHeader)
+set(ROD_EXPORT_HEADER ${ROD_SOURCE_DIR}/detail/export.gen.hpp)
+generate_export_header(${PROJECT_NAME} BASE_NAME ROD EXPORT_FILE_NAME ${ROD_EXPORT_HEADER})
+list(APPEND ROD_HEADERS ${ROD_EXPORT_HEADER})
 
 # Add sources & includes
 target_sources(${PROJECT_NAME} PUBLIC ${ROD_HEADERS})
@@ -45,21 +47,15 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 # Set C++ version
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
-# Set output directories
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE STRING "")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE STRING "")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE STRING "")
-
 # Set default symbol visibility
 set_target_properties(${PROJECT_NAME} PROPERTIES C_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 set_target_properties(${PROJECT_NAME} PROPERTIES VISIBILITY_INLINES_HIDDEN ON)
 
-# Set export definition
-get_target_property(ROD_TARGET_TYPE ${PROJECT_NAME} TYPE)
-if (ROD_TARGET_TYPE STREQUAL SHARED_LIBRARY)
-    set_target_properties(${PROJECT_NAME} PROPERTIES DEFINE_SYMBOL "ROD_EXPORT")
-endif ()
+# Set output directories
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE STRING "")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE STRING "")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE STRING "")
 
 # Link dependencies
 if (${LIBURING_FOUND})

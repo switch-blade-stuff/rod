@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "export.gen.hpp"
+
 #if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
 #define ROD_HIDDEN
 #define ROD_VISIBLE
