@@ -161,8 +161,8 @@ namespace rod
 
 		class promise_base
 		{
-			friend yield_awaiter;
-			friend next_awaiter;
+			friend class yield_awaiter;
+			friend class next_awaiter;
 
 			using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
 

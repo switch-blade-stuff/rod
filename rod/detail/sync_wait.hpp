@@ -36,6 +36,7 @@ namespace rod
 		struct receiver<Ts...>::type
 		{
 			using is_receiver = std::true_type;
+			using _state_t = state_t<Ts...>;
 
 			friend constexpr env tag_invoke(get_env_t, const type &r) noexcept { return {r.loop->get_scheduler()}; }
 
@@ -58,7 +59,7 @@ namespace rod
 				r.loop->finish();
 			}
 
-			state_t<Ts...> *state;
+			_state_t *state;
 			run_loop *loop;
 
 		private:
@@ -83,7 +84,7 @@ namespace rod
 			template<typename S>
 			using result_t = sync_wait_types<std::decay_t<S>, std::tuple>;
 			template<typename S>
-			using state_t = sync_wait_types<std::decay_t<S>, state_t>;
+			using state_t = typename receiver_t<S>::_state_t;
 
 		public:
 			template<detail::single_sender<env> S> requires detail::tag_invocable_with_completion_scheduler<sync_wait_t, set_value_t, S, S>
@@ -107,7 +108,7 @@ namespace rod
 
 				/* Start the sender chain & wait for it to finish executing. */
 				{
-					auto op = connect(std::forward<S>(snd), receiver_t<S>(&state, &loop));
+					auto op = connect(std::forward<S>(snd), receiver_t<S>{&state, &loop});
 					start(op);
 					loop.run();
 				}

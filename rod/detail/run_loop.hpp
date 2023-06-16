@@ -31,7 +31,7 @@ namespace rod
 
 		class operation_base
 		{
-			friend run_loop;
+			friend class run_loop;
 
 		protected:
 			using notify_func_t = void (*)(operation_base *) noexcept;
@@ -46,7 +46,7 @@ namespace rod
 		};
 		class timer_base : public operation_base
 		{
-			friend run_loop;
+			friend class run_loop;
 
 		protected:
 			constexpr timer_base(run_loop *loop, notify_func_t notify, time_point tp) noexcept : operation_base(loop, notify), _tp(tp) {}
@@ -87,7 +87,7 @@ namespace rod
 		template<typename OpBase, typename... Args>
 		class sender
 		{
-			friend scheduler;
+			friend class scheduler;
 
 		public:
 			using is_sender = std::true_type;
@@ -152,8 +152,8 @@ namespace rod
 		/** Generic execution context used to schedule work on a FIFO queue. */
 		class run_loop
 		{
-			friend operation_base;
-			friend timer_base;
+			friend class operation_base;
+			friend class timer_base;
 
 		public:
 			using time_point = _run_loop::time_point;

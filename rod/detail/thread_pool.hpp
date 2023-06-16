@@ -211,8 +211,8 @@ namespace rod
 			using test_nothrow = std::bool_constant<bulk_nothrow<Fn, Shape, Ts...>>;
 			using is_throwing = std::negation<value_types_of_t<Snd, env_of_t<Rcv>, test_nothrow, std::conjunction>>;
 
-			using shared_state_t = typename bulk_shared_state<Snd, Rcv, Shape, Fn, is_throwing>;
 			using receiver_t = typename bulk_receiver<Snd, Rcv, Shape, Fn, is_throwing>::type;
+			using shared_state_t = bulk_shared_state<Snd, Rcv, Shape, Fn, is_throwing>;
 			using connect_state_t = connect_result_t<Snd, receiver_t>;
 
 			template<typename Snd2, typename Fn2>
@@ -226,8 +226,8 @@ namespace rod
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._connect_state); }
 
 		private:
-			connect_state_t _connect_state;
 			shared_state_t _shared_state;
+			connect_state_t _connect_state;
 		};
 
 		/** Thread pool execution context. */
@@ -328,7 +328,7 @@ namespace rod
 			template<decays_to<sender> T, typename E>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<decays_to<sender> T, typename Rcv>
+			template<decays_to<sender> T, receiver_of<signs_t> Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::move(rcv)); }
 
 		private:

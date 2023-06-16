@@ -9,6 +9,7 @@
 #ifdef ROD_HAS_COROUTINES
 
 #include <coroutine>
+#include <new>
 
 #include "queries/completion.hpp"
 #include "concepts.hpp"
@@ -77,7 +78,7 @@ namespace rod
 		template<typename Promise, typename Alloc>
 		class with_allocator_promise : public Promise
 		{
-			using alloc_type = std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
+			using alloc_type = typename std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
 			using alloc_traits = std::allocator_traits<alloc_type>;
 
 			constexpr static std::size_t offset(std::size_t n) noexcept
@@ -124,7 +125,7 @@ namespace rod
 			static constexpr void operator delete(void *ptr, std::size_t n)
 			{
 				if (std::is_constant_evaluated())
-					::operator delete(ptr, n);
+					::operator delete(ptr);
 				else
 				{
 					auto alloc = std::move(*alloc_ptr(ptr, n));

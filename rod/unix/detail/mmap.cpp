@@ -52,12 +52,12 @@ namespace rod::detail
 		return {};
 	}
 
-	system_mmap system_mmap::map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept
+	system_mapping system_mapping::map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept
 	{
 		/* Align the file offset to page size & resize if needed. */
 		const auto base_off = off - align_pagesize(off, err);
 		if (err || ((mode & mapmode::expand) && (err = try_resize_descriptor(fd, size + off))))
-			[[unlikely]] return system_mmap{};
+			[[unlikely]] return system_mapping{};
 		else
 			 size += base_off;
 
@@ -76,12 +76,12 @@ namespace rod::detail
 		const auto data = ::mmap(nullptr, size, prot, flags, fd, static_cast<off64_t>(off - base_off));
 #endif
 		if (data) [[likely]]
-			return system_mmap{static_cast<std::byte *>(data), base_off, size};
+			return system_mapping{static_cast<std::byte *>(data), base_off, size};
 		else
-			return (err = {errno, std::system_category()}, system_mmap{});
+			return (err = {errno, std::system_category()}, system_mapping{});
 	}
 
-	std::error_code system_mmap::unmap() noexcept
+	std::error_code system_mapping::unmap() noexcept
 	{
 		const auto [data, size] = release();
 		if (data && ::munmap(data, size)) [[unlikely]]
@@ -89,7 +89,7 @@ namespace rod::detail
 		else
 			return {};
 	}
-	system_mmap::~system_mmap()
+	system_mapping::~system_mapping()
 	{
 		const auto [data, size] = release();
 		if (data) ::munmap(data, size);

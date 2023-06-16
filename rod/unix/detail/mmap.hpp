@@ -14,7 +14,7 @@
 
 namespace rod::detail
 {
-	class system_mmap
+	class system_mapping
 	{
 	public:
 		enum mapmode : int
@@ -27,21 +27,21 @@ namespace rod::detail
 			_default = read | write,
 		};
 
-		static ROD_API_PUBLIC system_mmap map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept;
-		static system_mmap map(std::size_t size, int mode, std::error_code &err) noexcept { return map(-1, 0, size, mode, err); }
+		static ROD_API_PUBLIC system_mapping map(int fd, std::size_t off, std::size_t size, int mode, std::error_code &err) noexcept;
+		static system_mapping map(std::size_t size, int mode, std::error_code &err) noexcept { return map(-1, 0, size, mode, err); }
 
 	public:
-		system_mmap(const system_mmap &) = delete;
-		system_mmap &operator=(const system_mmap &) = delete;
+		system_mapping(const system_mapping &) = delete;
+		system_mapping &operator=(const system_mapping &) = delete;
 
-		constexpr system_mmap() noexcept = default;
-		constexpr system_mmap(system_mmap &&other) noexcept { swap(other); }
-		constexpr system_mmap &operator=(system_mmap &&other) noexcept { return (swap(other), *this); }
+		constexpr system_mapping() noexcept = default;
+		constexpr system_mapping(system_mapping &&other) noexcept { swap(other); }
+		constexpr system_mapping &operator=(system_mapping &&other) noexcept { return (swap(other), *this); }
 
-		constexpr system_mmap(void *data, std::size_t size) noexcept : system_mmap(data, 0, size) {}
-		constexpr system_mmap(void *data, std::size_t base, std::size_t size) noexcept : _data(static_cast<std::byte *>(data)), _base(base), _size(size) {}
+		constexpr system_mapping(void *data, std::size_t size) noexcept : system_mapping(data, 0, size) {}
+		constexpr system_mapping(void *data, std::size_t base, std::size_t size) noexcept : _data(static_cast<std::byte *>(data)), _base(base), _size(size) {}
 
-		ROD_API_PUBLIC ~system_mmap();
+		ROD_API_PUBLIC ~system_mapping();
 		ROD_API_PUBLIC std::error_code unmap() noexcept;
 
 		constexpr std::pair<void *, std::size_t> release() noexcept { return release(nullptr, 0); }
@@ -60,13 +60,13 @@ namespace rod::detail
 		[[nodiscard]] constexpr std::byte *data() const noexcept { return _data + _base; }
 		[[nodiscard]] constexpr std::size_t size() const noexcept { return _size - _base; }
 
-		constexpr void swap(system_mmap &other) noexcept
+		constexpr void swap(system_mapping &other) noexcept
 		{
 			std::swap(_data, other._data);
 			std::swap(_base, other._base);
 			std::swap(_size, other._size);
 		}
-		friend constexpr void swap(system_mmap &a, system_mmap &b) noexcept { a.swap(b); }
+		friend constexpr void swap(system_mapping &a, system_mapping &b) noexcept { a.swap(b); }
 
 	private:
 		std::byte *_data = {};

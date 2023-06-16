@@ -54,8 +54,8 @@ namespace rod
 
 			[[nodiscard]] constexpr duration time_since_epoch() const noexcept
 			{
-				const auto sec = std::duration_cast<duration>(std::chrono::seconds{_sec});
-				const auto nsec = std::duration_cast<duration>(std::chrono::nanoseconds{_nsec});
+				const auto sec = std::chrono::duration_cast<duration>(std::chrono::seconds{_sec});
+				const auto nsec = std::chrono::duration_cast<duration>(std::chrono::nanoseconds{_nsec});
 				return sec + nsec;
 			}
 
