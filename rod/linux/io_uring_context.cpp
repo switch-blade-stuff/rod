@@ -256,7 +256,7 @@ namespace rod::_io_uring
 			}
 			default: /* IO operation event. */
 				auto *node = std::bit_cast<operation_base *>(static_cast<std::uintptr_t>(event.user_data));
-				node->_res = static_cast<std::ptrdiff_t>(event.res);
+				node->result = static_cast<std::ptrdiff_t>(event.res);
 				tmp_queue.push_back(node);
 			}
 
@@ -270,14 +270,14 @@ namespace rod::_io_uring
 			return;
 
 		if (!_timers.empty())
-			for (const auto now = clock::now(); !_timers.empty() && _timers.front()->_tp <= now;)
+			for (const auto now = clock::now(); !_timers.empty() && _timers.front()->timeout <= now;)
 			{
 				const auto node = _timers.pop_front();
 
 				/* Handle timer cancellation. */
-				if (node->_stop_possible())
+				if (node->stop_possible())
 				{
-					const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
+					const auto flags = node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
 					if (flags & flags_t::stop_requested) continue;
 				}
 				schedule_consumer(node);
@@ -294,7 +294,7 @@ namespace rod::_io_uring
 			return;
 		}
 
-		if (const auto next_timeout = _timers.front()->_tp; _timer_started)
+		if (const auto next_timeout = _timers.front()->timeout; _timer_started)
 		{
 			if (_next_timeout >= next_timeout)
 				_timer_pending = false;
@@ -350,7 +350,7 @@ namespace rod::_io_uring
 		for (;;)
 		{
 			for (auto queue = std::move(_consumer_queue); !queue.empty();)
-				queue.pop_front()->_notify();
+				queue.pop_front()->notify();
 			if (std::exchange(_stop_pending, false)) [[unlikely]]
 				return;
 
@@ -361,7 +361,7 @@ namespace rod::_io_uring
 			if (!_wait_pending && !_producer_queue.empty())
 				_consumer_queue.merge_back(std::move(_producer_queue));
 			while (!_waitlist_queue.empty() && _sq.pending < _sq.size && _cq.pending + _sq.pending < _cq.size)
-				_waitlist_queue.pop_front()->_notify();
+				_waitlist_queue.pop_front()->notify();
 
 			if (_consumer_queue.empty() || _sq.pending)
 				uring_enter();
@@ -370,7 +370,7 @@ namespace rod::_io_uring
 	void context::finish()
 	{
 		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
-		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->_stop_pending = true; };
+		notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->_stop_pending = true; };
 		schedule(this);
 	}
 }

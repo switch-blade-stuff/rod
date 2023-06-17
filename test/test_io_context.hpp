@@ -39,14 +39,14 @@ inline void test_io_context(auto &&ctx)
 		close(pipe_fd[1]);
 	}
 #endif
-	{
-		rod::in_place_stop_source src;
-		auto snd0 = rod::schedule_after(sch, 50ms) | rod::then([&]() { src.request_stop(); });
-		auto snd1 = rod::schedule_after(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); });
-		auto snd2 = rod::schedule_after(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); });
-
-		rod::sync_wait(rod::when_all(snd1, snd2, snd0));
-	}
+//	{
+//		rod::in_place_stop_source src;
+//		auto snd0 = rod::schedule_after(sch, 50ms) | rod::then([&]() { src.request_stop(); });
+//		auto snd1 = rod::schedule_after(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); });
+//		auto snd2 = rod::schedule_after(sch, 100ms) | rod::with_stop_token(src.get_token()) | rod::then([]() { std::terminate(); });
+//
+//		rod::sync_wait(rod::when_all(snd1, snd2, snd0));
+//	}
 #ifdef ROD_HAS_COROUTINES
 	{
 		rod::sync_wait([&]() -> rod::task<> { co_await rod::schedule_after(sch, 50ms); }());

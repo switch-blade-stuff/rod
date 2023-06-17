@@ -14,85 +14,92 @@ namespace rod
 {
 	namespace _just
 	{
-		struct just_t;
-		struct just_error_t;
+		class just_t;
+		class just_error_t;
 		struct just_stopped_t;
 
 		template<typename, typename, movable_value...>
-		struct operation { struct type; };
+		struct operation { class type; };
 		template<typename, movable_value...>
-		struct sender { struct type; };
+		struct sender { class type; };
 
-		template<typename R, typename C, movable_value... Ts>
-		struct operation<R, C, Ts...>::type
+		template<typename C, typename Rcv, movable_value... Ts>
+		class operation<C, Rcv, Ts...>::type
 		{
+		public:
+			template<typename Vals>
+			constexpr explicit type(Vals &&vals, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::conjunction_v<std::is_nothrow_constructible<Ts, copy_cvref_t<Vals, Ts>>...>)
+					: _values(std::forward<Vals>(vals)), _rcv(std::forward<Rcv>(rcv)) {}
+
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op._rcv), std::move(vals)...); }, op._values); }
 
+		private:
 			ROD_NO_UNIQUE_ADDRESS std::tuple<Ts...> _values;
-			ROD_NO_UNIQUE_ADDRESS R _rcv;
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
 		template<typename C, movable_value... Ts>
-		struct sender<C, Ts...>::type
+		class sender<C, Ts...>::type
 		{
+		public:
 			using is_sender = std::true_type;
-			using _signs_t = completion_signatures<C(Ts...)>;
+
+		private:
+			template<typename Rcv>
+			using operation_t = typename operation<C, std::decay_t<Rcv>, Ts...>::type;
+			using signs_t = completion_signatures<C(Ts...)>;
+
+		public:
+			constexpr type() noexcept(std::is_nothrow_default_constructible_v<std::tuple<Ts...>>) = default;
+			template<typename... Args> requires std::constructible_from<std::tuple<Ts...>, Args...>
+			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Ts...>, Args...>) : _values{std::forward<Args>(args)...} {}
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
-			template<decays_to<type> T, typename E>
-			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
+			template<decays_to<type> T, typename Env>
+			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
-			template<receiver_of<_signs_t> R> requires(std::copy_constructible<Ts> && ...)
-			friend constexpr auto tag_invoke(connect_t, const type &s, R &&r) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R> && (std::is_nothrow_copy_constructible_v<Ts> && ...))
-			{
-				using operation_t = typename operation<std::decay_t<R>, C, Ts...>::type;
-				return operation_t{s._values, std::forward<R>(r)};
-			}
-			template<receiver_of<_signs_t> R>
-			friend constexpr auto tag_invoke(connect_t, type &&s, R &&r) noexcept(std::is_nothrow_constructible_v<std::decay_t<R>, R> && (std::is_nothrow_move_constructible_v<Ts> && ...))
-			{
-				using operation_t = typename operation<std::decay_t<R>, C, Ts...>::type;
-				return operation_t{std::move(s._values), std::forward<R>(r)};
-			}
+			template<decays_to<type> T, receiver_of<signs_t> Rcv>
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, copy_cvref_t<T, std::tuple<Ts...>>, Rcv>) { return operation_t<Rcv>{std::forward<T>(s)._values, std::move(rcv)}; }
 
+		private:
 			ROD_NO_UNIQUE_ADDRESS std::tuple<Ts...> _values;
 		};
+
+		class just_t
+		{
+			template<typename... Vs>
+			using sender_t = typename sender<set_value_t, std::decay_t<Vs>...>::type;
+
+		public:
+			template<typename... Vs>
+			[[nodiscard]] constexpr rod::sender auto operator()(Vs &&...vals) const noexcept(std::is_nothrow_constructible_v<sender_t<Vs...>, Vs...>) { return sender_t<Vs...>{std::in_place, std::forward<Vs>(vals)...}; }
+		};
+
+		class just_error_t
+		{
+			template<typename Err>
+			using sender_t = typename sender<set_error_t, std::decay_t<Err>>::type;
+
+		public:
+			template<typename Err>
+			[[nodiscard]] constexpr rod::sender auto operator()(Err &&err) const noexcept(std::is_nothrow_constructible_v<sender_t<Err>, Err>) { return sender_t<Err>{std::in_place, std::forward<Err>(err)}; }
+		};
+
+		struct just_stopped_t { [[nodiscard]] constexpr rod::sender auto operator()() const noexcept { return typename sender<set_stopped_t>::type{}; }};
 	}
 
 	using _just::just_t;
 	using _just::just_error_t;
 	using _just::just_stopped_t;
 
-	struct _just::just_t
-	{
-		template<typename... Vs>
-		[[nodiscard]] constexpr rod::sender auto operator()(Vs &&...vals) const noexcept((std::is_nothrow_constructible_v<std::decay_t<Vs>, Vs> && ...))
-		{
-			using sender_t = typename sender<set_value_t, std::decay_t<Vs>...>::type;
-			return sender_t{{std::forward<Vs>(vals)...}};
-		}
-	};
-
 	/** Returns a sender that passes a set of values through the value channel.
 	 * @param vals Values to be sent through the value channel.
 	 * @return Sender that completes via `set_value(vals...)`. */
 	inline constexpr auto just = just_t{};
 
-	struct _just::just_error_t
-	{
-		template<typename Err>
-		[[nodiscard]] constexpr auto operator()(Err &&err) const noexcept(std::is_nothrow_constructible_v<std::decay_t<Err>, Err>)
-		{
-			using sender_t = typename sender<set_error_t, std::decay_t<Err>>::type;
-			return sender_t{{std::forward<Err>(err)}};
-		}
-	};
-
 	/** Returns a sender that passes an error through the error channel.
 	 * @param err Error to be sent through the error channel.
 	 * @return Sender that completes via `set_error(err)`. */
 	inline constexpr auto just_error = just_error_t{};
-
-	struct _just::just_stopped_t { [[nodiscard]] constexpr typename sender<set_stopped_t>::type operator()() const noexcept { return {}; }};
 
 	/** Returns a sender that completes through the stop channel.
 	 * @return Sender that completes via `set_stopped()`. */

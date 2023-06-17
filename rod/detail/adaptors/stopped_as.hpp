@@ -34,9 +34,9 @@ namespace rod
 			using value_t = std::decay_t<detail::single_sender_value_type<Snd, env_of_t<Rcv>>>;
 			using operation_t = typename operation<Snd, Rcv>::type;
 
-			constexpr type(operation_t *op) noexcept : _op(op) {}
-
 		public:
+			constexpr explicit type(operation_t *op) noexcept : _op(op) {}
+
 			template<decays_to<type> T, typename V>
 			friend constexpr void tag_invoke(set_value_t, T &&r, V &&value) noexcept { r.set_value(std::forward<V>(value)); }
 			template<decays_to<type> T, typename Err>
@@ -57,18 +57,18 @@ namespace rod
 		template<typename Snd, typename Rcv>
 		class operation<Snd, Rcv>::type
 		{
-			friend class sender<std::decay_t<Snd>>::type;
 			friend class receiver<Snd, Rcv>::type;
 
 			using receiver_t = typename receiver<Snd, Rcv>::type;
 			using state_t = connect_result_t<Snd, receiver_t>;
 
-			template<typename Snd2>
-			constexpr type(Snd2 &&snd, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && detail::nothrow_callable<connect_t, Snd2, receiver_t>) : _rcv(std::forward<Rcv>(rcv)), _state(connect(std::forward<Snd2>(snd), receiver_t{this})) {}
-
 		public:
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
+
+			template<typename Snd2>
+			constexpr explicit type(Snd2 &&snd, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && detail::nothrow_callable<connect_t, Snd2, receiver_t>)
+					: _rcv(std::forward<Rcv>(rcv)), _state(connect(std::forward<Snd2>(snd), receiver_t{this})) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
@@ -107,8 +107,6 @@ namespace rod
 		template<typename Snd>
 		class sender<Snd>::type
 		{
-			friend stopped_as_optional_t;
-
 		public:
 			using is_sender = std::true_type;
 
@@ -125,13 +123,10 @@ namespace rod
 			template<typename T, typename Env>
 			using signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, Env, completion_signatures<set_error_t(std::exception_ptr)>, value_signs_t, error_signs_t, completion_signatures<>>;
 
-			template<decays_to<type> T, typename Rcv>
-			constexpr static auto connect(T &&s, Rcv &&rcv) { return operation_t<T, Rcv>{std::forward<T>(s)._snd, std::forward<Rcv>(rcv)}; }
-
-			template<typename Snd2>
-			constexpr type(Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Snd, Snd2>) : _snd(std::forward<Snd2>(snd)) {}
-
 		public:
+			template<typename Snd2>
+			constexpr explicit type(Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Snd, Snd2>) : _snd(std::forward<Snd2>(snd)) {}
+
 			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
@@ -139,7 +134,7 @@ namespace rod
 			template<decays_to<type> T, rod::receiver Rcv> requires detail::single_sender<copy_cvref_t<T, Snd>, env_of_t<Rcv>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, Snd>, Rcv>)
 			{
-				return connect(std::forward<T>(s), std::move(rcv));
+				return operation_t<T, Rcv>{std::forward<T>(s)._snd, std::move(rcv)};
 			}
 
 		private:

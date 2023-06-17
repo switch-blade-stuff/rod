@@ -22,31 +22,34 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env, typename Rcv>
-		struct operation { struct type; };
+		struct operation { class type; };
 		struct operation_base;
 
 		template<typename Snd, typename Env>
-		struct receiver { struct type; };
+		struct receiver { class type; };
 		template<typename Snd, typename Env>
-		struct sender { struct type; };
+		struct sender { class type; };
 		template<typename Env>
-		struct env { struct type; };
+		struct env { class type; };
 
 		struct operation_base { void (*_notify)(operation_base *) noexcept = {}; };
 
 		template<typename Env>
-		struct env<Env>::type
+		class env<Env>::type
 		{
-			template<decays_to<type> E>
-			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._token; }
+		public:
+			constexpr explicit type(in_place_stop_token tok, Env *env) noexcept : _tok(tok), _env(env) {}
 
+			template<decays_to<type> E>
+			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
 			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(*std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
 
-			in_place_stop_token _token;
+		private:
+			in_place_stop_token _tok;
 			Env *_env = {};
 		};
 
@@ -81,12 +84,17 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		struct receiver<Snd, Env>::type
+		class receiver<Snd, Env>::type
 		{
-			using is_receiver = std::true_type;
-			using _env_t = typename env<Env>::type;
+			using env_t = typename env<Env>::type;
 
-			friend _env_t tag_invoke(get_env_t, const type &r) noexcept { return {r._state->stop_src.get_token(), &r._state->env}; }
+		public:
+			using is_receiver = std::true_type;
+
+		public:
+			constexpr explicit type(detail::shared_handle<shared_state<Snd, Env>> hnd) noexcept : _state(std::move(hnd)) {}
+
+			friend env_t tag_invoke(get_env_t, const type &r) noexcept { return env_t{r._state->stop_src.get_token(), &r._state->env}; }
 			template<detail::completion_channel C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept
 			{
@@ -108,6 +116,7 @@ namespace rod
 				r._state.reset();
 			}
 
+		private:
 			detail::shared_handle<shared_state<Snd, Env>> _state;
 		};
 
@@ -118,11 +127,11 @@ namespace rod
 		}
 
 		template<typename Snd, typename Rcv, typename Env>
-		struct operation<Snd, Rcv, Env>::type : operation_base
+		class operation<Snd, Rcv, Env>::type : operation_base
 		{
-			using _stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
+			using stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
 
-			static void _notify_complete(operation_base *ptr) noexcept
+			static void notify_complete(operation_base *ptr) noexcept
 			{
 				auto *op = static_cast<type *>(ptr);
 				op->_on_stop.reset();
@@ -133,11 +142,12 @@ namespace rod
 				}, op->_state->data);
 			}
 
+		public:
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
 			type(Rcv &&rcv, detail::shared_handle<shared_state<Snd, Env>> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
-					: operation_base{_notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
+					: operation_base{notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
 			~type() { if (!_state->state1.load(std::memory_order_acquire)) _state->detach(); }
 
 			friend void tag_invoke(start_t, type &op) noexcept
@@ -155,41 +165,46 @@ namespace rod
 				}
 			}
 
+		private:
 			detail::shared_handle<shared_state<Snd, Env>> _state;
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
-			_stop_cb_t _on_stop = {};
+			stop_cb_t _on_stop = {};
 		};
 
 		struct ensure_started_tag {};
 		template<typename Snd, typename Env>
-		struct sender<Snd, Env>::type : ensure_started_tag
+		class sender<Snd, Env>::type : public ensure_started_tag
 		{
+		public:
 			using is_sender = std::true_type;
 
+		private:
 			template<typename Rcv>
-			using _operation_t = typename operation<Snd, Rcv, Env>::type;
-			using _env_t = typename env<Env>::type;
+			using operation_t = typename operation<Snd, Rcv, Env>::type;
+			using env_t = typename env<Env>::type;
 
 			template<typename... Ts>
-			using _value_signs_t = completion_signatures<set_value_t(std::decay_t<Ts> &&...)>;
+			using value_signs_t = completion_signatures<set_value_t(std::decay_t<Ts> &&...)>;
 			template<typename T>
-			using _error_signs_t = completion_signatures<set_error_t(std::decay_t<T> &&)>;
-			using _signs_t = make_completion_signatures<Snd, _env_t, completion_signatures<set_error_t(std::exception_ptr &&)>, _value_signs_t, _error_signs_t>;
+			using error_signs_t = completion_signatures<set_error_t(std::decay_t<T> &&)>;
+			using signs_t = make_completion_signatures<Snd, env_t, completion_signatures<set_error_t(std::exception_ptr &&)>, value_signs_t, error_signs_t>;
 
-			constexpr type(Snd snd) : _state(new shared_state<Snd, Env>{std::move(snd)}) {}
-			constexpr type(detail::shared_handle<shared_state<Snd, Env>> state) noexcept : _state(std::move(state)) {}
-			
+		public:
+			constexpr explicit type(Snd snd) : _state(new shared_state<Snd, Env>{std::move(snd)}) {}
+			constexpr explicit type(detail::shared_handle<shared_state<Snd, Env>> state) noexcept : _state(std::move(state)) {}
+
 			~type() { if (_state) _state->detach(); }
 
 			template<decays_to<type> T>
-			friend constexpr _signs_t tag_invoke(get_completion_signatures_t, T &&, auto) noexcept { return {}; }
-			template<decays_to<type> T, receiver_of<_signs_t> Rcv>
-			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) { return _operation_t<Rcv>{std::move(rcv), s._state}; }
+			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, auto) noexcept { return {}; }
+			template<decays_to<type> T, receiver_of<signs_t> Rcv>
+			friend operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) { return operation_t<Rcv>{std::move(rcv), s._state}; }
 
 			/* Since we already have a reference counted state, there is no need to split it further. */
 			template<decays_to<type> T>
 			friend constexpr type tag_invoke(split_t, T &&s) noexcept { return type{std::forward(s)._state}; }
 
+		private:
 			detail::shared_handle<shared_state<Snd, Env>> _state;
 		};
 
