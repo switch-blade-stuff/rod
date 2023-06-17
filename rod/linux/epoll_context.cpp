@@ -152,13 +152,13 @@ namespace rod::_epoll
 			return;
 
 		if (!_timers.empty())
-			for (const auto now = monotonic_clock::now(); !_timers.empty() && _timers.front()->_tp <= now;)
+			for (const auto now = monotonic_clock::now(); !_timers.empty() && _timers.front()->timeout <= now;)
 			{
 				const auto node = _timers.pop_front();
 				/* Handle timer cancellation. */
-				if (node->_stop_possible())
+				if (node->stop_possible())
 				{
-					const auto flags = node->_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
+					const auto flags = node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
 					if (flags & flags_t::stop_requested) continue;
 				}
 				schedule_consumer(node);
@@ -174,7 +174,7 @@ namespace rod::_epoll
 				_timer_pending = false;
 			}
 		}
-		else if (const auto next_timeout = _timers.front()->_tp; _timer_started && _next_timeout < next_timeout)
+		else if (const auto next_timeout = _timers.front()->timeout; _timer_started && _next_timeout < next_timeout)
 			_timer_pending = false;
 		else if ((_timer_started = !set_timer(next_timeout)))
 		{
@@ -253,7 +253,7 @@ namespace rod::_epoll
 		for (;;)
 		{
 			for (auto queue = std::move(_consumer_queue); !queue.empty();)
-				queue.pop_front()->_notify();
+				queue.pop_front()->notify();
 			if (std::exchange(_stop_pending, false)) [[unlikely]]
 				return;
 
@@ -268,7 +268,7 @@ namespace rod::_epoll
 	void context::finish()
 	{
 		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
-		_notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->_stop_pending = true; };
+		notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->_stop_pending = true; };
 		schedule(this);
 	}
 }

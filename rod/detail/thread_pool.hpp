@@ -150,18 +150,14 @@ namespace rod
 		template<typename Snd, typename Rcv, typename Shape, typename Fn, typename ThrowTag>
 		class bulk_receiver<Snd, Rcv, Shape, Fn, ThrowTag>::type
 		{
-			template<typename, typename, typename, typename>
-			friend struct bulk_operation;
+			using shared_state_t = bulk_shared_state<Snd, Rcv, Shape, Fn, ThrowTag>;
 
 		public:
 			using is_receiver = std::true_type;
 
-		private:
-			using shared_state_t = bulk_shared_state<Snd, Rcv, Shape, Fn, ThrowTag>;
-
-			constexpr type(shared_state_t *state) noexcept : _state(state) {}
-
 		public:
+			constexpr explicit type(shared_state_t *state) noexcept : _state(state) {}
+
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept { return get_env(r._state->rcv); }
 
 			template<std::same_as<set_value_t> C, typename... Args>
@@ -176,8 +172,6 @@ namespace rod
 		template<typename Rcv>
 		class operation<Rcv>::type : operation_base
 		{
-			friend class sender;
-
 			static void notify_complete(operation_base *p, std::size_t) noexcept
 			{
 				auto &rcv = static_cast<type *>(p)->_rcv;
@@ -187,11 +181,11 @@ namespace rod
 					set_value(std::move(rcv));
 			}
 
-			constexpr type(thread_pool *pool, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : operation_base{notify_complete}, _rcv(std::move(rcv)), _pool(pool) {}
-
 		public:
 			type() = delete;
 			type(const type &) = delete;
+
+			constexpr explicit type(thread_pool *pool, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : operation_base{notify_complete}, _rcv(std::forward<Rcv>(rcv)), _pool(pool) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
@@ -204,9 +198,6 @@ namespace rod
 		template<typename Snd, typename Rcv, typename Shape, typename Fn>
 		class bulk_operation<Snd, Rcv, Shape, Fn>::type
 		{
-			template<typename, typename, typename>
-			friend struct bulk_sender;
-
 			template<typename... Ts>
 			using test_nothrow = std::bool_constant<bulk_nothrow<Fn, Shape, Ts...>>;
 			using is_throwing = std::negation<value_types_of_t<Snd, env_of_t<Rcv>, test_nothrow, std::conjunction>>;
@@ -215,13 +206,13 @@ namespace rod
 			using shared_state_t = bulk_shared_state<Snd, Rcv, Shape, Fn, is_throwing>;
 			using connect_state_t = connect_result_t<Snd, receiver_t>;
 
-			template<typename Snd2, typename Fn2>
-			constexpr type(thread_pool *pool, Snd2 &&snd, Rcv rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<shared_state_t, thread_pool *, Rcv, Shape, Fn2> && detail::nothrow_callable<connect_t, Snd, receiver_t>)
-					: _shared_state(pool, std::move(rcv), shape, std::forward<Fn2>(fn)), _connect_state{connect(std::forward<Snd2>(snd), receiver_t{&_shared_state})} {}
-
 		public:
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
+
+			template<typename Snd2, typename Fn2>
+			constexpr explicit type(thread_pool *pool, Snd2 &&snd, Rcv &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<shared_state_t, thread_pool *, Rcv, Shape, Fn2> && detail::nothrow_callable<connect_t, Snd, receiver_t>)
+					: _shared_state(pool, std::forward<Rcv>(rcv), shape, std::forward<Fn2>(fn)), _connect_state{connect(std::forward<Snd2>(snd), receiver_t{&_shared_state})} {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._connect_state); }
 
@@ -311,8 +302,6 @@ namespace rod
 
 		class sender
 		{
-			friend class scheduler;
-
 		public:
 			using is_sender = std::true_type;
 
@@ -321,20 +310,17 @@ namespace rod
 			template<typename Rcv>
 			using operation_t = typename operation<Rcv>::type;
 
-			constexpr sender(thread_pool *pool) noexcept : _pool(pool) {}
-
 		public:
+			constexpr explicit sender(thread_pool *pool) noexcept : _pool(pool) {}
+
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._pool}; }
 			template<decays_to<sender> T, typename E>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
 			template<decays_to<sender> T, receiver_of<signs_t> Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::move(rcv)); }
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return operation_t<Rcv>{s._pool, std::move(rcv)}; }
 
 		private:
-			template<typename Rcv>
-			constexpr auto connect(Rcv &&rcv) const { return operation_t<Rcv>{_pool, std::forward<Rcv>(rcv)}; }
-
 			thread_pool *_pool;
 		};
 		template<typename Snd, typename Shape, typename Fn>
@@ -361,14 +347,11 @@ namespace rod
 			template<typename T, typename Rcv>
 			using operation_t = typename bulk_operation<copy_cvref_t<T, Snd>, std::decay_t<Rcv>, Shape, Fn>::type;
 
-			template<decays_to<type> T, typename Rcv>
-			constexpr static auto connect(T &&s, Rcv &&rcv) { return operation_t<T, Rcv>{s._pool,  std::forward<T>(s)._snd, std::forward<Rcv>(rcv), s._shape, std::forward<T>(s)._fn}; }
-
+		public:
 			template<typename Snd2, typename Fn2>
-			constexpr type(thread_pool *pool, Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Fn, Fn2>)
+			constexpr explicit type(thread_pool *pool, Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Fn, Fn2>)
 					: _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _pool(pool), _shape(shape) {}
 
-		public:
 			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept { return get_env(s._snd); }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env &&) noexcept { return {}; }
@@ -376,7 +359,7 @@ namespace rod
 			template<decays_to<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, thread_pool *, copy_cvref_t<T, Snd>, Rcv, Shape, copy_cvref_t<T, Fn>>)
 			{
-				return connect(std::forward<T>(s), std::move(rcv));
+				return operation_t<T, Rcv>{s._pool,  std::forward<T>(s)._snd, std::move(rcv), s._shape, std::forward<T>(s)._fn};
 			}
 
 		private:
@@ -388,13 +371,11 @@ namespace rod
 
 		class scheduler
 		{
-			friend class thread_pool;
-
 			template<typename Snd, typename Shape, typename Fn>
 			using bulk_sender_t = typename bulk_sender<std::decay_t<Snd>, Shape, std::decay_t<Fn>>::type;
 
 		public:
-			constexpr scheduler(thread_pool *pool) noexcept : _pool(pool) {}
+			constexpr explicit scheduler(thread_pool *pool) noexcept : _pool(pool) {}
 
 			constexpr bool operator==(const scheduler &) const noexcept = default;
 
@@ -426,7 +407,7 @@ namespace rod
 		template<typename T>
 		constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return e._pool->get_scheduler(); }
 
-		constexpr scheduler thread_pool::get_scheduler() noexcept { return {this}; }
+		constexpr scheduler thread_pool::get_scheduler() noexcept { return scheduler{this}; }
 	}
 
 	using _thread_pool::thread_pool;

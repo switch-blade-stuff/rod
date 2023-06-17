@@ -30,7 +30,7 @@ namespace rod
 		using time_point = typename clock::time_point;
 
 		class context;
-		struct scheduler;
+		class scheduler;
 
 		struct env { context *_ctx; };
 
@@ -98,46 +98,46 @@ namespace rod
 
 		struct operation_base
 		{
-			using _notify_func_t = void (*)(operation_base *);
+			using notify_func_t = void (*)(operation_base *);
 
 			operation_base(operation_base &&) = delete;
 			operation_base &operator=(operation_base &&) = delete;
 
 			constexpr operation_base() noexcept = default;
 
-			void _notify() noexcept { std::exchange(_notify_func, {})(this); }
+			void notify() noexcept { std::exchange(notify_func, {})(this); }
 
-			_notify_func_t _notify_func = {};
-			operation_base *_next = {};
+			notify_func_t notify_func = {};
+			operation_base *next = {};
 		};
 		struct timer_base : operation_base
 		{
-			constexpr timer_base(context &ctx, time_point tp, bool can_stop) noexcept : _flags(can_stop ? flags_t::stop_possible : 0), _tp(tp), _ctx(ctx) {}
+			constexpr timer_base(context *ctx, time_point tp, bool can_stop) noexcept : flags(can_stop ? flags_t::stop_possible : 0), timeout(tp), ctx(ctx) {}
 
-			[[nodiscard]] bool _stop_possible() const noexcept { return _flags.load(std::memory_order_relaxed) & flags_t::stop_possible; }
+			[[nodiscard]] bool stop_possible() const noexcept { return flags.load(std::memory_order_relaxed) & flags_t::stop_possible; }
 
-			timer_base *_timer_prev = {};
-			timer_base *_timer_next = {};
-			std::atomic<int> _flags = {};
-			time_point _tp = {};
-			context &_ctx;
+			timer_base *timer_prev = {};
+			timer_base *timer_next = {};
+			std::atomic<int> flags = {};
+			time_point timeout = {};
+			context *ctx;
 		};
 
 		struct complete_base : operation_base {};
 		struct stop_base : operation_base {};
 
-		struct sender;
+		class sender;
 		template<typename Rcv>
-		struct operation { struct type; };
+		struct operation { class type; };
 
-		struct timer_sender;
+		class timer_sender;
 		template<typename Rcv>
-		struct timer_operation { struct type; };
+		struct timer_operation { class type; };
 
 		template<typename Op>
-		struct io_sender { struct type; };
+		struct io_sender { class type; };
 		template<typename Op, typename Rcv>
-		struct io_operation { struct type; };
+		struct io_operation { class type; };
 
 		class context : operation_base
 		{
@@ -153,10 +153,10 @@ namespace rod
 			using clock = _epoll::clock;
 
 		private:
-			struct timer_cmp { constexpr bool operator()(const timer_base &a, const timer_base &b) const noexcept { return a._tp <= b._tp; }};
-			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::_timer_prev, &timer_base::_timer_next>;
-			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::_next>;
-			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
+			struct timer_cmp { constexpr bool operator()(const timer_base &a, const timer_base &b) const noexcept { return a.timeout <= b.timeout; }};
+			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::timer_prev, &timer_base::timer_next>;
+			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::next>;
+			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::next>;
 
 			template<typename Op>
 			using io_cmd_t = typename io_cmd<Op>::type;
@@ -270,9 +270,9 @@ namespace rod
 		};
 
 		template<typename Rcv>
-		struct operation<Rcv>::type : operation_base
+		class operation<Rcv>::type : operation_base
 		{
-			static void _notify_complete(operation_base *ptr) noexcept
+			static void notify_complete(operation_base *ptr) noexcept
 			{
 				auto &op = *static_cast<type *>(ptr);
 				if (get_stop_token(get_env(op._rcv)).stop_requested())
@@ -281,33 +281,36 @@ namespace rod
 					set_value(std::move(op._rcv));
 			}
 
-			template<typename Rcv2>
-			constexpr type(context &ctx, Rcv2 &&rcv) : _rcv(std::forward<Rcv2>(rcv)), _ctx(ctx) { _notify_func = _notify_complete; }
+		public:
+			constexpr explicit type(context *ctx, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : _rcv(std::forward<Rcv>(rcv)), _ctx(ctx) { notify_func = notify_complete; }
 
-			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
+			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
-			void _start() noexcept
+		private:
+			void start() noexcept
 			{
 				std::error_code err = {};
-				_ctx.schedule(this, err);
+				_ctx->schedule(this, err);
 				if (err) [[unlikely]] set_error(std::move(_rcv), err);
 			}
 
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
-			context &_ctx;
+			context *_ctx;
 		};
 		template<typename Rcv>
-		struct timer_operation<Rcv>::type : timer_base
+		class timer_operation<Rcv>::type : timer_base
 		{
-			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_value(); }
-			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_complete_stopped(); }
-			static void _notify_request_stop(operation_base *ptr) noexcept { static_cast<type *>(ptr)->_request_stop_consumer(); }
+			static void notify_value(operation_base *ptr) noexcept { static_cast<type *>(ptr)->complete_value(); }
+			static void notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(ptr)->complete_stopped(); }
+			static void notify_request_stop(operation_base *ptr) noexcept { static_cast<type *>(ptr)->request_stop_consumer(); }
 
-			constexpr type(context &ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_base(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
+		public:
+			constexpr explicit type(context *ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_base(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
 
-			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
+			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
-			void _complete_value() noexcept
+		private:
+			void complete_value() noexcept
 			{
 				/* Handle spontaneous stop requests. */
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
@@ -315,13 +318,13 @@ namespace rod
 					_stop_cb.reset();
 					if (get_stop_token(get_env(_rcv)).stop_requested())
 					{
-						_complete_stopped();
+						complete_stopped();
 						return;
 					}
 				}
 				set_value(std::move(_rcv));
 			}
-			void _complete_stopped() noexcept
+			void complete_stopped() noexcept
 			{
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));
@@ -329,96 +332,97 @@ namespace rod
 					std::terminate();
 			}
 
-			void _start() noexcept
+			void start() noexcept
 			{
-				if (_ctx.is_consumer_thread())
-					_start_consumer();
+				if (ctx->is_consumer_thread())
+					start_consumer();
 				else
 				{
 					std::error_code err = {};
-					_notify_func = [](operation_base *p) noexcept { static_cast<type *>(p)->_start_consumer(); };
-					_ctx.schedule_producer(this, err);
+					notify_func = [](operation_base *p) noexcept { static_cast<type *>(p)->start_consumer(); };
+					ctx->schedule_producer(this, err);
 					if (err) [[unlikely]] set_error(std::move(_rcv), err);
 				}
 			}
-			void _start_consumer() noexcept
+			void start_consumer() noexcept
 			{
 				/* Bail if a stop has already been requested. */
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					if (get_stop_token(get_env(_rcv)).stop_requested())
 					{
-						_notify_func = _notify_stopped;
-						_ctx.schedule_consumer(this);
+						notify_func = notify_stopped;
+						ctx->schedule_consumer(this);
 						return;
 					}
 
-				_notify_func = _notify_value;
-				_ctx.add_timer(this);
+				notify_func = notify_value;
+				ctx->add_timer(this);
 
 				/* Initialize the stop callback for stoppable environments. */
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.init(get_env(_rcv), this);
 			}
 
-			void _request_stop() noexcept
+			void request_stop() noexcept
 			{
 				if constexpr (!detail::stoppable_env<env_of_t<Rcv>>)
 					std::terminate();
-				else if (_ctx.is_consumer_thread())
-					_request_stop_consumer();
-				else if (!(_flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched))
+				else if (ctx->is_consumer_thread())
+					request_stop_consumer();
+				else if (!(flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched))
 				{
 					/* Timer has not yet been dispatched, schedule stop request. */
-					_notify_func = _notify_request_stop;
-					_ctx.schedule_producer(this);
+					notify_func = notify_request_stop;
+					ctx->schedule_producer(this);
 				}
 			}
-			void _request_stop_consumer() noexcept
+			void request_stop_consumer() noexcept
 			{
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
 
-				_notify_func = _notify_stopped;
-				if (!(_flags.load(std::memory_order_relaxed) & flags_t::dispatched))
+				notify_func = notify_stopped;
+				if (!(flags.load(std::memory_order_relaxed) & flags_t::dispatched))
 				{
 					/* Timer has not yet been dispatched, schedule stop completion. */
-					_ctx.del_timer(this);
-					_ctx.schedule_consumer(this);
+					ctx->del_timer(this);
+					ctx->schedule_consumer(this);
 				}
 			}
 
-			using _stop_cb_t = stop_cb<env_of_t<Rcv>, &type::_request_stop>;
+			using stop_cb_t = stop_cb<env_of_t<Rcv>, &type::request_stop>;
 
-			ROD_NO_UNIQUE_ADDRESS _stop_cb_t _stop_cb;
+			ROD_NO_UNIQUE_ADDRESS stop_cb_t _stop_cb;
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
 		template<typename Op, typename Rcv>
-		struct io_operation<Op, Rcv>::type : private complete_base, private stop_base
+		class io_operation<Op, Rcv>::type : complete_base, stop_base
 		{
-			using _io_cmd_t = typename io_cmd<Op>::type;
+			using io_cmd_t = typename io_cmd<Op>::type;
 
-			static void _notify_start(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_start_consumer(); }
-			static void _notify_value(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->_complete_value(); }
-			static void _notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->_complete_stopped(); }
+			static void notifystart(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->start_consumer(); }
+			static void notify_value(operation_base *ptr) noexcept { static_cast<type *>(static_cast<complete_base *>(ptr))->complete_value(); }
+			static void notify_stopped(operation_base *ptr) noexcept { static_cast<type *>(static_cast<stop_base *>(ptr))->complete_stopped(); }
 
-			template<typename Rcv2>
-			explicit type(context &ctx, Rcv2 &&rcv, _io_cmd_t cmd) : _rcv(std::forward<Rcv2>(rcv)), _cmd(std::move(cmd)), _ctx(ctx) {}
+		public:
+			constexpr explicit type(context *ctx, Rcv &&rcv, io_cmd_t cmd) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : _rcv(std::forward<Rcv>(rcv)), _cmd(std::move(cmd)), _ctx(ctx) {}
 
-			friend void tag_invoke(start_t, type &op) noexcept { op._start(); }
+			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
-			void _complete_value() noexcept
+		private:
+			void complete_value() noexcept
 			{
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
 				if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
 					return;
 
-				_ctx.add_io(static_cast<complete_base *>(this), _cmd);
+				_ctx->add_io(static_cast<complete_base *>(this), _cmd);
 				std::error_code err = {};
 				const auto res = _cmd(err);
-				_complete_value(res, err);
+				complete_value(res, err);
 			}
-			void _complete_value(std::size_t res, std::error_code err) noexcept
+			void complete_value(std::size_t res, std::error_code err) noexcept
 			{
 				if (!err)
 					[[likely]] set_value(std::move(_rcv), res);
@@ -428,54 +432,54 @@ namespace rod
 					set_stopped(std::move(_rcv));
 			}
 
-			void _start() noexcept
+			void start() noexcept
 			{
-				if (_ctx.is_consumer_thread())
-					_start_consumer();
+				if (_ctx->is_consumer_thread())
+					start_consumer();
 				else
 				{
 					std::error_code err = {};
-					complete_base::_notify_func = _notify_start;
-					_ctx.schedule_producer(static_cast<complete_base *>(this), err);
+					complete_base::notify_func = notifystart;
+					_ctx->schedule_producer(static_cast<complete_base *>(this), err);
 					if (err) [[unlikely]] set_error(std::move(_rcv), err);
 				}
 			}
-			void _start_consumer() noexcept
+			void start_consumer() noexcept
 			{
 				std::error_code err = {};
 				const auto res = _cmd(err);
 				if (const auto code = err.value(); code == EAGAIN || code == EWOULDBLOCK || code == EPERM)
 				{
 					/* Schedule read operation via EPOLL. */
-					complete_base::_notify_func = _notify_value;
+					complete_base::notify_func = notify_value;
 					if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 						_stop_cb.init(get_env(_rcv), this);
 
-					_ctx.add_io(static_cast<complete_base *>(this), _cmd);
+					_ctx->add_io(static_cast<complete_base *>(this), _cmd);
 					return;
 				}
 
 				if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
 					return; /* Already stopped on a different thread. */
 
-				_complete_value(res, err);
+				complete_value(res, err);
 			}
 
-			void _request_stop() noexcept
+			void request_stop() noexcept
 			{
 				if (!(_flags.fetch_or(flags_t::stop_requested, std::memory_order_acq_rel) & flags_t::dispatched))
 				{
-					_ctx.del_io(_cmd.fd.native_handle());
-					stop_base::_notify_func = _notify_stopped;
-					_ctx.schedule_producer(static_cast<stop_base *>(this));
+					_ctx->del_io(_cmd.fd.native_handle());
+					stop_base::notify_func = notify_stopped;
+					_ctx->schedule_producer(static_cast<stop_base *>(this));
 				}
 			}
-			void _complete_stopped() noexcept
+			void complete_stopped() noexcept
 			{
-				if (complete_base::_notify_func)
+				if (complete_base::notify_func)
 				{
-					stop_base::_notify_func = _notify_stopped;
-					_ctx.schedule_consumer(static_cast<stop_base *>(this));
+					stop_base::notify_func = notify_stopped;
+					_ctx->schedule_consumer(static_cast<stop_base *>(this));
 				}
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));
@@ -483,115 +487,130 @@ namespace rod
 					std::terminate();
 			}
 
-			using _stop_cb_t = stop_cb<env_of_t<Rcv>, &type::_request_stop>;
+			using stop_cb_t = stop_cb<env_of_t<Rcv>, &type::request_stop>;
 
-			ROD_NO_UNIQUE_ADDRESS _stop_cb_t _stop_cb;
+			ROD_NO_UNIQUE_ADDRESS stop_cb_t _stop_cb;
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			std::atomic<int> _flags = {};
-			_io_cmd_t _cmd;
-			context &_ctx;
+			io_cmd_t _cmd;
+			context *_ctx;
 		};
 
-		struct sender
+		class sender
 		{
+		public:
 			using is_sender = std::true_type;
 
+		private:
 			template<typename Rcv>
-			using _operation_t = typename operation<std::decay_t<Rcv>>::type;
+			using operation_t = typename operation<std::decay_t<Rcv>>::type;
 
 			template<typename Env>
-			using _stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			using stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
 			template<typename Env>
-			using _signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, _stop_signs_t<Env>>;
+			using signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, stop_signs_t<Env>>;
 
-			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {&s._ctx}; }
+		public:
+			constexpr explicit sender(context *ctx) noexcept : _ctx(ctx) {}
+
+			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._ctx}; }
 			template<decays_to<sender> T, typename Env>
-			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+			friend constexpr signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<sender> T, rod::receiver Rcv>
-			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
+			template<decays_to<sender> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<env_of_t<Rcv>>>
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
-				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
-				return _operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv)};
+				return operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv)};
 			}
 
-			context &_ctx;
+		private:
+			context *_ctx;
 		};
-		struct timer_sender
+		class timer_sender
 		{
+		public:
 			using is_sender = std::true_type;
 
+		private:
 			template<typename Rcv>
-			using _operation_t = typename timer_operation<std::decay_t<Rcv>>::type;
+			using operation_t = typename timer_operation<std::decay_t<Rcv>>::type;
 
 			template<typename Env>
-			using _stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			using stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
 			template<typename Env>
-			using _signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, _stop_signs_t<Env>>;
+			using signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, stop_signs_t<Env>>;
 
-			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {&s._ctx}; }
+		public:
+			constexpr explicit timer_sender(time_point tp, context *ctx) noexcept : _tp(tp), _ctx(ctx) {}
+
+			friend constexpr env tag_invoke(get_env_t, const timer_sender &s) noexcept { return {s._ctx}; }
 			template<decays_to<timer_sender> T, typename Env>
-			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
+			friend constexpr signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<timer_sender> T, rod::receiver Rcv>
-			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
+			template<decays_to<timer_sender> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<env_of_t<Rcv>>>
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
-				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
-				return _operation_t<Rcv>{s._ctx, s._tp, std::forward<Rcv>(rcv)};
+				return operation_t<Rcv>{s._ctx, s._tp, std::forward<Rcv>(rcv)};
 			}
 
+		private:
 			time_point _tp;
-			context &_ctx;
+			context *_ctx;
 		};
 		template<typename Op>
-		struct io_sender<Op>::type
+		class io_sender<Op>::type
 		{
+		public:
 			using is_sender = std::true_type;
-			using _signs_t = completion_signatures<set_value_t(std::size_t), set_error_t(std::error_code), set_stopped_t()>;
+
+		private:
+			using signs_t = completion_signatures<set_value_t(std::size_t), set_error_t(std::error_code), set_stopped_t()>;
 			template<typename Rcv>
-			using _operation_t = typename io_operation<Op, std::decay_t<Rcv>>::type;
-			using _io_cmd_t = typename io_cmd<Op>::type;
+			using operation_t = typename io_operation<Op, std::decay_t<Rcv>>::type;
+			using io_cmd_t = typename io_cmd<Op>::type;
 
+		public:
 			template<typename... Args>
-			type(context &ctx, Args &&...args) noexcept : _cmd(std::forward<Args>(args)...), _ctx(ctx) {}
+			constexpr explicit type(context *ctx, Args &&...args) noexcept : _cmd(std::forward<Args>(args)...), _ctx(ctx) {}
 
-			friend env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
+			friend env tag_invoke(get_env_t, const type &s) noexcept { return {s._ctx}; }
 			template<decays_to<type> T, typename Env>
-			friend _signs_t tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
-			template<decays_to<type> T, rod::receiver Rcv>
-			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
-			{
-				static_assert(receiver_of<Rcv, _signs_t>);
-				return _operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv), std::forward<T>(s)._cmd};
-			}
+			friend signs_t tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			_io_cmd_t _cmd;
-			context &_ctx;
+			template<decays_to<type> T, receiver_of<signs_t> Rcv>
+			friend operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>) { return operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv), std::forward<T>(s)._cmd}; }
+
+		private:
+			io_cmd_t _cmd;
+			context *_ctx;
 		};
 
-		struct scheduler
+		class scheduler
 		{
 			template<typename Op>
-			using _io_sender_t = typename io_sender<Op>::type;
+			using io_sender_t = typename io_sender<Op>::type;
+
+		public:
+			constexpr explicit scheduler(context *ctx) noexcept : _ctx(ctx) {}
 
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::weakly_parallel; }
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 
 			template<decays_to<scheduler> T>
-			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{*s._ctx}; }
+			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return sender{s._ctx}; }
 			template<decays_to<scheduler> T, decays_to<time_point> Tp>
-			friend constexpr auto tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return timer_sender{std::forward<Tp>(tp), *s._ctx}; }
+			friend constexpr auto tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return timer_sender{std::forward<Tp>(tp), s._ctx}; }
 			template<decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
 			template<typename Buff>
-			friend auto tag_invoke(schedule_read_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return _io_sender_t<schedule_read_some_t>{*sch._ctx, fd, buff}; }
+			friend auto tag_invoke(schedule_read_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return io_sender_t<schedule_read_some_t>{sch._ctx, fd, buff}; }
 			template<typename Buff>
-			friend auto tag_invoke(schedule_write_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return _io_sender_t<schedule_write_some_t>{*sch._ctx, fd, buff}; }
+			friend auto tag_invoke(schedule_write_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return io_sender_t<schedule_write_some_t>{sch._ctx, fd, buff}; }
 			template<std::convertible_to<std::size_t> Pos, typename Buff>
-			friend auto tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return _io_sender_t<schedule_read_some_at_t>{*sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
+			friend auto tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return io_sender_t<schedule_read_some_at_t>{sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
 			template<std::convertible_to<std::size_t> Pos, typename Buff>
-			friend auto tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return _io_sender_t<schedule_write_some_at_t>{*sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
+			friend auto tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return io_sender_t<schedule_write_some_at_t>{sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
 
 			template<typename Snd, typename Dst>
 			friend decltype(auto) tag_invoke(async_read_some_t, scheduler sch, Snd &&snd, int fd, Dst &&dst)
@@ -631,10 +650,11 @@ namespace rod
 
 			constexpr bool operator==(const scheduler &) const noexcept = default;
 
+		private:
 			context *_ctx;
 		};
 
-		constexpr scheduler context::get_scheduler() noexcept { return {this}; }
+		constexpr scheduler context::get_scheduler() noexcept { return scheduler{this}; }
 		constexpr auto tag_invoke(get_stop_token_t, const env &e) noexcept { return e._ctx->get_stop_token(); }
 		template<typename T>
 		constexpr auto tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return e._ctx->get_scheduler(); }

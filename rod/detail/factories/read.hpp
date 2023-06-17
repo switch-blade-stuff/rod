@@ -12,35 +12,35 @@ namespace rod
 	namespace _read
 	{
 		template<typename, typename>
-		struct operation { struct type; };
+		struct operation { class type; };
 		template<typename>
 		struct sender { struct type; };
 
-		template<typename T, typename R>
-		struct operation<T, R>::type
+		template<typename T, typename Rcv>
+		class operation<T, Rcv>::type
 		{
-			friend constexpr void tag_invoke(start_t, type &op) noexcept
-			{
-				auto &rcv = op.receiver;
-				detail::rcv_try_invoke(std::move(rcv), set_value, std::move(rcv), T{}(get_env(rcv)));
-			}
+		public:
+			constexpr explicit type(Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : _rcv(std::forward<Rcv>(rcv)) {}
 
-			ROD_NO_UNIQUE_ADDRESS R receiver;
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { detail::rcv_try_invoke(std::move(op._rcv), set_value, std::move(op._rcv), T{}(get_env(op._rcv))); }
+
+		private:
+			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
 		template<typename T>
 		struct sender<T>::type
 		{
 			using is_sender = std::true_type;
 
-			template<rod::receiver R>
-			[[nodiscard]] constexpr friend typename operation<T, std::decay_t<R>>::type tag_invoke(connect_t, type, R &&r) { return {std::forward<R>(r)}; }
+			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 
 			template<typename Env> requires tag_invocable<T, Env>
 			friend constexpr auto tag_invoke(get_completion_signatures_t, type, Env) -> completion_signatures<set_value_t(std::invoke_result_t<T, Env>), set_error_t(std::exception_ptr)> { return {}; }
 			template<typename Env> requires nothrow_tag_invocable<T, Env>
 			friend constexpr auto tag_invoke(get_completion_signatures_t, type, Env) -> completion_signatures<set_value_t(std::invoke_result_t<T, Env>)> { return {}; }
 
-			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
+			template<rod::receiver R>
+			friend constexpr auto tag_invoke(connect_t, type, R &&r) { return typename operation<T, std::decay_t<R>>::type{std::forward<R>(r)}; }
 		};
 
 		struct read_t

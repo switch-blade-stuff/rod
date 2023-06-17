@@ -66,9 +66,9 @@ namespace rod
 		private:
 			using operation_base_t = typename operation_base<C, Rcv, Fn, Ts...>::type;
 
-			constexpr type(operation_base_t *op) noexcept : _op(op) {}
-
 		public:
+			constexpr explicit type(operation_base_t *op) noexcept : _op(op) {}
+
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
 			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
@@ -105,20 +105,17 @@ namespace rod
 		template<typename C, typename Snd, typename Rcv, typename Fn>
 		class operation<C, Snd, Rcv, Fn>::type : bind_receiver<C, Snd, Rcv, Fn>::operation_base_t
 		{
-			template<typename, typename, typename>
-			friend struct sender;
-
 		private:
 			using operation_base_t = typename bind_receiver<C, Snd, Rcv, Fn>::operation_base_t;
 			using receiver_t = bind_receiver<C, Snd, Rcv, Fn>;
 			using state_t = connect_result_t<Snd, receiver_t>;
 
-			template<typename Snd2>
-			constexpr type(Snd2 &&snd, Rcv &&rcv, Fn fn) : operation_base_t{std::forward<Rcv>(rcv), std::move(fn)}, _state(connect(std::forward<Snd>(snd), receiver_t{this})) {}
-
 		public:
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
+
+			template<typename Snd2>
+			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Fn fn) : operation_base_t{std::forward<Rcv>(rcv), std::move(fn)}, _state(connect(std::forward<Snd>(snd), receiver_t{this})) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
@@ -129,8 +126,6 @@ namespace rod
 		template<typename C, typename Snd, typename Fn>
 		class sender<C, Snd, Fn>::type
 		{
-			friend let_channel<C>;
-
 		public:
 			using is_sender = std::true_type;
 
@@ -145,19 +140,19 @@ namespace rod
 			template<typename T, typename Env>
 			using signs_t = detail::apply_tuple_list_t<detail::bind_front<apply_filter, Env>::template type, completion_signatures_of_t<copy_cvref_t<T, Snd>, Env>>;
 
-			template<decays_to<type> T, typename Rcv>
-			constexpr static auto connect(T &&s, Rcv &&rcv) { return operation_t<T, Rcv>{std::forward<T>(s)._snd, std::forward<Rcv>(rcv), std::forward<T>(s)._fn}; }
-
-			template<typename Snd2, typename Fn2>
-			constexpr type(Snd2 &&snd, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)) {}
-
 		public:
+			template<typename Snd2, typename Fn2>
+			constexpr explicit type(Snd2 &&snd, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)) {}
+
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template <decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<T, Rcv>>
-			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) { return connect(std::forward<T>(s), std::move(rcv)); }
+			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Fn>>)
+			{
+				return operation_t<T, Rcv>{std::forward<T>(s)._snd, std::move(rcv), std::forward<T>(s)._fn};
+			}
 
 		private:
 			ROD_NO_UNIQUE_ADDRESS Snd _snd;
