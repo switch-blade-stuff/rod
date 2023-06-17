@@ -104,7 +104,7 @@ namespace rod
 			template<decays_to<sender> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
-			template<decays_to<sender> T, typename Rcv>
+			template<decays_to<sender> T, rod::receiver Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
 
 		private:

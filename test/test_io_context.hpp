@@ -47,8 +47,10 @@ inline void test_io_context(auto &&ctx)
 
 		rod::sync_wait(rod::when_all(snd1, snd2, snd0));
 	}
+#ifdef ROD_HAS_COROUTINES
 	{
 		rod::sync_wait([&]() -> rod::task<> { co_await rod::schedule_after(sch, 50ms); }());
 	}
+#endif
 	ctx.finish();
 }

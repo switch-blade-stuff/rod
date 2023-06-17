@@ -54,7 +54,7 @@ namespace rod
 		template<typename Snd, typename Shape, typename Fn>
 		class sender<Snd, Shape, Fn>::type
 		{
-			friend bulk_t;
+			friend class bulk_t;
 
 		public:
 			using is_sender = std::true_type;
@@ -71,7 +71,7 @@ namespace rod
 			using signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, E, error_signs_t<copy_cvref_t<T, Snd>, E>>;
 
 			template<typename Rcv, typename... Args>
-			constexpr static decltype(auto) make_rcv(Rcv &&rcv, Args &&...args) { return receiver_t<Rcv>{std::forward<Rcv>(rcv), std::forward<Args>(args)...}; }
+			constexpr static auto make_rcv(Rcv &&rcv, Args &&...args) { return receiver_t<Rcv>{std::forward<Rcv>(rcv), std::forward<Args>(args)...}; }
 
 			template<typename Snd2, typename Fn2>
 			constexpr type(Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _shape(shape) {}

@@ -71,32 +71,26 @@ namespace rod
 		public:
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
-#ifdef _MSC_VER /* MSVC was crashing in `'...convert.cpp', line 790` when the constraint was present. */
-			template<typename T, typename... Args>
-			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete(T{}, std::forward<Args>(args)...); }
-#else
-			template<typename T, typename... Args> requires(requires (type &&r, Args &&...args) { r.complete(T{}, std::forward<Args>(args)...); })
-			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete(T{}, std::forward<Args>(args)...); }
-#endif
-
+			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
+			friend void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_forward(T{}, std::forward<Args>(args)...); }
+			template<detail::completion_channel T, typename... Args> requires decays_to<T, C> && std::invocable<Fn, Args...>
+			friend void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_selected(std::forward<Args>(args)...); }
 
 		private:
+			template<typename T, typename... Args>
+			constexpr void complete_forward(T, Args &&...args) noexcept { T{}(std::move(_op->_rcv), std::forward<Args>(args)...); }
 			template<typename... Args>
-			constexpr auto connect(Args &&...args) noexcept(std::is_nothrow_constructible_v<detail::decayed_tuple<Args...>, Args...>)
-			{
-				auto &tuple = _op->_res.template emplace<detail::decayed_tuple<Args...>>(std::forward<Args>(args)...);
-				return detail::implicit_eval{[&]() { return rod::connect(std::apply(std::move(_op->_fn), tuple), std::move(_op->_rcv)); }};
-			}
-
-			template<typename T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
-			constexpr void complete(T, Args &&...args) { T{}(std::move(_op->_rcv), std::forward<Args>(args)...); }
-			template<typename T, typename... Args> requires std::same_as<T, C> && std::invocable<Fn, Args...>
-			constexpr void complete(T, Args &&...args)
+			constexpr void complete_selected(Args &&...args) noexcept
 			{
 				static_assert(sender_to<std::invoke_result_t<Fn, Args...>, Rcv>, "Sender returned by the functor of `rod::let` must be connectable with it's downstream receiver");
-
 				using state_t = deduce_state_t<Rcv, Fn, detail::decayed_tuple<Args...>>;
-				try { start(_op->_state.template emplace<state_t>(connect(std::forward<Args>(args)...))); }
+
+				const auto connect = [&]()
+				{
+					auto &tuple = _op->_res.template emplace<detail::decayed_tuple<Args...>>(std::forward<Args>(args)...);
+					return rod::connect(std::apply(std::move(_op->_fn), tuple), std::move(_op->_rcv));
+				};
+				try { start(_op->_state.template emplace<state_t>(detail::eval_t{connect})); }
 				catch (...) { set_error(std::move(_op->_rcv), std::current_exception()); }
 			}
 
@@ -162,7 +156,7 @@ namespace rod
 			template <decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<type> T, typename Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<T, Rcv>>
+			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<T, Rcv>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) { return connect(std::forward<T>(s), std::move(rcv)); }
 
 		private:

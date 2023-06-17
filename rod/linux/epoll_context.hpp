@@ -508,7 +508,7 @@ namespace rod
 			template<decays_to<sender> T, typename Env>
 			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<sender> T, typename Rcv>
+			template<decays_to<sender> T, rod::receiver Rcv>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
@@ -533,7 +533,7 @@ namespace rod
 			template<decays_to<timer_sender> T, typename Env>
 			friend constexpr _signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<timer_sender> T, typename Rcv>
+			template<decays_to<timer_sender> T, rod::receiver Rcv>
 			friend constexpr _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t<env_of_t<Rcv>>>);
@@ -558,7 +558,7 @@ namespace rod
 			friend env tag_invoke(get_env_t, const type &s) noexcept { return {&s._ctx}; }
 			template<decays_to<type> T, typename Env>
 			friend _signs_t tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
-			template<decays_to<type> T, typename Rcv>
+			template<decays_to<type> T, rod::receiver Rcv>
 			friend _operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				static_assert(receiver_of<Rcv, _signs_t>);

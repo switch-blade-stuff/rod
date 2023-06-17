@@ -21,7 +21,7 @@ namespace rod
 		struct sender { class type; };
 
 		template<typename Rcv, typename V>
-		class receiver<Rcv, V>::type : receiver_adaptor<type, Rcv>
+		class receiver<Rcv, V>::type : public receiver_adaptor<type, Rcv>
 		{
 			friend receiver_adaptor<type, Rcv>;
 
@@ -86,10 +86,7 @@ namespace rod
 
 		public:
 			template<rod::sender Snd>
-			[[nodiscard]] constexpr sender_t<Snd> operator()(Snd &&snd) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd>, Snd>)
-			{
-				return sender_t<Snd>{std::forward<Snd>(snd)};
-			}
+			[[nodiscard]] constexpr sender_t<Snd> operator()(Snd &&snd) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd>, Snd>) { return sender_t<Snd>{std::forward<Snd>(snd)}; }
 			[[nodiscard]] constexpr back_adaptor operator()() const noexcept { return {}; }
 		};
 	}

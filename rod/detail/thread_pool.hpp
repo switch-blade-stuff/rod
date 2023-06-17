@@ -373,7 +373,7 @@ namespace rod
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env &&) noexcept { return {}; }
 
-			template<decays_to<type> T, typename Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
+			template<decays_to<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, thread_pool *, copy_cvref_t<T, Snd>, Rcv, Shape, copy_cvref_t<T, Fn>>)
 			{
 				return connect(std::forward<T>(s), std::move(rcv));

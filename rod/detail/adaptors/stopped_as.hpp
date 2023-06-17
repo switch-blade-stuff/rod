@@ -57,8 +57,8 @@ namespace rod
 		template<typename Snd, typename Rcv>
 		class operation<Snd, Rcv>::type
 		{
-			friend sender<std::decay_t<Snd>>::type;
-			friend receiver<Snd, Rcv>::type;
+			friend class sender<std::decay_t<Snd>>::type;
+			friend class receiver<Snd, Rcv>::type;
 
 			using receiver_t = typename receiver<Snd, Rcv>::type;
 			using state_t = connect_result_t<Snd, receiver_t>;
@@ -136,7 +136,7 @@ namespace rod
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<type> T, typename Rcv> requires detail::single_sender<copy_cvref_t<T, Snd>, env_of_t<Rcv>>
+			template<decays_to<type> T, rod::receiver Rcv> requires detail::single_sender<copy_cvref_t<T, Snd>, env_of_t<Rcv>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, Snd>, Rcv>)
 			{
 				return connect(std::forward<T>(s), std::move(rcv));

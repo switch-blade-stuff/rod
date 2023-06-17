@@ -246,9 +246,9 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			template<typename SndData>
-			type(SndData &&snd, Rcv rcv) : _operation_base_t{._rcv = std::move(rcv), ._count = {sizeof...(Is)}, ._state = {state_t::running}},
-			                               _states{detail::implicit_eval{[&]() { return _connect<Is>(std::forward<SndData>(snd)); }}...} {}
+			template<typename Snds2>
+			constexpr type(Snds2 &&snd, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::conjunction_v<std::is_nothrow_constructible<Snds, copy_cvref_t<Snds2, Snds>>...>)
+					: _operation_base_t{._rcv = std::move(rcv), ._count = {sizeof...(Is)}, ._state = {state_t::running}}, _states{detail::eval_t{[&]() { return _connect<Is>(std::forward<Snds2>(snd)); }}...} {}
 
 			friend void tag_invoke(start_t, type &op) noexcept
 			{
@@ -262,8 +262,8 @@ namespace rod
 					op._complete();
 			}
 
-			template<std::size_t I, typename SndData>
-			constexpr decltype(auto) _connect(SndData &&data) { return connect(std::get<I>(std::forward<SndData>(data)), _receiver_t<I>{this}); }
+			template<std::size_t I, typename Snds2>
+			constexpr decltype(auto) _connect(Snds2 &&data) { return connect(std::get<I>(std::forward<Snds2>(data)), _receiver_t<I>{this}); }
 
 			_state_data _states;
 		};
@@ -305,10 +305,9 @@ namespace rod
 			template<decays_to<type> T, typename E>
 			friend constexpr _signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<decays_to<type> T, typename Rcv>
-			friend _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv)
+			template<decays_to<type> T, rod::receiver Rcv> requires(sender_to<copy_cvref_t<T, Snds>, _receiver_t<Is, T, Rcv>> && ...)
+			friend constexpr _operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<_operation_t<T, Rcv>, copy_cvref_t<T, std::tuple<Snds...>>, Rcv>)
 			{
-				static_assert((sender_to<copy_cvref_t<T, Snds>, _receiver_t<Is, T, Rcv>> && ...));
 				return _operation_t<T, Rcv>{std::forward<T>(s)._snds, std::move(rcv)};
 			}
 

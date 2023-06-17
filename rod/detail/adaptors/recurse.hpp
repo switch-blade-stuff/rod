@@ -23,7 +23,7 @@ namespace rod
 		template<typename Snd, typename Rcv, typename Pred>
 		class receiver<Snd, Rcv, Pred>::type
 		{
-			friend operation<Snd, Rcv, Pred>::type;
+			friend class operation<Snd, Rcv, Pred>::type;
 
 		public:
 			using is_receiver = std::true_type;
@@ -34,17 +34,19 @@ namespace rod
 			constexpr type(operation_t *op) noexcept : _op(op) {}
 
 		public:
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
 
-			template<typename C, typename... Args> requires(requires(type &&r, Args &&...args) { r.complete(C{}, std::forward<Args>(args)...); })
-			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete(C{}, std::forward<Args>(args)...); }
+			template<detail::completion_channel C, typename... Args> requires decays_to<C, set_value_t> && detail::callable<Pred, Args...>
+			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_value(std::forward<Args>(args)...); }
+			template<detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_forward(C{}, std::forward<Args>(args)...); }
 
 		private:
-			constexpr auto get_env() const;
-			template<typename C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
-			constexpr void complete(C, Args &&...args) noexcept;
-			template<typename C, typename... Args> requires decays_to<C, set_value_t> && detail::callable<Pred, Args...>
-			constexpr void complete(C, Args &&...args) noexcept;
+			inline env_of_t<Rcv> get_env() const;
+			template<typename... Args>
+			inline void complete_value(Args &&...) noexcept;
+			template<typename C, typename... Args>
+			inline void complete_forward(C, Args &&...) noexcept;
 
 			operation_t *_op = {};
 		};
@@ -52,15 +54,15 @@ namespace rod
 		template<typename Snd, typename Rcv, typename Pred>
 		class operation<Snd, Rcv, Pred>::type
 		{
-			friend receiver<Snd, Rcv, Pred>::type;
-			friend sender<Snd, Pred>::type;
+			friend class receiver<Snd, Rcv, Pred>::type;
+			friend class sender<Snd, Pred>::type;
 
 			using receiver_t = typename receiver<Snd, Rcv, Pred>::type;
 			using state_t = connect_result_t<Snd &, receiver_t>;
 
 			template<typename Snd2, typename Pred2>
 			constexpr type(Snd2 &&snd, Rcv &&rcv, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2> && noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>))
-					: _pred(std::forward<Pred2>(pred)), _snd(std::forward<Snd2>(snd)), _rcv(std::forward<Rcv>(rcv)), _state(connect()) {}
+					: _pred(std::forward<Pred2>(pred)), _snd(std::forward<Snd2>(snd)), _rcv(std::forward<Rcv>(rcv)), _state(detail::eval_t{[&]() { return connect(_snd, receiver_t{this}); }}) {}
 
 		public:
 			type(type &&) = delete;
@@ -69,38 +71,16 @@ namespace rod
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
 		private:
-			constexpr auto connect() {return detail::implicit_eval{[&]() { return rod::connect(_snd, receiver_t{this}); }}; }
-			constexpr void restart() noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>)
+			void restart() noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>)
 			{
 				if constexpr (std::is_move_assignable_v<state_t>)
-					_state = connect();
+					_state = connect(_snd, receiver_t{this});
 				else
 				{
 					std::destroy_at(&_state);
-					std::construct_at(&_state, connect());
+					std::construct_at(&_state, detail::eval_t{[&]() { return connect(_snd, receiver_t{this}); }});
 				}
 				start(_state);
-			}
-
-			template<typename C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
-			constexpr void complete(C, Args &&...args) noexcept { C{}(std::move(_rcv), std::forward<Args>(args)...); }
-			template<typename C, typename... Args> requires decays_to<C, set_value_t> && detail::callable<Pred, Args...>
-			constexpr void complete(C, Args &&...args) noexcept
-			{
-				const auto restart_or_complete = [&]()
-				{
-					if (get_stop_token(get_env(_rcv)).stop_requested())
-						set_stopped(std::move(_rcv));
-					else if (!std::invoke(_pred, args...))
-						C{}(std::move(_rcv));
-					else
-						restart();
-				};
-
-				if constexpr (!std::is_nothrow_invocable_v<Pred, Args...> && noexcept(restart()))
-					try { restart_or_complete(); } catch(...) { complete(set_error, std::current_exception()); }
-				else
-					restart_or_complete();
 			}
 
 			ROD_NO_UNIQUE_ADDRESS Pred _pred;
@@ -110,18 +90,35 @@ namespace rod
 		};
 
 		template<typename Snd, typename Rcv, typename Pred>
-		constexpr auto receiver<Snd, Rcv, Pred>::type::get_env() const { return rod::get_env(_op->_rcv); }
+		env_of_t<Rcv> receiver<Snd, Rcv, Pred>::type::get_env() const { return rod::get_env(_op->_rcv); }
+
 		template<typename Snd, typename Rcv, typename Pred>
-		template<typename C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
-		constexpr void receiver<Snd, Rcv, Pred>::type::complete(C, Args &&...args) noexcept { _op->complete(C{}, std::forward<Args>(args)...); }
+		template<typename... Args>
+		void receiver<Snd, Rcv, Pred>::type::complete_value(Args &&...args) noexcept
+		{
+			const auto restart_or_complete = [&]()
+			{
+				if (get_stop_token(get_env()).stop_requested())
+					set_stopped(std::move(_op->_rcv));
+				else if (!std::invoke(_op->_pred, args...))
+					set_value(std::move(_op->_rcv));
+				else
+					_op->restart();
+			};
+
+			if constexpr (!std::is_nothrow_invocable_v<Pred, Args...> && noexcept(_op->restart()))
+				try { restart_or_complete(); } catch(...) { set_error(std::move(_op->_rcv), std::current_exception()); }
+			else
+				restart_or_complete();
+		}
 		template<typename Snd, typename Rcv, typename Pred>
-		template<typename C, typename... Args> requires decays_to<C, set_value_t> && detail::callable<Pred, Args...>
-		constexpr void receiver<Snd, Rcv, Pred>::type::complete(C, Args &&...args) noexcept { _op->complete(C{}, std::forward<Args>(args)...); }
+		template<typename C, typename... Args>
+		void receiver<Snd, Rcv, Pred>::type::complete_forward(C, Args &&...args) noexcept { C{}(std::move(_op->_rcv), std::forward<Args>(args)...); }
 
 		template<typename Snd, typename Pred>
 		class sender<Snd, Pred>::type
 		{
-			friend recurse_until_t;
+			friend class recurse_until_t;
 
 		public:
 			using is_sender = std::true_type;
@@ -140,14 +137,14 @@ namespace rod
 			constexpr static auto connect(T &&s, Rcv &&rcv) { return operation_t<Rcv>{std::forward<T>(s)._snd, std::forward<Rcv>(rcv), std::forward<T>(s)._pred}; }
 
 			template<typename Snd2, typename Pred2>
-			constexpr type(Snd2 &&snd, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2>) : _snd(std::forward<Snd2>(snd)), _pred(std::forward<Pred2>(pred)) {}
+			constexpr type(Snd2 &&snd, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2>) : _pred(std::forward<Pred2>(pred)), _snd(std::forward<Snd2>(snd)) {}
 
 		public:
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
-			template<decays_to<type> T, typename Rcv> requires sender_to<Snd, receiver_t<Rcv>> && receiver_of<Rcv, signs_t>
+			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>> && receiver_of<Rcv, signs_t>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Pred>>)
 			{
 				return connect(std::forward<T>(s), std::move(rcv));

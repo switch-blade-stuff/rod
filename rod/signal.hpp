@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <cassert>
+#include <limits>
 
 #include "detail/config.hpp"
 #include "packed_pair.hpp"

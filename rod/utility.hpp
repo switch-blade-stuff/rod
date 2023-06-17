@@ -71,7 +71,7 @@ namespace rod
 		using concat_tuples_t = typename concat_tuples<Ts...>::type;
 
 		template<typename F>
-		struct implicit_eval
+		struct eval_t
 		{
 			using type = std::invoke_result_t<F>;
 
@@ -81,7 +81,7 @@ namespace rod
 			ROD_NO_UNIQUE_ADDRESS F func;
 		};
 		template<typename F>
-		implicit_eval(F) -> implicit_eval<F>;
+		eval_t(F) -> eval_t<F>;
 
 		template<typename Err>
 		[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept

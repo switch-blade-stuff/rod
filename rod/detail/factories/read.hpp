@@ -32,7 +32,7 @@ namespace rod
 		{
 			using is_sender = std::true_type;
 
-			template<typename R>
+			template<rod::receiver R>
 			[[nodiscard]] constexpr friend typename operation<T, std::decay_t<R>>::type tag_invoke(connect_t, type, R &&r) { return {std::forward<R>(r)}; }
 
 			template<typename Env> requires tag_invocable<T, Env>

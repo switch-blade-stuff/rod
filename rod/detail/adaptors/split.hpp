@@ -108,15 +108,15 @@ namespace rod
 
 			constexpr type(Snd &&snd) : env(get_env(snd)), state(connect(std::forward<Snd>(snd), receiver_t{this})) {}
 
-			void notify() noexcept
+			void notify_all() noexcept
 			{
 				/* Notify queued dependants and replace the queue pointer with `this` sentinel. */
 				const auto ptr = queue.exchange(this, std::memory_order_acq_rel);
-				for (auto *state = static_cast<operation_base *>(ptr); state != nullptr;)
+				for (auto *op = static_cast<operation_base *>(ptr); op != nullptr;)
 				{
-					const auto next = state->next;
-					state->notify(state);
-					state = next;
+					const auto next = op->next;
+					op->notify(op);
+					op = next;
 				}
 			}
 
@@ -137,13 +137,13 @@ namespace rod
 			auto &state = *_state;
 			try { state.data.template emplace<detail::decayed_tuple<C, Args...>>(c, std::forward<Args>(args)...); }
 			catch (...) { state.data.template emplace<std::tuple<set_error_t, std::exception_ptr>>(set_error, std::current_exception()); }
-			state.notify();
+			state.notify_all();
 		}
 
 		template<typename Snd, typename Env, typename Rcv>
 		class operation<Snd, Env, Rcv>::type : operation_base
 		{
-			friend sender<Snd, Env>::type;
+			friend class sender<Snd, Env>::type;
 
 			using stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
 			using shared_state_t = typename shared_state<Snd, Env>::type;
@@ -198,7 +198,7 @@ namespace rod
 					if (!state->stop_src.stop_requested())
 						rod::start(state->state);
 					else
-						state->notify();
+						state->notify_all();
 				}
 			}
 
@@ -210,7 +210,7 @@ namespace rod
 		template<typename Snd, typename Env>
 		class sender<Snd, Env>::type : public sender_tag
 		{
-			friend split_t;
+			friend class split_t;
 
 		public:
 			using is_sender = std::true_type;

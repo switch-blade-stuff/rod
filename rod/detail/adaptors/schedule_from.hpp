@@ -61,7 +61,7 @@ namespace rod
 		template<typename Sch, typename Snd>
 		class env<Sch, Snd>::type
 		{
-			friend sender<Sch, Snd>::type;
+			friend class sender<Sch, Snd>::type;
 
 			template<typename Sch2, typename Snd2>
 			constexpr type(Sch2 &&sch, Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Sch, Sch2> && std::is_nothrow_constructible_v<Snd, Snd2>) : _sch(std::forward<Sch2>(sch)), _snd(std::forward<Snd2>(snd)) {}
@@ -84,9 +84,9 @@ namespace rod
 		};
 
 		template<typename Sch, typename Snd, typename Rcv>
-		class receiver2<Sch, Snd, Rcv>::type
+		class receiver1<Sch, Snd, Rcv>::type
 		{
-			friend operation<Sch, Snd, Rcv>::type;
+			friend class operation<Sch, Snd, Rcv>::type;
 
 		public:
 			using is_receiver = std::true_type;
@@ -96,24 +96,22 @@ namespace rod
 
 			constexpr type(operation_t *op) noexcept : _op(op) {}
 
-		private:
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
-			template<typename C, typename... Args> requires(requires (type &&r, Args &&...args) { r.complete(C{}, std::forward<Args>(args)...); })
-			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete(C{}, std::forward<Args>(args)...); }
+		public:
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+			template<detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, std::decay_t<Args>...>
+			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete(C{}, std::forward<Args>(args)...); }
 
 		private:
-			constexpr auto get_env() const { return rod::get_env(_op->_rcv); }
-			template<typename C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
-			constexpr void complete(C, Args &&...args) noexcept { C{}(std::move(_op->_rcv), std::forward<Args>(args)...); }
-			template<typename C> requires decays_to<C, set_value_t>
-			constexpr void complete(C) noexcept { _op->complete(); }
+			inline env_of_t<Rcv> get_env() const;
+			template<typename C, typename... Args>
+			inline void complete(C, Args &&...args) noexcept;
 
 			operation_t *_op;
 		};
 		template<typename Sch, typename Snd, typename Rcv>
-		class receiver1<Sch, Snd, Rcv>::type
+		class receiver2<Sch, Snd, Rcv>::type
 		{
-			friend operation<Sch, Snd, Rcv>::type;
+			friend class operation<Sch, Snd, Rcv>::type;
 
 		public:
 			using is_receiver = std::true_type;
@@ -123,23 +121,19 @@ namespace rod
 
 			constexpr type(operation_t *op) noexcept : _op(op) {}
 
-		public:
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
-			template<detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, std::decay_t<Args>...>
-			friend constexpr void tag_invoke(C, type &&r, Args &&...args) noexcept { r.template complete<C>(std::forward<Args>(args)...); }
+		private:
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+
+			template<detail::completion_channel C> requires decays_to<C, set_value_t>
+			friend void tag_invoke(C, type &&r) noexcept { r.complete_value(); }
+			template<detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_forward(C{}, std::forward<Args>(args)...); }
 
 		private:
-			constexpr auto get_env() const { return rod::get_env(_op->_rcv); }
+			inline env_of_t<Rcv> get_env() const;
+			inline void complete_value() noexcept;
 			template<typename C, typename... Args>
-			constexpr void complete(Args &&...args) noexcept
-			{
-				const auto complete_channel = [&]() noexcept((std::is_nothrow_constructible_v<std::decay_t<Args>, Args> && ...))
-				{
-					_op->_data.template emplace<detail::decayed_tuple<C, Args...>>(C{}, std::forward<Args>(args)...);
-					start(_op->_state2);
-				};
-				detail::rcv_try_invoke(std::move(_op->_rcv), complete_channel);
-			}
+			inline void complete_forward(C, Args &&...args) noexcept;
 
 			operation_t *_op;
 		};
@@ -147,9 +141,9 @@ namespace rod
 		template<typename Sch, typename Snd, typename Rcv>
 		class operation<Sch, Snd, Rcv>::type
 		{
-			friend sender<Sch, std::decay_t<Snd>>::type;
-			friend receiver1<Sch, Snd, Rcv>::type;
-			friend receiver2<Sch, Snd, Rcv>::type;
+			friend class sender<Sch, std::decay_t<Snd>>::type;
+			friend class receiver1<Sch, Snd, Rcv>::type;
+			friend class receiver2<Sch, Snd, Rcv>::type;
 
 			using rcv1_t = typename receiver1<Sch, Snd, Rcv>::type;
 			using rcv2_t = typename receiver2<Sch, Snd, Rcv>::type;
@@ -187,10 +181,32 @@ namespace rod
 			data_t _data;
 		};
 
+		template<typename Sch, typename Snd, typename Rcv>
+		env_of_t<Rcv> receiver1<Sch, Snd, Rcv>::type::get_env() const { return rod::get_env(_op->_rcv); }
+		template<typename Sch, typename Snd, typename Rcv>
+		env_of_t<Rcv> receiver2<Sch, Snd, Rcv>::type::get_env() const { return rod::get_env(_op->_rcv); }
+
+		template<typename Sch, typename Snd, typename Rcv>
+		template<typename C, typename... Args>
+		void receiver1<Sch, Snd, Rcv>::type::complete(C, Args &&... args) noexcept
+		{
+			const auto complete_selected = [&]() noexcept((std::is_nothrow_constructible_v<std::decay_t<Args>, Args> && ...))
+			{
+				_op->_data.template emplace<detail::decayed_tuple<C, Args...>>(C{}, std::forward<Args>(args)...);
+				start(_op->_state2);
+			};
+			detail::rcv_try_invoke(std::move(_op->_rcv), complete_selected);
+		}
+		template<typename Sch, typename Snd, typename Rcv>
+		void receiver2<Sch, Snd, Rcv>::type::complete_value() noexcept { _op->complete(); }
+		template<typename Sch, typename Snd, typename Rcv>
+		template<typename C, typename... Args>
+		void receiver2<Sch, Snd, Rcv>::type::complete_forward(C, Args &&... args) noexcept { C{}(std::move(_op->_rcv), std::forward<Args>(args)...); }
+
 		template<typename Sch, typename Snd>
 		class sender<Sch, Snd>::type
 		{
-			friend schedule_from_t;
+			friend class schedule_from_t;
 
 		public:
 			using is_sender = std::true_type;

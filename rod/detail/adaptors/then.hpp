@@ -111,14 +111,17 @@ namespace rod
 
 		public:
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const Rcv &>) { return get_env(r._op->rcv); }
-			template<typename T, typename... Args> requires(requires (type &&r, Args &&...args) { r.complete(T{}, std::forward<Args>(args)...); })
-			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete(T{}, std::forward<Args>(args)...); }
+
+			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
+			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_forward(T{}, std::forward<Args>(args)...); }
+			template<detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<Fn, Args...>
+			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_selected(T{}, std::forward<Args>(args)...); }
 
 		private:
-			template<typename T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
-			constexpr void complete(T, Args &&...args) noexcept { T{}(std::move(_op->rcv), std::forward<Args>(args)...); }
-			template<typename T, typename... Args> requires std::same_as<T, C> && std::invocable<Fn, Args...>
-			constexpr void complete(T, Args &&...args) noexcept
+			template<typename T, typename... Args>
+			constexpr void complete_forward(T, Args &&...args) noexcept { T{}(std::move(_op->rcv), std::forward<Args>(args)...); }
+			template<typename T, typename... Args>
+			constexpr void complete_selected(T, Args &&...args) noexcept
 			{
 				const auto do_invoke = [&]()
 				{
