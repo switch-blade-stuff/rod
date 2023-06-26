@@ -6,6 +6,7 @@
 
 #include "detail/adaptors/read_some.hpp"
 #include "detail/adaptors/write_some.hpp"
+#include "result.hpp"
 
 #include <filesystem>
 #include <cassert>
@@ -79,11 +80,10 @@ namespace rod
 			{
 				std::apply([&]<typename... Vs>(Vs &&...vs) noexcept((std::is_nothrow_move_constructible_v<Args> && ...))
 				{
-					std::error_code err;
-					if (const auto res = T{}(std::forward<Vs>(vs)..., err); err)
-						[[unlikely]] set_error(std::move(_op->_rcv), err);
+					if (const auto res = T{}(std::forward<Vs>(vs)...); res.has_value())
+						set_value(std::move(_op->_rcv), res.value());
 					else
-						set_value(std::move(_op->_rcv), res);
+						set_error(std::move(_op->_rcv), res.error());
 				}, std::move(_op->_args));
 			}
 
@@ -321,94 +321,65 @@ namespace rod
 			/** Initializes the file from a native file handle. */
 			explicit basic_file(native_handle_type file) noexcept : _file(file) {}
 
-			/** @brief Closes the file handle.
-			 * @param[out] err Reference to the error code set on failure to close the file. */
-			void close(std::error_code &err) noexcept { err = _file.close(); }
-			/** @copybrief close
-			 * @throw std::system_error On failure to close the file. */
-			void close() { if (auto err = _file.close(); err) throw std::system_error(err, "rod::basic_file::close"); }
-
 			/** Releases the underlying native file handle without closing. */
 			native_handle_type release() noexcept { return _file.release(); }
 			/** Releases the underlying native file handle without closing and replaces it with the specified handle. */
 			native_handle_type release(native_handle_type new_file) noexcept { return _file.release(new_file); }
 
-			/** @brief Synchronizes file with the underlying device.
-			 * @param[out] err Reference to the error code set on failure to synchronize the file. */
-			void sync(std::error_code &err) noexcept { err = _file.sync(); }
-			/** @copybrief flush
-			 * @throw std::system_error On failure to flush the file. */
-			void sync() { if (const auto err = _file.sync(); err) throw std::system_error(err, "rod::basic_file::sync"); }
+			/** Synchronizes file with the underlying device.
+			 * @return Error code on failure to synchronize the file. */
+			std::error_code sync() noexcept { return _file.sync(); }
+			/** Flushes file buffers.
+			 * @return Error code on failure to flush the file. */
+			std::error_code flush() noexcept { return _file.flush(); }
+			/** Closes the file handle.
+			 * @return Error code on failure to close the file. */
+			std::error_code close() noexcept { return _file.close(); }
 
-			/** @brief Flushes file buffers.
-			 * @param[out] err Reference to the error code set on failure to flush the file. */
-			void flush(std::error_code &err) noexcept { err = _file.flush(); }
-			/** @copybrief flush
-			 * @throw std::system_error On failure to flush the file. */
-			void flush() { if (const auto err = _file.flush(); err) throw std::system_error(err, "rod::basic_file::flush"); }
-
-			/** @brief Returns the current position within the file. Equivalent to `seek(0, cur)`.
-			 * @return Current absolute position within the file.
-			 * @throw std::system_error On failure to get position of the file. */
-			[[nodiscard]] std::size_t tell() const
+			/** Returns the current position within the file. Equivalent to `seek(0, cur)`.
+			 * @return Current absolute position within the file or an error code on failure to get position of the file. */
+			[[nodiscard]] result<std::size_t, std::error_code> tell() const noexcept
 			{
 				std::error_code err;
-				if (auto res = tell(err); err)
-					throw std::system_error(err, "rod::basic_file::tell");
+				if (const auto val = _file.tell(err); !err) [[likely]]
+					return {val};
 				else
-					return res;
+					return {err};
 			}
-			/** @copybrief tell
-			 * @param[out] err Reference to the error code set on failure to get position of the file.
-			 * @return Current absolute position within the file. */
-			[[nodiscard]] std::size_t tell(std::error_code &err) const noexcept { return _file.tell(err); }
-
-			/** @brief Seeks to the specified offset within the file starting at the specified position.
+			/** Seeks to the specified offset within the file starting at the specified position.
 			 * @param[in] off Offset into the file starting at \a dir.
 			 * @param[in] dir Base direction to seek from.
-			 * @return New absolute position within the file.
-			 * @throw std::system_error On failure to seek the file. */
-			std::size_t seek(std::ptrdiff_t off, seekdir dir)
+			 * @return New absolute position within the file or an error code on failure to seek the file. */
+			result<std::size_t, std::error_code> seek(std::ptrdiff_t off, seekdir dir) noexcept
 			{
 				std::error_code err;
-				if (auto res = seek(off, dir, err); err)
-					throw std::system_error(err, "rod::basic_file::seek");
+				if (const auto val = _file.seek(off, dir, err); !err) [[likely]]
+					return {val};
 				else
-					return res;
+					return {err};
 			}
-			/** @copybrief seek
-			 * @param[in] off Offset into the file starting at \a dir.
-			 * @param[in] dir Base direction to seek from.
-			 * @param[out] err Reference to the error code set on failure to seek the file.
-			 * @return New absolute position within the file. */
-			std::size_t seek(std::ptrdiff_t off, seekdir dir, std::error_code &err) noexcept { return _file.seek(off, dir, err); }
 
-			/** @brief Returns the size of the file.
-			 * @return Current size of the file as reported by the filesystem.
-			 * @throw std::system_error On failure to get size of the file. */
-			[[nodiscard]] std::size_t size() const
+			/** Returns the size of the file.
+			 * @return Current size of the file as reported by the filesystem or an error code on failure to get size of the file. */
+			[[nodiscard]] result<std::size_t, std::error_code> size() const noexcept
 			{
 				std::error_code err;
-				if (auto res = size(err); err)
-					throw std::system_error(err, "rod::basic_file::size");
+				if (const auto val = _file.size(err); !err) [[likely]]
+					return {val};
 				else
-					return res;
+					return {err};
 			}
-			/** @copybrief tell
-			 * @param[out] err Reference to the error code set on failure to get size of the file.
-			 * @return Current size of the file as reported by the filesystem. */
-			[[nodiscard]] std::size_t size(std::error_code &err) const noexcept { return _file.size(err); }
-
-			/** @brief Re-sizes the file to the specified amount of bytes.
+			/** Resizes the file to the specified amount of bytes.
 			 * @param[in] new_size New size of the file in bytes.
-			 * @throw std::system_error On failure to seek the file. */
-			void resize(std::size_t new_size) { if (const auto err = _file.resize(new_size); err) throw std::system_error(err, "rod::basic_file::resize"); }
-			/** @copybrief seek
-			 * @param[in] off Offset into the file starting at \a dir.
-			 * @param[in] dir Base direction to seek from.
-			 * @param[out] err Reference to the error code set on failure to seek the file.
-			 * @return New absolute position within the file. */
-			void resize(std::size_t new_size, std::error_code &err) noexcept { err = _file.resize(new_size); }
+			 * @return New size of the file as reported by the filesystem or an error code on failure to resize the file. */
+			result<std::size_t, std::error_code> resize(std::size_t new_size) noexcept
+			{
+				std::error_code err;
+				if (const auto val = _file.resize(new_size, err); !err) [[likely]]
+					return {val};
+				else
+					return {err};
+			}
 
 			/** Checks if the file is open. */
 			[[nodiscard]] bool is_open() const noexcept { return _file.is_open(); }
@@ -420,36 +391,56 @@ namespace rod
 
 		public:
 			template<reference_to<basic_file> F, typename Buff>
-			friend std::size_t tag_invoke(read_some_t, F &&f, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
+			friend result<std::size_t, std::error_code> tag_invoke(read_some_t, F &&f, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto dst_ptr = std::to_address(std::ranges::begin(buff));
 				const auto dst_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_read(static_cast<void *>(dst_ptr), dst_max, err);
+
+				std::error_code err;
+				if (const auto val = f._file.sync_read(static_cast<void *>(dst_ptr), dst_max, err); !err) [[likely]]
+					return {val};
+				else
+					return {err};
 			}
 			template<reference_to<basic_file> F, typename Buff>
-			friend std::size_t tag_invoke(write_some_t, F &&f, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
+			friend result<std::size_t, std::error_code> tag_invoke(write_some_t, F &&f, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto src_ptr = std::to_address(std::ranges::begin(buff));
 				const auto src_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_write(static_cast<const void *>(src_ptr), src_max, err);
+
+				std::error_code err;
+				if (const auto val = f._file.sync_write(static_cast<const void *>(src_ptr), src_max, err); !err) [[likely]]
+					return {val};
+				else
+					return {err};
 			}
 			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, typename Buff>
-			friend std::size_t tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
+			friend result<std::size_t, std::error_code> tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto dst_ptr = std::to_address(std::ranges::begin(buff));
 				const auto dst_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err);
+
+				std::error_code err;
+				if (const auto val = f._file.sync_read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos), err); !err) [[likely]]
+					return {val};
+				else
+					return {err};
 			}
 			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, typename Buff>
-			friend std::size_t tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff, std::error_code &err) noexcept(noexcept_sizeable_range<Buff>)
+			friend result<std::size_t, std::error_code> tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
 				using value_t = std::ranges::range_value_t<Buff>;
 				const auto src_ptr = std::to_address(std::ranges::begin(buff));
 				const auto src_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_write_at(static_cast<const void *>(src_ptr), src_max, static_cast<std::ptrdiff_t>(pos), err);
+
+				std::error_code err;
+				if (const auto val = f._file.sync_write_at(static_cast<const void *>(src_ptr), src_max, static_cast<std::ptrdiff_t>(pos), err); !err) [[likely]]
+					return {val};
+				else
+					return {err};
 			}
 
 			template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires detail::callable<T, Snd, native_handle_type, Buff>

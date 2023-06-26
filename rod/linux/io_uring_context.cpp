@@ -94,7 +94,7 @@ namespace rod::_io_uring
 
 	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
-		assert(!node->_next);
+		assert(!node->next);
 		if (_producer_queue.push(node))
 		{
 			const std::uint64_t token = 1;
@@ -103,12 +103,12 @@ namespace rod::_io_uring
 	}
 	void context::schedule_consumer(operation_base *node) noexcept
 	{
-		assert(!node->_next);
+		assert(!node->next);
 		_consumer_queue.push_back(node);
 	}
 	void context::schedule_waitlist(operation_base *node) noexcept
 	{
-		assert(!node->_next);
+		assert(!node->next);
 		_waitlist_queue.push_back(node);
 	}
 	void context::schedule_producer(operation_base *node)
@@ -211,8 +211,8 @@ namespace rod::_io_uring
 
 	void context::add_timer(timer_base *node) noexcept
 	{
-		assert(!node->_timer_next);
-		assert(!node->_timer_prev);
+		assert(!node->timer_next);
+		assert(!node->timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		_timer_pending |= _timers.insert(node) == node;
 	}

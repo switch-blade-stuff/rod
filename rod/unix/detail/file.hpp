@@ -68,10 +68,11 @@ namespace rod::detail
 		using unique_descriptor::is_open;
 		using unique_descriptor::native_handle;
 
-		ROD_API_PUBLIC std::error_code resize(std::size_t n) noexcept;
-		ROD_API_PUBLIC std::size_t size(std::error_code &err) const noexcept;
 		ROD_API_PUBLIC std::size_t tell(std::error_code &err) const noexcept;
 		ROD_API_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
+
+		ROD_API_PUBLIC std::size_t size(std::error_code &err) const noexcept;
+		ROD_API_PUBLIC std::size_t resize(std::size_t n, std::error_code &err) noexcept;
 
 		ROD_API_PUBLIC std::error_code sync() noexcept;
 		std::error_code flush() noexcept { return sync(); }

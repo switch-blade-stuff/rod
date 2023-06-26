@@ -81,24 +81,6 @@ namespace rod
 			using alloc_type = typename std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
 			using alloc_traits = std::allocator_traits<alloc_type>;
 
-			constexpr static std::size_t offset(std::size_t n) noexcept
-			{
-				const auto align = alignof(alloc_type) - 1;
-				return (n + align) & ~align;
-			}
-			constexpr static std::size_t align_size(std::size_t n) noexcept
-			{
-				const auto mult = std::max(sizeof(with_allocator_promise), sizeof(alloc_type));
-				const auto size = offset(n) + sizeof(alloc_type);
-				const auto rem = size % mult;
-				return size + (rem ? mult - rem : 0);
-			}
-			static alloc_type *alloc_ptr(void *ptr, std::size_t n) noexcept
-			{
-				const auto mem = reinterpret_cast<std::byte *>(ptr);
-				return reinterpret_cast<alloc_type *>(mem + offset(n));
-			}
-
 		public:
 			template<decays_to<Alloc> A, typename... Args>
 			static constexpr void *operator new(std::size_t n, std::allocator_arg_t, A &&a, Args &&...)
@@ -107,12 +89,12 @@ namespace rod
 					return ::operator new(n);
 				else
 				{
-					const auto num = align_size(n) / sizeof(with_allocator_promise);
 					auto alloc = alloc_type{std::forward<A>(a)};
+					const auto num = n / sizeof(with_allocator_promise);
 					const auto ptr = alloc_traits::allocate(alloc, num);
 					try
 					{
-						std::construct_at(alloc_ptr(ptr, n), std::move(alloc));
+						std::construct_at(&ptr->_alloc, std::move(alloc));
 						return ptr;
 					}
 					catch (...)
@@ -122,29 +104,29 @@ namespace rod
 					}
 				}
 			}
-			static constexpr void operator delete(void *ptr, std::size_t n)
+			static constexpr void operator delete(void *mem, std::size_t n)
 			{
 				if (std::is_constant_evaluated())
-					::operator delete(ptr);
+					::operator delete(mem);
 				else
 				{
-					auto alloc = std::move(*alloc_ptr(ptr, n));
-					std::destroy_at(alloc_ptr(ptr, n));
-
-					const auto num = align_size(n) / sizeof(with_allocator_promise);
-					alloc_traits::deallocate(alloc, static_cast<with_allocator_promise *>(ptr), num);
+					const auto ptr = static_cast<with_allocator_promise *>(mem);
+					const auto num = n / sizeof(with_allocator_promise);
+					auto alloc = std::move(ptr->_alloc);
+					std::destroy_at(&ptr->_alloc);
+					alloc_traits::deallocate(alloc, ptr, num);
 				}
 			}
 
-			constexpr with_allocator_promise() noexcept {}
-			constexpr with_allocator_promise(with_allocator_promise &&) noexcept {}
-			constexpr with_allocator_promise &operator=(with_allocator_promise &&) noexcept {}
-			constexpr with_allocator_promise(const with_allocator_promise &) noexcept {}
-			constexpr with_allocator_promise &operator=(const with_allocator_promise &) noexcept {}
+			constexpr with_allocator_promise() noexcept(std::is_nothrow_default_constructible_v<Promise>) : Promise() {}
+			constexpr with_allocator_promise(const with_allocator_promise &other) noexcept(std::is_nothrow_copy_constructible_v<Promise>) : Promise(other) {}
+			constexpr with_allocator_promise(with_allocator_promise &&other) noexcept(std::is_nothrow_move_constructible_v<Promise>) : Promise(std::move(other)) {}
+			constexpr with_allocator_promise &operator=(const with_allocator_promise &other) noexcept(std::is_nothrow_copy_assignable_v<Promise>) { return (Promise::operator=(other), *this); }
+			constexpr with_allocator_promise &operator=(with_allocator_promise &&other) noexcept(std::is_nothrow_move_assignable_v<Promise>) { return (Promise::operator=(std::move(other)), *this); }
 			constexpr ~with_allocator_promise() {}
 
 		private:
-			union { Alloc _alloc; };
+			union { alloc_type _alloc; };
 		};
 	}
 

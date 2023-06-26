@@ -10,7 +10,6 @@ namespace rod
 {
 	namespace _recurse
 	{
-		class recurse_until_t;
 		class recurse_t;
 
 		template<typename, typename, typename>
@@ -146,67 +145,43 @@ namespace rod
 			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
-		class recurse_until_t
+		class recurse_t
 		{
+			struct always_true { constexpr bool operator()(auto &&...) const noexcept { return true; } };
+
 			template<typename Snd, typename Pred>
 			using sender_t = typename sender<std::decay_t<Snd>, std::decay_t<Pred>>::type;
-			template<typename Pred>
-			using back_adaptor = detail::back_adaptor<recurse_until_t, std::decay_t<Pred>>;
 
 		public:
-			template<rod::sender Snd, movable_value Pred> requires tag_invocable<recurse_until_t, Snd, Pred>
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Pred &&pred) const noexcept(nothrow_tag_invocable<recurse_until_t, Snd, Pred>)
+			template<rod::sender Snd, movable_value Pred> requires tag_invocable<recurse_t, Snd, Pred>
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Pred &&pred) const noexcept(nothrow_tag_invocable<recurse_t, Snd, Pred>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Pred>(pred));
 			}
-			template<rod::sender Snd, movable_value Pred> requires(!tag_invocable<recurse_until_t, Snd, Pred> && std::copy_constructible<std::decay_t<Snd>>)
+			template<rod::sender Snd> requires tag_invocable<recurse_t, Snd>
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<recurse_t, Snd>)
+			{
+				return tag_invoke(*this, std::forward<Snd>(snd));
+			}
+
+			template<rod::sender Snd, movable_value Pred> requires(!tag_invocable<recurse_t, Snd, Pred> && std::copy_constructible<std::decay_t<Snd>>)
 			[[nodiscard]] constexpr sender_t<Snd, Pred> operator()(Snd &&snd, Pred &&pred) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Pred>, Pred, Snd>)
 			{
 				return sender_t<Snd, Pred>{std::forward<Snd>(snd), std::forward<Pred>(pred)};
 			}
-
-			template<movable_value Pred>
-			[[nodiscard]] constexpr back_adaptor<Pred> operator()(Pred &&pred) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Pred>, recurse_until_t, Pred>)
-			{
-				return {*this, std::forward<Pred>(pred)};
-			}
-		};
-		class recurse_t
-		{
-			using back_adaptor = detail::back_adaptor<recurse_t>;
-
-			struct always_true { constexpr bool operator()(auto &&...) const noexcept { return true; } };
-
-		public:
-			template<rod::sender Snd> requires tag_invocable<recurse_t, Snd>
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<recurse_until_t, Snd>)
-			{
-				return tag_invoke(*this, std::forward<Snd>(snd));
-			}
 			template<rod::sender Snd> requires(!tag_invocable<recurse_t, Snd> && std::copy_constructible<std::decay_t<Snd>>)
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(detail::nothrow_callable<recurse_until_t, Snd, always_true>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(detail::nothrow_callable<recurse_t, Snd, always_true>)
 			{
-				return recurse_until_t{}(std::forward<Snd>(snd), always_true{});
+				return operator()(std::forward<Snd>(snd), always_true{});
 			}
-
-			[[nodiscard]] constexpr back_adaptor operator()() const noexcept { return back_adaptor{}; }
 		};
 	}
 
 	using _recurse::recurse_t;
 
 	/** Customization point object used to create an operation that will recursively re-start itself until stopped.
-	 * @param snd Input sender to use for starting the recursive operation. If omitted, creates a pipe-able sender adaptor.
-	 * @return Sender completing via the error and stopped channels if \a snd completes with error or a stop request.
-	 * @warning Using `recurse` with a sender that completes immediately upon the call to `start` (such as `rod::execute`) can result in stack overflow. */
+	 * @param snd Input sender to use for starting the recursive operation.
+	 * @return Sender completing via the error and stopped channels if \a snd completes with error or a stop request. If omitted, creates an infinitely-recursing sender.
+	 * @warning Using `recurse` with a sender that completes immediately upon the call to `start` (such as `rod::just`) can result in stack overflow. */
 	inline constexpr auto recurse = recurse_t{};
-
-	using _recurse::recurse_until_t;
-
-	/** Customization point object used to create an operation that will recursively re-start itself until stopped.
-	 * @param snd Input sender to use for starting the recursive operation. If omitted, creates a pipe-able sender adaptor.
-	 * @param pred Predicate invoked with value channel results of \a snd returning `false` to stop the recursive operation.
-	 * @return Sender completing via the value channel when recursion is stopped using \a pred, and via the error and stopped channels if \a snd completes with error or a stop request.
-	 * @warning Using `recurse` with a sender that completes immediately upon the call to `start` (such as `rod::execute`) can result in stack overflow. */
-	inline constexpr auto recurse_until = recurse_until_t{};
 }

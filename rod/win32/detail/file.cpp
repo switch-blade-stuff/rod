@@ -122,22 +122,21 @@ namespace rod::detail
 			return system_file{hnd, off};
 	}
 
-	std::error_code system_file::resize(std::size_t n) noexcept
+	std::size_t system_file::resize(std::size_t n, std::error_code &err) noexcept
 	{
-		std::error_code err;
 		LARGE_INTEGER oldpos = {.QuadPart = tell(err)};
 		LARGE_INTEGER endpos = {.QuadPart = n};
 
 		if (!err) [[likely]]
 		{
 			if (!::SetFilePointerEx(native_handle(), endpos, nullptr, FILE_BEGIN))
-				err = {static_cast<int>(::GetLastError()), std::system_category()};
+				return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
 			else if (!::SetEndOfFile(native_handle()) || !::SetFilePointerEx(native_handle(), oldpos, nullptr, FILE_BEGIN))
-				err = {static_cast<int>(::GetLastError()), std::system_category()};
+				return (err = {static_cast<int>(::GetLastError()), std::system_category()}, 0);
 			else
-				_offset = static_cast<std::size_t>(oldpos.QuadPart);
+				return (_offset = static_cast<std::size_t>(oldpos.QuadPart), n);
 		}
-		return err;
+		return {err};
 	}
 	std::size_t system_file::size(std::error_code &err) const noexcept
 	{

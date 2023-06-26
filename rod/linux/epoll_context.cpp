@@ -86,7 +86,7 @@ namespace rod::_epoll
 
 	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
 	{
-		assert(!node->_next);
+		assert(!node->next);
 		if (_producer_queue.push(node))
 		{
 			/* Notify the event file descriptor to wake up the consumer thread. */
@@ -96,7 +96,7 @@ namespace rod::_epoll
 	}
 	void context::schedule_consumer(operation_base *node) noexcept
 	{
-		assert(!node->_next);
+		assert(!node->next);
 		_consumer_queue.push_back(node);
 	}
 	void context::schedule_producer(operation_base *node)
@@ -125,8 +125,8 @@ namespace rod::_epoll
 
 	void context::add_timer(timer_base *node) noexcept
 	{
-		assert(!node->_timer_next);
-		assert(!node->_timer_prev);
+		assert(!node->timer_next);
+		assert(!node->timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		_timer_pending |= _timers.insert(node) == node;
 	}

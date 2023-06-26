@@ -15,6 +15,7 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/stop_token.hpp
         ${CMAKE_CURRENT_LIST_DIR}/scheduling.hpp
         ${CMAKE_CURRENT_LIST_DIR}/generator.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/result.hpp
         ${CMAKE_CURRENT_LIST_DIR}/signal.hpp
         ${CMAKE_CURRENT_LIST_DIR}/task.hpp
         ${CMAKE_CURRENT_LIST_DIR}/file.hpp

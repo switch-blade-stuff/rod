@@ -118,7 +118,7 @@ namespace rod::detail
 		else
 			return (err = {errno, std::system_category()}, 0);
 	}
-	std::error_code system_file::resize(std::size_t n) noexcept
+	std::size_t system_file::resize(std::size_t n, std::error_code &err) noexcept
 	{
 #if SIZE_MAX >= UINT64_MAX
 		const auto res = ::ftruncate64(native_handle(), static_cast<off64_t>(n));
@@ -126,9 +126,9 @@ namespace rod::detail
 		const auto res = ::ftruncate(native_handle(), static_cast<off_t>(n));
 #endif
 		if (res) [[unlikely]]
-			return {errno, std::system_category()};
+			return (err = {errno, std::system_category()}, 0);
 		else
-			return {};
+			return (err = {}, static_cast<std::size_t>(n));
 	}
 
 	std::size_t system_file::tell(std::error_code &err) const noexcept
