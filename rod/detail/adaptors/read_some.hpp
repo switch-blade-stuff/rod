@@ -116,7 +116,7 @@ namespace rod
 	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes read and an optional error code. */
+	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some = read_some_t{};
 
 	using _read_some::read_some_at_t;
@@ -125,7 +125,7 @@ namespace rod
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source handle at which to read the data.
 	 * @param[out] dst Contiguous output range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes read and an optional error code. */
+	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some_at = read_some_at_t{};
 
 	using _read_some::async_read_some_t;

@@ -116,7 +116,7 @@ namespace rod
 	/** Customization point object used to write a contiguous buffer of integral values to a writeable destination object.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] src Contiguous input range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes written and an optional error code. */
+	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes written or an error code on write failure. */
 	inline constexpr auto write_some = write_some_t{};
 
 	using _write_some::write_some_at_t;
@@ -125,7 +125,7 @@ namespace rod
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
 	 * @param[in] src Contiguous input range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes written and an optional error code. */
+	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes written or an error code on write failure. */
 	inline constexpr auto write_some_at = write_some_at_t{};
 
 	using _write_some::async_write_some_t;

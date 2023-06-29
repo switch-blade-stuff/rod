@@ -74,10 +74,12 @@ namespace rod
 		template<typename P = undefined_promise>
 		struct undefined_coroutine : std::coroutine_handle<P> { using promise_type = P; };
 
-		/* Promise wrapper with support for custom allocators. */
+		/* Promise wrapper with support for custom allocators.
+		 * NOTE: Currently not supported under GCC due to `operator delete` overloading bug. */
 		template<typename Promise, typename Alloc>
 		class with_allocator_promise : public Promise
 		{
+#if !defined(__GNUC__) || defined(__clang__)
 			using alloc_type = typename std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
 			using alloc_traits = std::allocator_traits<alloc_type>;
 
@@ -127,6 +129,7 @@ namespace rod
 
 		private:
 			union { alloc_type _alloc; };
+#endif
 		};
 	}
 
