@@ -92,30 +92,27 @@ namespace rod::_io_uring
 	void context::request_stop() { _stop_source.request_stop(); }
 	bool context::is_consumer_thread() const noexcept { return _consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
-	void context::schedule_producer(operation_base *node, std::error_code &err) noexcept
+	std::error_code context::schedule_producer(operation_base *node) noexcept
 	{
 		assert(!node->next);
 		if (_producer_queue.push(node))
 		{
 			const std::uint64_t token = 1;
-			_event_fd.write(&token, sizeof(token), err);
+			return _event_fd.write(&token, sizeof(token)).error_or({});
 		}
+		return {};
 	}
-	void context::schedule_consumer(operation_base *node) noexcept
+	std::error_code context::schedule_consumer(operation_base *node) noexcept
 	{
 		assert(!node->next);
 		_consumer_queue.push_back(node);
+		return {};
 	}
-	void context::schedule_waitlist(operation_base *node) noexcept
+	std::error_code context::schedule_waitlist(operation_base *node) noexcept
 	{
 		assert(!node->next);
 		_waitlist_queue.push_back(node);
-	}
-	void context::schedule_producer(operation_base *node)
-	{
-		std::error_code err;
-		schedule_producer(node, err);
-		if (err) throw std::system_error(err, "write(event_fd)");
+		return {};
 	}
 
 	inline bool context::submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::size_t off) noexcept
@@ -244,12 +241,10 @@ namespace rod::_io_uring
 				break;
 			case event_id::queue_dispatch: /* Producer queue notification event. */
 			{
-				std::error_code err;
-				std::uint64_t token;
-				if (event.res < 0)
+				if (std::uint64_t token; event.res < 0)
 					throw std::system_error(std::error_code{-event.res, std::system_category()}, "read(event_fd)");
-				else if (_event_fd.read(&token, sizeof(token), err); err)
-					throw std::system_error(err, "read(event_fd)");
+				else if (auto res = _event_fd.read(&token, sizeof(token)); res.has_error())
+					throw std::system_error(res.error(), "read(event_fd)");
 				else
 					_wait_pending = false;
 				break;

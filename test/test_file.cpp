@@ -19,7 +19,7 @@ void test_basic_file(auto mode)
 	if (mode & basic_file_t::noreplace)
 		std::filesystem::remove(path);
 
-	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode);
+	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode).value();
 	TEST_ASSERT(file.is_open());
 
 	auto trd = std::jthread{[&]() { ctx.run(); }};

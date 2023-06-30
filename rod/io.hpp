@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "detail/io_buffer.hpp"
+#include "detail/byte_buffer.hpp"
 #include "detail/adaptors/read_some.hpp"
 #include "detail/adaptors/write_some.hpp"
 

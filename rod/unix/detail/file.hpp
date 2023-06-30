@@ -6,9 +6,11 @@
 
 #ifdef __unix__
 
+#include <filesystem>
 #include <fcntl.h>
 #include <cstdio>
 
+#include "../../result.hpp"
 #include "descriptor.hpp"
 
 namespace rod::detail
@@ -18,7 +20,7 @@ namespace rod::detail
 	public:
 		using native_handle_type = int;
 
-		enum fileprot : int
+		enum openprot : int
 		{
 			user_exec = S_IXUSR,
 			user_read = S_IRUSR,
@@ -40,8 +42,9 @@ namespace rod::detail
 			ate = 0b0001'0000,
 			app = 0b0010'0000,
 			trunc = 0b0100'0000,
-			nocreate = 0b0'1000'0000,
-			noreplace = 0b1'0000'0000,
+			nocreate = 0b00'1000'0000,
+			noreplace = 0b01'0000'0000,
+			_sharedfd = 0b10'0000'0000,
 		};
 		enum seekdir : int
 		{
@@ -50,12 +53,12 @@ namespace rod::detail
 			end = SEEK_END,
 		};
 
-		static ROD_API_PUBLIC system_file reopen(native_handle_type fd, int mode, std::error_code &err) noexcept;
-		static ROD_API_PUBLIC system_file open(const char *path, int mode, int prot, std::error_code &err) noexcept;
-		static ROD_API_PUBLIC system_file open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept;
+		static ROD_API_PUBLIC result<system_file, std::error_code> reopen(native_handle_type fd, int mode) noexcept;
+		static ROD_API_PUBLIC result<system_file, std::error_code> open(const char *path, int mode, int prot) noexcept;
+		static ROD_API_PUBLIC result<system_file, std::error_code> open(const wchar_t *path, int mode, int prot) noexcept;
 
-		static system_file open(const char *path, int mode, std::error_code &err) noexcept { return open(path, mode, fileprot::_default, err); }
-		static system_file open(const wchar_t *path, int mode, std::error_code &err) noexcept { return open(path, mode, fileprot::_default, err); }
+		static result<system_file, std::error_code> open(const char *path, int mode) noexcept { return open(path, mode, openprot::_default); }
+		static result<system_file, std::error_code> open(const wchar_t *path, int mode) noexcept { return open(path, mode, openprot::_default); }
 
 	public:
 		constexpr system_file() = default;
@@ -68,19 +71,20 @@ namespace rod::detail
 		using unique_descriptor::is_open;
 		using unique_descriptor::native_handle;
 
-		ROD_API_PUBLIC std::size_t tell(std::error_code &err) const noexcept;
-		ROD_API_PUBLIC std::size_t seek(std::ptrdiff_t off, int dir, std::error_code &err) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
+		ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const;
 
-		ROD_API_PUBLIC std::size_t size(std::error_code &err) const noexcept;
-		ROD_API_PUBLIC std::size_t resize(std::size_t n, std::error_code &err) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> resize(std::size_t n) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> seek(std::ptrdiff_t off, int dir) noexcept;
 
 		ROD_API_PUBLIC std::error_code sync() noexcept;
 		std::error_code flush() noexcept { return sync(); }
 
-		ROD_API_PUBLIC std::size_t sync_read(void *dst, std::size_t n, std::error_code &err) noexcept;
-		ROD_API_PUBLIC std::size_t sync_write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_API_PUBLIC std::size_t sync_read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
-		ROD_API_PUBLIC std::size_t sync_write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_read(void *dst, std::size_t n) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write(const void *src, std::size_t n) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept;
 
 		constexpr void swap(system_file &other) noexcept { unique_descriptor::swap(other); }
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }

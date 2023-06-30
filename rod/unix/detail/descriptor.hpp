@@ -6,7 +6,7 @@
 
 #ifdef __unix__
 
-#include "../../detail/config.hpp"
+#include "../../result.hpp"
 
 #include <system_error>
 #include <utility>
@@ -23,14 +23,14 @@ namespace rod::detail
 
 		ROD_API_PUBLIC std::error_code close() noexcept;
 
-		ROD_API_PUBLIC bool poll_read(int timeout, std::error_code &err) noexcept;
-		ROD_API_PUBLIC bool poll_write(int timeout, std::error_code &err) noexcept;
-		ROD_API_PUBLIC bool poll_error(int timeout, std::error_code &err) noexcept;
+		ROD_API_PUBLIC result<bool, std::error_code> poll_read(int timeout) noexcept;
+		ROD_API_PUBLIC result<bool, std::error_code> poll_write(int timeout) noexcept;
+		ROD_API_PUBLIC result<bool, std::error_code> poll_error(int timeout) noexcept;
 
-		ROD_API_PUBLIC std::size_t read(void *dst, std::size_t n, std::error_code &err) noexcept;
-		ROD_API_PUBLIC std::size_t write(const void *src, std::size_t n, std::error_code &err) noexcept;
-		ROD_API_PUBLIC std::size_t read_at(void *dst, std::size_t n, std::size_t off, std::error_code &err) noexcept;
-		ROD_API_PUBLIC std::size_t write_at(const void *src, std::size_t n, std::size_t off, std::error_code &err) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> read(void *dst, std::size_t n) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> write(const void *src, std::size_t n) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> read_at(void *dst, std::size_t n, std::size_t off) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> write_at(const void *src, std::size_t n, std::size_t off) noexcept;
 
 		[[nodiscard]] constexpr bool is_open() const noexcept { return _fd > -1; }
 		[[nodiscard]] constexpr int native_handle() const noexcept { return _fd; }

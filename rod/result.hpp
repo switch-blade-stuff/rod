@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <system_error>
 #include <optional>
 #include <memory>
 
@@ -46,17 +47,17 @@ namespace rod
 		template<typename, typename>
 		friend class result;
 
+		static_assert(!std::is_void_v<Val>, "`rod::result` does not support `void` values, use `std::optional<Err>` instead");
+		static_assert(!std::is_void_v<Err>, "`rod::result` does not support `void` errors, use `std::optional<Val>` instead");
+
 	public:
 		using value_type = Val;
 		using error_type = Err;
 
 	private:
-		enum state_t : std::uint8_t
-		{
-			is_empty,
-			is_value,
-			is_error,
-		};
+		constexpr static std::uint8_t is_empty = 0;
+		constexpr static std::uint8_t is_value = 1;
+		constexpr static std::uint8_t is_error = 2;
 
 		template<typename Val2, typename Err2>
 		using is_constructible = std::conjunction<std::is_constructible<value_type, Val2>, std::is_constructible<error_type, Err2>>;
@@ -85,7 +86,7 @@ namespace rod
 
 	public:
 		/** Initializes result with empty (neither value nor error) state. */
-		constexpr result() noexcept : _state(state_t::is_empty) {}
+		constexpr result() noexcept : _state(is_empty) {}
 
 		/** Copy-initializes result's value. */
 		constexpr result(const value_type &val) noexcept(std::is_nothrow_copy_constructible_v<value_type>) requires(!std::same_as<value_type, error_type> && std::copy_constructible<value_type>) : result(in_place_value, val) {}
@@ -100,22 +101,22 @@ namespace rod
 		/** Direct-initializes result's value from passed arguments.
 		 * @param args Arguments passed to the value type's constructor. */
 		template<typename... Args> requires std::constructible_from<value_type, Args...>
-		constexpr result(in_place_value_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<value_type, Args...>) : _value(std::forward<Args>(args)...), _state(state_t::is_value) {}
+		constexpr result(in_place_value_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<value_type, Args...>) : _value(std::forward<Args>(args)...), _state(is_value) {}
 		/** Direct-initializes result's value from passed initializer list and arguments.
 		 * @param init Initializer list passed to the value type's constructor.
 		 * @param args Arguments passed to the value type's constructor. */
 		template<typename T, typename... Args> requires std::constructible_from<value_type, const std::initializer_list<T> &, Args...>
-		constexpr result(in_place_value_t, std::initializer_list<T> init, Args &&...args) noexcept(std::is_nothrow_constructible_v<value_type, std::initializer_list<T>, Args...>) : _value(init, std::forward<Args>(args)...), _state(state_t::is_value) {}
+		constexpr result(in_place_value_t, std::initializer_list<T> init, Args &&...args) noexcept(std::is_nothrow_constructible_v<value_type, std::initializer_list<T>, Args...>) : _value(init, std::forward<Args>(args)...), _state(is_value) {}
 
 		/** Direct-initializes result's error from passed arguments.
 		 * @param args Arguments passed to the error type's constructor. */
 		template<typename... Args> requires std::constructible_from<error_type, Args...>
-		constexpr result(in_place_error_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<error_type, Args...>) : _error(std::forward<Args>(args)...), _state(state_t::is_error) {}
+		constexpr result(in_place_error_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<error_type, Args...>) : _error(std::forward<Args>(args)...), _state(is_error) {}
 		/** Direct-initializes result's error from passed initializer list and arguments.
 		 * @param init Initializer list passed to the error type's constructor.
 		 * @param args Arguments passed to the error type's constructor. */
 		template<typename T, typename... Args> requires std::constructible_from<error_type, const std::initializer_list<T> &, Args...>
-		constexpr result(in_place_error_t, std::initializer_list<T> init, Args &&...args) noexcept(std::is_nothrow_constructible_v<error_type, std::initializer_list<T>, Args...>) : _error(init, std::forward<Args>(args)...), _state(state_t::is_error) {}
+		constexpr result(in_place_error_t, std::initializer_list<T> init, Args &&...args) noexcept(std::is_nothrow_constructible_v<error_type, std::initializer_list<T>, Args...>) : _error(init, std::forward<Args>(args)...), _state(is_error) {}
 
 		template<typename Val2, typename Err2> requires(!std::same_as<result, result<Val2, Err2>> && is_constructible<const Val2 &, const Err2 &>::value)
 		constexpr result(const result<Val2, Err2> &other) noexcept(is_nothrow_constructible<const Val2 &, const Err2 &>::value) : _state(other._state)
@@ -125,8 +126,8 @@ namespace rod
 			if (has_error())
 				std::construct_at(&_error, other._error);
 		}
-		template<typename Val2, typename Err2> requires(!std::same_as<result, result<Val2, Err2>> && is_constructible<Val2 &&, Err2 &&>::value)
-		constexpr result(result<Val2, Err2> &&other) noexcept(is_nothrow_constructible<Val2 &&, Err2 &&>::value): _state(other._state)
+		template<typename Val2, typename Err2> requires(!std::same_as<result, result<Val2, Err2>> && is_constructible<Val2, Err2>::value)
+		constexpr result(result<Val2, Err2> &&other) noexcept(is_nothrow_constructible<Val2 &&, Err2 &&>::value) : _state(other._state)
 		{
 			if (has_value())
 				std::construct_at(&_value, std::move(other._value));
@@ -158,7 +159,7 @@ namespace rod
 			_state = other._state;
 			return *this;
 		}
-		template<typename Val2, typename Err2> requires(!std::same_as<result, result<Val2, Err2>> && is_assignable<Val2 &&, Err2 &&>::value)
+		template<typename Val2, typename Err2> requires(!std::same_as<result, result<Val2, Err2>> && is_assignable<Val2, Err2>::value)
 		constexpr result &operator=(result<Val2, Err2> &&other) noexcept(is_nothrow_move_assignable::value) requires is_move_assignable::value
 		{
 			if (_state != other._state)
@@ -251,7 +252,7 @@ namespace rod
 		constexpr void reset() noexcept(is_nothrow_destructible::value)
 		{
 			destroy();
-			_state = state_t::is_empty;
+			_state = is_empty;
 		}
 
 		/** Emplaces a value to the result.
@@ -262,7 +263,7 @@ namespace rod
 		{
 			reset();
 			std::construct_at(&_value, std::forward<Args>(args)...);
-			_state = state_t::is_value;
+			_state = is_value;
 			return _value;
 		}
 		/** Emplaces an error to the result.
@@ -273,35 +274,35 @@ namespace rod
 		{
 			reset();
 			std::construct_at(&_error, std::forward<Args>(args)...);
-			_state = state_t::is_error;
+			_state = is_error;
 			return _error;
 		}
 
 		/** Checks if the result has neither value nor error state. */
-		[[nodiscard]] constexpr bool empty() const noexcept { return _state == state_t::is_empty; }
+		[[nodiscard]] constexpr bool empty() const noexcept { return _state == is_empty; }
 		/** Checks if the result is not empty. */
 		[[nodiscard]] constexpr explicit operator bool() const noexcept { return !empty(); }
 
 		/** Checks if the result contains a value. */
-		[[nodiscard]] constexpr bool has_value() const noexcept { return _state == state_t::is_value; }
+		[[nodiscard]] constexpr bool has_value() const noexcept { return _state == is_value; }
 		/** Checks if the result contains an error. */
-		[[nodiscard]] constexpr bool has_error() const noexcept { return _state == state_t::is_error; }
+		[[nodiscard]] constexpr bool has_error() const noexcept { return _state == is_error; }
 
 		/** Returns pointer to the value of the result.
 		 * @note If the result does not contain a value results in undefined behavior. */
-		[[nodiscard]] constexpr auto *operator->() noexcept { return &_value; }
+		[[nodiscard]] constexpr auto *operator->() noexcept;
 		/** @copydoc value */
-		[[nodiscard]] constexpr auto *operator->() const noexcept { return &_value; }
+		[[nodiscard]] constexpr auto *operator->() const noexcept;
 
 		/** Returns reference to the value of the result.
 		 * @note If the result does not contain a value results in undefined behavior. */
-		[[nodiscard]] constexpr auto &operator*() & noexcept { return _value; }
+		[[nodiscard]] constexpr auto &operator*() & noexcept { return *operator->(); }
 		/** @copydoc value */
-		[[nodiscard]] constexpr auto &&operator*() && noexcept { return std::move(_value); }
+		[[nodiscard]] constexpr auto &&operator*() && noexcept { return std::move(*operator->()); }
 		/** @copydoc value */
-		[[nodiscard]] constexpr auto &operator*() const & noexcept { return _value; }
+		[[nodiscard]] constexpr auto &operator*() const & noexcept { return *operator->(); }
 		/** @copydoc value */
-		[[nodiscard]] constexpr auto &&operator*() const && noexcept { return std::move(_value); }
+		[[nodiscard]] constexpr auto &&operator*() const && noexcept { return std::move(*operator->()); }
 
 		/** Returns reference to the contained value of the result.
 		 * @throw std::system_error If the result does not contain a value and the error is same as `std::error_code`.
@@ -315,10 +316,10 @@ namespace rod
 		[[nodiscard]] auto &&value() const && { return assert_value_state(std::move(_value)); }
 
 		/** Returns the contained value or \a val if result does not contain a value. */
-		template<typename Val2> requires std::copy_constructible<Val> && std::constructible_from<value_type, Val2>
+		template<typename Val2 = value_type> requires std::copy_constructible<Val> && std::constructible_from<value_type, Val2>
 		[[nodiscard]] constexpr value_type value_or(Val2 &&val) const & noexcept(std::is_nothrow_copy_constructible_v<value_type> && std::is_nothrow_constructible_v<value_type, Val2>) { return has_value() ? _value : Val{std::forward<Val2>(val)}; }
 		/** @copydoc value_or */
-		template<typename Val2> requires  std::move_constructible<Val> && std::constructible_from<value_type, Val2>
+		template<typename Val2 = value_type> requires  std::move_constructible<Val> && std::constructible_from<value_type, Val2>
 		[[nodiscard]] constexpr value_type value_or(Val2 &&val) && noexcept(std::is_nothrow_move_constructible_v<value_type> && std::is_nothrow_constructible_v<value_type, Val2>) { return has_value() ? std::move(_value) : Val{std::forward<Val2>(val)}; }
 
 		/** Returns reference to the error of the result.
@@ -332,14 +333,14 @@ namespace rod
 		[[nodiscard]] auto &&error() const && { return assert_error_state(std::move(_error)); }
 
 		/** Returns the error state or \a err if result does not contain a value. */
-		template<typename Err2> requires std::copy_constructible<error_type> && std::constructible_from<error_type, Err2>
+		template<typename Err2 = error_type> requires std::copy_constructible<error_type> && std::constructible_from<error_type, Err2>
 		[[nodiscard]] constexpr error_type error_or(Err2 &&err) const & noexcept(std::is_nothrow_copy_constructible_v<error_type> && std::is_nothrow_constructible_v<error_type, Err2>) { return has_error() ? _error : Err{std::forward<Err2>(err)}; }
 		/** @copydoc error_or */
-		template<typename Err2> requires std::move_constructible<error_type> && std::constructible_from<error_type, Err2>
+		template<typename Err2 = error_type> requires std::move_constructible<error_type> && std::constructible_from<error_type, Err2>
 		[[nodiscard]] constexpr error_type error_or(Err2 &&err) && noexcept(std::is_nothrow_move_constructible_v<error_type> && std::is_nothrow_constructible_v<error_type, Err2>) { return has_error() ? std::move(_error) : Err{std::forward<Err2>(err)}; }
 
-		template<typename Val1, typename Err1, typename Val2, typename Err2> requires std::equality_comparable_with<Val1, Val2> && std::equality_comparable_with<Err1, Err2>
-		[[nodiscard]] friend constexpr bool operator==(const result<Val1, Err1> &a, const result<Val2, Err2> &b) noexcept(noexcept(std::declval<Val1>() == std::declval<Val2>()) && noexcept(std::declval<Err1>() == std::declval<Err2>()))
+		template<typename Val2 = value_type, typename Err2 = error_type> requires std::equality_comparable_with<value_type, Val2> && std::equality_comparable_with<error_type, Err2>
+		[[nodiscard]] friend constexpr bool operator==(const result &a, const result<Val2, Err2> &b) noexcept(noexcept(std::declval<error_type>() == std::declval<Val2>()) && noexcept(std::declval<error_type>() == std::declval<Err2>()))
 		{
 			if (a.has_value() && b.has_value())
 				return a._value == b._value;
@@ -407,6 +408,18 @@ namespace rod
 			value_type _value;
 			error_type _error;
 		};
-		state_t _state = state_t::is_empty;
+		std::uint8_t _state;
 	};
+
+#ifndef NDEBUG /* Extra check to return nullptr in debug mode to make debugging easier */
+	template<typename Val, typename Err>
+	constexpr auto *result<Val, Err>::operator->() noexcept { return has_value() ? &_value : nullptr; }
+	template<typename Val, typename Err>
+	constexpr auto *result<Val, Err>::operator->() const noexcept { return has_value() ? &_value : nullptr; }
+#else
+	template<typename Val, typename Err>
+	constexpr auto *result<Val, Err>::operator->() noexcept { return &_value; }
+	template<typename Val, typename Err>
+	constexpr auto *result<Val, Err>::operator->() const noexcept { return &_value; }
+#endif
 }
