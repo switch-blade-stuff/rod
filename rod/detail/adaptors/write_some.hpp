@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include "../../result.hpp"
-#include "../io_buffer.hpp"
+#include "sync_io.hpp"
 
 namespace rod
 {
@@ -13,7 +12,7 @@ namespace rod
 	{
 		struct write_some_t
 		{
-			template<typename Hnd, io_buffer Src> requires tag_invocable<write_some_t, Hnd, Src>
+			template<typename Hnd, byte_buffer Src> requires tag_invocable<write_some_t, Hnd, Src>
 			[[nodiscard]] result<std::size_t, std::error_code> operator()(Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<write_some_t, Hnd, Src>)
 			{
 				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Src>(src));
@@ -21,7 +20,7 @@ namespace rod
 		};
 		struct write_some_at_t
 		{
-			template<typename Hnd, std::integral Pos, io_buffer Src> requires tag_invocable<write_some_at_t, Hnd, Pos, Src>
+			template<typename Hnd, std::integral Pos, byte_buffer Src> requires tag_invocable<write_some_at_t, Hnd, Pos, Src>
 			[[nodiscard]] result<std::size_t, std::error_code> operator()(Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<write_some_at_t, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
@@ -38,22 +37,29 @@ namespace rod
 
 		class async_write_some_t
 		{
+			template<typename Snd, typename Hnd, typename Dst>
+			using sync_sender = typename _sync_io::sender<write_some_t, std::decay_t<Snd>, Hnd, std::decay_t<Dst>>::type;
 			template<typename Hnd, typename Src>
 			using back_adaptor = detail::back_adaptor<async_write_some_t, Hnd, std::decay_t<Src>>;
 
 		public:
-			template<sender Snd, typename Hnd, io_buffer Src> requires value_overload<async_write_some_t, Snd, Hnd, Src>
+			template<sender Snd, typename Hnd, byte_buffer Src> requires value_overload<async_write_some_t, Snd, Hnd, Src>
 			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, value_scheduler<Snd>, Snd, Hnd, Src>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
-			template<sender Snd, typename Hnd, io_buffer Src> requires(!value_overload<async_write_some_t, Snd, Hnd, Src> && tag_invocable<async_write_some_t, Snd, Hnd, Src>)
+			template<sender Snd, typename Hnd, byte_buffer Src> requires(!value_overload<async_write_some_t, Snd, Hnd, Src> && tag_invocable<async_write_some_t, Snd, Hnd, Src>)
 			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_t, Snd, Hnd, Src>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
+			template<sender Snd, typename Hnd, byte_buffer Src> requires(!value_overload<async_write_some_t, Snd, Hnd, Src> && !tag_invocable<async_write_some_t, Snd, Hnd, Src> && tag_invocable<write_some_t, Hnd, Src>)
+			[[nodiscard]] sync_sender<Snd, Hnd, Src> operator()(Snd &&snd, Hnd &&hnd, Src &&src) const noexcept(std::is_nothrow_constructible_v<sync_sender<Snd, Hnd, Src>, Snd, Hnd, Src>)
+			{
+				return sync_sender<Snd, Hnd, Src>{std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Src>(src)};
+			}
 
-			template<typename Hnd, io_buffer Src>
+			template<typename Hnd, byte_buffer Src>
 			[[nodiscard]] back_adaptor<Hnd, Src> operator()(Hnd &&hnd, Src &&src) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Src>, async_write_some_t, Hnd, Src>)
 			{
 				return back_adaptor<Hnd, Src>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Src>(src))};
@@ -61,22 +67,29 @@ namespace rod
 		};
 		class async_write_some_at_t
 		{
+			template<typename Snd, typename Hnd, typename Pos, typename Dst>
+			using sync_sender = typename _sync_io::sender<write_some_at_t, std::decay_t<Snd>, Hnd, Pos, std::decay_t<Dst>>::type;
 			template<typename Hnd, typename Pos, typename Src>
 			using back_adaptor = detail::back_adaptor<async_write_some_at_t, Hnd, std::decay_t<Pos>, std::decay_t<Src>>;
 
 		public:
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src>
+			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Src> requires value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src>
 			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Src> requires(!value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src> && tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
+			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Src> requires(!value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src> && tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
 			[[nodiscard]] write_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
+			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Src> requires(!value_overload<async_write_some_at_t, Snd, Hnd, Pos, Src> && !tag_invocable<async_write_some_at_t, Snd, Hnd, Pos, Src> && tag_invocable<write_some_at_t, Hnd, Pos, Src>)
+			[[nodiscard]] sync_sender<Snd, Hnd, Pos, Src> operator()(Snd &&snd, Hnd &&hnd, Pos pos, Src &&src) const noexcept(std::is_nothrow_constructible_v<sync_sender<Snd, Hnd, Pos, Src>, Snd, Hnd, Pos, Src>)
+			{
+				return sync_sender<Snd, Hnd, Pos, Src>{std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Src>(src)};
+			}
 
-			template<typename Hnd, std::integral Pos, io_buffer Src>
+			template<typename Hnd, std::integral Pos, byte_buffer Src>
 			[[nodiscard]] back_adaptor<Hnd, Pos, Src> operator()(Hnd &&hnd, Pos pos, Src &&src) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Src>, async_write_some_at_t, Hnd, Pos, Src>)
 			{
 				return back_adaptor<Hnd, Pos, Src>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), pos, std::forward<Src>(src))};
@@ -85,12 +98,12 @@ namespace rod
 
 		struct schedule_write_some_t
 		{
-			template<scheduler Sch, typename Hnd, io_buffer Src> requires tag_invocable<schedule_write_some_t, Sch, Hnd, Src>
+			template<scheduler Sch, typename Hnd, byte_buffer Src> requires tag_invocable<schedule_write_some_t, Sch, Hnd, Src>
 			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Src &&src) const noexcept(nothrow_tag_invocable<schedule_write_some_t, Sch, Hnd, Src>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), std::forward<Src>(src));
 			}
-			template<scheduler Sch, typename Hnd, io_buffer Src> requires(!tag_invocable<schedule_write_some_t, Sch, Hnd, Src> && detail::callable<async_write_some_t, schedule_result_t<Sch>, Hnd, Src>)
+			template<scheduler Sch, typename Hnd, byte_buffer Src> requires(!tag_invocable<schedule_write_some_t, Sch, Hnd, Src> && detail::callable<async_write_some_t, schedule_result_t<Sch>, Hnd, Src>)
 			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Src &&src) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_t, schedule_result_t<Sch>, Hnd, Src>)
 			{
 				return async_write_some_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), std::forward<Src>(src));
@@ -98,12 +111,12 @@ namespace rod
 		};
 		struct schedule_write_some_at_t
 		{
-			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Src> requires tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src>
+			template<scheduler Sch, typename Hnd, std::integral Pos, byte_buffer Src> requires tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src>
 			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Src &&src) const noexcept(nothrow_tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));
 			}
-			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Src> requires(!tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src> && detail::callable<async_write_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Src>)
+			template<scheduler Sch, typename Hnd, std::integral Pos, byte_buffer Src> requires(!tag_invocable<schedule_write_some_at_t, Sch, Hnd, Pos, Src> && detail::callable<async_write_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Src>)
 			[[nodiscard]] write_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Src &&src) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Src>)
 			{
 				return async_write_some_at_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), pos, std::forward<Src>(src));

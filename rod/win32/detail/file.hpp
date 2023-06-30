@@ -17,7 +17,7 @@ namespace rod::detail
 	public:
 		using native_handle_type = void *;
 
-		enum fileprot : int
+		enum openprot : int
 		{
 			user_exec = 0b000'000'001,
 			user_read = 0b000'000'010,
@@ -53,8 +53,8 @@ namespace rod::detail
 		static ROD_API_PUBLIC system_file open(const char *path, int mode, int prot, std::error_code &err) noexcept;
 		static ROD_API_PUBLIC system_file open(const wchar_t *path, int mode, int prot, std::error_code &err) noexcept;
 
-		static system_file open(const char *path, int mode, std::error_code &err) noexcept { return open(path, mode, fileprot::_default, err); }
-		static system_file open(const wchar_t *path, int mode, std::error_code &err) noexcept { return open(path, mode, fileprot::_default, err); }
+		static system_file open(const char *path, int mode, std::error_code &err) noexcept { return open(path, mode, openprot::_default, err); }
+		static system_file open(const wchar_t *path, int mode, std::error_code &err) noexcept { return open(path, mode, openprot::_default, err); }
 
 	public:
 		constexpr system_file() = default;

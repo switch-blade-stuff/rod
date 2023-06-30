@@ -7,6 +7,7 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/split.hpp
         ${CMAKE_CURRENT_LIST_DIR}/closure.hpp
         ${CMAKE_CURRENT_LIST_DIR}/recurse.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/sync_io.hpp
         ${CMAKE_CURRENT_LIST_DIR}/transfer.hpp
         ${CMAKE_CURRENT_LIST_DIR}/when_all.hpp
         ${CMAKE_CURRENT_LIST_DIR}/read_some.hpp

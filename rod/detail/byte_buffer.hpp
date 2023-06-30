@@ -20,7 +20,7 @@ namespace rod
 
 	/** Concept used to check if type \a T is a contiguous buffer of bytes (`std::byte`, `std::int8_t` or `std::uint8_t`). */
 	template<typename T>
-	concept io_buffer = std::ranges::contiguous_range<T> && detail::byte_like<std::remove_cv_t<std::ranges::range_value_t<T>>>;
+	concept byte_buffer = std::ranges::contiguous_range<T> && detail::byte_like<std::remove_cv_t<std::ranges::range_value_t<T>>>;
 
 	/** Creates a span of bytes created from the specified raw pointer and size. */
 	[[nodiscard]] inline std::span<std::byte> as_byte_buffer(void *ptr, std::size_t n) noexcept

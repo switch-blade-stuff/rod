@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include "../../result.hpp"
-#include "../io_buffer.hpp"
+#include "sync_io.hpp"
 
 namespace rod
 {
@@ -13,7 +12,7 @@ namespace rod
 	{
 		struct read_some_t
 		{
-			template<typename Hnd, io_buffer Dst> requires tag_invocable<read_some_t, Hnd, Dst>
+			template<typename Hnd, byte_buffer Dst> requires tag_invocable<read_some_t, Hnd, Dst>
 			[[nodiscard]] result<std::size_t, std::error_code> operator()(Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<read_some_t, Hnd, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Dst>(dst));
@@ -21,7 +20,7 @@ namespace rod
 		};
 		struct read_some_at_t
 		{
-			template<typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<read_some_at_t, Hnd, Pos, Dst>
+			template<typename Hnd, std::integral Pos, byte_buffer Dst> requires tag_invocable<read_some_at_t, Hnd, Pos, Dst>
 			[[nodiscard]] result<std::size_t, std::error_code> operator()(Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
@@ -38,22 +37,29 @@ namespace rod
 
 		class async_read_some_t
 		{
+			template<typename Snd, typename Hnd, typename Dst>
+			using sync_sender = typename _sync_io::sender<read_some_t, std::decay_t<Snd>, Hnd, std::decay_t<Dst>>::type;
 			template<typename Hnd, typename Dst>
 			using back_adaptor = detail::back_adaptor<async_read_some_t, Hnd, std::decay_t<Dst>>;
 
 		public:
-			template<sender Snd, typename Hnd, io_buffer Dst> requires value_overload<async_read_some_t, Snd, Hnd, Dst>
+			template<sender Snd, typename Hnd, byte_buffer Dst> requires value_overload<async_read_some_t, Snd, Hnd, Dst>
 			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, value_scheduler<Snd>, Snd, Hnd, Dst>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
-			template<sender Snd, typename Hnd, io_buffer Dst> requires(!value_overload<async_read_some_t, Snd, Hnd, Dst> && tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
+			template<sender Snd, typename Hnd, byte_buffer Dst> requires(!value_overload<async_read_some_t, Snd, Hnd, Dst> && tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
 			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
+			template<sender Snd, typename Hnd, byte_buffer Dst> requires(!value_overload<async_read_some_t, Snd, Hnd, Dst> && !tag_invocable<async_read_some_t, Snd, Hnd, Dst> && tag_invocable<read_some_t, Hnd, Dst>)
+			[[nodiscard]] sync_sender<Snd, Hnd, Dst> operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<sync_sender<Snd, Hnd, Dst>, Snd, Hnd, Dst>)
+			{
+				return sync_sender<Snd, Hnd, Dst>{std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst)};
+			}
 
-			template<typename Hnd, io_buffer Dst>
+			template<typename Hnd, byte_buffer Dst>
 			[[nodiscard]] back_adaptor<Hnd, Dst> operator()(Hnd &&hnd, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Dst>, async_read_some_t, Hnd, Dst>)
 			{
 				return back_adaptor<Hnd, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Dst>(dst))};
@@ -61,22 +67,29 @@ namespace rod
 		};
 		class async_read_some_at_t
 		{
+			template<typename Snd, typename Hnd, typename Pos, typename Dst>
+			using sync_sender = typename _sync_io::sender<read_some_at_t, std::decay_t<Snd>, Hnd, Pos, std::decay_t<Dst>>::type;
 			template<typename Hnd, typename Pos, typename Dst>
 			using back_adaptor = detail::back_adaptor<async_read_some_at_t, Hnd, std::decay_t<Pos>, std::decay_t<Dst>>;
 
 		public:
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst>
+			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Dst> requires value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst>
 			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
-			template<sender Snd, typename Hnd, std::integral Pos, io_buffer Dst> requires(!value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
+			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Dst> requires(!value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
 			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
+			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Dst> requires(!value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst> && !tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst> && tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
+			[[nodiscard]] sync_sender<Snd, Hnd, Pos, Dst> operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<sync_sender<Snd, Hnd, Pos, Dst>, Snd, Hnd, Pos, Dst>)
+			{
+				return sync_sender<Snd, Hnd, Pos, Dst>{std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst)};
+			}
 
-			template<typename Hnd, std::integral Pos, io_buffer Dst>
+			template<typename Hnd, std::integral Pos, byte_buffer Dst>
 			[[nodiscard]] back_adaptor<Hnd, Pos, Dst> operator()(Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Dst>, async_read_some_at_t, Hnd, Pos, Dst>)
 			{
 				return back_adaptor<Hnd, Pos, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst))};
@@ -85,12 +98,12 @@ namespace rod
 
 		struct schedule_read_some_t
 		{
-			template<scheduler Sch, typename Hnd, io_buffer Dst> requires tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>
+			template<scheduler Sch, typename Hnd, byte_buffer Dst> requires tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>
 			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
-			template<scheduler Sch, typename Hnd, io_buffer Dst> requires(!tag_invocable<schedule_read_some_t, Sch, Hnd, Dst> && detail::callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
+			template<scheduler Sch, typename Hnd, byte_buffer Dst> requires(!tag_invocable<schedule_read_some_t, Sch, Hnd, Dst> && detail::callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
 			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Dst &&dst) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
 			{
 				return async_read_some_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
@@ -98,12 +111,12 @@ namespace rod
 		};
 		struct schedule_read_some_at_t
 		{
-			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Dst> requires tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>
+			template<scheduler Sch, typename Hnd, std::integral Pos, byte_buffer Dst> requires tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>
 			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>)
 			{
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
-			template<scheduler Sch, typename Hnd, std::integral Pos, io_buffer Dst> requires(!tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst> && detail::callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
+			template<scheduler Sch, typename Hnd, std::integral Pos, byte_buffer Dst> requires(!tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst> && detail::callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
 			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
 			{
 				return async_read_some_at_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
