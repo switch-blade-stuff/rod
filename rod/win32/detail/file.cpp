@@ -114,8 +114,8 @@ namespace rod::detail
 		{
 			if (const auto size = ::MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0); size) [[likely]]
 			{
-				auto buff = std::wstring(static_cast<std::size_t>(size), '\0');
-				if (::MultiByteToWideChar(CP_UTF8, 0, path, -1, buff.data(), buff.size())) [[likely]]
+				auto buff = std::wstring(size - 1, '\0');
+				if (::MultiByteToWideChar(CP_UTF8, 0, path, -1, buff.data(), size)) [[likely]]
 					return open(buff.c_str(), mode, prot);
 			}
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
@@ -200,6 +200,17 @@ namespace rod::detail
 		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), nullptr, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
 			return _offset = static_cast<std::size_t>(res);
 #endif
+		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+	}
+
+	result<std::filesystem::path, std::error_code> system_file::path() const
+	{
+		if (const auto size = ::GetFinalPathNameByHandleW(native_handle(), nullptr, 0, FILE_NAME_NORMALIZED); size) [[likely]]
+		{
+			auto buff = std::wstring(size - 1, '\0');
+			if (::GetFinalPathNameByHandleW(native_handle(), buff.data(), size, FILE_NAME_NORMALIZED)) [[likely]]
+				return std::filesystem::path{buff};
+		}
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
 
