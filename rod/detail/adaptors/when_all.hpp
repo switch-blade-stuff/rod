@@ -312,7 +312,6 @@ namespace rod
 			using signs_t = unique_tuple_t<detail::concat_tuples_t<value_signs_t<T, E>, error_signs_t<T, E>, completion_signatures<set_stopped_t()>>>;
 
 		public:
-			constexpr type() noexcept(std::is_nothrow_default_constructible_v<std::tuple<Snds...>>) = default;
 			template<typename... Args> requires std::constructible_from<std::tuple<Snds...>, Args...>
 			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Snds...>, Args...>) : _snds{std::forward<Args>(args)...} {}
 

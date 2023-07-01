@@ -10,6 +10,7 @@ namespace rod
 {
 	namespace _recurse
 	{
+		class recurse_until_t;
 		class recurse_t;
 
 		template<typename, typename, typename>

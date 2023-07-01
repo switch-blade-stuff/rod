@@ -79,10 +79,8 @@ namespace rod
 
 		/** Asynchronously locks the mutex and returns an awaiter suspended until the lock is acquired. */
 		[[nodiscard]] awaiter async_lock() noexcept { return awaiter{*this}; }
-		/** @brief Asynchronously locks the mutex and returns a lock guard awaiter suspended until the lock is acquired.
-		 *
-		 * Expression `co_await mtx.async_scoped_lock()` evaluates to an RAII lock guard
-		 * for the locked mutex, where `mtx` is an instance of `async_mutex`. */
+		/** Asynchronously locks the mutex and returns a lock guard awaiter suspended until the lock is acquired.
+		 * Expression `co_await mtx.async_scoped_lock()` evaluates to an RAII lock guard for the locked mutex. */
 		[[nodiscard]] guard_awaiter async_scoped_lock() noexcept { return guard_awaiter{*this}; }
 
 		/** Attempts to lock the mutex.
@@ -142,9 +140,6 @@ namespace rod
 		async_mutex *_mtx;
 	};
 
-	async_lock_guard async_mutex::guard_awaiter::await_resume() const noexcept
-	{
-		return {_mtx, std::adopt_lock};
-	}
+	async_lock_guard async_mutex::guard_awaiter::await_resume() const noexcept { return {_mtx, std::adopt_lock}; }
 }
 #endif

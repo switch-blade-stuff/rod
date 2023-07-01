@@ -16,7 +16,7 @@ namespace rod
 	class result;
 
 	/** Exception thrown when an invalid state was requested from `rod::result`. */
-	class ROD_API_PUBLIC bad_result_access : public std::runtime_error
+	class bad_result_access : public std::runtime_error
 	{
 		template<typename, typename>
 		friend class result;
@@ -25,7 +25,7 @@ namespace rod
 		explicit bad_result_access(const std::string &msg) : std::runtime_error(msg) {}
 
 	public:
-		~bad_result_access() override = default;
+		ROD_API_PUBLIC ~bad_result_access() override = default;
 	};
 
 	/** Tag used to select value-state constructor for `rod::result`. */

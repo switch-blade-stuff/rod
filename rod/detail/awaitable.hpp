@@ -83,16 +83,23 @@ namespace rod
 			using alloc_type = typename std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
 			using alloc_traits = std::allocator_traits<alloc_type>;
 
+			[[nodiscard]] static constexpr std::size_t align_bytes(std::size_t n) noexcept
+			{
+				const auto mul = sizeof(with_allocator_promise);
+				const auto rem = n % mul;
+				return n + (rem ? mul - rem : 0);
+			}
+
 		public:
 			template<decays_to<Alloc> A, typename... Args>
-			static constexpr void *operator new(std::size_t n, std::allocator_arg_t, A &&a, Args &&...)
+			[[nodiscard]] static constexpr void *operator new(std::size_t n, std::allocator_arg_t, A &&a, Args &&...)
 			{
 				if (std::is_constant_evaluated())
 					return ::operator new(n);
 				else
 				{
 					auto alloc = alloc_type{std::forward<A>(a)};
-					const auto num = n / sizeof(with_allocator_promise);
+					const auto num = align_bytes(n) / sizeof(with_allocator_promise);
 					const auto ptr = alloc_traits::allocate(alloc, num);
 					try
 					{
@@ -113,7 +120,7 @@ namespace rod
 				else
 				{
 					const auto ptr = static_cast<with_allocator_promise *>(mem);
-					const auto num = n / sizeof(with_allocator_promise);
+					const auto num = align_bytes(n) / sizeof(with_allocator_promise);
 					auto alloc = std::move(ptr->_alloc);
 					std::destroy_at(&ptr->_alloc);
 					alloc_traits::deallocate(alloc, ptr, num);
