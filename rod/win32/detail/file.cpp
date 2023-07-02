@@ -205,13 +205,20 @@ namespace rod::detail
 
 	result<std::filesystem::path, std::error_code> system_file::path() const
 	{
-		if (const auto size = ::GetFinalPathNameByHandleW(native_handle(), nullptr, 0, FILE_NAME_NORMALIZED); size) [[likely]]
+		try
 		{
-			auto buff = std::wstring(size - 1, '\0');
-			if (::GetFinalPathNameByHandleW(native_handle(), buff.data(), size, FILE_NAME_NORMALIZED)) [[likely]]
-				return std::filesystem::path{buff};
+			if (const auto size = ::GetFinalPathNameByHandleW(native_handle(), nullptr, 0, FILE_NAME_NORMALIZED); size) [[likely]]
+			{
+				auto buff = std::wstring(size - 1, '\0');
+				if (::GetFinalPathNameByHandleW(native_handle(), buff.data(), size, FILE_NAME_NORMALIZED)) [[likely]]
+					return std::filesystem::path{buff};
+			}
+			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		}
-		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+		catch (const std::bad_alloc &)
+		{
+			return std::make_error_code(std::errc::not_enough_memory);
+		}
 	}
 
 	std::error_code system_file::sync() noexcept

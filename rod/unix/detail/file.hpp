@@ -73,7 +73,7 @@ namespace rod::detail
 
 		ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
-		ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const;
+		ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const noexcept;
 
 		ROD_API_PUBLIC result<std::size_t, std::error_code> resize(std::size_t n) noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> seek(std::ptrdiff_t off, int dir) noexcept;

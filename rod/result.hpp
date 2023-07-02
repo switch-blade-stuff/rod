@@ -25,7 +25,7 @@ namespace rod
 		explicit bad_result_access(const std::string &msg) : std::runtime_error(msg) {}
 
 	public:
-		ROD_API_PUBLIC ~bad_result_access() override = default;
+		ROD_API_PUBLIC ~bad_result_access() override;
 	};
 
 	/** Tag used to select value-state constructor for `rod::result`. */

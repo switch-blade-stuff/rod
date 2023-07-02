@@ -182,7 +182,17 @@ namespace rod::detail
 			return static_cast<std::size_t>(res);
 	}
 
-	result<std::filesystem::path, std::error_code> system_file::path() const { return get_fd_path(native_handle()); }
+	result<std::filesystem::path, std::error_code> system_file::path() const noexcept
+	{
+		try
+		{
+			return get_fd_path(native_handle());
+		}
+		catch (const std::bad_alloc &)
+		{
+			return std::make_error_code(std::errc::not_enough_memory);
+		}
+	}
 
 	std::error_code system_file::sync() noexcept
 	{

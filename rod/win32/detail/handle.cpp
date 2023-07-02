@@ -4,15 +4,15 @@
 
 #ifdef _WIN32
 
-#include "io_handle.hpp"
+#include "handle.hpp"
 
 #define NOMINMAX
 #include <windows.h>
 
 namespace rod::detail
 {
-	unique_io_handle::~unique_io_handle() { if (is_open()) ::CloseHandle(release()); }
-	std::error_code basic_io_handle::close() noexcept
+	unique_handle::~unique_handle() { if (is_open()) ::CloseHandle(release()); }
+	std::error_code basic_handle::close() noexcept
 	{
 		if (is_open() && !::CloseHandle(_handle)) [[unlikely]]
 			return {static_cast<int>(::GetLastError()), std::system_category()};

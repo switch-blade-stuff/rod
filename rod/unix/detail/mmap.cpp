@@ -68,7 +68,7 @@ namespace rod::detail
 		return {};
 	}
 
-	result<system_mapping, std::error_code> system_mapping::map(int fd, std::size_t off, std::size_t size, int mode) noexcept
+	result<system_mmap, std::error_code> system_mmap::map(int fd, std::size_t off, std::size_t size, int mode) noexcept
 	{
 		/* Align the file offset to page size & resize if needed. */
 		const auto aligned_off = align_pagesize(off);
@@ -92,7 +92,7 @@ namespace rod::detail
 		const auto data = ::mmap(nullptr, size + off - *aligned_off, prot, flags, fd, static_cast<off64_t>(*aligned_off));
 #endif
 		if (data) [[likely]]
-			return system_mapping{static_cast<std::byte *>(data), off - *aligned_off, size + off - *aligned_off};
+			return system_mmap{static_cast<std::byte *>(data), off - *aligned_off, size + off - *aligned_off};
 		else
 			return std::error_code{errno, std::system_category()};
 	}

@@ -160,7 +160,7 @@ namespace rod
 			[[nodiscard]] result<std::size_t, std::error_code> tell() const noexcept { return _file.tell(); }
 			/** Returns the path of the file (as if via POSIX `readlink`).
 			 * @return Path to the file as reported by the filesystem or an error code on failure to get path of the file. */
-			[[nodiscard]] result<std::filesystem::path, std::error_code> path() const { return _file.path(); }
+			[[nodiscard]] result<std::filesystem::path, std::error_code> path() const noexcept { return _file.path(); }
 
 			/** Resizes the file to the specified amount of bytes.
 			 * @param[in] new_size New size of the file in bytes.
@@ -171,6 +171,12 @@ namespace rod
 			 * @param[in] dir Base direction to seek from.
 			 * @return New absolute position within the file or an error code on failure to seek the file. */
 			result<std::size_t, std::error_code> seek(std::ptrdiff_t off, seekdir dir) noexcept { return _file.seek(off, dir); }
+
+			/** Maps a portion of the file into memory.
+			 * @param \a pos Starting position (in bytes) of the view from the beginning of the file.
+			 * @param \a size Total size (in bytes) of the resulting view.
+			 * @return View to the memory-mapped region or an error code on failure to map view of the file. */
+			[[nodiscard]] result<mmap_view, std::error_code> map(std::size_t pos, std::size_t size) const noexcept { return _file.map(pos, size); }
 
 			/** Checks if the file is open. */
 			[[nodiscard]] bool is_open() const noexcept { return _file.is_open(); }
