@@ -67,13 +67,15 @@ namespace rod
 		 * @note This overload will ignore the `mmap::expand` mode flag. */
 		[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size, mmap::mapmode mode) const noexcept { return _shm.map(pos, size, mode & ~mmap::expand); }
 
-		/** Locks the shared memory object so that only one process has access to it. */
-		void lock() noexcept { _shm.lock(); }
 		/** Attempts to lock the shared memory object so that only one process has access to it.
 		 * @return `true` if locked successfully, `false` if another process already has the lock. */
 		bool try_lock() noexcept { return _shm.try_lock(); }
-		/** Releases the shared memory object lock. */
-		void unlock() noexcept { _shm.unlock(); }
+		/** Locks the shared memory object so that only one process has access to it.
+		 * @return Error code on failure to lock the shared memory object. */
+		std::error_code lock() noexcept { return _shm.lock(); }
+		/** Releases the shared memory object lock.
+		 * @return Error code on failure to unlock the shared memory object. */
+		std::error_code unlock() noexcept { return _shm.unlock(); }
 
 		/** Returns the underlying native shared memory object handle. */
 		[[nodiscard]] native_handle_type native_handle() const noexcept { return _shm.native_handle(); }
