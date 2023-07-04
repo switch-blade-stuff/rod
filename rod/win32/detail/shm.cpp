@@ -11,6 +11,7 @@
 #endif
 
 #define NOMINMAX
+
 #include <windows.h>
 #include <thread>
 
