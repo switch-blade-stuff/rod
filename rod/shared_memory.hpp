@@ -32,8 +32,6 @@ namespace rod
 		static constexpr openmode readonly = native_t::readonly;
 		/** Opens shared memory object in create-only mode. Opening the shared memory object will fail if it does not exist. */
 		static constexpr openmode nocreate = native_t::nocreate;
-		/** Opens shared memory object in create-only mode. Opening the shared memory object will fail if it already exists. */
-		static constexpr openmode noreplace = native_t::noreplace;
 
 	public:
 		/** Opens the shared memory object identified by name \a name using mode flags \a flags.
@@ -41,13 +39,13 @@ namespace rod
 		 * @param[in] size Size of the shared memory object. If set to `0`, uses an implementation-defined default size.
 		 * @param[in] mode Mode flags to open the shared memory object with.
 		 * @return Handle to the opened shared memory object, or an error code on failure to open the shared memory object. */
-		[[nodiscard]] static result<shared_memory, std::error_code> open(const char *name, std::size_t size, openmode mode) noexcept { return native_t::open(name, size, mode); }
+		[[nodiscard]] static result<shared_memory, std::error_code> open(const char *name, std::size_t size = 0, openmode mode = {}) noexcept { return native_t::open(name, size, mode); }
 		/** @copydoc open */
-		[[nodiscard]] static result<shared_memory, std::error_code> open(const std::string &name, std::size_t size, openmode mode) noexcept { return open(name.c_str(), size, mode); }
+		[[nodiscard]] static result<shared_memory, std::error_code> open(const std::string &name, std::size_t size = 0, openmode mode = {}) noexcept { return open(name.c_str(), size, mode); }
 		/** @copydoc open */
-		[[nodiscard]] static result<shared_memory, std::error_code> open(const wchar_t *path, std::size_t size, openmode mode) noexcept { return native_t::open(path, size, mode); }
+		[[nodiscard]] static result<shared_memory, std::error_code> open(const wchar_t *path, std::size_t size = 0, openmode mode = {}) noexcept { return native_t::open(path, size, mode); }
 		/** @copydoc open */
-		[[nodiscard]] static result<shared_memory, std::error_code> open(const std::wstring &name, std::size_t size, openmode mode) noexcept { return open(name.c_str(), size, mode); }
+		[[nodiscard]] static result<shared_memory, std::error_code> open(const std::wstring &name, std::size_t size = 0, openmode mode = {}) noexcept { return open(name.c_str(), size, mode); }
 
 	public:
 		shared_memory() = delete;

@@ -21,7 +21,6 @@ namespace rod::detail
 		{
 			readonly = 0b001,
 			nocreate = 0b010,
-			noreplace = 0b100,
 		};
 
 		static ROD_API_PUBLIC result<system_shm, std::error_code> open(const char *name, std::size_t size, int mode) noexcept;

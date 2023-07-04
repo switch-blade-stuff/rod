@@ -35,17 +35,15 @@ namespace rod::detail
 		{
 			DWORD access = FILE_MAP_READ;
 			if (!(mode & openmode::readonly))
-				access = FILE_MAP_WRITE;
+				access |= FILE_MAP_WRITE;
 
 			hnd = ::OpenFileMappingW(access, false, name);
 		}
 		else
 		{
-			DWORD prot;
+			DWORD prot = PAGE_READWRITE;
 			if (mode & openmode::readonly)
 				prot = PAGE_READONLY;
-			else
-				prot = PAGE_READWRITE;
 
 			DWORD size_h = {}, size_l;
 #if SIZE_MAX >= UINT64_MAX
@@ -58,9 +56,8 @@ namespace rod::detail
 
 		if (hnd == nullptr) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
-		if (DWORD err; (mode & openmode::noreplace) && (err = ::GetLastError()) == ERROR_ALREADY_EXISTS)
-			return std::error_code{static_cast<int>(err), std::system_category()};
-		return system_shm{hnd};
+		else
+			return system_shm{hnd};
 	}
 
 	result<system_mmap, std::error_code> system_shm::map(std::size_t off, std::size_t n, int mode) const noexcept
@@ -81,7 +78,7 @@ namespace rod::detail
 		off_h = static_cast<DWORD>(page_off >> std::numeric_limits<DWORD>::digits);
 #endif
 		off_l = static_cast<DWORD>(page_off);
-
+ERROR_ALREADY_EXISTS;
 		if (const auto data = ::MapViewOfFile(native_handle(), access, off_h, off_l, n + off - page_off); !data) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		else
