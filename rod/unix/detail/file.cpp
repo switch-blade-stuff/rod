@@ -33,6 +33,23 @@ namespace rod::detail
 #endif
 	}
 
+	std::error_code system_file::resize_fd(native_handle_type fd, std::size_t new_size) noexcept
+	{
+		if (struct stat stat = {}; ::fstat(fd, &stat)) [[unlikely]]
+			return {errno, std::system_category()};
+		else if (static_cast<std::size_t>(stat.st_size) < new_size)
+		{
+#if SIZE_MAX >= UINT64_MAX
+			if (::ftruncate64(fd, static_cast<off64_t>(new_size))) [[unlikely]]
+				return {errno, std::system_category()};
+#else
+			if (::ftruncate(fd, static_cast<off_t>(new_size))) [[unlikely]]
+				return {errno, std::system_category()};
+#endif
+		}
+		return {};
+	}
+
 	result<system_file, std::error_code> system_file::reopen(native_handle_type fd, int mode) noexcept
 	{
 		int flags = O_CLOEXEC | O_NONBLOCK;
@@ -252,6 +269,38 @@ namespace rod::detail
 				break;
 		}
 		return result;
+	}
+
+	result<system_mmap, std::error_code> system_file::map(std::size_t off, std::size_t n, int mode) const noexcept
+	{
+		/* Align the file offset to page size & resize if needed. */
+		const auto page_off = native_mmap::pagesize_off(off);
+		if (page_off.has_error())
+			[[unlikely]] return page_off.error();
+		else if (std::error_code err; (mode & mapmode::expand) && (err = resize_fd(native_handle(), n + off)))
+			[[unlikely]] return err;
+
+		int flags = 0;
+		if (mode & mapmode::copy)
+			flags = MAP_PRIVATE;
+
+		int prot = 0;
+		if (mode & mapmode::exec)
+			prot |= PROT_EXEC;
+		if (mode & mapmode::read)
+			prot |= PROT_READ;
+		if (mode & mapmode::write)
+			prot |= PROT_WRITE;
+
+#if PTRDIFF_MAX >= INT64_MAX
+		const auto data = ::mmap64(nullptr, n + off - *page_off, prot, flags, fd, static_cast<off64_t>(*page_off));
+#else
+		const auto data = ::mmap(nullptr, n + off - *page_off, prot, flags, fd, static_cast<off64_t>(*page_off));
+#endif
+		if (data) [[likely]]
+			return system_mmap{data, off - *page_off, n + off - *page_off};
+		else
+			return std::error_code{errno, std::system_category()};
 	}
 }
 #endif

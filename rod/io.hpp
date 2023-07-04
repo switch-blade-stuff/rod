@@ -14,6 +14,7 @@
 #endif
 
 #include "file.hpp"
+#include "shared_memory.hpp"
 
 namespace rod
 {

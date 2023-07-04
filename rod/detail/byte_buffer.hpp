@@ -12,15 +12,9 @@
 
 namespace rod
 {
-	namespace detail
-	{
-		template<typename T>
-		concept byte_like = std::same_as<T, std::byte> || std::same_as<T, std::uint8_t> || std::same_as<T, std::int8_t>;
-	}
-
 	/** Concept used to check if type \a T is a contiguous buffer of bytes (`std::byte`, `std::int8_t` or `std::uint8_t`). */
 	template<typename T>
-	concept byte_buffer = std::ranges::contiguous_range<T> && detail::byte_like<std::remove_cv_t<std::ranges::range_value_t<T>>>;
+	concept byte_buffer = std::ranges::contiguous_range<T> && one_of<std::remove_cv_t<std::ranges::range_value_t<T>>, std::byte, std::uint8_t, std::int8_t, char, char8_t>;
 
 	/** Creates a span of bytes created from the specified raw pointer and size. */
 	[[nodiscard]] inline std::span<std::byte> as_byte_buffer(void *ptr, std::size_t n) noexcept

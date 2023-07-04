@@ -21,6 +21,9 @@ namespace rod
 	/** Concept used to check if type \a From decays into type \a To. */
 	template<typename From, typename To>
 	concept decays_to = std::same_as<std::decay_t<From>, To>;
+	/** Concept used to check if type \a T matches one of the types in \a Ts. */
+	template<typename T, typename... Ts>
+	concept one_of = (std::same_as<T, Ts> || ...);
 
 	namespace detail
 	{

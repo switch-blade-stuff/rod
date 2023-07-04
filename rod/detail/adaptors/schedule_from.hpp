@@ -70,7 +70,7 @@ namespace rod
 
 			template<decays_to<type> E>
 			friend constexpr Sch tag_invoke(get_completion_scheduler_t<set_error_t>, E &&) = delete;
-			template<decays_to<type> E, typename T> requires(std::same_as<T, set_value_t> || std::same_as<T, set_stopped_t>)
+			template<decays_to<type> E, one_of<set_value_t, set_stopped_t> T>
 			friend constexpr Sch tag_invoke(get_completion_scheduler_t<T>, E &&e) noexcept(std::is_nothrow_copy_constructible_v<Sch>) { return e._sch; }
 
 			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, env_of_t<Snd>, Args...>

@@ -4,13 +4,14 @@
 
 #pragma once
 
-#include "detail/adaptors/read_some.hpp"
-#include "detail/adaptors/write_some.hpp"
-#include "result.hpp"
-
 #include <filesystem>
 #include <cassert>
 #include <cstdio>
+
+#include "detail/adaptors/read_some.hpp"
+#include "detail/adaptors/write_some.hpp"
+#include "detail/mmap.hpp"
+#include "result.hpp"
 
 /* Platform-specific implementations. */
 #if defined(__unix__)
@@ -18,7 +19,7 @@
 #elif defined(_WIN32)
 #include "win32/detail/file.hpp"
 #else
-#error Unkonwn file platform
+#error Unsupported platform
 #endif
 
 namespace rod
@@ -28,7 +29,7 @@ namespace rod
 		template<typename T>
 		concept noexcept_sizeable_range = detail::nothrow_callable<decltype(std::ranges::begin), T> && detail::nothrow_callable<decltype(std::ranges::size), T>;
 
-		/** Basic filesystem file handle (such as a POSIX file descriptor or Win32 HANDLE). */
+		/** Basic file handle (such as a POSIX file descriptor or Win32 HANDLE). */
 		class basic_file
 		{
 			using native_t = detail::system_file;
@@ -93,7 +94,7 @@ namespace rod
 			/** Opens the file specified by \a path using mode flags \a flags.
 			 * @param[in] path Path to the file to be opened.
 			 * @param[in] mode Mode flags to open the file with.
-			 * @return `basic_file` handle to the opened file, or an error code on failure to open the file. */
+			 * @return Handle to the opened file, or an error code on failure to open the file. */
 			[[nodiscard]] static result<basic_file, std::error_code> open(const char *path, openmode mode) noexcept { return native_t::open(path, mode | binary); }
 			/** @copydoc open */
 			[[nodiscard]] static result<basic_file, std::error_code> open(const wchar_t *path, openmode mode) noexcept { return native_t::open(path, mode | binary); }
@@ -120,12 +121,12 @@ namespace rod
 			/** Re-opens a file from an existing file handle and mode flags.
 			 * @param[in] file Native Handle to an existing file to be re-opened.
 			 * @param[in] mode Mode flags to use when re-opening the file.
-			 * @return `basic_file` handle to the opened file, or an error code on failure to reopen the file. */
+			 * @return Handle to the opened file, or an error code on failure to reopen the file. */
 			[[nodiscard]] static result<basic_file, std::error_code> reopen(const basic_file &file, openmode mode) noexcept { return reopen(file.native_handle(), mode); }
 			/** Re-opens a file pointed to by a native file handle and mode flags.
 			 * @param[in] file Native handle to an existing file to be re-opened.
 			 * @param[in] mode Mode flags to use when re-opening the file.
-			 * @return `basic_file` handle to the opened file, or an error code on failure to reopen the file. */
+			 * @return Handle to the opened file, or an error code on failure to reopen the file. */
 			[[nodiscard]] static result<basic_file, std::error_code> reopen(native_handle_type file, openmode mode) noexcept { return native_t::reopen(file, mode | binary); }
 
 		public:
@@ -135,7 +136,7 @@ namespace rod
 
 			/** Initializes the file from a native file handle. */
 			constexpr explicit basic_file(native_handle_type file) noexcept : _file(file) {}
-			constexpr explicit basic_file(native_t &&file) noexcept : _file(std::move(file)) {}
+			constexpr explicit basic_file(native_t &&file) noexcept : _file(std::forward<native_t>(file)) {}
 
 			/** Releases the underlying native file handle without closing. */
 			native_handle_type release() noexcept { return _file.release(); }
@@ -172,11 +173,17 @@ namespace rod
 			 * @return New absolute position within the file or an error code on failure to seek the file. */
 			result<std::size_t, std::error_code> seek(std::ptrdiff_t off, seekdir dir) noexcept { return _file.seek(off, dir); }
 
-			/** Maps a portion of the file into memory.
-			 * @param \a pos Starting position (in bytes) of the view from the beginning of the file.
-			 * @param \a size Total size (in bytes) of the resulting view.
+			/** Maps a portion of the file into memory of the current process.
+			 * @param[in] pos Starting position (in bytes) of the region from the beginning of the file.
+			 * @param[in] size Total size (in bytes) of the resulting memory-mapped region.
 			 * @return View to the memory-mapped region or an error code on failure to map view of the file. */
-			[[nodiscard]] result<mmap_view, std::error_code> map(std::size_t pos, std::size_t size) const noexcept { return _file.map(pos, size); }
+			[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size) const noexcept { return _file.map(pos, size); }
+			/** @copydoc map
+			 * @param[in] mode Mode flags to use when memory-mapping the file. */
+			[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size, mmap::mapmode mode) noexcept { return _file.map(pos, size, mode); }
+			/** @copydoc map
+			 * @note This overload will ignore the `mmap::expand` mode flag. */
+			[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size, mmap::mapmode mode) const noexcept { return _file.map(pos, size, mode & ~mmap::expand); }
 
 			/** Checks if the file is open. */
 			[[nodiscard]] bool is_open() const noexcept { return _file.is_open(); }

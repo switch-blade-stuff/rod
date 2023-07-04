@@ -4,12 +4,12 @@
 
 #pragma once
 
-#include "../../detail/config.hpp"
-
 #ifdef _WIN32
 
 #include <system_error>
 #include <utility>
+
+#include "../../detail/config.hpp"
 
 namespace rod::detail
 {

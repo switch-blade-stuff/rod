@@ -16,6 +16,16 @@ namespace rod::detail
 	class mmap_handle
 	{
 	public:
+		static result<std::size_t, std::error_code> get_pagesize() noexcept;
+		static result<std::size_t, std::error_code> pagesize_off(std::size_t x) noexcept
+		{
+			if (auto res = get_pagesize(); res.has_value()) [[likely]]
+				return x - static_cast<std::size_t>(x % *res);
+			else
+				return res;
+		}
+
+	public:
 		mmap_handle(const mmap_handle &) = delete;
 		mmap_handle &operator=(const mmap_handle &) = delete;
 
@@ -50,21 +60,15 @@ namespace rod::detail
 	class system_mmap
 	{
 	public:
+		using native_handle_type = void *;
+
 		enum mapmode : int
 		{
-			copy = 0b000'001,
-			exec = 0b000'010,
-			read = 0b000'100,
-			write = 0b001'000,
-			expand = 0b010'000,
-			_default = read | write,
+			copy = 0b0001,
+			read = 0b0010,
+			write = 0b0100,
+			expand = 0b1000,
 		};
-
-		static ROD_API_PUBLIC result<system_mmap, std::error_code> map(int fd, std::size_t off, std::size_t size, int mode) noexcept;
-		static result<system_mmap, std::error_code> map(std::size_t size, int mode) noexcept { return map(-1, 0, size, mode); }
-
-	private:
-		constexpr system_mmap(void *data, std::size_t base, std::size_t size) noexcept : _mmap(data, size), _base(base) {}
 
 	public:
 		system_mmap(const system_mmap &) = delete;
@@ -74,9 +78,16 @@ namespace rod::detail
 		constexpr system_mmap(system_mmap &&other) noexcept { swap(other); }
 		constexpr system_mmap &operator=(system_mmap &&other) noexcept { return (swap(other), *this); }
 
-		[[nodiscard]] constexpr bool empty() const noexcept { return _mmap.empty(); }
+		constexpr explicit system_mmap(void *data, std::size_t base, std::size_t size) noexcept : _mmap(data, size), _base(base) {}
+
 		[[nodiscard]] constexpr std::byte *data() const noexcept { return _mmap.data() + _base; }
+		[[nodiscard]] constexpr void *native_data() const noexcept { return _mmap.data(); }
+
 		[[nodiscard]] constexpr std::size_t size() const noexcept { return _mmap.size() - _base; }
+		[[nodiscard]] constexpr std::size_t native_size() const noexcept { return _mmap.size(); }
+
+		[[nodiscard]] constexpr bool empty() const noexcept { return _mmap.empty(); }
+		[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return native_data(); }
 
 		constexpr void swap(system_mmap &other) noexcept
 		{

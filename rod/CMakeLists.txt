@@ -19,6 +19,7 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/signal.hpp
         ${CMAKE_CURRENT_LIST_DIR}/task.hpp
         ${CMAKE_CURRENT_LIST_DIR}/file.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/shared_memory.hpp
         ${CMAKE_CURRENT_LIST_DIR}/io.hpp)
 
 list(APPEND ROD_SOURCES

@@ -53,6 +53,7 @@ namespace rod::detail
 			end = SEEK_END,
 		};
 
+		static std::error_code resize_fd(native_handle_type fd, std::size_t new_size) noexcept;
 		static ROD_API_PUBLIC result<system_file, std::error_code> reopen(native_handle_type fd, int mode) noexcept;
 		static ROD_API_PUBLIC result<system_file, std::error_code> open(const char *path, int mode, int prot) noexcept;
 		static ROD_API_PUBLIC result<system_file, std::error_code> open(const wchar_t *path, int mode, int prot) noexcept;
@@ -85,6 +86,9 @@ namespace rod::detail
 		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write(const void *src, std::size_t n) noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept;
+
+		ROD_API_PUBLIC result<system_mmap, std::error_code> map(std::size_t off, std::size_t n, int mode) const noexcept;
+		result<system_mmap, std::error_code> map(std::size_t off, std::size_t n) const noexcept { return map(off, n, system_mmap::read | system_mmap::write); }
 
 		constexpr void swap(system_file &other) noexcept { unique_descriptor::swap(other); }
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }

@@ -203,7 +203,7 @@ namespace rod::detail
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
 
-	result<std::filesystem::path, std::error_code> system_file::path() const
+	result<std::filesystem::path, std::error_code> system_file::path() const noexcept
 	{
 		try
 		{
@@ -248,10 +248,10 @@ namespace rod::detail
 		for (DWORD n_done = 0, err = 0; total < n && err != ERROR_HANDLE_EOF;)
 		{
 			OVERLAPPED overlapped = {};
-			overlapped.Offset = static_cast<DWORD>(off + total);
 #if SIZE_MAX >= UINT64_MAX
-			overlapped.OffsetHigh = static_cast<DWORD>((off + total) << std::numeric_limits<DWORD>::digits);
+			overlapped.OffsetHigh = static_cast<DWORD>((off + total) >> std::numeric_limits<DWORD>::digits);
 #endif
+			overlapped.Offset = static_cast<DWORD>(off + total);
 
 			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
 			if (!::ReadFile(native_handle(), static_cast<std::byte *>(dst) + total, n_done, nullptr, &overlapped) && (err = ::GetLastError()) != ERROR_IO_PENDING) [[unlikely]]
@@ -270,10 +270,10 @@ namespace rod::detail
 		for (DWORD n_done = 0, err = 0; total < n && err != ERROR_HANDLE_EOF;)
 		{
 			OVERLAPPED overlapped = {};
-			overlapped.Offset = static_cast<DWORD>(off + total);
 #if SIZE_MAX >= UINT64_MAX
-			overlapped.OffsetHigh = static_cast<DWORD>((off + total) << std::numeric_limits<DWORD>::digits);
+			overlapped.OffsetHigh = static_cast<DWORD>((off + total) >> std::numeric_limits<DWORD>::digits);
 #endif
+			overlapped.Offset = static_cast<DWORD>(off + total);
 
 			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
 			if (!::WriteFile(native_handle(), static_cast<const std::byte *>(src) + total, n_done, nullptr, &overlapped) && (err = ::GetLastError()) != ERROR_IO_PENDING) [[unlikely]]
@@ -285,6 +285,43 @@ namespace rod::detail
 		}
 		_offset = off + total;
 		return total;
+	}
+
+	result<system_mmap, std::error_code> system_file::map(std::size_t off, std::size_t n, int mode) const noexcept
+	{
+		DWORD prot;
+		if (mode & system_mmap::mapmode::write)
+			prot = PAGE_READWRITE;
+		else if (mode & system_mmap::mapmode::read)
+			prot = PAGE_READONLY;
+		else
+			prot = PAGE_NOACCESS;
+
+		if (const auto mapping = ::CreateFileMapping(native_handle(), nullptr, prot, 0, 0, nullptr); mapping) [[likely]]
+		{
+			DWORD access = 0;
+			if (mode & system_mmap::mapmode::copy)
+				access |= FILE_MAP_COPY;
+			if (mode & system_mmap::mapmode::read)
+				access |= FILE_MAP_READ;
+			if (mode & system_mmap::mapmode::write)
+				access |= FILE_MAP_WRITE;
+
+			/* Align the file offset to page size. */
+			const auto page_off = system_mmap::pagesize_off(off);
+
+			DWORD off_h = {}, off_l;
+#if SIZE_MAX >= UINT64_MAX
+			off_h = static_cast<DWORD>(page_off >> std::numeric_limits<DWORD>::digits);
+#endif
+			off_l = static_cast<DWORD>(page_off);
+
+			if (const auto data = ::MapViewOfFile(mapping, access, off_h, off_l, n + off - page_off); data) [[likely]]
+				return system_mmap{data, off - page_off, n + off - page_off};
+
+			::CloseHandle(mapping);
+		}
+		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
 }
 #endif
