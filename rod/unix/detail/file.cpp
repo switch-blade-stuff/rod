@@ -273,10 +273,10 @@ namespace rod::detail
 
 	result<system_mmap, std::error_code> system_file::map(std::size_t off, std::size_t n, int mode) const noexcept
 	{
-		/* Align the file offset to page size & resize if needed. */
-		const auto page_off = native_mmap::pagesize_off(off);
-		if (page_off.has_error())
-			[[unlikely]] return page_off.error();
+		/* Align the offset to page size & resize if needed. */
+		const auto base_off = native_mmap::pagesize_off(off);
+		if (base_off.has_error())
+			[[unlikely]] return base_off.error();
 		else if (std::error_code err; (mode & mapmode::expand) && (err = resize_fd(native_handle(), n + off)))
 			[[unlikely]] return err;
 
@@ -293,12 +293,12 @@ namespace rod::detail
 			prot |= PROT_WRITE;
 
 #if PTRDIFF_MAX >= INT64_MAX
-		const auto data = ::mmap64(nullptr, n + off - *page_off, prot, flags, fd, static_cast<off64_t>(*page_off));
+		const auto data = ::mmap64(nullptr, n + off - *base_off, prot, flags, fd, static_cast<off64_t>(*base_off));
 #else
-		const auto data = ::mmap(nullptr, n + off - *page_off, prot, flags, fd, static_cast<off64_t>(*page_off));
+		const auto data = ::mmap(nullptr, n + off - *base_off, prot, flags, fd, static_cast<off64_t>(*base_off));
 #endif
 		if (data) [[likely]]
-			return system_mmap{data, off - *page_off, n + off - *page_off};
+			return system_mmap{data, off - *base_off, n + off - *base_off};
 		else
 			return std::error_code{errno, std::system_category()};
 	}

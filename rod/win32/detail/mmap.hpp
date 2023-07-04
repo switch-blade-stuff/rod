@@ -9,7 +9,7 @@
 #include <system_error>
 #include <utility>
 
-#include "../../result.hpp"
+#include "../../detail/config.hpp"
 
 namespace rod::detail
 {

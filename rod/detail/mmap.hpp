@@ -63,20 +63,20 @@ namespace rod
 
 		/** Returns pointer to the mapped range.
 		 * @note Returned pointer may be different from the native (actual) pointer to the underlying memory block.
-		 * This may be the case if, for example, an alignment offset is applied to the native pointer. */
+		 * This may be the case if, for example, an alignment offset or padding for a metadata header is applied to the native pointer. */
 		[[nodiscard]] void *data() const noexcept { return _mmap.data(); }
 		/** Returns the native (actual) pointer to the underlying memory block. */
 		[[nodiscard]] void *native_data() const noexcept { return _mmap.native_data(); }
 
 		/** Returns the size of the mapped range.
 		 * @note Returned size may be different from the native (actual) size of the underlying memory block.
-		 * This may be the case if, for example, an alignment offset is applied to the native size. */
+		 * This may be the case if, for example, an alignment offset or padding for a metadata header is applied to the native size. */
 		[[nodiscard]] std::size_t size() const noexcept { return _mmap.size(); }
 		/** Returns the native (actual) size of the underlying memory block. */
 		[[nodiscard]] std::size_t native_size() const noexcept { return _mmap.native_size(); }
 
 		/** Returns the underlying native handle to the memory mapping object.
-		 * \@note Returned handle is usually (but not required to be) the same as the pointer returned by `native_data`. */
+		 * @note Returned handle is usually (but not required to be) the same as the pointer returned by `native_data`. */
 		[[nodiscard]] native_handle_type native_handle() const noexcept { return _mmap.native_handle(); }
 
 		constexpr void swap(mmap &other) noexcept { _mmap.swap(other._mmap); }

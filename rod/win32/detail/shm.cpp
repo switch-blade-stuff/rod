@@ -8,6 +8,7 @@
 
 #define NOMINMAX
 #include <windows.h>
+#include <intrin.h>
 
 namespace rod::detail
 {
@@ -41,6 +42,8 @@ namespace rod::detail
 		}
 		else
 		{
+			size += sizeof(header_t);
+
 			DWORD prot = PAGE_READWRITE;
 			if (mode & openmode::readonly)
 				prot = PAGE_READONLY;
@@ -56,8 +59,12 @@ namespace rod::detail
 
 		if (hnd == nullptr) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
-		else
-			return system_shm{hnd};
+
+		const auto header = static_cast<header_t *>(::MapViewOfFile(hnd, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, sizeof(header_t)));
+		if (header == nullptr) [[unlikely]]
+			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+
+		return system_shm{hnd, header};
 	}
 
 	result<system_mmap, std::error_code> system_shm::map(std::size_t off, std::size_t n, int mode) const noexcept
@@ -70,19 +77,35 @@ namespace rod::detail
 		if (mode & system_mmap::mapmode::write)
 			access |= FILE_MAP_WRITE;
 
-		/* Align the file offset to page size. */
-		const auto page_off = system_mmap::pagesize_off(off);
+		/* Align the offset to page & header size. */
+		off += sizeof(header_t);
+		const auto base_off = system_mmap::pagesize_off(off);
 
 		DWORD off_h = {}, off_l;
 #if SIZE_MAX >= UINT64_MAX
-		off_h = static_cast<DWORD>(page_off >> std::numeric_limits<DWORD>::digits);
+		off_h = static_cast<DWORD>(base_off >> std::numeric_limits<DWORD>::digits);
 #endif
-		off_l = static_cast<DWORD>(page_off);
+		off_l = static_cast<DWORD>(base_off);
 ERROR_ALREADY_EXISTS;
-		if (const auto data = ::MapViewOfFile(native_handle(), access, off_h, off_l, n + off - page_off); !data) [[unlikely]]
+		if (const auto data = ::MapViewOfFile(native_handle(), access, off_h, off_l, n + off - base_off); !data) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		else
-			return system_mmap{data, off - page_off, n + off - page_off};
+			return system_mmap{data, off - base_off, n + off - base_off};
 	}
+
+	void system_shm::lock() noexcept
+	{
+		for (std::size_t spin = 16; !try_lock();)
+		{
+			if (!spin)
+				::YieldProcessor();
+			else
+				spin--;
+		}
+	}
+	bool system_shm::try_lock() noexcept { return !_header->busy.test_and_set(std::memory_order_acq_rel); }
+	void system_shm::unlock() noexcept { _header->busy.clear(std::memory_order_release); }
+
+	system_shm::~system_shm() { ::UnmapViewOfFile(_header); }
 }
 #endif

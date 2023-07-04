@@ -18,6 +18,6 @@ namespace rod::detail
 		return sysinfo.dwAllocationGranularity;
 	}
 
-	system_mmap::~system_mmap() { ::UnmapViewOfFile(_data); }
+	system_mmap::~system_mmap() { if (_data) ::UnmapViewOfFile(_data); }
 }
 #endif

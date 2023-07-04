@@ -83,8 +83,8 @@ int main(int argc, const char *argv[])
 		auto str = static_cast<const char *>(mmap->data()) + sizeof(status_t);
 
 		status = child_ready;
-		while (status != status_t::parent_done);
 
+		while (status == status_t::child_ready);
 		if (const auto cmp_res = ::strncmp(str, str_data.data(), str_data.size()); cmp_res != 0)
 		{
 			fprintf(stderr, "strncmp(%s, %s, %zu) = (%i)", str, str_data.data(), str_data.size(), cmp_res);
@@ -107,8 +107,7 @@ int main(int argc, const char *argv[])
 		status = status_t{};
 		fork_process(argc, argv, name);
 
-		while (status != status_t::child_ready);
-
+		while (status == status_t{});
 		::strncpy(str, str_data.data(), str_data.size());
 		TEST_ASSERT(::strncmp(str, str_data.data(), str_data.size()) == 0);
 

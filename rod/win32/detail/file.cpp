@@ -307,17 +307,17 @@ namespace rod::detail
 			if (mode & system_mmap::mapmode::write)
 				access |= FILE_MAP_WRITE;
 
-			/* Align the file offset to page size. */
-			const auto page_off = system_mmap::pagesize_off(off);
+			/* Align the offset to page size. */
+			const auto base_off = system_mmap::pagesize_off(off);
 
 			DWORD off_h = {}, off_l;
 #if SIZE_MAX >= UINT64_MAX
-			off_h = static_cast<DWORD>(page_off >> std::numeric_limits<DWORD>::digits);
+			off_h = static_cast<DWORD>(base_off >> std::numeric_limits<DWORD>::digits);
 #endif
-			off_l = static_cast<DWORD>(page_off);
+			off_l = static_cast<DWORD>(base_off);
 
-			if (const auto data = ::MapViewOfFile(mapping, access, off_h, off_l, n + off - page_off); data) [[likely]]
-				return system_mmap{data, off - page_off, n + off - page_off};
+			if (const auto data = ::MapViewOfFile(mapping, access, off_h, off_l, n + off - base_off); data) [[likely]]
+				return system_mmap{data, off - base_off, n + off - base_off};
 
 			::CloseHandle(mapping);
 		}
