@@ -24,6 +24,7 @@ namespace rod::detail
 		void *release(void *hnd = invalid_handle()) noexcept { return std::exchange(_handle, hnd); }
 
 		ROD_API_PUBLIC std::error_code close() noexcept;
+		ROD_API_PUBLIC std::error_code poll_wait() const noexcept;
 
 		[[nodiscard]] bool is_open() const noexcept { return _handle != invalid_handle(); }
 		[[nodiscard]] void *native_handle() const noexcept { return _handle; }
@@ -51,6 +52,7 @@ namespace rod::detail
 
 		using basic_handle::close;
 		using basic_handle::release;
+		using basic_handle::poll_wait;
 
 		using basic_handle::is_open;
 		using basic_handle::native_handle;

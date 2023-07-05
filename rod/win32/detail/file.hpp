@@ -65,10 +65,23 @@ namespace rod::detail
 		constexpr explicit system_file(native_handle_type hnd) noexcept : unique_handle(hnd) {}
 		constexpr explicit system_file(unique_handle &&hnd) noexcept : unique_handle(std::move(hnd)) {}
 
+		constexpr explicit system_file(native_handle_type hnd, std::size_t off) noexcept : unique_handle(hnd), _offset(off) {}
+		constexpr explicit system_file(unique_handle &&hnd, std::size_t off) noexcept : unique_handle(std::move(hnd)), _offset(off) {}
+
 		using unique_handle::close;
-		using unique_handle::release;
 		using unique_handle::is_open;
 		using unique_handle::native_handle;
+
+		void *release() noexcept
+		{
+			_offset = std::numeric_limits<std::size_t>::max();
+			return unique_handle::release();
+		}
+		void *release(void *hnd) noexcept
+		{
+			_offset = std::numeric_limits<std::size_t>::max();
+			return unique_handle::release(hnd);
+		}
 
 		ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
@@ -88,8 +101,15 @@ namespace rod::detail
 		ROD_API_PUBLIC result<system_mmap, std::error_code> map(std::size_t off, std::size_t n, int mode) const noexcept;
 		result<system_mmap, std::error_code> map(std::size_t off, std::size_t n) const noexcept { return map(off, n, system_mmap::read | system_mmap::write); }
 
-		constexpr void swap(system_file &other) noexcept { unique_handle::swap(other); }
+		constexpr void swap(system_file &other) noexcept
+		{
+			unique_handle::swap(other);
+			std::swap(_offset, other._offset);
+		}
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }
+
+	private:
+		std::size_t _offset = std::numeric_limits<std::size_t>::max();
 	};
 }
 #endif

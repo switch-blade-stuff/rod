@@ -47,12 +47,12 @@ namespace rod::detail
 		const auto ntdll = get_ntdll();
 		init_symbol(ntdll, NtReadFile, "NtReadFile");
 		init_symbol(ntdll, NtWriteFile, "NtWriteFile");
+		init_symbol(ntdll, RtlNtStatusToDosError, "RtlNtStatusToDosError");
+		init_symbol(ntdll, NtWaitForSingleObject, "NtWaitForSingleObject");
 		init_symbol(ntdll, NtCancelIoFileEx, "NtCancelIoFileEx");
 		init_symbol(ntdll, NtSetIoCompletion, "NtSetIoCompletion");
 		init_symbol(ntdll, NtRemoveIoCompletion, "NtRemoveIoCompletion");
 		init_symbol(ntdll, NtRemoveIoCompletionEx, "NtRemoveIoCompletionEx");
-		init_symbol(ntdll, NtQueryInformationFile, "NtQueryInformationFile");
-		init_symbol(ntdll, RtlNtStatusToDosError, "RtlNtStatusToDosError");
 	}
 }
 #endif
