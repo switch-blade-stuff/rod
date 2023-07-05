@@ -19,7 +19,7 @@
 #include "common.hpp"
 
 #ifdef _WIN32
-static bool fork_process(int argc, const char *argv[], std::string_view name) noexcept
+static void start_child(int, const char *argv[], std::string_view name) noexcept
 {
 	STARTUPINFO si = {.cb = sizeof(si)};
 	PROCESS_INFORMATION pi = {};
@@ -30,24 +30,11 @@ static bool fork_process(int argc, const char *argv[], std::string_view name) no
 		fprintf(stderr, "CreateProcess failed (%lu).\n", GetLastError());
 		std::exit(1);
 	}
-	return argc > 1;
 }
 #else
-static bool fork_process(int, const char *[], std::string_view)
+static void start_child(int argc, const char *argv[], std::string_view name) noexcept
 {
-	const auto parent = ::getpid();
-	if (parent < 0)
-	{
-		fprintf(stderr, "getpid failed (%i).\n", errno);
-		std::exit(1);
-	}
-	const auto child = ::fork();
-	if (child < 0)
-	{
-		fprintf(stderr, "fork failed (%i).\n", errno);
-		std::exit(1);
-	}
-	return parent != child;
+	::execl(argv[0], name.data(), nullptr);
 }
 #endif
 
@@ -105,7 +92,7 @@ int main(int argc, const char *argv[])
 		auto str = static_cast<char *>(mmap->data()) + sizeof(status_t);
 
 		status = status_t{};
-		fork_process(argc, argv, name);
+		start_child(argc, argv, name);
 
 		while (status == status_t{});
 		::strncpy(str, str_data.data(), str_data.size());

@@ -188,7 +188,7 @@ namespace rod
 	/** Utility used to specify a member function pointer for construction of `delegate`. */
 	template<auto F> requires std::is_member_pointer_v<decltype(F)>
 	struct bind_member_t {};
-	/** Instance of `rod::bind_member_t<F>` */
+	/** Instance of `rod::bind_member_t&lt;F&gt;` */
 	template<auto F>
 	inline constexpr auto bind_member = bind_member_t<F>{};
 

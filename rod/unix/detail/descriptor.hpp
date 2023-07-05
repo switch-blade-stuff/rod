@@ -23,6 +23,19 @@ namespace rod::detail
 
 		ROD_API_PUBLIC std::error_code close() noexcept;
 
+		ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> resize(std::size_t n) noexcept;
+		std::error_code reserve(std::size_t n) noexcept
+		{
+			auto res = size();
+			if (size.has_value() && *size < n)
+				res = resize(n);
+			return res.error_or({});
+		}
+
+		ROD_API_PUBLIC std::error_code unlink() noexcept;
+		ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const noexcept;
+
 		ROD_API_PUBLIC result<bool, std::error_code> poll_read(int timeout) noexcept;
 		ROD_API_PUBLIC result<bool, std::error_code> poll_write(int timeout) noexcept;
 		ROD_API_PUBLIC result<bool, std::error_code> poll_error(int timeout) noexcept;

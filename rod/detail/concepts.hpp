@@ -156,7 +156,7 @@ namespace rod
 	 * @return Operation state used to represent the sender-receiver connection. */
 	inline constexpr auto connect = connect_t{};
 
-	/** Alias for `decltype(connect(std::declval<S>(), std::declval<R>()))`. */
+	/** Alias for `decltype(connect(std::declval&lt;S&gt;(), std::declval&lt;R&gt;()))`. */
 	template<typename S, typename R>
 	using connect_result_t = decltype(connect(std::declval<S>(), std::declval<R>()));
 

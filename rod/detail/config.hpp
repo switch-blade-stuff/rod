@@ -6,6 +6,23 @@
 
 #include "export.gen.hpp"
 
+#if (_MSC_VER >= 800) || defined(__MINGW32__) || defined(_STDCALL_SUPPORTED)
+#define ROD_NTAPI __stdcall
+#else
+#define _cdecl
+#define __cdecl
+#define ROD_NTAPI
+#endif
+
+#ifdef _MSC_VER
+#include <sal.h>
+#else
+#define _In_
+#define _In_opt_
+#define _Out_
+#define _Out_writes_to_(A, B)
+#endif
+
 #if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
 #define ROD_HIDDEN
 #define ROD_VISIBLE

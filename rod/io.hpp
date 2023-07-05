@@ -8,6 +8,9 @@
 #include "detail/adaptors/read_some.hpp"
 #include "detail/adaptors/write_some.hpp"
 
+#ifdef _WIN32
+#include "win32/iocp_context.hpp"
+#endif
 #ifdef __linux__
 #include "linux/epoll_context.hpp"
 #include "linux/io_uring_context.hpp"
@@ -18,7 +21,9 @@
 
 namespace rod
 {
-#if defined(ROD_HAS_LIBURING)
+#if defined(_WIN32) && 0
+	using io_context = iocp_context;
+#elif defined(ROD_HAS_LIBURING)
 	using io_context = io_uring_context;
 #elif defined(ROD_HAS_EPOLL)
 	using io_context = epoll_context;

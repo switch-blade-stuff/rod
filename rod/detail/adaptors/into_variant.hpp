@@ -95,7 +95,7 @@ namespace rod
 
 	/** Sender adaptor used to convert value completion signatures of another sender into a variant of tuples.
 	 * @param snd Sender to adapt completion signatures of. If omitted, creates a pipe-able sender adaptor.
-	 * @return Sender who's value completion type is `std::variant<Ts0, ..., TsN>` where `TsN` is a tuple made from the `N`th value completion signature of \a snd. */
+	 * @return Sender who's value completion type is `std::variant&lt;Ts0, ..., TsN&gt;` where `TsN` is a tuple made from the `N`th value completion signature of \a snd. */
 	inline constexpr auto into_variant = into_variant_t{};
 
 }

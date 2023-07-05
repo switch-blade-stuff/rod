@@ -8,26 +8,27 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <atomic>
+
 #include "mmap.hpp"
 
 namespace rod::detail
 {
 	result<std::size_t, std::error_code> mmap_handle::get_pagesize() noexcept
 	{
-		result<std::size_t, std::error_code> result;
-		static const auto size = [&]() noexcept -> std::size_t
-		{
+		static std::atomic<std::size_t> size = {};
+		if (const auto old = size.load(); old != 0) [[likely]]
+			return old;
+
 #ifdef _SC_PAGE_SIZE
-			const auto size = sysconf(_SC_PAGE_SIZE);
+		const auto res = sysconf(_SC_PAGE_SIZE);
 #else
-			const auto size = sysconf(_SC_PAGESIZE);
+		const auto res = sysconf(_SC_PAGESIZE);
 #endif
-			if (size < 0) [[unlikely]]
-				return (result = std::error_code{errno, std::system_category()}, 0);
-			else
-				return static_cast<std::size_t>(size);
-		}();
-		return result.empty() ? size : result;
+		if (res < 0) [[unlikely]]
+			return std::error_code{errno, std::system_category()};
+		else
+			return size = static_cast<std::size_t>(res);
 	}
 
 	std::error_code mmap_handle::unmap() noexcept

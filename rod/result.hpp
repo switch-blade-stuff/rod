@@ -47,8 +47,8 @@ namespace rod
 		template<typename, typename>
 		friend class result;
 
-		static_assert(!std::is_void_v<Val>, "`rod::result` does not support `void` values, use `std::optional<Err>` instead");
-		static_assert(!std::is_void_v<Err>, "`rod::result` does not support `void` errors, use `std::optional<Val>` instead");
+		static_assert(!std::is_void_v<Val>, "`rod::result` does not support `void` values, use `std::optional&lt;Err&gt;` instead");
+		static_assert(!std::is_void_v<Err>, "`rod::result` does not support `void` errors, use `std::optional&lt;Val&gt;` instead");
 
 	public:
 		using value_type = Val;

@@ -22,7 +22,7 @@ namespace rod
 
 	/** Customization point object used to obtain allocator associated with the passed object. */
 	inline constexpr auto get_allocator = get_allocator_t{};
-	/** Alias for `decltype(get_allocator(std::declval<T>()))` */
+	/** Alias for `decltype(get_allocator(std::declval&lt;T&gt;()))` */
 	template<typename T>
 	using allocator_of_t = std::remove_cvref_t<decltype(get_allocator(std::declval<T>()))>;
 }

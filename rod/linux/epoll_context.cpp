@@ -84,22 +84,21 @@ namespace rod::_epoll
 	void context::request_stop() { _stop_source.request_stop(); }
 	bool context::is_consumer_thread() const noexcept { return _consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
-	std::error_code context::schedule_producer(operation_base *node) noexcept
+	void context::schedule_producer(operation_base *node)
 	{
 		assert(!node->next);
 		if (_producer_queue.push(node))
 		{
 			/* Notify the event file descriptor to wake up the consumer thread. */
 			const std::uint64_t token = 1;
-			return _event_fd.write(&token, sizeof(token)).error_or({});
+			if (const auto err = _event_fd.write(&token, sizeof(token)).error_or({}); err)
+				throw std::system_error{err, "write(event_fd)"};
 		}
-		return {};
 	}
-	std::error_code context::schedule_consumer(operation_base *node) noexcept
+	void context::schedule_consumer(operation_base *node)
 	{
 		assert(!node->next);
 		_consumer_queue.push_back(node);
-		return {};
 	}
 
 	inline void context::add_event(auto *data, int flags, int fd) noexcept
@@ -119,14 +118,14 @@ namespace rod::_epoll
 		epoll_ctl(_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
 	}
 
-	void context::add_timer(timer_base *node) noexcept
+	void context::add_timer(timer_operation_base *node) noexcept
 	{
 		assert(!node->timer_next);
 		assert(!node->timer_prev);
 		/* Process pending timers if the inserted timer is the new front. */
 		_timer_pending |= _timers.insert(node) == node;
 	}
-	void context::del_timer(timer_base *node) noexcept
+	void context::del_timer(timer_operation_base *node) noexcept
 	{
 		/* Process pending timers if we are erasing the front. */
 		_timer_pending |= _timers.front() == node;

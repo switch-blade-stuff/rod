@@ -171,7 +171,7 @@ namespace rod
 	 * If the input sender completes via the value channel, the optional is initialized with the resulting value and passed through the value channel.
 	 * Otherwise, if the input sender completes via the stop channel, the optional is initialized with `std::nullopt` and passed through the value channel.
 	 * @param snd Sender who's value and stop channels to adapt into an optional. If omitted, creates a pipe-able sender adaptor.
-	 * @return Sender who's value completion type is `std::optional<V>`, where `V` is the value completion type of \a snd.
+	 * @return Sender who's value completion type is `std::optional&lt;V&gt;`, where `V` is the value completion type of \a snd.
 	 * @note Resulting sender never completes via the stop channel. */
 	inline constexpr auto stopped_as_optional = stopped_as_optional_t{};
 

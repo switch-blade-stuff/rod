@@ -34,7 +34,7 @@ namespace rod
 	 * completion signatures either through an overload of `tag_invoke` or a member `completion_signatures` type. */
 	inline constexpr auto get_completion_signatures = get_completion_signatures_t{};
 
-	/** Alias for `decltype(get_completion_signatures(std::declval<S>(), std::declval<E>()))`. */
+	/** Alias for `decltype(get_completion_signatures(std::declval&lt;S&gt;(), std::declval&lt;E&gt;()))`. */
 	template<typename S, typename E>
 	using completion_signatures_of_t = decltype(get_completion_signatures(std::declval<S>(), std::declval<E>()));
 
@@ -87,12 +87,12 @@ namespace rod
 	template<typename S, typename E = empty_env>
 	concept sends_stopped = sender_in<S, E> && !std::same_as<type_list_t<>, detail::gather_signatures_t<set_stopped_t, S, E, type_list_t, type_list_t>>;
 
-	/** Given completion signatures `Ts` obtained via `completion_signatures_of_t<S, E>`, defines an alias for
-	 * `Variant<Tuple<Args0...>, ..., Tuple<ArgsN...>>` where `ArgsN` is a template pack of the `N`th completion signature of the value channel. */
+	/** Given completion signatures `Ts` obtained via `completion_signatures_of_t&lt;S, E&gt;`, defines an alias for
+	 * `Variant<Tuple&lt;Args0...>, ..., Tuple&lt;ArgsN...&gt;&gt;` where `ArgsN` is a template pack of the `N`th completion signature of the value channel. */
 	template<typename S, typename E = empty_env, template<typename...> typename Tuple = detail::decayed_tuple, template<typename...> typename Variant = detail::variant_or_empty> requires sender_in<S, E>
 	using value_types_of_t = detail::gather_signatures_t<set_value_t, S, E, Tuple, Variant>;
-	/** Given completion signatures `Ts` obtained via `completion_signatures_of_t<S, E>`, defines an alias for
-	 * `Variant<Err0, ..., ErrN...>` where `ErrN` is the error type of the `N`th completion signature of the error channel. */
+	/** Given completion signatures `Ts` obtained via `completion_signatures_of_t&lt;S, E&gt;`, defines an alias for
+	 * `Variant&lt;Err0, ..., ErrN...&gt;` where `ErrN` is the error type of the `N`th completion signature of the error channel. */
 	template<typename S, typename E = empty_env, template<typename...> typename Variant = detail::variant_or_empty> requires sender_in<S, E>
 	using error_types_of_t = detail::gather_signatures_t<set_error_t, S, E, std::type_identity_t, Variant>;
 

@@ -8,48 +8,14 @@
 
 #include <sys/param.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
+
 #include <climits>
 #include <limits>
 
 namespace rod::detail
 {
-	static result<std::string, std::error_code> get_fd_path(int fd)
-	{
-		auto path = std::string(MAXPATHLEN, '\0');
-#ifdef F_GETPATH
-		if (const auto res = ::fcntl(fd, F_GETPATH, path.data()); res >= 0) [[likely]]
-			return {path};
-		else if (res != ENOENT) [[unlikely]]
-			return std::error_code{errno, std::system_category()};
-#else
-		char proc_fd[15 + std::numeric_limits<int>::digits10];
-		::snprintf(proc_fd, sizeof(proc_fd), "/proc/self/fd/%i", fd);
-		if (::readlink(proc_fd, path.data(), path.size()) < 0) [[unlikely]]
-			return std::error_code{errno, std::system_category()};
-		else
-			return path;
-#endif
-	}
-
-	std::error_code system_file::resize_fd(native_handle_type fd, std::size_t new_size) noexcept
-	{
-		if (struct stat stat = {}; ::fstat(fd, &stat)) [[unlikely]]
-			return {errno, std::system_category()};
-		else if (static_cast<std::size_t>(stat.st_size) < new_size)
-		{
-#if SIZE_MAX >= UINT64_MAX
-			if (::ftruncate64(fd, static_cast<off64_t>(new_size))) [[unlikely]]
-				return {errno, std::system_category()};
-#else
-			if (::ftruncate(fd, static_cast<off_t>(new_size))) [[unlikely]]
-				return {errno, std::system_category()};
-#endif
-		}
-		return {};
-	}
-
 	result<system_file, std::error_code> system_file::reopen(native_handle_type fd, int mode) noexcept
 	{
 		int flags = O_CLOEXEC | O_NONBLOCK;
@@ -68,35 +34,26 @@ namespace rod::detail
 		if (mode & openmode::app) flags |= O_APPEND;
 		if (mode & openmode::direct) flags |= O_DIRECT;
 
-		/* Get file path from the descriptor & re-open the file. */
-		try
+		const auto path = basic_descriptor{fd}.path(fd);
+		if (!path.has_value()) [[unlikely]]
+			return {path.error_or({})};
+
+		/* Save old flags. */
+		if (const auto getfl = ::fcntl(fd, F_GETFL); getfl >= 0)
+			[[likely]] flags |= getfl;
+		else
+			goto fail;
+
+		if (const auto new_fd = ::open(path->c_str(), flags); new_fd >= 0) [[likely]]
 		{
-			const auto path = get_fd_path(fd);
-			if (!path.has_value()) [[unlikely]]
-				return {path.error_or({})};
-
-			/* Save old flags. */
-			if (const auto getfl = ::fcntl(fd, F_GETFL); getfl >= 0)
-				[[likely]] flags |= getfl;
-			else
-				goto fail;
-
-			if (const auto new_fd = ::open(path->c_str(), flags); new_fd >= 0) [[likely]]
+			if ((mode & openmode::ate) && ::lseek(new_fd, 0, SEEK_END) < 0) [[unlikely]]
 			{
-				if ((mode & openmode::ate) && ::lseek(new_fd, 0, SEEK_END) < 0) [[unlikely]]
-				{
-					::close(new_fd);
-					goto fail;
-				}
-				return system_file{new_fd};
+				::close(new_fd);
+				goto fail;
 			}
-		fail:
-			return std::error_code{errno, std::system_category()};
+			return system_file{new_fd};
 		}
-		catch (const std::bad_alloc &)
-		{
-			return std::make_error_code(std::errc::not_enough_memory);
-		}
+		return std::error_code{errno, std::system_category()};
 	}
 	result<system_file, std::error_code> system_file::open(const char *path, int mode, int prot) noexcept
 	{
@@ -120,7 +77,7 @@ namespace rod::detail
 		if (mode & openmode::noreplace) flags |= O_EXCL;
 		if (!(mode & openmode::nocreate)) flags |= O_CREAT;
 
-		const auto fd = (mode & openmode::_sharedfd) ? ::shm_open(path, flags, prot) : ::open(path, flags, prot);
+		const auto fd = ::open(path, flags, prot);
 		if (fd < 0) [[unlikely]] goto fail;
 
 		if ((mode & openmode::ate) && ::lseek(fd, 0, SEEK_END) < 0) [[unlikely]]
@@ -138,16 +95,16 @@ namespace rod::detail
 		try
 		{
 			auto state = std::mbstate_t{};
-			auto res = std::wcsrtombs(nullptr, &path, 0, &state);
-			if (res == static_cast<std::size_t>(-1)) [[unlikely]]
+			auto name_size = std::wcsrtombs(nullptr, &path, 0, &state);
+			if (name_size == static_cast<std::size_t>(-1)) [[unlikely]]
 				return std::error_code{errno, std::system_category()};
 
-			auto buff = std::string(res, '\0');
-			res = std::wcsrtombs(buff.data(), &path, buff.size(), &state);
-			if (res == static_cast<std::size_t>(-1)) [[unlikely]]
+			auto name_buff = std::string(name_size, '\0');
+			name_size = std::wcsrtombs(buff.data(), &path, name_buff.size(), &state);
+			if (name_size == static_cast<std::size_t>(-1)) [[unlikely]]
 				return std::error_code{errno, std::system_category()};
 			else
-				return open(buff.c_str(), mode, prot);
+				return open(name_buff.c_str(), mode, prot);
 		}
 		catch (const std::bad_alloc &)
 		{
@@ -155,13 +112,6 @@ namespace rod::detail
 		}
 	}
 
-	result<std::size_t, std::error_code> system_file::size() const noexcept
-	{
-		if (struct stat stat = {}; ::fstat(native_handle(), &stat)) [[unlikely]]
-			return std::error_code{errno, std::system_category()};
-		else
-			return static_cast<std::size_t>(stat.st_size);
-	}
 	result<std::size_t, std::error_code> system_file::tell() const noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX
@@ -174,18 +124,6 @@ namespace rod::detail
 		else
 			return static_cast<std::size_t>(res);
 	}
-	result<std::size_t, std::error_code> system_file::resize(std::size_t n) noexcept
-	{
-#if SIZE_MAX >= UINT64_MAX
-		const auto res = ::ftruncate64(native_handle(), static_cast<off64_t>(n));
-#else
-		const auto res = ::ftruncate(native_handle(), static_cast<off_t>(n));
-#endif
-		if (res) [[unlikely]]
-			return std::error_code{errno, std::system_category()};
-		else
-			return static_cast<std::size_t>(n);
-	}
 	result<std::size_t, std::error_code> system_file::seek(std::ptrdiff_t off, int dir) noexcept
 	{
 #if PTRDIFF_MAX >= INT64_MAX
@@ -197,18 +135,6 @@ namespace rod::detail
 			return std::error_code{errno, std::system_category()};
 		else
 			return static_cast<std::size_t>(res);
-	}
-
-	result<std::filesystem::path, std::error_code> system_file::path() const noexcept
-	{
-		try
-		{
-			return get_fd_path(native_handle());
-		}
-		catch (const std::bad_alloc &)
-		{
-			return std::make_error_code(std::errc::not_enough_memory);
-		}
 	}
 
 	std::error_code system_file::sync() noexcept
@@ -277,19 +203,17 @@ namespace rod::detail
 		const auto base_off = native_mmap::pagesize_off(off);
 		if (base_off.has_error())
 			[[unlikely]] return base_off.error();
-		else if (std::error_code err; (mode & mapmode::expand) && (err = resize_fd(native_handle(), n + off)))
+		else if (std::error_code err; (mode & system_mmap::mapmode::expand) && (err = reserve(n + off)))
 			[[unlikely]] return err;
 
 		int flags = 0;
-		if (mode & mapmode::copy)
+		if (mode & system_mmap::mapmode::copy)
 			flags = MAP_PRIVATE;
 
 		int prot = 0;
-		if (mode & mapmode::exec)
-			prot |= PROT_EXEC;
-		if (mode & mapmode::read)
+		if (mode & system_mmap::mapmode::read)
 			prot |= PROT_READ;
-		if (mode & mapmode::write)
+		if (mode & system_mmap::mapmode::write)
 			prot |= PROT_WRITE;
 
 #if PTRDIFF_MAX >= INT64_MAX

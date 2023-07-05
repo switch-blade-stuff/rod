@@ -110,14 +110,14 @@ namespace rod
 			notify_func_t notify_func = {};
 			operation_base *next = {};
 		};
-		struct timer_base : operation_base
+		struct timer_operation_base : operation_base
 		{
-			constexpr timer_base(context *ctx, time_point tp, bool can_stop) noexcept : flags(can_stop ? flags_t::stop_possible : 0), timeout(tp), ctx(ctx) {}
+			constexpr timer_operation_base(context *ctx, time_point tp, bool can_stop) noexcept : flags(can_stop ? flags_t::stop_possible : 0), timeout(tp), ctx(ctx) {}
 
 			[[nodiscard]] bool stop_possible() const noexcept { return flags.load(std::memory_order_relaxed) & flags_t::stop_possible; }
 
-			timer_base *timer_prev = {};
-			timer_base *timer_next = {};
+			timer_operation_base *timer_prev = {};
+			timer_operation_base *timer_next = {};
 			std::atomic<int> flags = {};
 			time_point timeout = {};
 			context *ctx;
@@ -153,8 +153,8 @@ namespace rod
 			using clock = _epoll::clock;
 
 		private:
-			struct timer_cmp { constexpr bool operator()(const timer_base &a, const timer_base &b) const noexcept { return a.timeout <= b.timeout; }};
-			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::timer_prev, &timer_base::timer_next>;
+			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a.timeout <= b.timeout; }};
+			using timer_queue_t = detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::timer_prev, &timer_operation_base::timer_next>;
 			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::next>;
 			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::next>;
 
@@ -208,15 +208,15 @@ namespace rod
 		private:
 			[[nodiscard]] ROD_API_PUBLIC bool is_consumer_thread() const noexcept;
 
-			std::error_code schedule(operation_base *node) noexcept
+			void schedule(operation_base *node)
 			{
 				if (!is_consumer_thread())
-					return schedule_producer(node);
+					schedule_producer(node);
 				else
-					return schedule_consumer(node);
+					schedule_consumer(node);
 			}
-			ROD_API_PUBLIC std::error_code schedule_producer(operation_base *node) noexcept;
-			ROD_API_PUBLIC std::error_code schedule_consumer(operation_base *node) noexcept;
+			ROD_API_PUBLIC void schedule_producer(operation_base *node);
+			ROD_API_PUBLIC void schedule_consumer(operation_base *node);
 
 			void add_event(auto *data, int flags, int fd) noexcept;
 			ROD_API_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept;
@@ -225,8 +225,8 @@ namespace rod
 			ROD_API_PUBLIC void add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept;
 			ROD_API_PUBLIC void del_io(int fd) noexcept;
 
-			ROD_API_PUBLIC void add_timer(timer_base *node) noexcept;
-			ROD_API_PUBLIC void del_timer(timer_base *node) noexcept;
+			ROD_API_PUBLIC void add_timer(timer_operation_base *node) noexcept;
+			ROD_API_PUBLIC void del_timer(timer_operation_base *node) noexcept;
 
 			bool acquire_producer_queue() noexcept;
 			void acquire_elapsed_timers();
@@ -278,24 +278,20 @@ namespace rod
 			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
 		private:
-			void start() noexcept
-			{
-				if (const auto err = _ctx->schedule(this); err)
-					[[unlikely]] set_error(std::move(_rcv), err);
-			}
+			void start() noexcept { _ctx->schedule(this); }
 
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			context *_ctx;
 		};
 		template<typename Rcv>
-		class timer_operation<Rcv>::type : timer_base
+		class timer_operation<Rcv>::type : timer_operation_base
 		{
 			static void notify_value(operation_base *ptr) { static_cast<type *>(ptr)->complete_value(); }
 			static void notify_stopped(operation_base *ptr) { static_cast<type *>(ptr)->complete_stopped(); }
 			static void notify_request_stop(operation_base *ptr) { static_cast<type *>(ptr)->request_stop_consumer(); }
 
 		public:
-			constexpr explicit type(context *ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_base(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
+			constexpr explicit type(context *ctx, time_point timeout, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : timer_operation_base(ctx, timeout, get_stop_token(get_env(rcv)).stop_possible()), _rcv(std::move(rcv)) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
@@ -329,8 +325,7 @@ namespace rod
 				else
 				{
 					notify_func = [](operation_base *p) noexcept { static_cast<type *>(p)->start_consumer(); };
-					if (const auto err = ctx->schedule_producer(this); err)
-						[[unlikely]] set_error(std::move(_rcv), err);
+					ctx->schedule_producer(this);
 				}
 			}
 			void start_consumer()
@@ -340,10 +335,8 @@ namespace rod
 					if (get_stop_token(get_env(_rcv)).stop_requested())
 					{
 						notify_func = notify_stopped;
-						if (const auto err = ctx->schedule_consumer(this); err)
-							throw std::system_error(err);
-						else
-							return;
+						ctx->schedule_consumer(this);
+						return;
 					}
 
 				notify_func = notify_value;
@@ -364,8 +357,7 @@ namespace rod
 				{
 					/* Timer has not yet been dispatched, schedule stop request. */
 					notify_func = notify_request_stop;
-					if (const auto err = ctx->schedule_producer(this); err)
-						throw std::system_error(err);
+					ctx->schedule_producer(this);
 				}
 			}
 			void request_stop_consumer()
@@ -378,8 +370,7 @@ namespace rod
 				{
 					/* Timer has not yet been dispatched, schedule stop completion. */
 					ctx->del_timer(this);
-					if (const auto err = ctx->schedule_consumer(this); err)
-						throw std::system_error(err);
+					ctx->schedule_consumer(this);
 				}
 			}
 
@@ -430,8 +421,7 @@ namespace rod
 				else
 				{
 					complete_base::notify_func = notify_start;
-					if (const auto err = _ctx->schedule_producer(static_cast<complete_base *>(this)); err)
-						[[unlikely]] set_error(std::move(_rcv), err);
+					_ctx->schedule_producer(static_cast<complete_base *>(this));
 				}
 			}
 			void start_consumer() noexcept
@@ -460,8 +450,7 @@ namespace rod
 				{
 					_ctx->del_io(_cmd.fd.native_handle());
 					stop_base::notify_func = notify_stopped;
-					if (const auto err = _ctx->schedule_producer(static_cast<stop_base *>(this)); err)
-						throw std::system_error(err);
+					_ctx->schedule_producer(static_cast<stop_base *>(this));
 				}
 			}
 			void complete_stopped()
@@ -469,8 +458,7 @@ namespace rod
 				if (complete_base::notify_func)
 				{
 					stop_base::notify_func = notify_stopped;
-					if (const auto err = _ctx->schedule_consumer(static_cast<stop_base *>(this)); err)
-						throw std::system_error(err);
+					_ctx->schedule_consumer(static_cast<stop_base *>(this));
 				}
 				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));

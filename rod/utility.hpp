@@ -121,14 +121,14 @@ namespace rod
 	/** Metaprogramming utility used to copy reference, `const` & `volatile` qualifiers from \a From to \a To. */
 	template<typename From, typename To>
 	using copy_cvref = detail::copy_cvref_impl<From, To>;
-	/** Alias for `typename rod::copy_cvref<From, To>::type`. */
+	/** Alias for `typename rod::copy_cvref&lt;From, To&gt;::type`. */
 	template<typename From, typename To>
 	using copy_cvref_t = typename copy_cvref<From, To>::type;
 
 	/** Metaprogramming utility used to copy `const` & `volatile` qualifiers from \a From to \a To. */
 	template<typename From, typename To>
 	using copy_cv = copy_cvref<std::remove_reference_t<From>, To>;
-	/** Alias for `typename rod::copy_cv<From, To>::type`. */
+	/** Alias for `typename rod::copy_cv&lt;From, To&gt;::type`. */
 	template<typename From, typename To>
 	using copy_cv_t = typename copy_cv<From, To>::type;
 
@@ -143,7 +143,7 @@ namespace rod
 	/** Metaprogramming utility used to check if type \a U is an instance of template \a T. */
 	template<typename U, template<typename...> typename T>
 	using is_instance_of = detail::is_instance_of_impl<std::decay_t<U>, T>;
-	/** Alias for `rod::is_instance_of<U, T>::value` */
+	/** Alias for `rod::is_instance_of&lt;U, T&gt;::value` */
 	template<typename U, template<typename...> typename T>
 	inline constexpr auto is_instance_of_v = is_instance_of<U, T>::value;
 	/** Concept used to constrain type \a U to be an instance of template \a T. */
@@ -153,7 +153,7 @@ namespace rod
 	/** Utility type used to group type pack \a Ts. */
 	template<typename... Ts>
 	struct type_list_t {};
-	/** Instance of `rod::type_list_t<Ts...>`. */
+	/** Instance of `rod::type_list_t&lt;Ts...&gt;`. */
 	template<typename... Ts>
 	inline constexpr auto type_list = type_list_t<Ts...>{};
 
@@ -177,14 +177,14 @@ namespace rod
 	/** Metafunction used to check if type \a U is contained within type pack \a Ts. */
 	template<typename U, typename... Ts>
 	using is_in = detail::is_in_impl<U, Ts...>;
-	/** Alias for `rod::is_in<U, Ts...>::value`. */
+	/** Alias for `rod::is_in&lt;U, Ts...&gt;::value`. */
 	template<typename U, typename... Ts>
 	inline constexpr auto is_in_v = is_in<U, Ts...>::value;
 
 	/** Metafunction used to check if type \a U is contained within tuple \a T. */
 	template<typename U, typename T>
 	using is_in_tuple = detail::is_in_tuple_impl<U, T>;
-	/** Alias for `rod::is_in_tuple<U, T>::value`. */
+	/** Alias for `rod::is_in_tuple&lt;U, T&gt;::value`. */
 	template<typename U, typename T>
 	inline constexpr auto is_in_tuple_v = is_in_tuple<U, T>::value;
 

@@ -6,33 +6,35 @@
 
 #include "shm.hpp"
 
-#ifdef __SSE2__
-#include <emmintrin.h>
-#endif
-
 #define NOMINMAX
-
 #include <windows.h>
-#include <thread>
 
 namespace rod::detail
 {
-	/* Use the same name for both mutex & shared memory and differentiate via a postfix.
-	 * Postfix is used to allow for win32-esque "Global\" & "Local\" session namespaces. */
+	static std::pair<std::size_t, std::size_t> fill_name_buffer(std::wstring &buff, const wchar_t *name, std::size_t name_size) noexcept
+	{
+		/* Use the same name for both mutex & shared memory and differentiate via a postfix.
+		 * Postfix is used to allow for win32-esque "Global\" & "Local\" session namespaces. */
+		const std::size_t shm_pos = 0, mtx_pos = name_size + 5;
+
+		buff.replace(shm_pos, name_size, name);
+		buff.replace(mtx_pos, name_size, name);
+		buff.replace(shm_pos + name_size, 4, L":shm");
+		buff.replace(mtx_pos + name_size, 4, L":mtx");
+		return {shm_pos, mtx_pos};
+	}
+
 	result<system_shm, std::error_code> system_shm::open(const char *name, std::size_t size, int mode) noexcept
 	{
 		try
 		{
-			if (const auto name_size = ::MultiByteToWideChar(CP_UTF8, 0, name, -1, nullptr, 0); size) [[likely]]
+			if (auto name_size = ::MultiByteToWideChar(CP_UTF8, 0, name, -1, nullptr, 0); size) [[likely]]
 			{
-				auto shm_name = std::wstring(name_size + 3, '\0');
-				auto mtx_name = std::wstring(name_size + 3, '\0');
-				if (::MultiByteToWideChar(CP_UTF8, 0, name, -1, shm_name.data(), name_size)) [[likely]]
+				auto name_buff = std::wstring((--name_size + 4) * 2 + 1, '\0');
+				if (::MultiByteToWideChar(CP_UTF8, 0, name, -1, name_buff.data(), name_size + 1)) [[likely]]
 				{
-					mtx_name.replace(0, name_size - 1, shm_name);
-					shm_name.replace(name_size - 1, 3, L":shm");
-					mtx_name.replace(name_size - 1, 3, L":mtx");
-					return open(shm_name.c_str(), mtx_name.c_str(), size, mode);
+					const auto [shm_pos, mtx_pos] = fill_name_buffer(name_buff, name_buff.data(), name_size);
+					return open(name_buff.data() + shm_pos, name_buff.data() + mtx_pos, size, mode);
 				}
 			}
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
@@ -46,11 +48,10 @@ namespace rod::detail
 	{
 		try
 		{
-			auto shm_name = std::wstring{name};
-			auto mtx_name = std::wstring{name};
-			shm_name.append(L":shm");
-			mtx_name.append(L":mtx");
-			return open(shm_name.c_str(), mtx_name.c_str(), size, mode);
+			const auto name_size = std::wcslen(name);
+			auto name_buff = std::wstring((name_size + 4) * 2 + 1, '\0');
+			const auto [shm_pos, mtx_pos] = fill_name_buffer(name_buff, name_buff.data(), name_size);
+			return open(name_buff.data() + shm_pos, name_buff.data() + mtx_pos, size, mode);
 		}
 		catch (const std::bad_alloc &)
 		{
@@ -77,17 +78,13 @@ namespace rod::detail
 		}
 		else
 		{
-			DWORD prot = PAGE_READWRITE;
-			if (mode & openmode::readonly)
-				prot = PAGE_READONLY;
-
 			DWORD size_h = {}, size_l;
 #if SIZE_MAX >= UINT64_MAX
 			size_h = static_cast<DWORD>(size >> std::numeric_limits<DWORD>::digits);
 #endif
 			size_l = static_cast<DWORD>(size);
 
-			if ((hnd = ::CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, prot, size_h, size_l, shm_name)) != nullptr)
+			if ((hnd = ::CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, size_h, size_l, shm_name)) != nullptr)
 				[[likely]] mtx = ::CreateMutexW(nullptr, false, mtx_name);
 		}
 
@@ -124,11 +121,7 @@ namespace rod::detail
 			return system_mmap{data, off - base_off, n + off - base_off};
 	}
 
-	bool system_shm::try_lock() noexcept
-	{
-		const auto res = ::WaitForSingleObject(_mtx.native_handle(), 0);
-		return res == WAIT_OBJECT_0 || res == WAIT_ABANDONED;
-	}
+	bool system_shm::try_lock() noexcept { return ::WaitForSingleObject(_mtx.native_handle(), 0) <= WAIT_ABANDONED; }
 	std::error_code system_shm::lock() noexcept
 	{
 		if (::WaitForSingleObject(_mtx.native_handle(), INFINITE) == WAIT_FAILED) [[unlikely]]

@@ -20,7 +20,7 @@ namespace rod
 		{ t.stop_possible() } noexcept -> std::same_as<bool>;
 		{ t.stop_requested() } noexcept -> std::same_as<bool>;
 	};
-	/** Alias for `T::callback_type<CB>`. */
+	/** Alias for `T::callback_type&lt;CB&gt;`. */
 	template<typename T, typename CB>
 	using stop_callback_for_t = std::conditional_t<std::same_as<T, std::stop_token>, std::stop_callback<CB>, typename T::template callback_type<CB>>;
 
@@ -64,7 +64,7 @@ namespace rod
 
 	/** Customization point object used to obtain stop token associated with the passed object. */
 	inline constexpr auto get_stop_token = get_stop_token_t{};
-	/** Alias for `decltype(get_stop_token(std::declval<T>()))` */
+	/** Alias for `decltype(get_stop_token(std::declval&lt;T&gt;()))` */
 	template<typename T>
 	using stop_token_of_t = std::remove_cvref_t<decltype(get_stop_token(std::declval<T>()))>;
 

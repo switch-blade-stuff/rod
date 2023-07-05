@@ -26,7 +26,7 @@ namespace rod::detail
 				access ^= FILE_APPEND_DATA;
 		}
 
-		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS | FILE_FLAG_OVERLAPPED;
+		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS;
 		if (mode & openmode::direct) flags |= FILE_FLAG_WRITE_THROUGH;
 
 		if (hnd = ::ReOpenFile(hnd, access, share, flags); hnd != INVALID_HANDLE_VALUE) [[likely]]
@@ -36,20 +36,7 @@ namespace rod::detail
 			{
 			}
 #endif
-
-#if SIZE_MAX >= UINT64_MAX
-			LONG high = 0;
-			if (const auto res = ::SetFilePointer(hnd, 0, &high, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
-			{
-				const auto off_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
-				const auto off_l = static_cast<std::size_t>(res);
-				return system_file{hnd, off_h | off_l};
-			}
-#else
-			if (const auto res = ::SetFilePointer(hnd, 0, nullptr, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
-				return system_file{hnd, static_cast<std::size_t>(res)};
-#endif
-			::CloseHandle(hnd);
+			return system_file{hnd};
 		}
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
@@ -81,7 +68,7 @@ namespace rod::detail
 		else
 			disp = OPEN_ALWAYS;
 
-		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS | FILE_FLAG_OVERLAPPED;
+		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS;
 		if (mode & openmode::direct) flags |= FILE_FLAG_WRITE_THROUGH;
 
 		if (const auto hnd = ::CreateFileW(path, access, share, nullptr, disp, flags, nullptr); hnd != INVALID_HANDLE_VALUE) [[likely]]
@@ -91,20 +78,7 @@ namespace rod::detail
 			{
 			}
 #endif
-
-#if SIZE_MAX >= UINT64_MAX
-			LONG high = 0;
-			if (const auto res = ::SetFilePointer(hnd, 0, &high, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
-			{
-				const auto off_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
-				const auto off_l = static_cast<std::size_t>(res);
-				return system_file{hnd, off_h | off_l};
-			}
-#else
-			if (const auto res = ::SetFilePointer(hnd, 0, nullptr, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
-				return system_file{hnd, static_cast<std::size_t>(res)};
-#endif
-			::CloseHandle(hnd);
+			return system_file{hnd};
 		}
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
@@ -135,22 +109,14 @@ namespace rod::detail
 	}
 	result<std::size_t, std::error_code> system_file::tell() const noexcept
 	{
-		if (_offset != std::numeric_limits<std::size_t>::max()) [[likely]]
-			return _offset;
+		auto &winapi = winapi::instance();
+		winapi::file_position_information info;
+		winapi::io_status_block iosb;
 
-#if SIZE_MAX >= UINT64_MAX
-		LONG high = 0;
-		if (const auto res = ::SetFilePointer(native_handle(), 0, &high, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
-		{
-			const auto pos_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
-			const auto pos_l = static_cast<std::size_t>(res);
-			return pos_h | pos_l;
-		}
-#else
-		if (const auto res = ::SetFilePointer(native_handle(), 0, nullptr, FILE_CURRENT); res == INVALID_SET_FILE_POINTER) [[likely]]
-			return static_cast<std::size_t>(res);
-#endif
-		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+		if (const auto status = winapi.NtQueryInformationFile(native_handle(), &iosb, &info, sizeof(info), winapi::FilePositionInformation); status < 0) [[unlikely]]
+			return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(status)), std::system_category()};
+		else
+			return static_cast<std::size_t>(info.offset.quad);
 	}
 
 	result<std::size_t, std::error_code> system_file::resize(std::size_t n) noexcept
@@ -166,15 +132,11 @@ namespace rod::detail
 			endp = {.QuadPart = n};
 		}
 
-		if (!::SetFilePointerEx(native_handle(), endp, nullptr, FILE_BEGIN))
-			goto fail;
-		if (!::SetEndOfFile(native_handle()) || !::SetFilePointerEx(native_handle(), oldp, nullptr, FILE_BEGIN))
-			goto fail;
-
-		_offset = static_cast<std::size_t>(oldp.QuadPart);
-		return static_cast<std::size_t>(endp.QuadPart);
-	fail:
-		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+		if (!::SetFilePointerEx(native_handle(), endp, nullptr, FILE_BEGIN) || !::SetEndOfFile(native_handle()) ||
+			(oldp.QuadPart > endp.QuadPart && !::SetFilePointerEx(native_handle(), oldp, nullptr, FILE_BEGIN)))
+			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+		else
+			return static_cast<std::size_t>(endp.QuadPart);
 	}
 	result<std::size_t, std::error_code> system_file::seek(std::ptrdiff_t off, int dir) noexcept
 	{
@@ -194,31 +156,44 @@ namespace rod::detail
 		{
 			const auto off_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
 			const auto off_l = static_cast<std::size_t>(res);
-			return _offset = off_h | off_l;
+			return off_h | off_l;
 		}
 #else
 		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), nullptr, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
-			return _offset = static_cast<std::size_t>(res);
+			return static_cast<std::size_t>(res);
 #endif
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
 
 	result<std::filesystem::path, std::error_code> system_file::path() const noexcept
 	{
-		try
-		{
-			if (const auto size = ::GetFinalPathNameByHandleW(native_handle(), nullptr, 0, FILE_NAME_NORMALIZED); size) [[likely]]
-			{
-				auto buff = std::wstring(size - 1, '\0');
-				if (::GetFinalPathNameByHandleW(native_handle(), buff.data(), size, FILE_NAME_NORMALIZED)) [[likely]]
-					return std::filesystem::path{buff};
-			}
-			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
-		}
-		catch (const std::bad_alloc &)
-		{
-			return std::make_error_code(std::errc::not_enough_memory);
-		}
+		const auto &winapi = winapi::instance();
+		winapi::file_name_information size_query;
+		winapi::io_status_block iosb;
+		std::filesystem::path result;
+		auto *info_ptr = &size_query;
+		std::size_t buff_size;
+
+		if (winapi.NtQueryInformationFile(native_handle(), &iosb, info_ptr, sizeof(size_query), winapi::FileNameInformation) != 0x80000005 /* STATUS_BUFFER_OVERFLOW */) [[unlikely]]
+			goto fail_status;
+
+		buff_size = sizeof(*info_ptr) + size_query.len * sizeof(wchar_t);
+		if (info_ptr = static_cast<decltype(info_ptr)>(::malloc(buff_size)); info_ptr == nullptr) [[unlikely]]
+			goto fail_memory;
+
+		::memset(info_ptr, 0, buff_size);
+		if (winapi.NtQueryInformationFile(native_handle(), &iosb, info_ptr, buff_size, winapi::FileNameInformation) < 0) [[unlikely]]
+			goto fail_status;
+
+		try { result = std::wstring_view{info_ptr->name}; }
+		catch (const std::bad_alloc &) { goto fail_memory; }
+		::free(info_ptr);
+		return result;
+
+	fail_status:
+		return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(iosb.status)), std::system_category()};
+	fail_memory:
+		return std::make_error_code(std::errc::not_enough_memory);
 	}
 
 	std::error_code system_file::sync() noexcept
@@ -230,61 +205,73 @@ namespace rod::detail
 	}
 	result<std::size_t, std::error_code> system_file::sync_read(void *dst, std::size_t n) noexcept
 	{
-		if (auto pos = tell(); pos.has_value()) [[likely]]
-			return sync_read_at(dst, n, *pos);
-		else
-			return pos;
+		const auto &winapi = winapi::instance();
+		for (std::size_t total = 0, n_done;;)
+		{
+			winapi::io_status_block iosb;
+			const auto bytes = static_cast<std::byte *>(dst) + total;
+			const auto n_bytes = static_cast<unsigned long>(n - total);
+			if (winapi.NtReadFile(native_handle(), nullptr, nullptr, nullptr, &iosb, bytes, n_bytes, nullptr, nullptr) < 0) [[unlikely]]
+				return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(iosb.status)), std::system_category()};
+
+			n_done = static_cast<std::size_t>(iosb.info);
+			if ((total += n_done) >= n || n_done < n_bytes) [[unlikely]]
+				return total;
+		}
 	}
 	result<std::size_t, std::error_code> system_file::sync_write(const void *src, std::size_t n) noexcept
 	{
-		if (auto pos = tell(); pos.has_value()) [[likely]]
-			return sync_write_at(src, n, *pos);
-		else
-			return 0;
+		const auto &winapi = winapi::instance();
+		for (std::size_t total = 0, n_done;;)
+		{
+			winapi::io_status_block iosb;
+			const auto bytes = static_cast<const std::byte *>(src) + total;
+			const auto n_bytes = static_cast<unsigned long>(n - total);
+			if (winapi.NtWriteFile(native_handle(), nullptr, nullptr, nullptr, &iosb, bytes, n_bytes, nullptr, nullptr) < 0) [[unlikely]]
+				return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(iosb.status)), std::system_category()};
+
+			n_done = static_cast<std::size_t>(iosb.info);
+			if ((total += n_done) >= n || n_done < n_bytes) [[unlikely]]
+				return total;
+		}
 	}
 	result<std::size_t, std::error_code> system_file::sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept
 	{
-		std::size_t total = 0;
-		for (DWORD n_done = 0, err = 0; total < n && err != ERROR_HANDLE_EOF;)
+		const auto &winapi = winapi::instance();
+		for (std::size_t total = 0, n_done;;)
 		{
-			OVERLAPPED overlapped = {};
-#if SIZE_MAX >= UINT64_MAX
-			overlapped.OffsetHigh = static_cast<DWORD>((off + total) >> std::numeric_limits<DWORD>::digits);
-#endif
-			overlapped.Offset = static_cast<DWORD>(off + total);
+			winapi::io_status_block iosb;
+			winapi::large_integer offset;
 
-			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
-			if (!::ReadFile(native_handle(), static_cast<std::byte *>(dst) + total, n_done, nullptr, &overlapped) && (err = ::GetLastError()) != ERROR_IO_PENDING) [[unlikely]]
-				return std::error_code{static_cast<int>(err), std::system_category()};
-			if (!::GetOverlappedResultEx(native_handle(), &overlapped, &n_done, INFINITE, false) && (err = ::GetLastError()) != ERROR_HANDLE_EOF) [[unlikely]]
-				return std::error_code{static_cast<int>(err), std::system_category()};
+			const auto bytes = static_cast<std::byte *>(dst) + total;
+			const auto n_bytes = static_cast<unsigned long>(n - total);
+			offset.quad = static_cast<long long>(off + total);
+			if (winapi.NtReadFile(native_handle(), nullptr, nullptr, nullptr, &iosb, bytes, n_bytes, &offset, nullptr) < 0) [[unlikely]]
+				return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(iosb.status)), std::system_category()};
 
-			total += n_done;
+			n_done = static_cast<std::size_t>(iosb.info);
+			if ((total += n_done) >= n || n_done < n_bytes) [[unlikely]]
+				return total;
 		}
-		_offset = off + total;
-		return total;
 	}
 	result<std::size_t, std::error_code> system_file::sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept
 	{
-		std::size_t total = 0;
-		for (DWORD n_done = 0, err = 0; total < n && err != ERROR_HANDLE_EOF;)
+		const auto &winapi = winapi::instance();
+		for (std::size_t total = 0, n_done;;)
 		{
-			OVERLAPPED overlapped = {};
-#if SIZE_MAX >= UINT64_MAX
-			overlapped.OffsetHigh = static_cast<DWORD>((off + total) >> std::numeric_limits<DWORD>::digits);
-#endif
-			overlapped.Offset = static_cast<DWORD>(off + total);
+			winapi::io_status_block iosb;
+			winapi::large_integer offset;
 
-			n_done = static_cast<DWORD>(std::min<std::size_t>(n - total, std::numeric_limits<DWORD>::max()));
-			if (!::WriteFile(native_handle(), static_cast<const std::byte *>(src) + total, n_done, nullptr, &overlapped) && (err = ::GetLastError()) != ERROR_IO_PENDING) [[unlikely]]
-				return std::error_code{static_cast<int>(err), std::system_category()};
-			if (!::GetOverlappedResultEx(native_handle(), &overlapped, &n_done, INFINITE, false) && (err = ::GetLastError()) != ERROR_HANDLE_EOF) [[unlikely]]
-				return std::error_code{static_cast<int>(err), std::system_category()};
+			const auto bytes = static_cast<const std::byte *>(src) + total;
+			const auto n_bytes = static_cast<unsigned long>(n - total);
+			offset.quad = static_cast<long long>(off + total);
+			if (winapi.NtWriteFile(native_handle(), nullptr, nullptr, nullptr, &iosb, bytes, n_bytes, &offset, nullptr) < 0) [[unlikely]]
+				return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(iosb.status)), std::system_category()};
 
-			total += n_done;
+			n_done = static_cast<std::size_t>(iosb.info);
+			if ((total += n_done) >= n || n_done < n_bytes) [[unlikely]]
+				return total;
 		}
-		_offset = off + total;
-		return total;
 	}
 
 	result<system_mmap, std::error_code> system_file::map(std::size_t off, std::size_t n, int mode) const noexcept

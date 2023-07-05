@@ -194,37 +194,29 @@ namespace rod
 			friend constexpr void swap(basic_file &a, basic_file &b) noexcept { a.swap(b); }
 
 		public:
-			template<reference_to<basic_file> F, typename Buff>
+			template<reference_to<basic_file> F, byte_buffer Buff>
 			friend result<std::size_t, std::error_code> tag_invoke(read_some_t, F &&f, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
-				using value_t = std::ranges::range_value_t<Buff>;
-				const auto dst_ptr = std::to_address(std::ranges::begin(buff));
-				const auto dst_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_read(static_cast<void *>(dst_ptr), dst_max);
+				const auto data = static_cast<void *>(std::to_address(std::ranges::begin(buff)));
+				return f._file.sync_read(data, std::ranges::size(buff));
 			}
-			template<reference_to<basic_file> F, typename Buff>
+			template<reference_to<basic_file> F, byte_buffer Buff>
 			friend result<std::size_t, std::error_code> tag_invoke(write_some_t, F &&f, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
-				using value_t = std::ranges::range_value_t<Buff>;
-				const auto src_ptr = std::to_address(std::ranges::begin(buff));
-				const auto src_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_write(static_cast<const void *>(src_ptr), src_max);
+				const auto data = static_cast<const void *>(std::to_address(std::ranges::begin(buff)));
+				return f._file.sync_write(data, std::ranges::size(buff));
 			}
-			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, typename Buff>
+			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
 			friend result<std::size_t, std::error_code> tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
-				using value_t = std::ranges::range_value_t<Buff>;
-				const auto dst_ptr = std::to_address(std::ranges::begin(buff));
-				const auto dst_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_read_at(static_cast<void *>(dst_ptr), dst_max, static_cast<std::ptrdiff_t>(pos));
+				const auto data = static_cast<void *>(std::to_address(std::ranges::begin(buff)));
+				return f._file.sync_read_at(data, std::ranges::size(buff), static_cast<std::ptrdiff_t>(pos));
 			}
-			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, typename Buff>
+			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
 			friend result<std::size_t, std::error_code> tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
 			{
-				using value_t = std::ranges::range_value_t<Buff>;
-				const auto src_ptr = std::to_address(std::ranges::begin(buff));
-				const auto src_max = std::ranges::size(buff) * sizeof(value_t);
-				return f._file.sync_write_at(static_cast<const void *>(src_ptr), src_max, static_cast<std::ptrdiff_t>(pos));
+				const auto data = static_cast<const void *>(std::to_address(std::ranges::begin(buff)));
+				return f._file.sync_write_at(data, std::ranges::size(buff), static_cast<std::ptrdiff_t>(pos));
 			}
 
 			template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires detail::callable<T, Snd, native_handle_type, Buff>

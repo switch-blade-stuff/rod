@@ -44,18 +44,18 @@ namespace rod
 			operation_base *_next = {};
 			run_loop *_loop;
 		};
-		class timer_base : public operation_base
+		class timer_operation_base : public operation_base
 		{
 			friend class run_loop;
 
 		protected:
-			constexpr timer_base(run_loop *loop, notify_func_t notify, time_point tp) noexcept : operation_base(loop, notify), _tp(tp) {}
+			constexpr timer_operation_base(run_loop *loop, notify_func_t notify, time_point tp) noexcept : operation_base(loop, notify), _tp(tp) {}
 
 			inline void start() noexcept;
 
 		private:
-			timer_base *_timer_prev = {};
-			timer_base *_timer_next = {};
+			timer_operation_base *_timer_prev = {};
+			timer_operation_base *_timer_next = {};
 			time_point _tp;
 		};
 
@@ -118,7 +118,7 @@ namespace rod
 		class scheduler
 		{
 			using sender_t = sender<operation_base>;
-			using timer_sender_t = sender<timer_base, time_point>;
+			using timer_sender_t = sender<timer_operation_base, time_point>;
 
 		public:
 			constexpr scheduler(run_loop *loop) noexcept : _loop(loop) {}
@@ -153,15 +153,15 @@ namespace rod
 		class run_loop
 		{
 			friend class operation_base;
-			friend class timer_base;
+			friend class timer_operation_base;
 
 		public:
 			using time_point = _run_loop::time_point;
 			using clock = _run_loop::clock;
 
 		private:
-			struct timer_cmp { constexpr bool operator()(const timer_base &a, const timer_base &b) const noexcept { return a._tp <= b._tp; }};
-			using timer_queue_t = detail::priority_queue<timer_base, timer_cmp, &timer_base::_timer_prev, &timer_base::_timer_next>;
+			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a._tp <= b._tp; }};
+			using timer_queue_t = detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::_timer_prev, &timer_operation_base::_timer_next>;
 			using task_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
 
 		public:
@@ -252,7 +252,7 @@ namespace rod
 				_task_queue.push_back(node);
 				_cnd.notify_one();
 			}
-			void schedule_timer(timer_base *node) noexcept
+			void schedule_timer(timer_operation_base *node) noexcept
 			{
 				const auto g = std::unique_lock{_mtx};
 				_timer_queue.insert(node);
@@ -274,7 +274,7 @@ namespace rod
 		constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return e._loop->get_scheduler(); }
 
 		void operation_base::start() noexcept { _loop->schedule(this); }
-		void timer_base::start() noexcept { _loop->schedule_timer(this); }
+		void timer_operation_base::start() noexcept { _loop->schedule_timer(this); }
 	}
 
 	using _run_loop::run_loop;

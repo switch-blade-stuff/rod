@@ -128,8 +128,8 @@ namespace rod
 
 	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle.
 	 * @param[in] hnd Handle to read the data from.
-	 * @param[out] dst Contiguous output range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes read or an error code on read failure. */
+	 * @param[out] dst Output buffer or bytes.
+	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some = read_some_t{};
 
 	using _read_some::read_some_at_t;
@@ -137,8 +137,8 @@ namespace rod
 	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle at the specified offset.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source handle at which to read the data.
-	 * @param[out] dst Contiguous output range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes read or an error code on read failure. */
+	 * @param[out] dst Output buffer or bytes.
+	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some_at = read_some_at_t{};
 
 	using _read_some::async_read_some_t;
@@ -147,7 +147,7 @@ namespace rod
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to read the data from.
-	 * @param[out] dst Contiguous output range of integral values.
+	 * @param[out] dst Output buffer or bytes.
 	 * @return Sender completing with the amount of bytes read or an error code on read failure. */
 	inline constexpr auto async_read_some = async_read_some_t{};
 
@@ -158,7 +158,7 @@ namespace rod
 	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source handle at which to read the data.
-	 * @param[out] dst Contiguous output range of integral values.
+	 * @param[out] dst Output buffer or bytes.
 	 * @return Sender completing with the amount of bytes read or an error code on read failure. */
 	inline constexpr auto async_read_some_at = async_read_some_at_t{};
 
@@ -168,7 +168,7 @@ namespace rod
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] sch Scheduler used to schedule the read operation.
 	 * @param[in] hnd Handle to read the data from.
-	 * @param[out] dst Contiguous output range of integral values.
+	 * @param[out] dst Output buffer or bytes.
 	 * @return Sender completing on \a sch with the amount of bytes read or an error code on read failure. */
 	inline constexpr auto schedule_read_some = schedule_read_some_t{};
 
@@ -179,7 +179,7 @@ namespace rod
 	 * @param[in] sch Scheduler used to schedule the read operation.
 	 * @param[in] hnd Handle to read the data from.
 	 * @param[in] pos Offset into the source handle at which to read the data.
-	 * @param[out] dst Contiguous output range of integral values.
+	 * @param[out] dst Output buffer or bytes.
 	 * @return Sender completing on \a sch with the amount of bytes read or an error code on read failure. */
 	inline constexpr auto schedule_read_some_at = schedule_read_some_at_t{};
 }

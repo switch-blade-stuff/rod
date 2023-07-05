@@ -38,7 +38,8 @@ namespace rod
 		 * @param[in] name Name of the shared memory object to be opened.
 		 * @param[in] size Size of the shared memory object. If set to `0`, uses an implementation-defined default size.
 		 * @param[in] mode Mode flags to open the shared memory object with.
-		 * @return Handle to the opened shared memory object, or an error code on failure to open the shared memory object. */
+		 * @return Handle to the opened shared memory object, or an error code on failure to open the shared memory object.
+		 * @note Shared memory might be allocated using a temporary filesystem file, and as such might persist beyond the lifetime of it's parent process. */
 		[[nodiscard]] static result<shared_memory, std::error_code> open(const char *name, std::size_t size = 0, openmode mode = {}) noexcept { return native_t::open(name, size, mode); }
 		/** @copydoc open */
 		[[nodiscard]] static result<shared_memory, std::error_code> open(const std::string &name, std::size_t size = 0, openmode mode = {}) noexcept { return open(name.c_str(), size, mode); }
@@ -67,10 +68,10 @@ namespace rod
 		 * @note This overload will ignore the `mmap::expand` mode flag. */
 		[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size, mmap::mapmode mode) const noexcept { return _shm.map(pos, size, mode & ~mmap::expand); }
 
-		/** Attempts to lock the shared memory object so that only one process has access to it.
+		/** Attempts to lock the shared memory object.
 		 * @return `true` if locked successfully, `false` if another process already has the lock. */
 		bool try_lock() noexcept { return _shm.try_lock(); }
-		/** Locks the shared memory object so that only one process has access to it.
+		/** Locks the shared memory object.
 		 * @return Error code on failure to lock the shared memory object. */
 		std::error_code lock() noexcept { return _shm.lock(); }
 		/** Releases the shared memory object lock.

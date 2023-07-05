@@ -13,9 +13,13 @@ namespace rod::detail
 {
 	std::size_t system_mmap::get_pagesize() noexcept
 	{
+		static std::atomic<std::size_t> size = {};
+		if (const auto old = size.load(); old != 0) [[likely]]
+			return old;
+
 		SYSTEM_INFO sysinfo;
 		::GetSystemInfo(&sysinfo);
-		return sysinfo.dwAllocationGranularity;
+		return size = sysinfo.dwAllocationGranularity;
 	}
 
 	system_mmap::~system_mmap() { if (_data) ::UnmapViewOfFile(_data); }

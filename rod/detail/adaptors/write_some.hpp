@@ -128,8 +128,8 @@ namespace rod
 
 	/** Customization point object used to write a contiguous buffer of integral values to a writeable destination object.
 	 * @param[in] hnd Handle to write the data into.
-	 * @param[in] src Contiguous input range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes written or an error code on write failure. */
+	 * @param[in] src Input buffer or bytes.
+	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes written or an error code on write failure. */
 	inline constexpr auto write_some = write_some_t{};
 
 	using _write_some::write_some_at_t;
@@ -137,8 +137,8 @@ namespace rod
 	/** Customization point object used to write a contiguous buffer of integral values to a writeable destination object at the specified offset.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
-	 * @param[in] src Contiguous input range of integral values.
-	 * @return `rod::result<std::size_t, std::error_code>` indicating the amount of bytes written or an error code on write failure. */
+	 * @param[in] src Input buffer or bytes.
+	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes written or an error code on write failure. */
 	inline constexpr auto write_some_at = write_some_at_t{};
 
 	using _write_some::async_write_some_t;
@@ -147,7 +147,7 @@ namespace rod
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] snd Input sender who's value completion channel will be used for the async write operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to write the data into.
-	 * @param[in] src Contiguous input range of integral values.
+	 * @param[in] src Input buffer or bytes.
 	 * @return Sender completing with the amount of bytes written or an error code on write failure. */
 	inline constexpr auto async_write_some = async_write_some_t{};
 
@@ -158,7 +158,7 @@ namespace rod
 	 * @param[in] snd Input sender who's value completion channel will be used for the async write operation. If omitted, creates a pipe-able sender adaptor.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
-	 * @param[in] src Contiguous input range of integral values.
+	 * @param[in] src Input buffer or bytes.
 	 * @return Sender completing with the amount of bytes written or an error code on write failure. */
 	inline constexpr auto async_write_some_at = async_write_some_at_t{};
 
@@ -168,7 +168,7 @@ namespace rod
 	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
 	 * @param[in] sch Scheduler used to schedule the write operation.
 	 * @param[in] hnd Handle to write the data into.
-	 * @param[out] dst Contiguous output range of integral values.
+	 * @param[in] src Input buffer or bytes.
 	 * @return Sender completing on \a sch with the amount of bytes written or an error code on write failure. */
 	inline constexpr auto schedule_write_some = schedule_write_some_t{};
 
@@ -179,7 +179,7 @@ namespace rod
 	 * @param[in] sch Scheduler used to schedule the write operation.
 	 * @param[in] hnd Handle to write the data into.
 	 * @param[in] pos Offset into the destination object at which to write the data.
-	 * @param[out] dst Contiguous output range of integral values.
+	 * @param[in] src Input buffer or bytes.
 	 * @return Sender completing on \a sch with the amount of bytes written or an error code on write failure. */
 	inline constexpr auto schedule_write_some_at = schedule_write_some_at_t{};
 }

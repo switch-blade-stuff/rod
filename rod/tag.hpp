@@ -24,7 +24,7 @@ namespace rod
 		/** Concept used to check if a call to `tag_invocable` is well-formed for tag type \a Tag and arguments \a Args and does not throw exceptions. */
 		template<typename Tag, typename... Args>
 		concept nothrow_tag_invocable = tag_invocable<Tag, Args...> && requires(Tag tag, Args &&...args) { { tag_invoke(tag, std::forward<Args>(args)...) } noexcept; };
-		/** Alias for `decltype(tag_invoke(std::declval<Tag>(), std::declval<Args>()...))`. */
+		/** Alias for `decltype(tag_invoke(std::declval&lt;Tag&gt;(), std::declval&lt;Args&gt;()...))`. */
 		template<typename Tag, typename... Args>
 		using tag_invoke_result_t = decltype(tag_invoke(std::declval<Tag>(), std::declval<Args>()...));
 

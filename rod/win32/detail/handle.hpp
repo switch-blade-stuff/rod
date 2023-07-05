@@ -9,7 +9,7 @@
 #include <system_error>
 #include <utility>
 
-#include "../../detail/config.hpp"
+#include "winapi.hpp"
 
 namespace rod::detail
 {

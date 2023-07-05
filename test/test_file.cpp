@@ -21,6 +21,7 @@ void test_basic_file(auto mode)
 
 	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode).value();
 	TEST_ASSERT(file.is_open());
+	TEST_ASSERT(std::filesystem::equivalent(file.path().value(), path));
 
 	auto trd = std::jthread{[&]() { ctx.run(); }};
 	auto sch = ctx.get_scheduler();
@@ -29,13 +30,18 @@ void test_basic_file(auto mode)
 		TEST_ASSERT(file.size().value() == data.size());
 		TEST_ASSERT(write_n.value() == data.size());
 
-		const auto pos = file.seek(0, basic_file_t::beg).value();
+		auto pos = file.tell().value();
+		TEST_ASSERT(pos == data.size());
+		pos = file.seek(0, basic_file_t::beg).value();
 		TEST_ASSERT(pos == 0);
 
 		const auto read_n = rod::read_some(file, rod::as_byte_buffer(buff));
 		TEST_ASSERT(read_n.value() == file.size().value());
 		TEST_ASSERT(read_n.value() == data.size());
 		TEST_ASSERT(buff.find(data) == 0);
+
+		pos = file.tell().value();
+		TEST_ASSERT(pos == data.size());
 	}
 	{
 		const auto write_n = rod::write_some_at(file, data.size(), rod::as_byte_buffer(data));
@@ -69,6 +75,7 @@ void test_basic_file(auto mode)
 		           | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
 		rod::sync_wait(snd);
 	}
+
 	std::filesystem::remove(path);
 	ctx.finish();
 }

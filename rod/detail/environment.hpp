@@ -26,7 +26,7 @@ namespace rod
 	/** Customization point object for which expression `get_env(value)` is equivalent to the result of expression `tag_invoke(get_env, value)`,
 	 * or an empty environment placeholder if said expression is not valid. */
 	inline constexpr auto get_env = get_env_t{};
-	/** Alias for `decltype(get_env(std::declval<T>()))` */
+	/** Alias for `decltype(get_env(std::declval&lt;T&gt;()))` */
 	template<typename T>
 	using env_of_t = decltype(get_env(std::declval<T>()));
 }

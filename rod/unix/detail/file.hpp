@@ -6,8 +6,8 @@
 
 #ifdef __unix__
 
+#include <sys/stat.h>
 #include <filesystem>
-#include <fcntl.h>
 #include <cstdio>
 
 #include "../../result.hpp"
@@ -42,9 +42,8 @@ namespace rod::detail
 			ate = 0b0001'0000,
 			app = 0b0010'0000,
 			trunc = 0b0100'0000,
-			nocreate = 0b00'1000'0000,
-			noreplace = 0b01'0000'0000,
-			_sharedfd = 0b10'0000'0000,
+			nocreate = 0b0'1000'0000,
+			noreplace = 0b1'0000'0000,
 		};
 		enum seekdir : int
 		{
@@ -53,7 +52,6 @@ namespace rod::detail
 			end = SEEK_END,
 		};
 
-		static std::error_code resize_fd(native_handle_type fd, std::size_t new_size) noexcept;
 		static ROD_API_PUBLIC result<system_file, std::error_code> reopen(native_handle_type fd, int mode) noexcept;
 		static ROD_API_PUBLIC result<system_file, std::error_code> open(const char *path, int mode, int prot) noexcept;
 		static ROD_API_PUBLIC result<system_file, std::error_code> open(const wchar_t *path, int mode, int prot) noexcept;
@@ -72,11 +70,7 @@ namespace rod::detail
 		using unique_descriptor::is_open;
 		using unique_descriptor::native_handle;
 
-		ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
-		ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const noexcept;
-
-		ROD_API_PUBLIC result<std::size_t, std::error_code> resize(std::size_t n) noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> seek(std::ptrdiff_t off, int dir) noexcept;
 
 		ROD_API_PUBLIC std::error_code sync() noexcept;
