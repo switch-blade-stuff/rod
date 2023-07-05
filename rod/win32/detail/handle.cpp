@@ -20,7 +20,7 @@ namespace rod::detail
 	}
 	std::error_code basic_handle::poll_wait() const noexcept
 	{
-		for (auto &winapi = winapi::instance();;)
+		for (auto &winapi = winapi::instance;;)
 		{
 			if (const auto status = winapi.NtWaitForSingleObject(native_handle(), true, nullptr); !status)
 				return {};

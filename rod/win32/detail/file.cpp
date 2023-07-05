@@ -217,7 +217,7 @@ namespace rod::detail
 	}
 	result<std::size_t, std::error_code> system_file::sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept
 	{
-		const auto &winapi = winapi::instance();
+		const auto &winapi = winapi::instance;
 		for (std::size_t total = 0, n_done;;)
 		{
 			winapi::io_status_block iosb;
@@ -242,7 +242,7 @@ namespace rod::detail
 	}
 	result<std::size_t, std::error_code> system_file::sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept
 	{
-		const auto &winapi = winapi::instance();
+		const auto &winapi = winapi::instance;
 		for (std::size_t total = 0, n_done;;)
 		{
 			winapi::io_status_block iosb;

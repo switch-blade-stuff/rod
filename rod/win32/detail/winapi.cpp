@@ -36,11 +36,7 @@ namespace rod::detail
 			ptr = reinterpret_cast<S *>(reinterpret_cast<void *>(res));
 	}
 
-	const winapi &winapi::instance()
-	{
-		static const winapi value;
-		return value;
-	}
+	const winapi winapi::instance;
 
 	winapi::winapi()
 	{

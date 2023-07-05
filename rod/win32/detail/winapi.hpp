@@ -22,7 +22,6 @@ namespace rod::detail
 			unsigned short max;
 			wchar_t *buffer;
 		};
-
 		union large_integer
 		{
 			struct
@@ -43,8 +42,6 @@ namespace rod::detail
 			std::uintptr_t info;
 		};
 
-		using io_apc_routine = void (ROD_NTAPI *)(_In_ void *apc_context, _In_ io_status_block *iosb, _In_ unsigned long);
-
 		struct object_attributes
 		{
 			unsigned long length;
@@ -54,19 +51,19 @@ namespace rod::detail
 			void *security_dsc;
 			void *security_qos;
 		};
-
 		struct file_completion_information
 		{
 			void *port;
 			void *key;
 		};
-
 		struct file_io_completion_information
 		{
 			void *key_context;
 			void *apc_context;
 			io_status_block status;
 		};
+
+		using io_apc_routine = void (ROD_NTAPI *)(_In_ void *apc_ctx, _In_ io_status_block *iosb, _In_ unsigned long);
 
 		using RtlNtStatusToDosError_t = unsigned long (ROD_NTAPI *)(_In_ long status);
 		using NtWaitForSingleObject_t = long (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ large_integer *timeout);
@@ -82,7 +79,7 @@ namespace rod::detail
 		template<typename S>
 		static void init_symbol(void *, S *&, const char *);
 
-		ROD_API_PUBLIC static const winapi &instance();
+		static const winapi instance;
 
 		winapi(const winapi &) = delete;
 		winapi &operator=(const winapi &) = delete;
