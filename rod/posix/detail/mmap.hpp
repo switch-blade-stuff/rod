@@ -4,7 +4,7 @@
 
 #pragma once
 
-#ifdef __unix__
+#ifdef ROD_POSIX
 
 #include "../../result.hpp"
 
@@ -55,51 +55,6 @@ namespace rod::detail
 	private:
 		std::byte *_data = {};
 		std::size_t _size = {};
-	};
-
-	class system_mmap
-	{
-	public:
-		using native_handle_type = void *;
-
-		enum mapmode : int
-		{
-			copy = 0b0001,
-			read = 0b0010,
-			write = 0b0100,
-			expand = 0b1000,
-		};
-
-	public:
-		system_mmap(const system_mmap &) = delete;
-		system_mmap &operator=(const system_mmap &) = delete;
-
-		constexpr system_mmap() noexcept = default;
-		constexpr system_mmap(system_mmap &&other) noexcept { swap(other); }
-		constexpr system_mmap &operator=(system_mmap &&other) noexcept { return (swap(other), *this); }
-
-		constexpr explicit system_mmap(void *data, std::size_t base, std::size_t size) noexcept : _mmap(data, size), _base(base) {}
-
-		[[nodiscard]] constexpr std::byte *data() const noexcept { return _mmap.data() + _base; }
-		[[nodiscard]] constexpr void *native_data() const noexcept { return _mmap.data(); }
-
-		[[nodiscard]] constexpr std::size_t size() const noexcept { return _mmap.size() - _base; }
-		[[nodiscard]] constexpr std::size_t native_size() const noexcept { return _mmap.size(); }
-
-		[[nodiscard]] constexpr bool empty() const noexcept { return _mmap.empty(); }
-		[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return native_data(); }
-
-		constexpr void swap(system_mmap &other) noexcept
-		{
-			using std::swap;
-			swap(_mmap, other._mmap);
-			swap(_base, other._base);
-		}
-		friend constexpr void swap(system_mmap &a, system_mmap &b) noexcept { a.swap(b); }
-
-	private:
-		mmap_handle _mmap = {};
-		std::size_t _base = {};
 	};
 }
 #endif

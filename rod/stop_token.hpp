@@ -72,6 +72,23 @@ namespace rod
 	{
 		template<typename Env>
 		concept stoppable_env = stoppable_token<stop_token_of_t<Env &>>;
+
+		template<typename, auto>
+		struct stop_cb_adaptor {};
+		template<typename Env, typename Op, void (Op::*Stop)()> requires stoppable_env<Env>
+		struct stop_cb_adaptor<Env, Stop>
+		{
+			struct callback
+			{
+				void operator()() const { (op->*Stop)(); }
+				Op *op;
+			};
+
+			constexpr void init(auto &&env, Op *ptr) noexcept { data.emplace(get_stop_token(env), callback{ptr}); }
+			constexpr void reset() noexcept { data.reset(); }
+
+			std::optional<stop_callback_for_t<stop_token_of_t<Env &>, callback>> data;
+		};
 	}
 
 	class in_place_stop_token;

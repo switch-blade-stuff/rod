@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "sync_io.hpp"
+#include "../../result.hpp"
+#include "../byte_buffer.hpp"
 
 namespace rod
 {
@@ -27,159 +28,55 @@ namespace rod
 			}
 		};
 
-		template<typename T, typename Snd, typename... Args>
-		concept value_overload = detail::tag_invocable_with_completion_scheduler<T, set_value_t, Snd, Snd, Args...>;
-		template<typename Snd>
-		concept read_some_sender = sender_of<Snd, set_value_t(std::size_t)>;
-
-		template<typename Snd>
-		using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
-
-		class async_read_some_t
+		struct async_read_some_t
 		{
-			template<typename Snd, typename Hnd, typename Dst>
-			using sync_sender = typename _sync_io::sender<read_some_t, std::decay_t<Snd>, Hnd, std::decay_t<Dst>>::type;
-			template<typename Hnd, typename Dst>
-			using back_adaptor = detail::back_adaptor<async_read_some_t, Hnd, std::decay_t<Dst>>;
-
-		public:
-			template<sender Snd, typename Hnd, byte_buffer Dst> requires value_overload<async_read_some_t, Snd, Hnd, Dst>
-			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, value_scheduler<Snd>, Snd, Hnd, Dst>)
+			template<typename Hnd, byte_buffer Dst> requires tag_invocable<async_read_some_t, Hnd, Dst>
+			[[nodiscard]] sender_of<set_value_t(std::size_t)> auto operator()(Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, Hnd, Dst>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
-			}
-			template<sender Snd, typename Hnd, byte_buffer Dst> requires(!value_overload<async_read_some_t, Snd, Hnd, Dst> && tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
-			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_t, Snd, Hnd, Dst>)
-			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
-			}
-			template<sender Snd, typename Hnd, byte_buffer Dst> requires(!value_overload<async_read_some_t, Snd, Hnd, Dst> && !tag_invocable<async_read_some_t, Snd, Hnd, Dst> && tag_invocable<read_some_t, Hnd, Dst>)
-			[[nodiscard]] sync_sender<Snd, Hnd, Dst> operator()(Snd &&snd, Hnd &&hnd, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<sync_sender<Snd, Hnd, Dst>, Snd, Hnd, Dst>)
-			{
-				return sync_sender<Snd, Hnd, Dst>{std::forward<Snd>(snd), std::forward<Hnd>(hnd), std::forward<Dst>(dst)};
-			}
-
-			template<typename Hnd, byte_buffer Dst>
-			[[nodiscard]] back_adaptor<Hnd, Dst> operator()(Hnd &&hnd, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Dst>, async_read_some_t, Hnd, Dst>)
-			{
-				return back_adaptor<Hnd, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), std::forward<Dst>(dst))};
+				return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Dst>(dst));
 			}
 		};
-		class async_read_some_at_t
+		struct async_read_some_at_t
 		{
-			template<typename Snd, typename Hnd, typename Pos, typename Dst>
-			using sync_sender = typename _sync_io::sender<read_some_at_t, std::decay_t<Snd>, Hnd, Pos, std::decay_t<Dst>>::type;
-			template<typename Hnd, typename Pos, typename Dst>
-			using back_adaptor = detail::back_adaptor<async_read_some_at_t, Hnd, std::decay_t<Pos>, std::decay_t<Dst>>;
-
-		public:
-			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Dst> requires value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst>
-			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, value_scheduler<Snd>, Snd, Hnd, Pos, Dst>)
+			template<typename Hnd, std::integral Pos, byte_buffer Dst> requires tag_invocable<async_read_some_at_t, Hnd, Pos, Dst>
+			[[nodiscard]] sender_of<set_value_t(std::size_t)> auto operator()(Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Hnd, Pos, Dst>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
-			}
-			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Dst> requires(!value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst> && tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
-			[[nodiscard]] read_some_sender auto operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst>)
-			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
-			}
-			template<sender Snd, typename Hnd, std::integral Pos, byte_buffer Dst> requires(!value_overload<async_read_some_at_t, Snd, Hnd, Pos, Dst> && !tag_invocable<async_read_some_at_t, Snd, Hnd, Pos, Dst> && tag_invocable<read_some_at_t, Hnd, Pos, Dst>)
-			[[nodiscard]] sync_sender<Snd, Hnd, Pos, Dst> operator()(Snd &&snd, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<sync_sender<Snd, Hnd, Pos, Dst>, Snd, Hnd, Pos, Dst>)
-			{
-				return sync_sender<Snd, Hnd, Pos, Dst>{std::forward<Snd>(snd), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst)};
-			}
-
-			template<typename Hnd, std::integral Pos, byte_buffer Dst>
-			[[nodiscard]] back_adaptor<Hnd, Pos, Dst> operator()(Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(std::is_nothrow_constructible_v<back_adaptor<Hnd, Pos, Dst>, async_read_some_at_t, Hnd, Pos, Dst>)
-			{
-				return back_adaptor<Hnd, Pos, Dst>{*this, std::forward_as_tuple(std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst))};
-			}
-		};
-
-		struct schedule_read_some_t
-		{
-			template<scheduler Sch, typename Hnd, byte_buffer Dst> requires tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>
-			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Dst &&dst) const noexcept(nothrow_tag_invocable<schedule_read_some_t, Sch, Hnd, Dst>)
-			{
-				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
-			}
-			template<scheduler Sch, typename Hnd, byte_buffer Dst> requires(!tag_invocable<schedule_read_some_t, Sch, Hnd, Dst> && detail::callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
-			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Dst &&dst) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_t, schedule_result_t<Sch>, Hnd, Dst>)
-			{
-				return async_read_some_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), std::forward<Dst>(dst));
-			}
-		};
-		struct schedule_read_some_at_t
-		{
-			template<scheduler Sch, typename Hnd, std::integral Pos, byte_buffer Dst> requires tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>
-			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(nothrow_tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst>)
-			{
-				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
-			}
-			template<scheduler Sch, typename Hnd, std::integral Pos, byte_buffer Dst> requires(!tag_invocable<schedule_read_some_at_t, Sch, Hnd, Pos, Dst> && detail::callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
-			[[nodiscard]] read_some_sender auto operator()(Sch &&sch, Hnd &&hnd, Pos pos, Dst &&dst) const noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_at_t, schedule_result_t<Sch>, Hnd, Pos, Dst>)
-			{
-				return async_read_some_at_t{}(schedule(std::forward<Sch>(sch)), std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
+				return tag_invoke(*this, std::forward<Hnd>(hnd), pos, std::forward<Dst>(dst));
 			}
 		};
 	}
 
 	using _read_some::read_some_t;
 
-	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle.
-	 * @param[in] hnd Handle to read the data from.
+	/** Customization point object used to read a contiguous buffer of bytes from a readable source IO handle.
+	 * @param[in] hnd IO handle to read the data from.
 	 * @param[out] dst Output buffer or bytes.
 	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some = read_some_t{};
 
 	using _read_some::read_some_at_t;
 
-	/** Customization point object used to read a contiguous buffer of integral values from a readable source handle at the specified offset.
-	 * @param[in] hnd Handle to read the data from.
-	 * @param[in] pos Offset into the source handle at which to read the data.
+	/** Customization point object used to read a contiguous buffer of bytes from a readable source IO handle at the specified offset.
+	 * @param[in] hnd IO handle to read the data from.
+	 * @param[in] pos Offset into the IO handle at which to read the data.
 	 * @param[out] dst Output buffer or bytes.
 	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some_at = read_some_at_t{};
 
 	using _read_some::async_read_some_t;
 
-	/** Customization point object returning a sender used to read a contiguous buffer of integral values from an async-readable source handle.
-	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
-	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
-	 * @param[in] hnd Handle to read the data from.
-	 * @param[out] dst Output buffer or bytes.
-	 * @return Sender completing with the amount of bytes read or an error code on read failure. */
+	/** Customization point object returning a sender used to read a contiguous buffer of bytes from a source IO handle.
+	 * @param[in] hnd Asynchronous IO handle used to schedule the read operation.
+	 * @param[out] src Output buffer or bytes.
+	 * @return Sender completing with the amount of bytes written or an error code on read failure. */
 	inline constexpr auto async_read_some = async_read_some_t{};
 
 	using _read_some::async_read_some_at_t;
 
-	/** Customization point object returning a sender used to read a contiguous buffer of integral values from an async-readable source handle.
-	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
-	 * @param[in] snd Input sender who's value completion channel will be used for the async read operation. If omitted, creates a pipe-able sender adaptor.
-	 * @param[in] hnd Handle to read the data from.
-	 * @param[in] pos Offset into the source handle at which to read the data.
-	 * @param[out] dst Output buffer or bytes.
-	 * @return Sender completing with the amount of bytes read or an error code on read failure. */
+	/** Customization point object returning a sender used to read a contiguous buffer of bytes from a source IO handle.
+	 * @param[in] hnd Asynchronous IO handle used to schedule the read operation.
+	 * @param[in] pos Offset into the IO handle at which to read the data.
+	 * @param[out] src Output buffer or bytes.
+	 * @return Sender completing with the amount of bytes written or an error code on read failure. */
 	inline constexpr auto async_read_some_at = async_read_some_at_t{};
-
-	using _read_some::schedule_read_some_t;
-
-	/** Customization point object used to schedule an asynchronous read operation using the specified scheduler.
-	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
-	 * @param[in] sch Scheduler used to schedule the read operation.
-	 * @param[in] hnd Handle to read the data from.
-	 * @param[out] dst Output buffer or bytes.
-	 * @return Sender completing on \a sch with the amount of bytes read or an error code on read failure. */
-	inline constexpr auto schedule_read_some = schedule_read_some_t{};
-
-	using _read_some::schedule_read_some_at_t;
-
-	/** Customization point object used to schedule an asynchronous read operation at the specified position using the specified scheduler.
-	 * @note Resulting sender might complete with an optional error code as part of the value channel to indicate partial success.
-	 * @param[in] sch Scheduler used to schedule the read operation.
-	 * @param[in] hnd Handle to read the data from.
-	 * @param[in] pos Offset into the source handle at which to read the data.
-	 * @param[out] dst Output buffer or bytes.
-	 * @return Sender completing on \a sch with the amount of bytes read or an error code on read failure. */
-	inline constexpr auto schedule_read_some_at = schedule_read_some_at_t{};
 }

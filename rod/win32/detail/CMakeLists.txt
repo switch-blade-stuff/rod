@@ -1,14 +1,10 @@
 
 list(APPEND ROD_HEADERS
-        ${CMAKE_CURRENT_LIST_DIR}/winapi.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/ntapi.hpp
         ${CMAKE_CURRENT_LIST_DIR}/handle.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/file.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/mmap.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/shm.hpp)
+        ${CMAKE_CURRENT_LIST_DIR}/file.hpp)
 
 list(APPEND ROD_SOURCES
-        ${CMAKE_CURRENT_LIST_DIR}/winapi.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/ntapi.cpp
         ${CMAKE_CURRENT_LIST_DIR}/handle.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/file.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/mmap.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/shm.cpp)
+        ${CMAKE_CURRENT_LIST_DIR}/file.cpp)

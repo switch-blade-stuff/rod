@@ -6,25 +6,20 @@
 
 #include "common.hpp"
 
-using basic_file_t = rod::basic_file;
-
 const auto path = std::filesystem::path{"test.txt"};
 const auto data = std::string_view{"hello, world"};
+auto buff = std::string(data.size() * 2, '\0');
 
-void test_basic_file(auto mode)
+void test_file(auto mode)
 {
-	auto buff = std::string(data.size() * 2, '\0');
-	rod::io_context ctx = {};
-
-	if (mode & basic_file_t::noreplace)
+	mode |= rod::basic_file::in | rod::basic_file::out;
+	if (mode & rod::basic_file::noreplace)
 		std::filesystem::remove(path);
 
-	auto file = basic_file_t::open(path, basic_file_t::in | basic_file_t::out | mode).value();
+	auto file = rod::basic_file(path, mode);
 	TEST_ASSERT(file.is_open());
 	TEST_ASSERT(std::filesystem::equivalent(file.path().value(), path));
 
-	auto trd = std::jthread{[&]() { ctx.run(); }};
-	auto sch = ctx.get_scheduler();
 	{
 		const auto write_n = rod::write_some(file, rod::as_byte_buffer(data));
 		TEST_ASSERT(file.size().value() == data.size());
@@ -32,7 +27,7 @@ void test_basic_file(auto mode)
 
 		auto pos = file.tell().value();
 		TEST_ASSERT(pos == data.size());
-		pos = file.seek(0, basic_file_t::beg).value();
+		pos = file.seek(0, rod::basic_file::beg).value();
 		TEST_ASSERT(pos == 0);
 
 		const auto read_n = rod::read_some(file, rod::as_byte_buffer(buff));
@@ -55,25 +50,29 @@ void test_basic_file(auto mode)
 		TEST_ASSERT(read_n.value() == data.size() * 2);
 		TEST_ASSERT(buff.find(data) == 0);
 	}
+
+	std::filesystem::remove(path);
+}
+void test_async_file(auto mode)
+{
+	auto ctx = rod::system_context{};
+	auto trd = std::jthread{[&]() { ctx.run(); }};
+
+	mode |= rod::basic_file::in | rod::basic_file::out;
+	if (mode & rod::basic_file::noreplace)
+		std::filesystem::remove(path);
+
+	auto file = rod::open_file(ctx.get_scheduler(), path, mode).value();
+	TEST_ASSERT(file.is_open());
+	TEST_ASSERT(std::filesystem::equivalent(file.path().value(), file.path().value()));
+
 	{
-		auto snd = rod::schedule(sch)
-		           | rod::then([&]() { file.seek(0, basic_file_t::beg); })
-		           | rod::async_write_some(file, rod::as_byte_buffer(data))
-		           | rod::then([](auto n) { TEST_ASSERT(n == data.size()); })
-		           | rod::then([&]() { file.seek(0, basic_file_t::beg); })
-		           | rod::async_read_some(file, rod::as_byte_buffer(buff))
-		           | rod::then([&](auto n) { TEST_ASSERT(n == file.size().value()); })
-		           | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
-		rod::sync_wait(snd);
-	}
-	{
-		auto snd = rod::schedule_write_some_at(sch, file, data.size(), rod::as_byte_buffer(data))
-		           | rod::then([](auto n) { TEST_ASSERT(n == data.size()); })
-		           | rod::async_read_some_at(file, 0, rod::as_byte_buffer(buff))
-		           | rod::then([](auto n) { TEST_ASSERT(n == data.size() * 2); })
-		           | rod::then([&]() { TEST_ASSERT(buff.find(data) != buff.rfind(data)); })
-		           | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); });
-		rod::sync_wait(snd);
+		rod::sync_wait(rod::async_write_some(file, rod::as_byte_buffer(data))
+		               | rod::then([&](auto n) { TEST_ASSERT(n == data.size()); })
+		               | rod::then([&]() { TEST_ASSERT(file.setpos(0)); }));
+		rod::sync_wait(rod::async_read_some(file, rod::as_byte_buffer(buff))
+		               | rod::then([&](auto n) { TEST_ASSERT(n == file.size().value()); })
+		               | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); }));
 	}
 
 	std::filesystem::remove(path);
@@ -82,6 +81,8 @@ void test_basic_file(auto mode)
 
 int main()
 {
-	test_basic_file(basic_file_t::trunc);
-	test_basic_file(basic_file_t::noreplace);
+	test_file(rod::basic_file::trunc);
+	test_file(rod::basic_file::noreplace);
+	test_async_file(rod::basic_file::trunc);
+	test_async_file(rod::basic_file::noreplace);
 }

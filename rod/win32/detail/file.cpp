@@ -2,74 +2,52 @@
  * Created by switchblade on 2023-05-18.
  */
 
-#ifdef _WIN32
-
 #include "file.hpp"
 
+#ifdef ROD_WIN32
+
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
-namespace rod::detail
+namespace rod::_file
 {
 	constexpr DWORD share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
 
-	result<system_file, std::error_code> system_file::reopen(native_handle_type hnd, int mode) noexcept
+	std::error_code system_handle::open(const wchar_t *path, int mode, int) noexcept
 	{
+		if (auto err = close(); err) [[unlikely]]
+			return err;
+
 		DWORD access = 0;
-		if (mode & openmode::in) access |= FILE_GENERIC_READ;
-		if (mode & openmode::out)
+		if (mode & file_base::in) access |= FILE_GENERIC_READ;
+		if (mode & file_base::out)
 		{
 			access |= FILE_GENERIC_WRITE;
-			if (mode & openmode::app)
+			if (mode & file_base::app)
 				access ^= FILE_WRITE_DATA;
-			else if (!(mode & openmode::ate))
-				access ^= FILE_APPEND_DATA;
-		}
-
-		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS | FILE_FLAG_OVERLAPPED;
-		if (mode & openmode::direct) flags |= FILE_FLAG_WRITE_THROUGH;
-
-		if (hnd = ::ReOpenFile(hnd, access, share, flags); hnd != INVALID_HANDLE_VALUE) [[likely]]
-		{
-#if 0   /* TODO: Set file permissions if created a new file. */
-			if (GetLastError() != ERROR_ALREADY_EXISTS)
-			{
-			}
-#endif
-			return system_file{hnd};
-		}
-		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
-	}
-	result<system_file, std::error_code> system_file::open(const wchar_t *path, int mode, int) noexcept
-	{
-		DWORD access = 0;
-		if (mode & openmode::in) access |= FILE_GENERIC_READ;
-		if (mode & openmode::out)
-		{
-			access |= FILE_GENERIC_WRITE;
-			if (mode & openmode::app)
-				access ^= FILE_WRITE_DATA;
-			else if (!(mode & openmode::ate))
+			else if (!(mode & file_base::ate))
 				access ^= FILE_APPEND_DATA;
 		}
 
 		DWORD disp;
-		if (mode & openmode::nocreate)
+		if (mode & file_base::nocreate)
 		{
-			if (mode & openmode::trunc)
+			if (mode & file_base::trunc)
 				disp = TRUNCATE_EXISTING;
 			else
 				disp = OPEN_EXISTING;
 		}
-		else if (mode & openmode::noreplace)
+		else if (mode & file_base::noreplace)
 			disp = CREATE_NEW;
-		else if (mode & openmode::trunc)
+		else if (mode & file_base::trunc)
 			disp = CREATE_ALWAYS;
 		else
 			disp = OPEN_ALWAYS;
 
-		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS | FILE_FLAG_OVERLAPPED;
-		if (mode & openmode::direct) flags |= FILE_FLAG_WRITE_THROUGH;
+		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS;
+		if (mode & overlapped) flags |= FILE_FLAG_OVERLAPPED;
+		if (mode & file_base::direct) flags |= FILE_FLAG_WRITE_THROUGH;
 
 		if (const auto hnd = ::CreateFileW(path, access, share, nullptr, disp, flags, nullptr); hnd != INVALID_HANDLE_VALUE) [[likely]]
 		{
@@ -78,39 +56,68 @@ namespace rod::detail
 			{
 			}
 #endif
-			return system_file{hnd};
+			unique_handle::release(hnd);
+
+			/* Get position of the file. Leave npos on failure. */
+			if (mode & file_base::trunc)
+			{
+				setpos(0);
+				return {};
+			}
+
+#if SIZE_MAX >= UINT64_MAX
+			LONG high = 0;
+			if (const auto res = ::SetFilePointer(native_handle(), 0, &high, FILE_CURRENT); res != INVALID_SET_FILE_POINTER) [[likely]]
+			{
+				const auto pos_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
+				const auto pos_l = static_cast<std::size_t>(res);
+				setpos(pos_h | pos_l);
+			}
+#else
+			if (const auto res = ::SetFilePointer(native_handle(), 0, nullptr, FILE_CURRENT); res != INVALID_SET_FILE_POINTER)
+				setpos(static_cast<std::size_t>(res));
+#endif
+			return {};
 		}
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
-	result<system_file, std::error_code> system_file::open(const char *path, int mode, int prot) noexcept
+	std::error_code system_handle::open(const char *path, int mode, int prot) noexcept
 	{
-		try
+		if (const auto size = ::MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0); size) [[likely]]
 		{
-			if (const auto size = ::MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0); size) [[likely]]
+			if (auto buff = static_cast<wchar_t *>(std::calloc(size, sizeof(wchar_t))); !buff) [[unlikely]]
+				return std::make_error_code(std::errc::not_enough_memory);
+			else if (!::MultiByteToWideChar(CP_UTF8, 0, path, -1, buff, size))
+				[[unlikely]] std::free(buff);
+			else
 			{
-				auto buff = std::wstring(size - 1, '\0');
-				if (::MultiByteToWideChar(CP_UTF8, 0, path, -1, buff.data(), size)) [[likely]]
-					return open(buff.c_str(), mode, prot);
+				auto res = open(buff, mode, prot);
+				std::free(buff);
+				return res;
 			}
-			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		}
-		catch (const std::bad_alloc &)
-		{
-			return std::make_error_code(std::errc::not_enough_memory);
-		}
+		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
 
-	result<std::size_t, std::error_code> system_file::size() const noexcept
+	std::error_code system_handle::sync() noexcept
+	{
+		if (!::FlushFileBuffers(native_handle())) [[unlikely]]
+			return {static_cast<int>(::GetLastError()), std::system_category()};
+		else
+			return {};
+	}
+
+	result<std::size_t, std::error_code> system_handle::size() const noexcept
 	{
 		if (LARGE_INTEGER result = {}; !::GetFileSizeEx(native_handle(), &result)) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		else
 			return static_cast<std::size_t>(result.QuadPart);
 	}
-	result<std::size_t, std::error_code> system_file::tell() const noexcept
+	result<std::size_t, std::error_code> system_handle::tell() const noexcept
 	{
-		if (_offset != std::numeric_limits<std::size_t>::max()) [[likely]]
-			return _offset;
+		if (_pos != npos) [[likely]]
+			return _pos;
 
 #if SIZE_MAX >= UINT64_MAX
 		LONG high = 0;
@@ -126,181 +133,144 @@ namespace rod::detail
 #endif
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
-
-	result<std::size_t, std::error_code> system_file::resize(std::size_t n) noexcept
+	result<std::filesystem::path, std::error_code> system_handle::path() const
 	{
-		LARGE_INTEGER oldp;
-		LARGE_INTEGER endp;
-
-		if (auto pos = tell(); !pos.has_value()) [[unlikely]]
-			return pos;
-		else
+		if (const auto size = ::GetFinalPathNameByHandleW(native_handle(), nullptr, 0, FILE_NAME_NORMALIZED); size) [[likely]]
 		{
-			oldp = {.QuadPart = *pos};
-			endp = {.QuadPart = n};
+			if (auto buff = static_cast<wchar_t *>(std::calloc(size, sizeof(wchar_t))); !buff) [[unlikely]]
+				return std::make_error_code(std::errc::not_enough_memory);
+			else if (!::GetFinalPathNameByHandleW(native_handle(), buff, size, FILE_NAME_NORMALIZED))
+				[[unlikely]] std::free(buff);
+			else
+			{
+				auto res = std::filesystem::path{buff};
+				std::free(buff);
+				return res;
+			}
 		}
+		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+	}
 
-		if (::SetFilePointerEx(native_handle(), endp, nullptr, FILE_BEGIN) && ::SetEndOfFile(native_handle()))
+	result<std::size_t, std::error_code> system_handle::resize(std::size_t n) noexcept
+	{
+		LARGE_INTEGER oldp, endp;
+		oldp = {.QuadPart = static_cast<ntapi::longlong>(_pos)};
+		endp = {.QuadPart = static_cast<ntapi::longlong>(n)};
+		if (::SetFilePointerEx(native_handle(), endp, nullptr, FILE_BEGIN) && ::SetEndOfFile(native_handle())) [[likely]]
 		{
-			if (oldp.QuadPart > endp.QuadPart)
-				return _offset = static_cast<std::size_t>(endp.QuadPart);
-			else if (::SetFilePointerEx(native_handle(), oldp, nullptr, FILE_BEGIN))
+			if (_pos == npos || oldp.QuadPart > endp.QuadPart || ::SetFilePointerEx(native_handle(), oldp, nullptr, FILE_BEGIN)) [[likely]]
 				return static_cast<std::size_t>(endp.QuadPart);
 		}
 		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
-	result<std::size_t, std::error_code> system_file::seek(std::ptrdiff_t off, int dir) noexcept
+	result<std::size_t, std::error_code> system_handle::seek(std::ptrdiff_t off, int dir) noexcept
 	{
-		if (dir == seekdir::cur)
+		if (dir == file_base::beg)
+			return setpos(static_cast<std::size_t>(off));
+		if (dir == file_base::cur)
 		{
-			auto pos = tell();
-			if (!pos.has_value()) [[unlikely]]
+			if (auto pos = tell(); pos.has_value()) [[likely]]
+				return setpos(*pos + static_cast<std::size_t>(off));
+			else
 				return pos;
-
-			off += static_cast<std::ptrdiff_t>(*pos);
-			dir = seekdir::beg;
 		}
-
+		if (dir == file_base::end)
+		{
 #if SIZE_MAX >= UINT64_MAX
-		auto high = static_cast<LONG>(off >> std::numeric_limits<LONG>::digits);
-		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), &high, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
-		{
-			const auto off_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
-			const auto off_l = static_cast<std::size_t>(res);
-			return _offset = off_h | off_l;
-		}
-#else
-		if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), nullptr, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
-			return _offset = static_cast<std::size_t>(res);
-#endif
-		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
-	}
-
-	result<std::filesystem::path, std::error_code> system_file::path() const noexcept
-	{
-		try
-		{
-			if (const auto size = ::GetFinalPathNameByHandleW(native_handle(), nullptr, 0, FILE_NAME_NORMALIZED); size) [[likely]]
+			auto high = static_cast<LONG>(off >> std::numeric_limits<LONG>::digits);
+			if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), &high, dir); res != INVALID_SET_FILE_POINTER) [[likely]]
 			{
-				auto buff = std::wstring(size - 1, '\0');
-				if (::GetFinalPathNameByHandleW(native_handle(), buff.data(), size, FILE_NAME_NORMALIZED)) [[likely]]
-					return std::filesystem::path{buff};
+				const auto off_h = static_cast<std::size_t>(high) << std::numeric_limits<LONG>::digits;
+				const auto off_l = static_cast<std::size_t>(res);
+				return setpos(off_h | off_l);
 			}
+#else
+			if (const auto res = ::SetFilePointer(native_handle(), static_cast<LONG>(off), nullptr, dir); res != INVALID_SET_FILE_POINTER) [[unkely]]
+				return setpos(static_cast<std::size_t>(res));
+#endif
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		}
-		catch (const std::bad_alloc &)
-		{
-			return std::make_error_code(std::errc::not_enough_memory);
-		}
+		return std::make_error_code(std::errc::invalid_argument);
 	}
 
-	std::error_code system_file::sync() noexcept
+	result<ntapi::ulong, std::error_code> system_handle::read_chunk(void *buff, ntapi::ulong size, std::size_t pos) noexcept
 	{
-		if (!::FlushFileBuffers(native_handle())) [[unlikely]]
-			return {static_cast<int>(::GetLastError()), std::system_category()};
+		const auto &ntapi = ntapi::instance;
+		ntapi::io_status_block iosb;
+		ntapi::large_integer offset;
+
+		offset = {.quad = static_cast<ntapi::longlong>(pos)};
+		if (const auto status = ntapi.NtReadFile(native_handle(), nullptr, nullptr, 0, &iosb, buff, size, &offset, nullptr); status < 0) [[unlikely]]
+			return std::error_code{static_cast<int>(ntapi.RtlNtStatusToDosError(status)), std::system_category()};
+		else if (std::error_code err; status != STATUS_PENDING || !(err = wait())) [[unlikely]]
+			return static_cast<ntapi::ulong>(iosb.info);
 		else
-			return {};
+			return err;
 	}
-	result<std::size_t, std::error_code> system_file::sync_read(void *dst, std::size_t n) noexcept
+	result<ntapi::ulong, std::error_code> system_handle::write_chunk(const void *buff, ntapi::ulong size, std::size_t pos) noexcept
+	{
+		const auto &ntapi = ntapi::instance;
+		ntapi::io_status_block iosb;
+		ntapi::large_integer offset;
+
+		offset = {.quad = static_cast<ntapi::longlong>(pos)};
+		if (const auto status = ntapi.NtWriteFile(native_handle(), nullptr, nullptr, 0, &iosb, const_cast<void *>(buff), size, &offset, nullptr); status < 0) [[unlikely]]
+			return std::error_code{static_cast<int>(ntapi.RtlNtStatusToDosError(status)), std::system_category()};
+		else if (std::error_code err; status != STATUS_PENDING || !(err = wait())) [[unlikely]]
+			return static_cast<ntapi::ulong>(iosb.info);
+		else
+			return err;
+	}
+
+	result<std::size_t, std::error_code> system_handle::read_some(std::span<std::byte> buff) noexcept
 	{
 		if (auto pos = tell(); pos.has_value()) [[likely]]
-			return sync_read_at(dst, n, *pos);
+			return read_some_at(*pos, buff);
 		else
 			return pos;
 	}
-	result<std::size_t, std::error_code> system_file::sync_write(const void *src, std::size_t n) noexcept
+	result<std::size_t, std::error_code> system_handle::write_some(std::span<const std::byte> buff) noexcept
 	{
 		if (auto pos = tell(); pos.has_value()) [[likely]]
-			return sync_write_at(src, n, *pos);
+			return write_some_at(*pos, buff);
 		else
 			return pos;
 	}
-	result<std::size_t, std::error_code> system_file::sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept
+	result<std::size_t, std::error_code> system_handle::read_some_at(std::size_t pos, std::span<std::byte> buff) noexcept
 	{
-		const auto &winapi = winapi::instance;
-		for (std::size_t total = 0, n_done;;)
+		for (std::size_t total = 0;;)
 		{
-			winapi::io_status_block iosb;
-			winapi::large_integer offset;
+			const auto chunk = static_cast<ntapi::ulong>(buff.size() - total);
+			auto result = read_chunk(buff.data() + total, chunk, pos + total);
+			if (result.has_value())
+				[[likely]] total += *result;
+			else
+				return result;
 
-			const auto bytes = static_cast<std::byte *>(dst) + total;
-			const auto n_bytes = static_cast<unsigned long>(n - total);
-			offset.quad = static_cast<long long>(off + total);
-
-			if (const auto status = winapi.NtReadFile(native_handle(), nullptr, nullptr, nullptr, &iosb, bytes, n_bytes, &offset, nullptr); status < 0) [[unlikely]]
-				return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(status)), std::system_category()};
-			else if (std::error_code err; status == STATUS_PENDING && (err = poll_wait())) [[unlikely]]
-				return err;
-
-			n_done = static_cast<std::size_t>(iosb.info);
-			if ((total += n_done) >= n || n_done < n_bytes) [[unlikely]]
+			if (total >= buff.size() || *result < chunk)
 			{
-				_offset = off + total;
+				setpos(pos + total);
 				return total;
 			}
 		}
 	}
-	result<std::size_t, std::error_code> system_file::sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept
+	result<std::size_t, std::error_code> system_handle::write_some_at(std::size_t pos, std::span<const std::byte> buff) noexcept
 	{
-		const auto &winapi = winapi::instance;
-		for (std::size_t total = 0, n_done;;)
+		for (std::size_t total = 0;;)
 		{
-			winapi::io_status_block iosb;
-			winapi::large_integer offset;
+			const auto chunk = static_cast<ntapi::ulong>(buff.size() - total);
+			auto result = write_chunk(buff.data() + total, chunk, pos + total);
+			if (result.has_value())
+				[[likely]] total += *result;
+			else
+				return result;
 
-			const auto bytes = static_cast<const std::byte *>(src) + total;
-			const auto n_bytes = static_cast<unsigned long>(n - total);
-			offset.quad = static_cast<long long>(off + total);
-
-			if (const auto status = winapi.NtWriteFile(native_handle(), nullptr, nullptr, nullptr, &iosb, bytes, n_bytes, &offset, nullptr); status < 0) [[unlikely]]
-				return std::error_code{static_cast<int>(winapi.RtlNtStatusToDosError(status)), std::system_category()};
-			else if (std::error_code err; status == STATUS_PENDING && (err = poll_wait())) [[unlikely]]
-				return err;
-
-			n_done = static_cast<std::size_t>(iosb.info);
-			if ((total += n_done) >= n || n_done < n_bytes) [[unlikely]]
+			if (total >= buff.size() || *result < chunk)
 			{
-				_offset = off + total;
+				setpos(pos + total);
 				return total;
 			}
 		}
-	}
-
-	result<system_mmap, std::error_code> system_file::map(std::size_t off, std::size_t n, int mode) const noexcept
-	{
-		DWORD prot;
-		if (mode & system_mmap::mapmode::write)
-			prot = PAGE_READWRITE;
-		else if (mode & system_mmap::mapmode::read)
-			prot = PAGE_READONLY;
-		else
-			prot = PAGE_NOACCESS;
-
-		if (const auto mapping = ::CreateFileMapping(native_handle(), nullptr, prot, 0, 0, nullptr); mapping) [[likely]]
-		{
-			DWORD access = 0;
-			if (mode & system_mmap::mapmode::copy)
-				access |= FILE_MAP_COPY;
-			if (mode & system_mmap::mapmode::read)
-				access |= FILE_MAP_READ;
-			if (mode & system_mmap::mapmode::write)
-				access |= FILE_MAP_WRITE;
-
-			/* Align the offset to page size. */
-			const auto base_off = system_mmap::pagesize_off(off);
-
-			DWORD off_h = {}, off_l;
-#if SIZE_MAX >= UINT64_MAX
-			off_h = static_cast<DWORD>(base_off >> std::numeric_limits<DWORD>::digits);
-#endif
-			off_l = static_cast<DWORD>(base_off);
-
-			if (const auto data = ::MapViewOfFile(mapping, access, off_h, off_l, n + off - base_off); data) [[likely]]
-				return system_mmap{data, off - base_off, n + off - base_off};
-
-			::CloseHandle(mapping);
-		}
-		return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 	}
 }
 #endif

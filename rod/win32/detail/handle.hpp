@@ -4,12 +4,12 @@
 
 #pragma once
 
-#ifdef _WIN32
+#include "ntapi.hpp"
+
+#ifdef ROD_WIN32
 
 #include <system_error>
 #include <utility>
-
-#include "winapi.hpp"
 
 namespace rod::detail
 {
@@ -21,10 +21,11 @@ namespace rod::detail
 		constexpr basic_handle() noexcept = default;
 		constexpr explicit basic_handle(void *handle) noexcept : _handle(handle) {}
 
-		void *release(void *hnd = invalid_handle()) noexcept { return std::exchange(_handle, hnd); }
-
 		ROD_API_PUBLIC std::error_code close() noexcept;
-		ROD_API_PUBLIC std::error_code poll_wait() const noexcept;
+		ROD_API_PUBLIC std::error_code wait() const noexcept;
+
+		void *release() noexcept { return std::exchange(_handle, invalid_handle()); }
+		void *release(void *hnd) noexcept { return std::exchange(_handle, hnd); }
 
 		[[nodiscard]] bool is_open() const noexcept { return _handle != invalid_handle(); }
 		[[nodiscard]] void *native_handle() const noexcept { return _handle; }
@@ -48,13 +49,12 @@ namespace rod::detail
 
 		constexpr explicit unique_handle(void *handle) noexcept : basic_handle(handle) {}
 
-		ROD_API_PUBLIC ~unique_handle();
+		~unique_handle() { if (is_open()) close(); }
 
+		using basic_handle::wait;
 		using basic_handle::close;
-		using basic_handle::release;
-		using basic_handle::poll_wait;
-
 		using basic_handle::is_open;
+		using basic_handle::release;
 		using basic_handle::native_handle;
 
 		constexpr void swap(unique_handle &other) noexcept { basic_handle::swap(other); }

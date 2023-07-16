@@ -2,9 +2,9 @@
  * Created by switchblade on 2023-05-21.
  */
 
-#ifdef __unix__
-
 #include "monotonic_clock.hpp"
+
+#ifdef ROD_POSIX
 
 rod::monotonic_clock::time_point rod::monotonic_clock::now() noexcept
 {

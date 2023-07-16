@@ -15,12 +15,21 @@ namespace rod
 	/** Concept used to check if type \a T is a movable value type. */
 	template<typename T>
 	concept movable_value = std::move_constructible<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>;
-	/** Concept used to check if type \a From is a reference of type \a To. */
-	template<typename From, typename To>
-	concept reference_to = std::same_as<std::remove_reference_t<From>, To>;
+
+	/** Concept used to check if type \a T is a reference to a type derived from \a U. */
+	template<typename T, typename U>
+	concept derived_reference = std::derived_from<std::remove_reference_t<T>, U>;
+	/** Concept used to check if type \a T decays to a type derived from \a U. */
+	template<typename T, typename U>
+	concept decays_to_derived = std::derived_from<std::decay_t<T>, U>;
+
+	/** Concept used to check if type \a T is a reference of type \a U. */
+	template<typename T, typename U>
+	concept reference_to = std::same_as<std::remove_reference_t<T>, U>;
 	/** Concept used to check if type \a From decays into type \a To. */
 	template<typename From, typename To>
 	concept decays_to = std::same_as<std::decay_t<From>, To>;
+
 	/** Concept used to check if type \a T matches one of the types in \a Ts. */
 	template<typename T, typename... Ts>
 	concept one_of = (std::same_as<T, Ts> || ...);
@@ -220,4 +229,13 @@ namespace rod
 		template<typename... Ts>
 		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
 	}
+
+	/** Utility function used to throw `std::system_error` if the passed error evaluated to `true`.
+	 * @param[in] err Error to assert the value of. */
+	static void assert_error_code(std::error_code err) { if (err) throw std::system_error(err); }
+	/** @copydoc assert_error_code
+	 * @param[in] msg Message passed to `std::system_error`. */
+	static void assert_error_code(std::error_code err, const char *msg) { if (err) throw std::system_error(err, msg); }
+	/** @copydoc assert_error_code */
+	static void assert_error_code(std::error_code err, const std::string &msg) { if (err) throw std::system_error(err, msg); }
 }

@@ -6,6 +6,13 @@
 
 #include "export.gen.hpp"
 
+#if defined(_WIN64) || defined(_WIN32) || defined(__CYGWIN__)
+#define ROD_WIN32
+#endif
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#define ROD_POSIX
+#endif
+
 #if (_MSC_VER >= 800) || defined(__MINGW32__) || defined(_STDCALL_SUPPORTED)
 #define ROD_NTAPI __stdcall
 #else
@@ -23,7 +30,7 @@
 #define _Out_writes_to_(A, B)
 #endif
 
-#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+#if defined(ROD_WIN32)
 #define ROD_HIDDEN
 #define ROD_VISIBLE
 #if defined(_MSC_VER)

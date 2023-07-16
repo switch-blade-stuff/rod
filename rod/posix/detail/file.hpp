@@ -72,6 +72,7 @@ namespace rod::detail
 
 		ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> seek(std::ptrdiff_t off, int dir) noexcept;
+		auto setpos(std::size_t pos) noexcept { return seek(static_cast<std::ptrdiff_t>(pos), beg); }
 
 		ROD_API_PUBLIC std::error_code sync() noexcept;
 		std::error_code flush() noexcept { return sync(); }
@@ -80,9 +81,6 @@ namespace rod::detail
 		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write(const void *src, std::size_t n) noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept;
 		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept;
-
-		ROD_API_PUBLIC result<system_mmap, std::error_code> map(std::size_t off, std::size_t n, int mode) const noexcept;
-		result<system_mmap, std::error_code> map(std::size_t off, std::size_t n) const noexcept { return map(off, n, system_mmap::read | system_mmap::write); }
 
 		constexpr void swap(system_file &other) noexcept { unique_descriptor::swap(other); }
 		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }

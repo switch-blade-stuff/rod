@@ -68,8 +68,8 @@ namespace rod::_epoll
 	context::context(std::size_t max) : _epoll_fd(init_epoll_fd()), _timer_fd(init_timer_fd(_epoll_fd)), _event_fd(init_event_fd(_epoll_fd))
 	{
 		/* Events are heap-allocated in order to avoid excessive stack usage and allow for user-specified buffer sizes. */
-		_buff_size = std::min<std::size_t>(max ? max : default_max_events, std::numeric_limits<int>::max());
-		_event_buff = new epoll_event[_buff_size];
+		_buff.size = std::min<std::size_t>(max ? max : default_max_events, std::numeric_limits<int>::max());
+		_buff.data = new epoll_event[_buff.size];
 	}
 	context::~context()
 	{
@@ -78,7 +78,7 @@ namespace rod::_epoll
 		epoll_event event = {};
 		epoll_ctl(_epoll_fd.native_handle(), EPOLL_CTL_DEL, _timer_fd.native_handle(), &event);
 		epoll_ctl(_epoll_fd.native_handle(), EPOLL_CTL_DEL, _event_fd.native_handle(), &event);
-		delete[] static_cast<epoll_event *>(_event_buff);
+		delete[] static_cast<epoll_event *>(_buff.data);
 	}
 
 	void context::request_stop() { _stop_source.request_stop(); }
@@ -171,8 +171,9 @@ namespace rod::_epoll
 		}
 		else if (const auto next_timeout = _timers.front()->timeout; _timer_started && _next_timeout < next_timeout)
 			_timer_pending = false;
-		else if ((_timer_started = !set_timer(next_timeout)))
+		else
 		{
+			set_timer(next_timeout);
 			_next_timeout = next_timeout;
 			_timer_pending = false;
 		}
@@ -182,20 +183,18 @@ namespace rod::_epoll
 		::itimerspec timeout = {};
 		timeout.it_value.tv_sec = tp.seconds();
 		timeout.it_value.tv_nsec = tp.nanoseconds();
-		if (const auto res =  timerfd_settime(_timer_fd.native_handle(), TFD_TIMER_ABSTIME, &timeout, nullptr); res == EINVAL)
-			throw std::system_error{EINVAL, std::system_category(), "timerfd_settime"};
-		else
-			return res;
+		if (timerfd_settime(_timer_fd.native_handle(), TFD_TIMER_ABSTIME, &timeout, nullptr))
+			throw_errno("timerfd_settime");
 	}
 	inline void context::epoll_wait()
 	{
 		const auto blocking = _consumer_queue.empty();
-		const auto events = static_cast<epoll_event *>(_event_buff);
+		const auto events = static_cast<epoll_event *>(_buff.data);
 
 		int n_events;
 		for (;;)
 		{
-			if ((n_events = ::epoll_wait(_epoll_fd.native_handle(), events, _buff_size, blocking ? -1 : 0)) >= 0)
+			if ((n_events = ::epoll_wait(_epoll_fd.native_handle(), events, _buff.size, blocking ? -1 : 0)) >= 0)
 				break;
 			else if (const auto err = std::error_code{errno, std::system_category()}; err.value() != EINTR)
 				throw std::system_error(err, "epoll_wait");

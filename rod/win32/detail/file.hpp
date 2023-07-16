@@ -4,112 +4,84 @@
 
 #pragma once
 
-#ifdef _WIN32
+#include "../../detail/basic_file.hpp"
 
-#include <filesystem>
-#include <cstdio>
+#ifdef ROD_WIN32
 
-#include "../../result.hpp"
 #include "handle.hpp"
-#include "mmap.hpp"
 
-namespace rod::detail
+namespace rod::_file
 {
-	class system_file : unique_handle
+	using detail::unique_handle;
+	using detail::ntapi;
+
+	class system_handle : unique_handle
 	{
 	public:
 		using native_handle_type = void *;
 
-		enum openprot : int
-		{
-			user_exec = 0b000'000'001,
-			user_read = 0b000'000'010,
-			user_write = 0b000'000'100,
-			group_exec = 0b000'001'000,
-			group_read = 0b000'010'000,
-			group_write = 0b000'100'000,
-			other_exec = 0b001'000'000,
-			other_read = 0b010'000'000,
-			other_write = 0b100'000'000,
-			_default = user_read | user_write | group_read | group_write | other_read | other_write,
-		};
-		enum openmode : int
-		{
-			in = 0b0000'0001,
-			out = 0b0000'0010,
-			binary = 0b0000'0100,
-			direct = 0b0000'1000,
-			ate = 0b0001'0000,
-			app = 0b0010'0000,
-			trunc = 0b0100'0000,
-			nocreate = 0b0'1000'0000,
-			noreplace = 0b1'0000'0000,
-		};
-		enum seekdir : int
-		{
-			beg = SEEK_SET,
-			cur = SEEK_CUR,
-			end = SEEK_END,
-		};
+		static constexpr auto overlapped = file_base::openmode_max + 1;
 
-		static ROD_API_PUBLIC result<system_file, std::error_code> reopen(native_handle_type hnd, int mode) noexcept;
-		static ROD_API_PUBLIC result<system_file, std::error_code> open(const char *path, int mode, int prot) noexcept;
-		static ROD_API_PUBLIC result<system_file, std::error_code> open(const wchar_t *path, int mode, int prot) noexcept;
-
-		static result<system_file, std::error_code> open(const char *path, int mode) noexcept { return open(path, mode, openprot::_default); }
-		static result<system_file, std::error_code> open(const wchar_t *path, int mode) noexcept { return open(path, mode, openprot::_default); }
+	private:
+		static constexpr auto npos = std::numeric_limits<std::size_t>::max();
 
 	public:
-		constexpr system_file() = default;
+		constexpr system_handle() noexcept = default;
+		constexpr system_handle(system_handle &&other) noexcept { swap(other); }
+		constexpr system_handle &operator=(system_handle &&other) noexcept { return (swap(other), *this); }
 
-		constexpr explicit system_file(native_handle_type hnd) noexcept : unique_handle(hnd) {}
-		constexpr explicit system_file(unique_handle &&hnd) noexcept : unique_handle(std::move(hnd)) {}
-
-		constexpr explicit system_file(native_handle_type hnd, std::size_t off) noexcept : unique_handle(hnd), _offset(off) {}
-		constexpr explicit system_file(unique_handle &&hnd, std::size_t off) noexcept : unique_handle(std::move(hnd)), _offset(off) {}
+		constexpr explicit system_handle(native_handle_type hnd) noexcept : system_handle(hnd, npos) {}
+		constexpr explicit system_handle(native_handle_type hnd, std::size_t pos) noexcept : unique_handle(hnd), _pos(pos) {}
 
 		using unique_handle::close;
 		using unique_handle::is_open;
 		using unique_handle::native_handle;
 
-		void *release() noexcept
-		{
-			_offset = std::numeric_limits<std::size_t>::max();
-			return unique_handle::release();
-		}
-		void *release(void *hnd) noexcept
-		{
-			_offset = std::numeric_limits<std::size_t>::max();
-			return unique_handle::release(hnd);
-		}
-
-		ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
-		ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
-		ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const noexcept;
-
-		ROD_API_PUBLIC result<std::size_t, std::error_code> resize(std::size_t n) noexcept;
-		ROD_API_PUBLIC result<std::size_t, std::error_code> seek(std::ptrdiff_t off, int dir) noexcept;
+		ROD_API_PUBLIC std::error_code open(const char *path, int mode, int prot) noexcept;
+		ROD_API_PUBLIC std::error_code open(const wchar_t *path, int mode, int prot) noexcept;
 
 		ROD_API_PUBLIC std::error_code sync() noexcept;
 		std::error_code flush() noexcept { return sync(); }
 
-		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_read(void *dst, std::size_t n) noexcept;
-		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write(const void *src, std::size_t n) noexcept;
-		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_read_at(void *dst, std::size_t n, std::size_t off) noexcept;
-		ROD_API_PUBLIC result<std::size_t, std::error_code> sync_write_at(const void *src, std::size_t n, std::size_t off) noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::size_t, std::error_code> size() const noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::size_t, std::error_code> tell() const noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::filesystem::path, std::error_code> path() const;
 
-		ROD_API_PUBLIC result<system_mmap, std::error_code> map(std::size_t off, std::size_t n, int mode) const noexcept;
-		result<system_mmap, std::error_code> map(std::size_t off, std::size_t n) const noexcept { return map(off, n, system_mmap::read | system_mmap::write); }
+		ROD_API_PUBLIC result<std::size_t, std::error_code> resize(std::size_t n) noexcept;
+		ROD_API_PUBLIC result<std::size_t, std::error_code> seek(std::ptrdiff_t off, int dir) noexcept;
 
-		constexpr void swap(system_file &other) noexcept
+		constexpr auto setpos(std::size_t pos) noexcept { return _pos = pos; }
+		void *release() noexcept { return (_pos = npos, unique_handle::release()); }
+		void *release(void *hnd) noexcept { return (_pos = npos, unique_handle::release(hnd)); }
+
+		constexpr void swap(system_handle &other) noexcept
 		{
 			unique_handle::swap(other);
-			std::swap(_offset, other._offset);
+			std::swap(_pos, other._pos);
 		}
-		friend constexpr void swap(system_file &a, system_file &b) noexcept { a.swap(b); }
+		friend constexpr void swap(system_handle &a, system_handle &b) noexcept { a.swap(b); }
 
 	private:
-		std::size_t _offset = std::numeric_limits<std::size_t>::max();
+		[[nodiscard]] result<ntapi::ulong, std::error_code> read_chunk(void *buff, ntapi::ulong size, std::size_t pos) noexcept;
+		[[nodiscard]] result<ntapi::ulong, std::error_code> write_chunk(const void *buff, ntapi::ulong size, std::size_t pos) noexcept;
+
+		[[nodiscard]] ROD_API_PUBLIC result<std::size_t, std::error_code> read_some(std::span<std::byte> buff) noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::size_t, std::error_code> write_some(std::span<const std::byte> buff) noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::size_t, std::error_code> read_some_at(std::size_t pos, std::span<std::byte> buff) noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::size_t, std::error_code> write_some_at(std::size_t pos, std::span<const std::byte> buff) noexcept;
+
+	public:
+		template<derived_reference<system_handle> F, byte_buffer Buff>
+		friend auto tag_invoke(read_some_t, F &&f, Buff &&buff) noexcept(noexcept(rod::as_byte_buffer(buff))) { return f.read_some(rod::as_byte_buffer(buff)); }
+		template<derived_reference<system_handle> F, byte_buffer Buff>
+		friend auto tag_invoke(write_some_t, F &&f, Buff &&buff) noexcept(noexcept(rod::as_byte_buffer(buff))) { return f.write_some(rod::as_byte_buffer(buff)); }
+		template<derived_reference<system_handle> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
+		friend auto tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept(rod::as_byte_buffer(buff))) { return f.read_some_at(static_cast<std::size_t>(pos), rod::as_byte_buffer(buff)); }
+		template<derived_reference<system_handle> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
+		friend auto tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept(rod::as_byte_buffer(buff))) { return f.write_some_at(static_cast<std::size_t>(pos), rod::as_byte_buffer(buff)); }
+
+	private:
+		std::size_t _pos = npos;
 	};
 }
 #endif

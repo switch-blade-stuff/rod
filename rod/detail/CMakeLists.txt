@@ -20,7 +20,9 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/receiver_adaptor.hpp
         ${CMAKE_CURRENT_LIST_DIR}/thread_pool.hpp
         ${CMAKE_CURRENT_LIST_DIR}/byte_buffer.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/mmap.hpp)
+        ${CMAKE_CURRENT_LIST_DIR}/io_handle.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/file_base.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/basic_file.hpp)
 
 list(APPEND ROD_SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/thread_pool.cpp)

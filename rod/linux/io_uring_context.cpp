@@ -89,7 +89,7 @@ namespace rod::_io_uring
 	}
 	context::~context() { assert(!is_consumer_thread()); }
 
-	void context::request_stop() { _stop_source.request_stop(); }
+	void context::request_stop() { _stop_src.request_stop(); }
 	bool context::is_consumer_thread() const noexcept { return _consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
 	void context::schedule_producer(operation_base *node)

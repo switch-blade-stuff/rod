@@ -60,5 +60,15 @@ int main()
 		for (auto curr = co_await g.begin(); curr != g.end(); co_await ++curr, ++i)
 			TEST_ASSERT(*curr == i);
 	}();
+
+	auto test_snd = [](int v) -> rod::sender_of<rod::set_value_t(std::variant<int, std::exception_ptr>)> auto
+	{
+		return [](int v) -> rod::task<int> { if (v >= 0) co_return v; else throw -v; }(v)
+				| rod::upon_value([](auto v){ return std::variant<int, std::exception_ptr>{v}; })
+				| rod::upon_error([](auto v){ return std::variant<int, std::exception_ptr>{v}; });
+	};
+
+	rod::sync_wait(test_snd(-1) | rod::then([](auto &&v){ TEST_ASSERT(v.index() == 1); }));
+	rod::sync_wait(test_snd(1) | rod::then([](auto &&v){ TEST_ASSERT(v.index() == 0); }));
 #endif
 }

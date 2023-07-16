@@ -203,7 +203,7 @@ namespace rod::detail
 		const auto base_off = native_mmap::pagesize_off(off);
 		if (base_off.has_error())
 			[[unlikely]] return base_off.error();
-		else if (std::error_code err; (mode & system_mmap::mapmode::expand) && (err = reserve(n + off)))
+		else if (std::error_code err; (mode & system_mmap::mapmode::reserve) && (err = reserve(n + off)))
 			[[unlikely]] return err;
 
 		int flags = 0;

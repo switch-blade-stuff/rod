@@ -2,7 +2,7 @@
 include(${CMAKE_CURRENT_LIST_DIR}/detail/CMakeLists.txt)
 
 # Platform subdirectories
-include(${CMAKE_CURRENT_LIST_DIR}/unix/CMakeLists.txt)
+include(${CMAKE_CURRENT_LIST_DIR}/posix/CMakeLists.txt)
 include(${CMAKE_CURRENT_LIST_DIR}/linux/CMakeLists.txt)
 include(${CMAKE_CURRENT_LIST_DIR}/win32/CMakeLists.txt)
 
@@ -19,7 +19,6 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/signal.hpp
         ${CMAKE_CURRENT_LIST_DIR}/task.hpp
         ${CMAKE_CURRENT_LIST_DIR}/file.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/shared_memory.hpp
         ${CMAKE_CURRENT_LIST_DIR}/io.hpp)
 
 list(APPEND ROD_SOURCES

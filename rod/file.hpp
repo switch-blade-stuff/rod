@@ -4,20 +4,14 @@
 
 #pragma once
 
-#include <filesystem>
-#include <cassert>
-#include <cstdio>
-
-#include "detail/adaptors/read_some.hpp"
-#include "detail/adaptors/write_some.hpp"
-#include "detail/mmap.hpp"
-#include "result.hpp"
+#include "detail/adaptors/sync_io.hpp"
+#include "detail/basic_file.hpp"
 
 /* Platform-specific implementations. */
-#if defined(__unix__)
-#include "unix/detail/file.hpp"
-#elif defined(_WIN32)
+#if defined(ROD_WIN32)
 #include "win32/detail/file.hpp"
+#elif defined(ROD_POSIX)
+#include "posix/detail/file.hpp"
 #else
 #error Unsupported platform
 #endif
@@ -26,242 +20,93 @@ namespace rod
 {
 	namespace _file
 	{
-		template<typename T>
-		concept noexcept_sizeable_range = detail::nothrow_callable<decltype(std::ranges::begin), T> && detail::nothrow_callable<decltype(std::ranges::size), T>;
-
-		/** Basic file handle (such as a POSIX file descriptor or Win32 HANDLE). */
-		class basic_file
+		template<typename Hnd, typename Sch>
+		class scheduler_handle : public Hnd
 		{
-			using native_t = detail::system_file;
+		public:
+			scheduler_handle() = delete;
+			scheduler_handle(const scheduler_handle &) = delete;
+			scheduler_handle &operator=(const scheduler_handle &) = delete;
+
+			constexpr scheduler_handle(scheduler_handle &&) noexcept(std::is_nothrow_move_constructible_v<Hnd> && std::is_nothrow_move_constructible_v<Sch>) = default;
+			constexpr scheduler_handle &operator=(scheduler_handle &&) noexcept(std::is_nothrow_move_assignable_v<Hnd> && std::is_nothrow_move_assignable_v<Sch>) = default;
+
+			template<decays_to<Sch> Sch2, typename... Args> requires std::constructible_from<Hnd, Args...>
+			constexpr explicit scheduler_handle(Sch2 &&sch, Args &&...args) noexcept(std::is_nothrow_constructible_v<Sch, Sch2> && std::is_nothrow_constructible_v<Hnd, Args...>) : Hnd(std::forward<Args>(args)...), _sch(std::forward<Sch2>(sch)) {}
+
+			constexpr void swap(scheduler_handle &other) noexcept(std::is_nothrow_swappable_v<Hnd> && std::is_nothrow_swappable_v<Sch>) { swap(*this, other); }
+			friend constexpr void swap(scheduler_handle &a, scheduler_handle &b) noexcept(std::is_nothrow_swappable_v<Hnd> && std::is_nothrow_swappable_v<Sch>)
+			{
+				using std::swap;
+				swap(static_cast<Hnd &>(a), static_cast<Hnd &>(b));
+				swap(a._sch, b._sch);
+			}
 
 		public:
-			using native_handle_type = typename native_t::native_handle_type;
-
-			using openprot = int;
-
-			/** File is created with execute permissions for the current user. */
-			static constexpr openprot user_exec = native_t::user_exec;
-			/** File is created with read permissions for the current user. */
-			static constexpr openprot user_read = native_t::user_read;
-			/** File is created with write permissions for the current user. */
-			static constexpr openprot user_write = native_t::user_write;
-			/** File is created with execute permissions for the current group. */
-			static constexpr openprot group_exec = native_t::group_exec;
-			/** File is created with read permissions for the current group. */
-			static constexpr openprot group_read = native_t::group_read;
-			/** File is created with write permissions for the current group. */
-			static constexpr openprot group_write = native_t::group_write;
-			/** File is created with execute permissions for other users. */
-			static constexpr openprot other_exec = native_t::other_exec;
-			/** File is created with read permissions for the other users. */
-			static constexpr openprot other_read = native_t::other_read;
-			/** File is created with write permissions for the other users. */
-			static constexpr openprot other_write = native_t::other_write;
-
-			using openmode = int;
-
-			/** Opens the file for input. */
-			static constexpr openmode in = native_t::in;
-			/** Opens the file for output. */
-			static constexpr openmode out = native_t::out;
-
-			/** Seeks the file to the end after it is opened. */
-			static constexpr openmode ate = native_t::ate;
-			/** Opens the file in append mode. Write operations will append to the end of the file. */
-			static constexpr openmode app = native_t::app;
-			/** Opens the file in truncate mode. Write operations will overwrite existing contents. */
-			static constexpr openmode trunc = native_t::trunc;
-
-			/** Opens the file in binary mode.  */
-			static constexpr openmode binary = native_t::binary;
-			/** Opens the file in direct mode. */
-			static constexpr openmode direct = native_t::direct;
-			/** Opens the file in open-only mode. Opening the file will fail if it does not exist. */
-			static constexpr openmode nocreate = native_t::nocreate;
-			/** Opens the file in create-only mode. Opening the file will fail if it already exists. */
-			static constexpr openmode noreplace = native_t::noreplace;
-
-			using seekdir = int;
-
-			/** Seek from the start of the file. */
-			static constexpr seekdir beg = native_t::beg;
-			/** Seek from the current position within the file. */
-			static constexpr seekdir cur = native_t::cur;
-			/** Seek from the end of the file. */
-			static constexpr seekdir end = native_t::end;
-
-		public:
-			/** Opens the file specified by \a path using mode flags \a flags.
-			 * @param[in] path Path to the file to be opened.
-			 * @param[in] mode Mode flags to open the file with.
-			 * @return Handle to the opened file, or an error code on failure to open the file. */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const char *path, openmode mode) noexcept { return native_t::open(path, mode | binary); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const wchar_t *path, openmode mode) noexcept { return native_t::open(path, mode | binary); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const std::string &path, openmode mode) noexcept { return open(path.c_str(), mode); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const std::wstring &path, openmode mode) noexcept { return open(path.c_str(), mode); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const std::filesystem::path &path, openmode mode) noexcept { return open(path.c_str(), mode); }
-
-			/** @copydoc open
-			 * @param[in] prot Protection flags to use for the opened file.
-			 * @note Protection flags are currently ignored under Win32. */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const char *path, openmode mode, openprot prot) noexcept { return native_t::open(path, mode | binary, prot); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const wchar_t *path, openmode mode, openprot prot) noexcept { return native_t::open(path, mode | binary, prot); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const std::string &path, openmode mode, openprot prot) noexcept { return open(path.c_str(), mode, prot); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const std::wstring &path, openmode mode, openprot prot) noexcept { return open(path.c_str(), mode, prot); }
-			/** @copydoc open */
-			[[nodiscard]] static result<basic_file, std::error_code> open(const std::filesystem::path &path, openmode mode, openprot prot) noexcept { return open(path.c_str(), mode, prot); }
-
-			/** Re-opens a file from an existing file handle and mode flags.
-			 * @param[in] file Native Handle to an existing file to be re-opened.
-			 * @param[in] mode Mode flags to use when re-opening the file.
-			 * @return Handle to the opened file, or an error code on failure to reopen the file. */
-			[[nodiscard]] static result<basic_file, std::error_code> reopen(const basic_file &file, openmode mode) noexcept { return reopen(file.native_handle(), mode); }
-			/** Re-opens a file pointed to by a native file handle and mode flags.
-			 * @param[in] file Native handle to an existing file to be re-opened.
-			 * @param[in] mode Mode flags to use when re-opening the file.
-			 * @return Handle to the opened file, or an error code on failure to reopen the file. */
-			[[nodiscard]] static result<basic_file, std::error_code> reopen(native_handle_type file, openmode mode) noexcept { return native_t::reopen(file, mode | binary); }
-
-		public:
-			constexpr basic_file() noexcept = default;
-			constexpr basic_file(basic_file &&other) noexcept : _file(std::move(other._file)) {}
-			constexpr basic_file &operator=(basic_file &&other) noexcept { return (_file = std::move(other._file), *this); }
-
-			/** Initializes the file from a native file handle. */
-			constexpr explicit basic_file(native_handle_type file) noexcept : _file(file) {}
-			constexpr explicit basic_file(native_t &&file) noexcept : _file(std::forward<native_t>(file)) {}
-
-			/** Releases the underlying native file handle without closing. */
-			native_handle_type release() noexcept { return _file.release(); }
-			/** Releases the underlying native file handle without closing and replaces it with the specified handle. */
-			native_handle_type release(native_handle_type new_file) noexcept { return _file.release(new_file); }
-
-			/** Synchronizes file with the underlying device.
-			 * @return Error code on failure to synchronize the file. */
-			std::error_code sync() noexcept { return _file.sync(); }
-			/** Flushes file buffers.
-			 * @return Error code on failure to flush the file. */
-			std::error_code flush() noexcept { return _file.flush(); }
-			/** Closes the file handle.
-			 * @return Error code on failure to close the file. */
-			std::error_code close() noexcept { return _file.close(); }
-
-			/** Returns the size of the file.
-			 * @return Current size of the file as reported by the filesystem or an error code on failure to get size of the file. */
-			[[nodiscard]] result<std::size_t, std::error_code> size() const noexcept { return _file.size(); }
-			/** Returns the current position within the file. Equivalent to `seek(0, cur)`.
-			 * @return Current absolute position within the file or an error code on failure to get position of the file. */
-			[[nodiscard]] result<std::size_t, std::error_code> tell() const noexcept { return _file.tell(); }
-			/** Returns the path of the file (as if via POSIX `readlink`).
-			 * @return Path to the file as reported by the filesystem or an error code on failure to get path of the file. */
-			[[nodiscard]] result<std::filesystem::path, std::error_code> path() const noexcept { return _file.path(); }
-
-			/** Resizes the file to the specified amount of bytes.
-			 * @param[in] new_size New size of the file in bytes.
-			 * @return New size of the file as reported by the filesystem or an error code on failure to resize the file. */
-			result<std::size_t, std::error_code> resize(std::size_t new_size) noexcept { return _file.resize(new_size); }
-			/** Seeks to the specified offset within the file starting at the specified position.
-			 * @param[in] off Offset into the file starting at \a dir.
-			 * @param[in] dir Base direction to seek from.
-			 * @return New absolute position within the file or an error code on failure to seek the file. */
-			result<std::size_t, std::error_code> seek(std::ptrdiff_t off, seekdir dir) noexcept { return _file.seek(off, dir); }
-
-			/** Maps a portion of the file into memory of the current process.
-			 * @param[in] pos Starting position (in bytes) of the region from the beginning of the file.
-			 * @param[in] size Total size (in bytes) of the resulting memory-mapped region.
-			 * @return View to the memory-mapped region or an error code on failure to map view of the file. */
-			[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size) const noexcept { return _file.map(pos, size); }
-			/** @copydoc map
-			 * @param[in] mode Mode flags to use when memory-mapping the file. */
-			[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size, mmap::mapmode mode) noexcept { return _file.map(pos, size, mode); }
-			/** @copydoc map
-			 * @note This overload will ignore the `mmap::expand` mode flag. */
-			[[nodiscard]] result<mmap, std::error_code> map(std::size_t pos, std::size_t size, mmap::mapmode mode) const noexcept { return _file.map(pos, size, mode & ~mmap::expand); }
-
-			/** Checks if the file is open. */
-			[[nodiscard]] bool is_open() const noexcept { return _file.is_open(); }
-			/** Returns the underlying native file handle. */
-			[[nodiscard]] native_handle_type native_handle() const noexcept { return _file.native_handle(); }
-
-			constexpr void swap(basic_file &other) noexcept { _file.swap(other._file); }
-			friend constexpr void swap(basic_file &a, basic_file &b) noexcept { a.swap(b); }
-
-		public:
-			template<reference_to<basic_file> F, byte_buffer Buff>
-			friend result<std::size_t, std::error_code> tag_invoke(read_some_t, F &&f, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
+			template<reference_to<scheduler_handle> F, byte_buffer Buff>
+			friend sender_of<set_value_t(std::size_t)> auto tag_invoke(async_read_some_t, F &&f, Buff &&buff) noexcept(std::is_nothrow_move_constructible_v<Buff>)
 			{
-				const auto data = static_cast<void *>(std::to_address(std::ranges::begin(buff)));
-				return f._file.sync_read(data, std::ranges::size(buff));
+				using sender_t = typename _sync_io::sender<read_some_t, schedule_result_t<Sch>, F, std::decay_t<Buff>>::type;
+				return sender_t{schedule(f._sch), std::forward<F>(f), std::forward<Buff>(buff)};
 			}
-			template<reference_to<basic_file> F, byte_buffer Buff>
-			friend result<std::size_t, std::error_code> tag_invoke(write_some_t, F &&f, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
+			template<reference_to<scheduler_handle> F, byte_buffer Buff>
+			friend sender_of<set_value_t(std::size_t)> auto tag_invoke(async_write_some_t, F &&f, Buff &&buff) noexcept(std::is_nothrow_move_constructible_v<Buff>)
 			{
-				const auto data = static_cast<const void *>(std::to_address(std::ranges::begin(buff)));
-				return f._file.sync_write(data, std::ranges::size(buff));
+				using sender_t = typename _sync_io::sender<write_some_t, schedule_result_t<Sch>, F, std::decay_t<Buff>>::type;
+				return sender_t{schedule(f._sch), std::forward<F>(f), std::forward<Buff>(buff)};
 			}
-			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
-			friend result<std::size_t, std::error_code> tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
+			template<reference_to<scheduler_handle> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
+			friend sender_of<set_value_t(std::size_t)> auto tag_invoke(async_read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(std::is_nothrow_move_constructible_v<Buff>)
 			{
-				const auto data = static_cast<void *>(std::to_address(std::ranges::begin(buff)));
-				return f._file.sync_read_at(data, std::ranges::size(buff), static_cast<std::ptrdiff_t>(pos));
+				using sender_t = typename _sync_io::sender<read_some_at_t, schedule_result_t<Sch>, F, Pos, std::decay_t<Buff>>::type;
+				return sender_t{schedule(f._sch), std::forward<F>(f), pos, std::forward<Buff>(buff)};
 			}
-			template<reference_to<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
-			friend result<std::size_t, std::error_code> tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(noexcept_sizeable_range<Buff>)
+			template<reference_to<scheduler_handle> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
+			friend sender_of<set_value_t(std::size_t)> auto tag_invoke(async_write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(std::is_nothrow_move_constructible_v<Buff>)
 			{
-				const auto data = static_cast<const void *>(std::to_address(std::ranges::begin(buff)));
-				return f._file.sync_write_at(data, std::ranges::size(buff), static_cast<std::ptrdiff_t>(pos));
-			}
-
-			template<decays_to<async_read_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires detail::callable<T, Snd, native_handle_type, Buff>
-			friend auto tag_invoke(T, Snd &&snd, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<T, Snd, native_handle_type, Buff>) { return T{}(std::forward<Snd>(snd), f.native_handle(), std::forward<Buff>(buff)); }
-			template<decays_to<async_write_some_t> T, reference_to<basic_file> F, typename Snd, typename Buff> requires detail::callable<T, Snd, native_handle_type, Buff>
-			friend auto tag_invoke(T, Snd &&snd, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<T, Snd, native_handle_type, Buff>) { return T{}(std::forward<Snd>(snd), f.native_handle(), std::forward<Buff>(buff)); }
-			template<decays_to<async_read_some_at_t> T, reference_to<basic_file> F, typename Snd, std::convertible_to<std::size_t> Pos, typename Buff> requires detail::callable<T, Snd, native_handle_type, Pos, Buff>
-			friend auto tag_invoke(T, Snd &&snd, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Snd, native_handle_type, Pos, Buff>) { return T{}(std::forward<Snd>(snd), f.native_handle(), pos, std::forward<Buff>(buff)); }
-			template<decays_to<async_write_some_at_t> T, reference_to<basic_file> F, typename Snd, std::convertible_to<std::size_t> Pos, typename Buff> requires detail::callable<T, Snd, native_handle_type, Pos, Buff>
-			friend auto tag_invoke(T, Snd &&snd, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Snd, native_handle_type, Pos, Buff>) { return T{}(std::forward<Snd>(snd), f.native_handle(), pos, std::forward<Buff>(buff)); }
-
-			template<decays_to<schedule_read_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires detail::callable<T, Sch, native_handle_type, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff)); }
-			template<decays_to<schedule_write_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires detail::callable<T, Sch, native_handle_type, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff)); }
-			template<decays_to<schedule_read_some_at_t> T, reference_to<basic_file> F, typename Sch, std::convertible_to<std::size_t> Pos, typename Buff> requires detail::callable<T, Sch, native_handle_type, Pos, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Pos, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff)); }
-			template<decays_to<schedule_write_some_at_t> T, reference_to<basic_file> F, typename Sch, std::convertible_to<std::size_t> Pos, typename Buff> requires detail::callable<T, Sch, native_handle_type, Pos, Buff>
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<T, Sch, native_handle_type, Pos, Buff>) { return T{}(std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff)); }
-
-			template<decays_to<schedule_read_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Buff> && detail::callable<async_read_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
-			{
-				return async_read_some(schedule(sch), std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff));
-			}
-			template<decays_to<schedule_write_some_t> T, reference_to<basic_file> F, typename Sch, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Buff> && detail::callable<async_write_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_t, schedule_result_t<Sch>, native_handle_type, Buff>)
-			{
-				return async_write_some(schedule(sch), std::forward<Sch>(sch), f.native_handle(), std::forward<Buff>(buff));
-			}
-			template<decays_to<schedule_read_some_at_t> T, reference_to<basic_file> F, typename Sch, typename Pos, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Pos, Buff> && detail::callable<async_read_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_read_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
-			{
-				return async_read_some_at(schedule(sch), std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff));
-			}
-			template<decays_to<schedule_write_some_at_t> T, reference_to<basic_file> F, typename Sch, typename Pos, typename Buff> requires(!detail::callable<T, Sch, native_handle_type, Pos, Buff> && detail::callable<async_write_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
-			friend auto tag_invoke(T, Sch &&sch, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<schedule_t, Sch> && detail::nothrow_callable<async_write_some_at_t, schedule_result_t<Sch>, native_handle_type, Pos, Buff>)
-			{
-				return async_write_some_at(schedule(sch), std::forward<Sch>(sch), f.native_handle(), pos, std::forward<Buff>(buff));
+				using sender_t = typename _sync_io::sender<write_some_at_t, schedule_result_t<Sch>, F, Pos, std::decay_t<Buff>>::type;
+				return sender_t{schedule(f._sch), std::forward<F>(f), pos, std::forward<Buff>(buff)};
 			}
 
 		private:
-			native_t _file = {};
+			ROD_NO_UNIQUE_ADDRESS Sch _sch;
+		};
+		template<typename Hnd, typename Sch>
+		using scheduler_file = basic_file<scheduler_handle<Hnd, std::decay_t<Sch>>>;
+
+		class open_file_t
+		{
+			using openmode = typename file_base::openmode;
+			using openprot = typename file_base::openprot;
+
+		public:
+			template<scheduler Sch, movable_value Path> requires tag_invocable<open_file_t, Sch, Path, openmode, openprot>
+			[[nodiscard]] instance_of<result> auto operator()(Sch &&sch, Path &&path, openmode mode, openprot prot = default_openprot) const noexcept(nothrow_tag_invocable<open_file_t, Sch, Path, openmode, openprot>)
+			{
+				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Path>(path), mode, prot);
+			}
+			template<scheduler Sch, movable_value Path> requires(!tag_invocable<open_file_t, Sch, Path, openmode, openprot>)
+			[[nodiscard]] result<scheduler_file<system_handle, Sch>, std::error_code> operator()(Sch &&sch, Path &&path, openmode mode, openprot prot = default_openprot) const noexcept
+			{
+				auto file = scheduler_file<system_handle, Sch>{sch};
+				if (auto err = open(file, std::forward<Path>(path), mode, prot); !err) [[likely]]
+					return file;
+				else
+					return err;
+			}
 		};
 	}
 
-	using _file::basic_file;
+	using _file::open_file_t;
+
+	/** Customization point object used to open an asynchronous file handle that can be used to schedule IO operations.
+	 * @param[in] sch Scheduler who's execution context to use for the opened file.
+	 * @param[in] path Path of the file to be opened.
+	 * @param[in] mode Mode flags to use when opening the file.
+	 * @param[in] prot Optional protection flags to use for the opened file.
+	 * @return `rod::result` containing either the opened file handle or an error code on failure to open the file. */
+	inline constexpr auto open_file = open_file_t{};
+
+	/** Handle to a native file used for synchronous IO operations. */
+	using basic_file = _file::basic_file<_file::system_handle>;
 }

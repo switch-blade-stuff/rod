@@ -4,11 +4,10 @@
 
 #pragma once
 
-#include "detail/byte_buffer.hpp"
-#include "detail/adaptors/read_some.hpp"
-#include "detail/adaptors/write_some.hpp"
+#include "detail/io_handle.hpp"
+#include "file.hpp"
 
-#ifdef _WIN32
+#ifdef ROD_WIN32
 #include "win32/iocp_context.hpp"
 #endif
 #ifdef __linux__
@@ -16,18 +15,15 @@
 #include "linux/io_uring_context.hpp"
 #endif
 
-#include "file.hpp"
-#include "shared_memory.hpp"
-
 namespace rod
 {
-#if defined(_WIN32) && 0
-	using io_context = iocp_context;
+#if defined(ROD_WIN32) && 0
+	using system_context = iocp_context;
 #elif defined(ROD_HAS_LIBURING)
-	using io_context = io_uring_context;
+	using system_context = io_uring_context;
 #elif defined(ROD_HAS_EPOLL)
-	using io_context = epoll_context;
+	using system_context = epoll_context;
 #else
-	using io_context = run_loop;
+	using system_context = run_loop;
 #endif
 }

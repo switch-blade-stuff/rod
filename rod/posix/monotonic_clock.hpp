@@ -4,12 +4,12 @@
 
 #pragma once
 
-#ifdef __unix__
+#include "../detail/config.hpp"
+
+#ifdef ROD_POSIX
 
 #include <chrono>
 #include <ctime>
-
-#include "../detail/config.hpp"
 
 namespace rod
 {

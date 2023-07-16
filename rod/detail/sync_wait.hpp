@@ -116,10 +116,10 @@ namespace rod
 				/* Rethrow exceptions & return value results. */
 				switch (state.index())
 				{
-					default: [[unlikely]] std::terminate();
-					case 1: [[likely]] return std::move(std::get<1>(state));
-					case 2: std::rethrow_exception(std::move(std::get<2>(state)));
-					case 3: return std::nullopt;
+				default: [[unlikely]] std::terminate();
+				case 1: [[likely]] return std::move(std::get<1>(state));
+				case 2: std::rethrow_exception(std::move(std::get<2>(state)));
+				case 3: return std::nullopt;
 				}
 			}
 		};

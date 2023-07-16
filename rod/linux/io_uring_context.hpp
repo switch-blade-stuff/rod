@@ -17,9 +17,9 @@
 #include "../detail/atomic_queue.hpp"
 #include "../detail/basic_queue.hpp"
 
-#include "../unix/monotonic_clock.hpp"
-#include "../unix/detail/file.hpp"
-#include "../unix/detail/mmap.hpp"
+#include "../posix/monotonic_clock.hpp"
+#include "../posix/detail/file.hpp"
+#include "../posix/detail/mmap.hpp"
 
 /* Forward declare these to avoid including liburing.h */
 extern "C"
@@ -71,22 +71,8 @@ namespace rod
 
 		struct env { context *_ctx; };
 
-		template<typename, auto>
-		struct stop_cb {};
-		template<typename Env, typename Op, void (Op::*Stop)()> requires detail::stoppable_env<Env>
-		struct stop_cb<Env, Stop>
-		{
-			struct callback
-			{
-				void operator()() const { (op->*Stop)(); }
-				Op *op;
-			};
-
-			constexpr void init(auto &&env, Op *ptr) noexcept { data.emplace(get_stop_token(env), callback{ptr}); }
-			constexpr void reset() noexcept { data.reset(); }
-
-			std::optional<stop_callback_for_t<stop_token_of_t<Env &>, callback>> data;
-		};
+		template<typename Env, auto StopFunc>
+		using stop_cb = detail::stop_cb_adaptor<Env, StopFunc>;
 
 		template<typename>
 		struct io_cmd { struct type; };
@@ -227,9 +213,9 @@ namespace rod
 			ROD_API_PUBLIC void finish();
 
 			/** Returns copy of the stop source associated with the context. */
-			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_source; }
+			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_src; }
 			/** Returns a stop token of the stop source associated with the context. */
-			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_source.get_token(); }
+			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_src.get_token(); }
 			/** Sends a stop request to the stop source associated with the context. */
 			ROD_API_PUBLIC void request_stop();
 
@@ -304,7 +290,8 @@ namespace rod
 			cq_state_t _cq = {};
 			sq_state_t _sq = {};
 
-			in_place_stop_source _stop_source;
+			/* Stop source associated with the context. */
+			in_place_stop_source _stop_src;
 			/* Queue of operations waiting for more space in the IO queues. */
 			consumer_queue_t _waitlist_queue;
 			/* Queue of operations pending for dispatch by consumer thread. */
