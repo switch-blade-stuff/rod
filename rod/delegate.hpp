@@ -344,11 +344,18 @@ namespace rod
 	delegate(R (*)(Args...)) -> delegate<R(Args...)>;
 	template<typename R, typename... Args>
 	delegate(R (*)(void *, Args...), void *) -> delegate<R(Args...)>;
+	template<typename R, typename... Args>
+	delegate(R (*)(void *, Args...), void *, void *(*)(const void *), void (*)(void *)) -> delegate<R(Args...)>;
 
-	template<typename F>
-	delegate(F &&) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(&std::decay_t<F>::operator())>>>;
+	template<typename T>
+	delegate(T &&) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(&std::decay_t<T>::operator())>>>;
+	template<typename T, typename... Args>
+	delegate(std::in_place_type_t<T>, Args &&...) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(&std::decay_t<T>::operator())>>>;
+
 	template<auto Mem, typename T>
 	delegate(bind_member_t<Mem>, T &&) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(Mem)>>>;
+	template<auto Mem, typename T, typename... Args>
+	delegate(bind_member_t<Mem>, std::in_place_type_t<T>, Args &&...) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(Mem)>>>;
 
 	/** Creates a delegate from a member pointer and an object instance. */
 	template<auto Mem, typename T>
