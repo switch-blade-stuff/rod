@@ -50,7 +50,7 @@ namespace rod
 
 	/** Customization point object used to read a contiguous buffer of bytes from a readable source IO handle.
 	 * @param[in] hnd IO handle to read the data from.
-	 * @param[out] dst Output buffer or bytes.
+	 * @param[out] dst Output buffer of bytes.
 	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some = read_some_t{};
 
@@ -59,7 +59,7 @@ namespace rod
 	/** Customization point object used to read a contiguous buffer of bytes from a readable source IO handle at the specified offset.
 	 * @param[in] hnd IO handle to read the data from.
 	 * @param[in] pos Offset into the IO handle at which to read the data.
-	 * @param[out] dst Output buffer or bytes.
+	 * @param[out] dst Output buffer of bytes.
 	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes read or an error code on read failure. */
 	inline constexpr auto read_some_at = read_some_at_t{};
 
@@ -67,7 +67,7 @@ namespace rod
 
 	/** Customization point object returning a sender used to read a contiguous buffer of bytes from a source IO handle.
 	 * @param[in] hnd Asynchronous IO handle used to schedule the read operation.
-	 * @param[out] src Output buffer or bytes.
+	 * @param[out] src Output buffer of bytes.
 	 * @return Sender completing with the amount of bytes written or an error code on read failure. */
 	inline constexpr auto async_read_some = async_read_some_t{};
 
@@ -76,7 +76,7 @@ namespace rod
 	/** Customization point object returning a sender used to read a contiguous buffer of bytes from a source IO handle.
 	 * @param[in] hnd Asynchronous IO handle used to schedule the read operation.
 	 * @param[in] pos Offset into the IO handle at which to read the data.
-	 * @param[out] src Output buffer or bytes.
+	 * @param[out] src Output buffer of bytes.
 	 * @return Sender completing with the amount of bytes written or an error code on read failure. */
 	inline constexpr auto async_read_some_at = async_read_some_at_t{};
 }

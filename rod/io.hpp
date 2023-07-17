@@ -17,7 +17,7 @@
 
 namespace rod
 {
-#if defined(ROD_WIN32) && 0
+#if defined(ROD_WIN32)
 	using system_context = iocp_context;
 #elif defined(ROD_HAS_LIBURING)
 	using system_context = io_uring_context;

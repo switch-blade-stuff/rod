@@ -25,48 +25,41 @@
 
 namespace rod::_iocp
 {
+#if SIZE_MAX >= UINT64_MAX
+	constexpr std::size_t default_entries = 256;
+#else
+	constexpr std::size_t default_entries = 128;
+#endif
+
 	[[noreturn]] inline void throw_status(auto status, const char *msg) { throw std::system_error{static_cast<int>(ntapi::instance.RtlNtStatusToDosError(status)), std::system_category(), msg}; }
 	[[noreturn]] inline void throw_last_error(const char *msg) { throw std::system_error{static_cast<int>(::GetLastError()), std::system_category(), msg}; }
 
-	int io_entry_t::get_state() const noexcept
+	bool io_entry::get_state() const noexcept
 	{
-		if (err_pos > started)
-			return -1;
-		else if (!waiting)
-			return 1;
-
-		for (std::size_t i = 0; i < started; ++i)
+		if (pending != 0)
 		{
-			/* Use volatile here to prevent compiler from messing up the order. */
-			volatile auto &iosb = batch[i];
-			if (iosb.status == STATUS_PENDING)
-				return 0;
+			for (std::size_t i = 0; i < started; ++i)
+			{
+				/* Use volatile here to prevent compiler from messing up the order. */
+				const volatile auto &iosb = batch[i];
+				if (iosb.status == STATUS_PENDING)
+					return false;
+			}
+
+			/* Use atomic fence to synchronize the volatile iosb above.
+			 * Cannot directly use atomic iosb since it is not guaranteed
+			 * to be lock-free and win32 kernel will for sure not respect
+			 * any user-space locks. */
+			std::atomic_thread_fence(std::memory_order_acquire);
 		}
-
-		/* Use atomic fence to synchronize the volatile iosb above.
-		 * Cannot directly use atomic iosb since it is not guaranteed
-		 * to be lock-free and win32 kernel will for sure not respect
-		 * any user-space locks. */
-		std::atomic_thread_fence(std::memory_order_acquire);
-		return 1;
+		return true;
 	}
-	int io_entry_t::get_error() const noexcept
-	{
-		if (err_pos > started)
-			return 0;
-
-		volatile const auto &status = batch[err_pos].status;
-		auto err = ntapi::instance.RtlNtStatusToDosError(status);
-		std::atomic_thread_fence(std::memory_order_acquire);
-		return static_cast<int>(err);
-	}
-
-	void io_operation_base::cancel_io()
+	void io_operation_base::cancel_io(void *hnd)
 	{
 		for (std::uint16_t i = entry->started; i-- != 0;)
 		{
 			ntapi::io_status_block iosb, *iosb_ptr = &entry->batch[i];
-			if (!ntapi::instance.NtCancelIoFileEx(handle, iosb_ptr, &iosb))
+			if (!ntapi::instance.NtCancelIoFileEx(hnd, iosb_ptr, &iosb))
 				throw_last_error("NtCancelIoFileEx");
 		}
 	}
@@ -82,54 +75,64 @@ namespace rod::_iocp
 		}
 		return result;
 	}
-	result<std::size_t, std::error_code> io_operation_base::batch_read(std::size_t pos, std::span<std::byte> buff) noexcept
+	std::size_t io_operation_base::start_io(io_cmd<async_read_some_at_t, std::span<std::byte>> cmd)
 	{
 		ntapi::large_integer offset;
-		std::size_t n_scheduled = 0;
+		std::size_t batch_bytes = 0;
 		ntapi::ulong chunk;
 
-		for (; entry->started < io_entry_t::max_size && n_scheduled < buff.size(); n_scheduled += chunk)
+		entry->parent_notified = false;
+		entry->started = 0;
+		for (; entry->started < io_entry::max_size && batch_bytes < cmd.buff.size(); batch_bytes += chunk, ++entry->started)
 		{
-			auto &iosb = entry->batch[entry->started++];
+			auto &iosb = entry->batch[entry->started];
 			iosb.status = STATUS_PENDING;
 			iosb.info = 0;
 
-			chunk = static_cast<ntapi::ulong>(buff.size() - n_scheduled);
-			offset.quad = static_cast<ntapi::longlong>(pos);
+			chunk = static_cast<ntapi::ulong>(cmd.buff.size() - batch_bytes);
+			offset.quad = static_cast<ntapi::longlong>(cmd.pos);
 
-			if (const auto status = ntapi::instance.NtReadFile(handle, nullptr, nullptr, reinterpret_cast<ntapi::ulong_ptr>(&iosb), &iosb, buff.data() + n_scheduled, chunk, &offset, nullptr); status < 0) [[unlikely]]
-				return std::error_code{static_cast<int>(ntapi::instance.RtlNtStatusToDosError(status)), std::system_category()};
+			if (const auto status = ntapi::instance.NtReadFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ntapi::ulong_ptr>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
+				entry->pending += (status == STATUS_PENDING || notify_func != nullptr);
 			else
-				entry->waiting += (status == STATUS_PENDING || notify_func != nullptr);
+			{
+				cancel_io(cmd.hnd);
+				throw_status(status, "NtReadFile");
+			}
 		}
-		return n_scheduled;
+		return batch_bytes;
 	}
-	result<std::size_t, std::error_code> io_operation_base::batch_write(std::size_t pos, std::span<std::byte> buff) noexcept
+	std::size_t io_operation_base::start_io(io_cmd<async_write_some_at_t, std::span<std::byte>> cmd)
 	{
 		ntapi::large_integer offset;
-		std::size_t n_scheduled = 0;
+		std::size_t batch_bytes = 0;
 		ntapi::ulong chunk;
 
-		for (; entry->started < io_entry_t::max_size && n_scheduled < buff.size(); n_scheduled += chunk)
+		entry->parent_notified = false;
+		entry->started = 0;
+		for (; entry->started < io_entry::max_size && batch_bytes < cmd.buff.size(); batch_bytes += chunk, ++entry->started)
 		{
-			auto &iosb = entry->batch[entry->started++];
+			auto &iosb = entry->batch[entry->started];
 			iosb.status = STATUS_PENDING;
 			iosb.info = 0;
 
-			chunk = static_cast<ntapi::ulong>(buff.size() - n_scheduled);
-			offset.quad = static_cast<ntapi::longlong>(pos);
+			chunk = static_cast<ntapi::ulong>(cmd.buff.size() - batch_bytes);
+			offset.quad = static_cast<ntapi::longlong>(cmd.pos);
 
-			if (const auto status = ntapi::instance.NtWriteFile(handle, nullptr, nullptr, reinterpret_cast<ntapi::ulong_ptr>(&iosb), &iosb, buff.data() + n_scheduled, chunk, &offset, nullptr); status < 0) [[unlikely]]
-				return std::error_code{static_cast<int>(ntapi::instance.RtlNtStatusToDosError(status)), std::system_category()};
+			if (const auto status = ntapi::instance.NtWriteFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ntapi::ulong_ptr>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
+				entry->pending += (status == STATUS_PENDING || notify_func != nullptr);
 			else
-				entry->waiting += (status == STATUS_PENDING || notify_func != nullptr);
+			{
+				cancel_io(cmd.hnd);
+				throw_status(status, "NtWriteFile");
+			}
 		}
-		return n_scheduled;
+		return batch_bytes;
 	}
 
 	std::error_code file_handle::open(const char *path, int mode, int prot) noexcept
 	{
-		if (auto err = _file::system_handle::open(path, mode, prot | _file::system_handle::overlapped); err) [[unlikely]]
+		if (auto err = _file::system_handle::open(path, mode | _file::system_handle::overlapped, prot); err) [[unlikely]]
 			return err;
 		if (auto err = _ctx->port_bind(_file::system_handle::native_handle()); err) [[unlikely]]
 			return err;
@@ -137,16 +140,17 @@ namespace rod::_iocp
 	}
 	std::error_code file_handle::open(const wchar_t *path, int mode, int prot) noexcept
 	{
-		if (auto err = _file::system_handle::open(path, mode, prot | _file::system_handle::overlapped); err) [[unlikely]]
+		if (auto err = _file::system_handle::open(path, mode | _file::system_handle::overlapped, prot); err) [[unlikely]]
 			return err;
 		if (auto err = _ctx->port_bind(_file::system_handle::native_handle()); err) [[unlikely]]
 			return err;
 		return {};
 	}
 
-	context::context(std::size_t entries)
+	context::context() : context(default_entries) {}
+	context::context(std::size_t max_entries)
 	{
-		if (auto hnd = ::CreateIoCompletionPort(nullptr, INVALID_HANDLE_VALUE, 0, 1); !hnd)
+		if (auto hnd = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1); !hnd)
 			throw_last_error("CreateIoCompletionPort");
 		else
 			_iocp.release(hnd);
@@ -156,14 +160,14 @@ namespace rod::_iocp
 		else
 			_thread_timer.release(hnd);
 
-		_io_entry_buff.resize(entries);
+		_io_entry_buff.resize(max_entries);
 		for (auto &entry : _io_entry_buff)
 			_io_entry_pool.push_back(&entry);
 	}
 	context::~context()
 	{
-		std::size_t waiting_ops = _io_entry_buff.size();
-		for (; !_io_entry_pool.empty(); --waiting_ops)
+		std::size_t pending_ops = _io_entry_buff.size();
+		for (; !_io_entry_pool.empty(); --pending_ops)
 			_io_entry_pool.pop_front();
 
 #ifdef _WIN64
@@ -172,20 +176,21 @@ namespace rod::_iocp
 		constexpr std::size_t buff_size = 4096 / sizeof(ntapi::io_completion_info);
 #endif
 
-		while (waiting_ops != 0)
+		while (pending_ops != 0)
 		{
 			std::array<ntapi::io_completion_info, buff_size> buff;
+			ntapi::large_integer zero_timeout = {.quad = 0};
 			ntapi::ulong received;
 
-			if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), buff_size, &received, nullptr, false); status < 0)
+			if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), static_cast<ntapi::ulong>(std::min(buff_size, pending_ops)), &received, &zero_timeout, false); status < 0)
 				throw_status(status, "NtRemoveIoCompletionEx");
 
 			for (auto &event: std::ranges::take_view(buff, received))
 				if (event.apc_context != 0)
 				{
-					auto entry = find_entry(reinterpret_cast<ntapi::io_status_block *>(event.apc_context));
-					if (--entry.first->waiting == 0)
-						--waiting_ops;
+					auto entry = find_entry(event.apc_context);
+					if (--entry.first->pending == 0)
+						--pending_ops;
 				}
 		}
 	}
@@ -197,7 +202,7 @@ namespace rod::_iocp
 			return;
 
 		/* Notify a sleeping consumer thread via a dummy completion event. */
-		if (const auto status = ntapi::instance.NtSetIoCompletion(_iocp.native_handle(), 0, 0, 0, 0); status < 0)
+		if (const auto status = ntapi::instance.NtSetIoCompletion(_iocp.native_handle(), 0, event_id::wakeup, 0, 0); status < 0)
 			throw_status(status, "NtSetIoCompletion");
 	}
 	void context::schedule_consumer(operation_base *node)
@@ -223,8 +228,9 @@ namespace rod::_iocp
 	/* Win32 timers do not work with IOCP, so use a waitable timer instead. */
 	inline void context::timeout_handler() noexcept
 	{
-		_timer_started = false;
-		_timer_pending = true;
+		/* Notify a sleeping consumer thread via a dummy completion event. */
+		if (const auto status = ntapi::instance.NtSetIoCompletion(_iocp.native_handle(), 0, event_id::timeout, 0, 0); status < 0)
+			throw_status(status, "NtSetIoCompletion");
 	}
 	inline void context::set_timer(time_point tp)
 	{
@@ -240,9 +246,9 @@ namespace rod::_iocp
 	void context::request_stop() { _stop_src.request_stop(); }
 	bool context::is_consumer_thread() const noexcept { return _consumer_tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
 
-	void context::release_io_entry(io_entry_t *entry) noexcept
+	void context::release_io_entry(io_entry *entry) noexcept
 	{
-		if (entry->waiting)
+		if (entry->pending)
 			entry->parent = {};
 		else if (_waiting_queue.empty())
 			_io_entry_pool.push_front(entry);
@@ -271,28 +277,34 @@ namespace rod::_iocp
 	{
 		assert(node->entry);
 		assert(!node->next);
-		if (!node->entry->waiting)
+		if (!node->entry->pending)
 			_consumer_queue.push_front(node);
 		else
 			_pending_queue.push_back(node);
 	}
-	inline void context::schedule_complete(std::pair<io_entry_t *, std::size_t> entry)
+
+	inline void context::schedule_complete(std::pair<io_entry *, std::uint8_t> entry) noexcept
 	{
 		if (entry.first->batch[entry.second].status < 0 && entry.first->err_pos > entry.second)
 			entry.first->err_pos = entry.second;
-		if (--entry.first->waiting > 0)
+		if (--entry.first->pending > 0)
 			return;
 
 		if (!entry.first->parent)
 			release_io_entry(entry.first);
-		else if (!entry.first->parent_notified)
-		{
-			entry.first->parent_notified = true;
+		else if (!std::exchange(entry.first->parent_notified, true))
 			schedule_consumer(entry.first->parent);
-		}
+	}
+	inline std::pair<io_entry *, std::uint8_t> context::find_entry(ntapi::ulong_ptr apc) noexcept
+	{
+		const auto diff = apc - reinterpret_cast<ntapi::ulong_ptr>(_io_entry_buff.data());
+		const auto iosb = reinterpret_cast<ntapi::io_status_block *>(apc);
+		const auto ptr = _io_entry_buff.data() + diff / sizeof(io_entry);
+		const auto idx = static_cast<std::uint8_t>(iosb - ptr->batch);
+		return {ptr, idx};
 	}
 
-	inline void context::acquire_consumer_queue() noexcept
+	inline void context::acquire_pending_events() noexcept
 	{
 		while (!_pending_queue.empty())
 		{
@@ -301,18 +313,17 @@ namespace rod::_iocp
 
 			if (entry->get_state())
 			{
-				entry->parent_notified = true;
 				schedule_consumer(entry->parent);
+				entry->parent_notified = true;
 			}
 		}
 	}
 	inline bool context::acquire_producer_queue() noexcept
 	{
-		if (!_producer_queue.try_terminate())
-		{
-			_consumer_queue.merge_back(std::move(_producer_queue));
+		if (_producer_queue.empty())
 			return false;
-		}
+
+		_consumer_queue.merge_back(std::move(_producer_queue));
 		return true;
 	}
 	inline void context::acquire_elapsed_timers()
@@ -321,43 +332,38 @@ namespace rod::_iocp
 			return;
 
 		if (!_timer_queue.empty())
-			for (const auto now = clock::now(); !_timer_queue.empty() && _timer_queue.front()->timeout <= now;)
+			for (const auto now = clock::now(); !_timer_queue.empty() && _timer_queue.front()->tp <= now;)
 			{
 				const auto node = _timer_queue.pop_front();
 
 				/* Handle timer cancellation. */
-				if (node->stop_possible)
-				{
-					node->dispatched.test_and_set(std::memory_order_release);
-					if (node->stop_requested.test(std::memory_order_acquire))
-						continue;
-				}
-				schedule_consumer(node);
+				if (!(node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested))
+					schedule_consumer(node);
 			}
 
 		/* Disarm or start the timer. */
 		if (_timer_queue.empty())
 		{
-			if (_timer_started && ::CancelWaitableTimer(_thread_timer.native_handle()))
+			if (_timer_started)
 			{
+				::CancelWaitableTimer(_thread_timer.native_handle());
 				_timer_started = false;
 				_timer_pending = false;
 			}
 			return;
 		}
 
-		const auto next_timeout = _timer_queue.front()->timeout;
-		if (_next_timeout < next_timeout)
+		if (const auto next_timeout = _timer_queue.front()->tp; !_timer_started || _next_timeout >= next_timeout)
 		{
-			_next_timeout = next_timeout;
 			set_timer(next_timeout);
+			_next_timeout = next_timeout;
 		}
 		_timer_pending = false;
 	}
 
 	inline std::error_code context::port_bind(void *hnd)
 	{
-		if (::CreateIoCompletionPort(hnd, _iocp.native_handle(), 0, 0) == nullptr) [[unlikely]]
+		if (::CreateIoCompletionPort(hnd, _iocp.native_handle(), 0, 0) != _iocp.native_handle()) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
 		if (!::SetFileCompletionNotificationModes(hnd, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE)) [[unlikely]]
 			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
@@ -372,24 +378,45 @@ namespace rod::_iocp
 		constexpr std::size_t buff_size = 4096 / sizeof(ntapi::io_completion_info);
 #endif
 
-		auto timeout = !_consumer_queue.empty() ? &zero_timeout : nullptr;
+		auto timeout = _producer_queue.active() ? &zero_timeout : nullptr;
 		std::array<ntapi::io_completion_info, buff_size> buff;
 		ntapi::ulong received;
 
-		if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), buff_size, &received, timeout, false); status < 0)
+		if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), buff_size, &received, timeout, _timer_started); status < 0)
 			throw_status(status, "NtRemoveIoCompletionEx");
-
-		for (auto &event : std::ranges::take_view(buff, received))
+		else if (status == STATUS_TIMEOUT)
+			_producer_queue.try_terminate();
+		else if (status != STATUS_USER_APC && status != 0x101 /*STATUS_ALERTED*/)
 		{
-			if (event.apc_context != 0)
-				schedule_complete(find_entry(reinterpret_cast<ntapi::io_status_block *>(event.apc_context)));
-			else
-				_wait_pending = false;
+			for (auto &event: std::ranges::take_view(buff, received))
+				switch (event.apc_context)
+				{
+				default:
+					schedule_complete(find_entry(event.apc_context));
+					break;
+				case event_id::timeout:
+					_timer_started = false;
+					_timer_pending = true;
+					[[fallthrough]];
+				case event_id::wakeup:
+					_producer_queue.try_activate();
+					break;
+				}
 		}
 	}
 
 	void context::run()
 	{
+		/* Make sure only one thread is allowed to run at a given time. */
+		if (std::thread::id id = {}; !_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
+			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `iocp_context::run` at a given time");
+
+		const auto g = defer_invoke([&]()
+		{
+			_producer_queue.try_activate();
+			_consumer_tid.store({}, std::memory_order_release);
+		});
+
 		while (!_stop_pending)
 		{
 			for (auto queue = std::move(_consumer_queue); !queue.empty();)
@@ -397,13 +424,19 @@ namespace rod::_iocp
 			if (std::exchange(_stop_pending, false)) [[unlikely]]
 				return;
 
-			acquire_consumer_queue();
 			acquire_elapsed_timers();
+			acquire_pending_events();
 
 			/* Acquire pending operations from the producer queue & wait for IOCP events. */
-			if (_wait_pending || (_wait_pending = acquire_producer_queue()))
+			if (!_producer_queue.active() || !acquire_producer_queue())
 				port_wait();
 		}
+	}
+	void context::finish()
+	{
+		/* Notification function will be reset on dispatch, so set it here instead of the constructor. */
+		notify_func = [](operation_base *ptr) noexcept { static_cast<context *>(ptr)->_stop_pending = true; };
+		schedule(this);
 	}
 }
 #endif

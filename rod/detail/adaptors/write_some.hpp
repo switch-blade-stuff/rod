@@ -50,7 +50,7 @@ namespace rod
 
 	/** Customization point object used to write a contiguous buffer of bytes to a destination IO handle.
 	 * @param[in] hnd IO handle to write the data into.
-	 * @param[in] src Input buffer or bytes.
+	 * @param[in] src Input buffer of bytes.
 	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes written or an error code on write failure. */
 	inline constexpr auto write_some = write_some_t{};
 
@@ -59,7 +59,7 @@ namespace rod
 	/** Customization point object used to write a contiguous buffer of bytes to a destination IO handle at the specified offset.
 	 * @param[in] hnd IO handle to write the data into.
 	 * @param[in] pos Offset into the IO handle at which to write the data.
-	 * @param[in] src Input buffer or bytes.
+	 * @param[in] src Input buffer of bytes.
 	 * @return `rod::result&lt;std::size_t, std::error_code&gt;` indicating the amount of bytes written or an error code on write failure. */
 	inline constexpr auto write_some_at = write_some_at_t{};
 
@@ -67,7 +67,7 @@ namespace rod
 
 	/** Customization point object returning a sender used to write a contiguous buffer of bytes to a destination IO handle.
 	 * @param[in] hnd Asynchronous IO handle used to schedule the write operation.
-	 * @param[in] src Input buffer or bytes.
+	 * @param[in] src Input buffer of bytes.
 	 * @return Sender completing with the amount of bytes written or an error code on write failure. */
 	inline constexpr auto async_write_some = async_write_some_t{};
 
@@ -76,7 +76,7 @@ namespace rod
 	/** Customization point object returning a sender used to write a contiguous buffer of bytes to a destination IO handle.
 	 * @param[in] hnd Asynchronous IO handle used to schedule the write operation.
 	 * @param[in] pos Offset into the IO handle at which to write the data.
-	 * @param[in] src Input buffer or bytes.
+	 * @param[in] src Input buffer of bytes.
 	 * @return Random-writeable sender completing with the amount of bytes written or an error code on write failure. */
 	inline constexpr auto async_write_some_at = async_write_some_at_t{};
 }

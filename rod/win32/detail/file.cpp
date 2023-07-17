@@ -20,15 +20,12 @@ namespace rod::_file
 			return err;
 
 		DWORD access = 0;
-		if (mode & file_base::in) access |= FILE_GENERIC_READ;
-		if (mode & file_base::out)
-		{
-			access |= FILE_GENERIC_WRITE;
-			if (mode & file_base::app)
-				access ^= FILE_WRITE_DATA;
-			else if (!(mode & file_base::ate))
-				access ^= FILE_APPEND_DATA;
-		}
+		if (mode & file_base::in)
+			access |= FILE_GENERIC_READ;
+		if ((mode & file_base::out) && (mode & file_base::app))
+			access |= FILE_GENERIC_WRITE ^ FILE_WRITE_DATA;
+		else if ((mode & file_base::out) && !(mode & file_base::ate))
+			access |= FILE_GENERIC_WRITE ^ FILE_APPEND_DATA;
 
 		DWORD disp;
 		if (mode & file_base::nocreate)
@@ -46,8 +43,8 @@ namespace rod::_file
 			disp = OPEN_ALWAYS;
 
 		DWORD flags = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_POSIX_SEMANTICS;
-		if (mode & overlapped) flags |= FILE_FLAG_OVERLAPPED;
 		if (mode & file_base::direct) flags |= FILE_FLAG_WRITE_THROUGH;
+		if (mode & overlapped) flags |= FILE_FLAG_OVERLAPPED;
 
 		if (const auto hnd = ::CreateFileW(path, access, share, nullptr, disp, flags, nullptr); hnd != INVALID_HANDLE_VALUE) [[likely]]
 		{

@@ -41,7 +41,11 @@ namespace rod::detail
 
 		struct io_status_block
 		{
-			long_ptr status;
+			union
+			{
+				ulong status;
+				long_ptr ptr;
+			};
 			ulong_ptr info;
 		};
 		struct io_completion_info
@@ -58,7 +62,7 @@ namespace rod::detail
 		using NtReadFile_t = long (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ulong_ptr apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff, _In_ ulong len, _In_opt_ large_integer *off, _In_opt_ ulong *key);
 		using NtWriteFile_t = long (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ulong_ptr apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff, _In_ ulong len, _In_opt_ large_integer *off, _In_opt_ ulong *key);
 
-		using NtCancelIoFileEx_t = long (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *in_sb, _Out_ io_status_block *out_sb);
+		using NtCancelIoFileEx_t = long (ROD_NTAPI *)(_In_ void *file, _Out_  io_status_block *iosb, _Out_ io_status_block *status);
 		using NtSetIoCompletion_t = long (ROD_NTAPI *)(_In_ void *hnd, _In_ ulong key_ctx, _In_ ulong_ptr apc_ctx, _In_ long status, _In_ ulong info);
 		using NtRemoveIoCompletionEx_t = long (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ulong count, _Out_ ulong *removed, _In_opt_ large_integer *timeout, _In_ bool alert);
 

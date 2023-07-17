@@ -23,6 +23,9 @@ endfunction()
 
 make_test(file ${CMAKE_CURRENT_LIST_DIR}/test_file.cpp)
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    make_test(iocp ${CMAKE_CURRENT_LIST_DIR}/test_iocp.cpp)
+endif ()
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     make_test(epoll ${CMAKE_CURRENT_LIST_DIR}/test_epoll.cpp)
     make_test(io_uring ${CMAKE_CURRENT_LIST_DIR}/test_io_uring.cpp)

@@ -74,41 +74,33 @@ namespace rod
 		template<typename Env, auto StopFunc>
 		using stop_cb = detail::stop_cb_adaptor<Env, StopFunc>;
 
-		template<typename>
-		struct io_cmd { struct type; };
-		template<>
-		struct io_cmd<schedule_read_some_t>::type
+		template<typename, typename>
+		struct io_cmd;
+		template<typename Buff>
+		struct io_cmd<async_read_some_t, Buff>
 		{
-			template<typename T>
-			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::begin(buff), std::end(buff)) {}
-
 			detail::basic_descriptor fd;
-			std::span<std::byte> buff;
+			Buff buff;
 		};
-		template<>
-		struct io_cmd<schedule_write_some_t>::type
+		template<typename Buff>
+		struct io_cmd<async_write_some_t, Buff>
 		{
-			template<typename T>
-			constexpr type(int fd, std::span<T> buff) noexcept : fd(fd), buff(std::cbegin(buff), std::cend(buff)) {}
-
 			detail::basic_descriptor fd;
-			std::span<const std::byte> buff;
+			Buff buff;
 		};
-		template<>
-		struct io_cmd<schedule_read_some_at_t>::type : io_cmd<schedule_read_some_t>::type
+		template<typename Buff>
+		struct io_cmd<async_read_some_at_t, Buff>
 		{
-			template<typename T>
-			constexpr type(int fd, std::size_t off, std::span<T> buff) noexcept : io_cmd<schedule_read_some_t>::type(fd, buff), off(off) {}
-
-			std::size_t off;
+			detail::basic_descriptor fd;
+			std::size_t pos;
+			Buff buff;
 		};
-		template<>
-		struct io_cmd<schedule_write_some_at_t>::type : io_cmd<schedule_write_some_t>::type
+		template<typename Buff>
+		struct io_cmd<async_write_some_at_t, Buff>
 		{
-			template<typename T>
-			constexpr type(int fd, std::size_t off, std::span<T> buff) noexcept : io_cmd<schedule_write_some_t>::type(fd, buff), off(off) {}
-
-			std::size_t off;
+			detail::basic_descriptor fd;
+			std::size_t pos;
+			Buff buff;
 		};
 
 		struct operation_base
@@ -150,9 +142,9 @@ namespace rod
 		template<typename Rcv>
 		struct timer_operation { class type; };
 
-		template<typename Op>
+		template<typename Op, typename Buff>
 		struct io_sender { class type; };
-		template<typename Op, typename Rcv>
+		template<typename Op, typename Buff, typename Rcv>
 		struct io_operation { class type; };
 
 		class context : operation_base
@@ -174,9 +166,6 @@ namespace rod
 			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::next>;
 			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::next>;
 
-			template<typename Op>
-			using io_cmd_t = typename io_cmd<Op>::type;
-
 		public:
 			context(context &&) = delete;
 			context &operator=(context &&) = delete;
@@ -194,6 +183,9 @@ namespace rod
 			 * @throw std::system_error On implementation-defined internal failures.
 			 * @note Only one thread may call `run`. */
 			ROD_API_PUBLIC void run();
+			/** Changes the internal state to stopped and unblocks consumer thread. Any in-progress work will run to completion. */
+			ROD_API_PUBLIC void finish();
+
 			/** Blocks the current thread until stopped via \a tok and executes scheduled operations.
 			 * @param tok Stop token used to stop execution of the internal event loop.
 			 * @throw std::system_error On implementation-defined internal failures.
@@ -208,9 +200,6 @@ namespace rod
 
 			/** Returns a scheduler used to schedule work to be executed on the context. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept;
-
-			/** Changes the internal state to stopped and unblocks consumer thread. Any in-progress work will run to completion. */
-			ROD_API_PUBLIC void finish();
 
 			/** Returns copy of the stop source associated with the context. */
 			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_src; }
@@ -256,15 +245,29 @@ namespace rod
 			ROD_API_PUBLIC void schedule_consumer(operation_base *node);
 			ROD_API_PUBLIC void schedule_waitlist(operation_base *node);
 
-			bool submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::size_t off) noexcept;
+			bool submit_io_event(int op, void *data, int fd, void *addr, std::size_t n, std::size_t off) noexcept;
 			bool submit_timer_event(time_point timeout) noexcept;
 			bool submit_queue_event() noexcept;
 			bool cancel_timer_event() noexcept;
 
-			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept;
-			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept;
-			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept;
-			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept;
+			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd<async_read_some_t, std::span<std::byte>> cmd) noexcept;
+			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd<async_write_some_t, std::span<std::byte>> cmd) noexcept;
+			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd<async_read_some_at_t, std::span<std::byte>> cmd) noexcept;
+			ROD_API_PUBLIC bool submit_io_event(operation_base *node, io_cmd<async_write_some_at_t, std::span<std::byte>> cmd) noexcept;
+
+			template<one_of<async_read_some_t, async_write_some_t> Op, typename Buff>
+			bool submit_io_event(operation_base *node, io_cmd<Op, Buff> cmd) noexcept
+			{
+				const auto bytes = rod::as_byte_buffer(const_cast<std::ranges::range_value_t<Buff> *>(std::data(cmd.buff)), std::size(cmd.buff));
+				return submit_io_event(node, io_cmd<Op, std::span<std::byte>>{cmd.fd, bytes});
+			}
+			template<one_of<async_read_some_at_t, async_write_some_at_t> Op, typename Buff>
+			bool submit_io_event(operation_base *node, io_cmd<Op, Buff> cmd) noexcept
+			{
+				const auto bytes = rod::as_byte_buffer(const_cast<std::ranges::range_value_t<Buff> *>(std::data(cmd.buff)), std::size(cmd.buff));
+				return submit_io_event(node, io_cmd<Op, std::span<std::byte>>{cmd.fd, cmd.pos, bytes});
+			}
+
 			ROD_API_PUBLIC bool cancel_io_event(operation_base *node) noexcept;
 
 			ROD_API_PUBLIC void add_timer(timer_operation_base *node) noexcept;
@@ -307,7 +310,7 @@ namespace rod
 			std::uint32_t _active_timers = 0;
 			bool _timer_started = false;
 			bool _timer_pending = false;
-			bool _wait_pending = false;
+			bool _queue_active = false;
 			bool _stop_pending = false;
 		};
 
@@ -430,10 +433,10 @@ namespace rod
 			ROD_NO_UNIQUE_ADDRESS stop_cb_t _stop_cb;
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
-		template<typename Op, typename Rcv>
+		template<typename Op, typename Buff, typename Rcv>
 		class io_operation<Op, Rcv>::type : complete_base, stop_base
 		{
-			using io_cmd_t = typename io_cmd<Op>::type;
+			using io_cmd_t = io_cmd<Op, Buff>;
 
 			static void notify_start(operation_base *ptr) { static_cast<type *>(static_cast<complete_base *>(ptr))->start_consumer(); }
 			static void notify_value(operation_base *ptr) { static_cast<type *>(static_cast<complete_base *>(ptr))->complete_value(); }
@@ -474,7 +477,7 @@ namespace rod
 			void start_consumer()
 			{
 				if (_flags.load(std::memory_order_acquire) & flags_t::stop_requested)
-					return; /* Already stopped on a different thread. */
+					return; /* Stopped on a different thread. */
 
 				complete_base::notify_func = notify_value;
 				if (!_ctx->submit_io_event(static_cast<complete_base *>(this), _cmd))
@@ -579,8 +582,8 @@ namespace rod
 			time_point _tp;
 			context *_ctx;
 		};
-		template<typename Op>
-		class io_sender<Op>::type
+		template<typename Op, typename Buff>
+		class io_sender<Op, Buff>::type
 		{
 		public:
 			using is_sender = std::true_type;
@@ -588,12 +591,12 @@ namespace rod
 		private:
 			using signs_t = completion_signatures<set_value_t(std::size_t), set_error_t(std::error_code), set_stopped_t()>;
 			template<typename Rcv>
-			using operation_t = typename io_operation<Op, std::decay_t<Rcv>>::type;
-			using io_cmd_t = typename io_cmd<Op>::type;
+			using operation_t = typename io_operation<Op, Buff, std::decay_t<Rcv>>::type;
+			using io_cmd_t = io_cmd<Op, Buff>;
 
 		public:
 			template<typename... Args>
-			constexpr explicit type(context *ctx, Args &&...args) noexcept : _cmd(std::forward<Args>(args)...), _ctx(ctx) {}
+			constexpr explicit type(context *ctx, Buff2 &&buff, Args &&...args) noexcept : _cmd(std::forward<Args>(args)...), _ctx(ctx) {}
 
 			friend env tag_invoke(get_env_t, const type &s) noexcept { return {s._ctx}; }
 			template<decays_to<type> T, typename Env>
@@ -609,10 +612,53 @@ namespace rod
 			context *_ctx;
 		};
 
+		/* io_uring scheduler handles. */
+		class file_handle : public _file::system_handle
+		{
+			template<typename Op, typename Buff>
+			using io_sender_t = typename io_sender<Op, Buff>::type;
+
+		public:
+			file_handle() = delete;
+
+			constexpr file_handle(file_handle &&other) noexcept { swap(other); }
+			constexpr file_handle &operator=(file_handle &&other) noexcept { return (swap(other), *this); }
+
+			constexpr explicit file_handle(context *ctx) noexcept : _ctx(ctx) {}
+
+			std::error_code open(const char *path, int mode, int prot) noexcept { return _file::system_handle::open(path, mode, prot | _file::system_handle::nonblock); }
+			std::error_code open(const wchar_t *path, int mode, int prot) noexcept { return _file::system_handle::open(path, mode, prot | _file::system_handle::nonblock); }
+
+			constexpr void swap(file_handle &other) noexcept
+			{
+				_file::system_handle::swap(other);
+				std::swap(_ctx, other._ctx);
+			}
+			friend constexpr void swap(file_handle &a, file_handle &b) noexcept { a.swap(b); }
+
+		public:
+			template<reference_to<file_handle> Hnd, typename Buff>
+			friend auto tag_invoke(async_read_some_t, Hnd &&hnd, Buff &&buff) noexcept { return io_sender_t<async_read_some_t, Buff>{hnd._ctx, hnd.native_handle(), std::forward<Buff>(buff)}; }
+			template<reference_to<file_handle> Hnd, typename Buff>
+			friend auto tag_invoke(async_write_some_t, Hnd &&hnd, Buff &&buff) noexcept { return io_sender_t<async_write_some_t, Buff>{hnd._ctx, hnd.native_handle(), std::forward<Buff>(buff)}; }
+			template<reference_to<file_handle> Hnd, std::convertible_to<std::size_t> Pos, typename Buff>
+			friend auto tag_invoke(async_read_some_at_t, Hnd &&hnd, Pos pos, Buff &&buff) noexcept { return io_sender_t<async_read_some_at_t, Buff>{hnd._ctx, hnd.native_handle(), static_cast<std::size_t>(pos), std::forward<Buff>(buff)}; }
+			template<reference_to<file_handle> Hnd, std::convertible_to<std::size_t> Pos, typename Buff>
+			friend auto tag_invoke(async_write_some_at_t, Hnd &&hnd, Pos pos, Buff &&buff) noexcept { return io_sender_t<async_write_some_at_t, Buff>{hnd._ctx, hnd.native_handle(), static_cast<std::size_t>(pos), std::forward<Buff>(buff)}; }
+
+		private:
+			/* Hide base open so the above overloads will work. */
+			using _file::system_handle::open;
+
+			context *_ctx = nullptr;
+		};
+		/* fifo_handle */
+		/* sock_handle */
+
 		class scheduler
 		{
-			template<typename Op>
-			using io_sender_t = typename io_sender<Op>::type;
+			template<typename Op, typename Buff>
+			using io_sender_t = typename io_sender<Op, Buff>::type;
 
 		public:
 			constexpr explicit scheduler(context *ctx) noexcept : _ctx(ctx) {}
@@ -627,46 +673,14 @@ namespace rod
 			template<decays_to<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
-			template<typename Buff>
-			friend auto tag_invoke(schedule_read_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return io_sender_t<schedule_read_some_t>{sch._ctx, fd, buff}; }
-			template<typename Buff>
-			friend auto tag_invoke(schedule_write_some_t, scheduler sch, int fd, Buff &&buff) noexcept { return io_sender_t<schedule_write_some_t>{sch._ctx, fd, buff}; }
-			template<std::convertible_to<std::size_t> Pos, typename Buff>
-			friend auto tag_invoke(schedule_read_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return io_sender_t<schedule_read_some_at_t>{sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
-			template<std::convertible_to<std::size_t> Pos, typename Buff>
-			friend auto tag_invoke(schedule_write_some_at_t, scheduler sch, int fd, Pos pos, Buff &&buff) noexcept { return io_sender_t<schedule_write_some_at_t>{sch._ctx, fd, static_cast<std::ptrdiff_t>(pos), buff}; }
-
-			template<typename Snd, typename Dst>
-			friend decltype(auto) tag_invoke(async_read_some_t, scheduler sch, Snd &&snd, int fd, Dst &&dst)
+			template<decays_to<scheduler> T>
+			friend result<_file::basic_file<file_handle>, std::error_code> tag_invoke(open_file_t, T &&sch, auto &&path, int mode, int prot) noexcept
 			{
-				return let_value(std::forward<Snd>(snd), [sch, fd, dst = std::forward<Dst>(dst)]()
-				{
-					return schedule_read_some(sch, fd, std::move(dst));
-				});
-			}
-			template<typename Snd, typename Src>
-			friend decltype(auto) tag_invoke(async_write_some_t, scheduler sch, Snd &&snd, int fd, Src &&src)
-			{
-				return let_value(std::forward<Snd>(snd), [sch, fd, src = std::forward<Src>(src)]()
-				{
-					return schedule_write_some(sch, fd, std::move(src));
-				});
-			}
-			template<typename Snd, std::convertible_to<std::size_t> Pos, typename Dst>
-			friend decltype(auto) tag_invoke(async_read_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Dst &&dst)
-			{
-				return let_value(std::forward<Snd>(snd), [sch, fd, pos, dst = std::forward<Dst>(dst)]()
-				{
-					return schedule_read_some_at(sch, fd, pos, std::move(dst));
-				});
-			}
-			template<typename Snd, std::convertible_to<std::size_t> Pos, typename Src>
-			friend decltype(auto) tag_invoke(async_write_some_at_t, scheduler sch, Snd &&snd, int fd, Pos pos, Src &&src)
-			{
-				return let_value(std::forward<Snd>(snd), [sch, fd, pos, src = std::forward<Src>(src)]()
-				{
-					return schedule_write_some_at(sch, fd, pos, std::move(src));
-				});
+				auto file = _file::basic_file<file_handle>{sch._ctx};
+				if (auto err = file.open(path, mode, prot); !err) [[likely]]
+					return file;
+				else
+					return err;
 			}
 
 			/** Returns the current time point of the clock used by the context. */

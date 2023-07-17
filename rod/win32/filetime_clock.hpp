@@ -24,7 +24,7 @@ namespace rod
 		class time_point
 		{
 		public:
-			using duration = typename monotonic_clock::duration;
+			using duration = typename filetime_clock::duration;
 
 			static constexpr time_point max() noexcept { return {std::numeric_limits<rep>::max()}; }
 			static constexpr time_point min() noexcept { return {std::numeric_limits<rep>::min()}; }
@@ -32,7 +32,7 @@ namespace rod
 		public:
 			constexpr time_point() noexcept : _ticks() {}
 			constexpr time_point(rep ticks) noexcept : _ticks(ticks) {}
-			constexpr time_point(std::uint32_t lw, std::uint32_t hw) noexcept : _lw(hw), _hw(hw) {}
+			constexpr time_point(std::uint32_t lw, std::uint32_t hw) noexcept : _lw(lw), _hw(hw) {}
 
 			template<typename Clock, typename Dur>
 			constexpr time_point(const std::chrono::time_point<Clock, Dur> &other) noexcept : time_point(std::chrono::duration_cast<duration>(other.time_since_epoch()).count()) {}
@@ -42,9 +42,9 @@ namespace rod
 			[[nodiscard]] constexpr duration time_since_epoch() const noexcept { return duration{_ticks}; }
 
 			template<typename Rep, typename Ratio>
-			constexpr time_point &operator+=(const std::chrono::duration<Rep, Ratio> &d) noexcept { return (_ticks += std::chrono::duration_cast<duration>(d), *this); }
+			constexpr time_point &operator+=(const std::chrono::duration<Rep, Ratio> &d) noexcept { return (_ticks += std::chrono::duration_cast<duration>(d).count(), *this); }
 			template<typename Rep, typename Ratio>
-			constexpr time_point &operator-=(const std::chrono::duration<Rep, Ratio> &d) noexcept { return (_ticks -= std::chrono::duration_cast<duration>(d), *this); }
+			constexpr time_point &operator-=(const std::chrono::duration<Rep, Ratio> &d) noexcept { return (_ticks -= std::chrono::duration_cast<duration>(d).count(), *this); }
 
 			friend constexpr duration operator-(const time_point &a, const time_point &b) noexcept { return duration{a._ticks - b._ticks}; }
 			template<typename Rep, typename Period>

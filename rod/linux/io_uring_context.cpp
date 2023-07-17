@@ -113,7 +113,7 @@ namespace rod::_io_uring
 		_waitlist_queue.push_back(node);
 	}
 
-	inline bool context::submit_io_event(int op, auto *data, int fd, auto *addr, std::size_t n, std::size_t off) noexcept
+	inline bool context::submit_io_event(int op, void *data, int fd, void *addr, std::size_t n, std::size_t off) noexcept
 	{
 		return submit_sqe([&](io_uring_sqe *sq, std::uint32_t idx) noexcept
 		{
@@ -173,21 +173,21 @@ namespace rod::_io_uring
 		});
 	}
 
-	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept
+	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_t, std::span<std::byte>> cmd) noexcept
 	{
 		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), -1);
 	}
-	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept
+	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_t, std::span<std::byte>> cmd) noexcept
 	{
 		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), -1);
 	}
-	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept
+	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_at_t, std::span<std::byte>> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.off);
+		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.pos);
 	}
-	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept
+	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_at_t, std::span<std::byte>> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.off);
+		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.pos);
 	}
 	bool context::cancel_io_event(operation_base *node) noexcept
 	{
@@ -244,7 +244,7 @@ namespace rod::_io_uring
 				else if (auto res = _event_fd.read(&token, sizeof(token)); res.has_error())
 					throw std::system_error(res.error(), "read(event_fd)");
 				else
-					_wait_pending = false;
+					_queue_active = false;
 				break;
 			}
 			default: /* IO operation event. */
@@ -268,12 +268,8 @@ namespace rod::_io_uring
 				const auto node = _timers.pop_front();
 
 				/* Handle timer cancellation. */
-				if (node->stop_possible())
-				{
-					const auto flags = node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
-					if (flags & flags_t::stop_requested) continue;
-				}
-				schedule_consumer(node);
+				if (!node->stop_possible() || !(node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested))
+					schedule_consumer(node);
 			}
 
 		/* Disarm or start a timeout event. */
@@ -306,10 +302,10 @@ namespace rod::_io_uring
 	inline void context::uring_enter()
 	{
 		const auto has_pending = _sq.pending || !_consumer_queue.empty();
-		if (!has_pending && !_wait_pending) _wait_pending = submit_queue_event();
+		if (!has_pending && !_queue_active) _queue_active = submit_queue_event();
 
 		std::uint32_t count = 0, flags = 0;
-		if (!has_pending && (_wait_pending || _cq.pending + _sq.pending == _cq.size))
+		if (!has_pending && (_queue_active || _cq.pending + _sq.pending == _cq.size))
 		{
 			flags = IORING_ENTER_GETEVENTS;
 			count = 1;
@@ -351,7 +347,7 @@ namespace rod::_io_uring
 			acquire_elapsed_timers();
 
 			/* Handle producer & waitlist queue items. */
-			if (!_wait_pending && !_producer_queue.empty())
+			if (!_queue_active && !_producer_queue.empty())
 				_consumer_queue.merge_back(std::move(_producer_queue));
 			while (!_waitlist_queue.empty() && _sq.pending < _sq.size && _cq.pending + _sq.pending < _cq.size)
 				_waitlist_queue.pop_front()->notify();

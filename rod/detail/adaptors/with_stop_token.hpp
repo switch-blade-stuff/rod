@@ -66,7 +66,7 @@ namespace rod
 				if (!_tok.stop_requested())
 					rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
 				else
-					set_stopped(*this);
+					rod::set_stopped(std::move(receiver_adaptor<type, Rcv>::base()));
 			}
 
 			ROD_NO_UNIQUE_ADDRESS Tok _tok;

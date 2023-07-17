@@ -13,6 +13,13 @@ namespace rod::detail
 	template<typename Node, Node *Node::*Next>
 	struct atomic_queue
 	{
+		void activate() noexcept { head.store(nullptr, std::memory_order_release); }
+		bool try_activate() noexcept
+		{
+			void *old = sentinel();
+			return head.compare_exchange_strong(old, nullptr, std::memory_order_acq_rel);
+		}
+
 		void terminate() noexcept { head.store(sentinel(), std::memory_order_release); }
 		bool try_terminate() noexcept
 		{

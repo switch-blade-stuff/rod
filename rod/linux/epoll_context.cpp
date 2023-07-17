@@ -101,18 +101,18 @@ namespace rod::_epoll
 		_consumer_queue.push_back(node);
 	}
 
-	inline void context::add_event(auto *data, int flags, int fd) noexcept
+	inline void context::submit_event(auto *data, int flags, int fd) noexcept
 	{
 		epoll_event event = {};
 		event.data.ptr = data;
 		event.events = EPOLLRDHUP | EPOLLHUP | flags;
 		epoll_ctl(_epoll_fd.native_handle(), EPOLL_CTL_ADD, fd, &event);
 	}
-	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_t> cmd) noexcept { add_event(node, EPOLLIN, cmd.fd.native_handle()); }
-	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_t> cmd) noexcept { add_event(node, EPOLLOUT, cmd.fd.native_handle()); }
-	void context::add_io(operation_base *node, io_cmd_t<schedule_read_some_at_t> cmd) noexcept { add_event(node, EPOLLIN, cmd.fd.native_handle()); }
-	void context::add_io(operation_base *node, io_cmd_t<schedule_write_some_at_t> cmd) noexcept { add_event(node, EPOLLOUT, cmd.fd.native_handle()); }
-	void context::del_io(int fd) noexcept
+	void context::submit_io_event(operation_base *node, io_cmd<async_read_some_t, std::span<std::byte>> cmd) noexcept { submit_event(node, EPOLLIN, cmd.fd.native_handle()); }
+	void context::submit_io_event(operation_base *node, io_cmd<async_write_some_t, std::span<std::byte>> cmd) noexcept { submit_event(node, EPOLLOUT, cmd.fd.native_handle()); }
+	void context::submit_io_event(operation_base *node, io_cmd<async_read_some_at_t, std::span<std::byte>> cmd) noexcept { submit_event(node, EPOLLIN, cmd.fd.native_handle()); }
+	void context::submit_io_event(operation_base *node, io_cmd<async_write_some_at_t, std::span<std::byte>> cmd) noexcept { submit_event(node, EPOLLOUT, cmd.fd.native_handle()); }
+	void context::cancel_io_event(int fd) noexcept
 	{
 		epoll_event event = {};
 		epoll_ctl(_epoll_fd.native_handle(), EPOLL_CTL_DEL, fd, &event);
@@ -151,12 +151,8 @@ namespace rod::_epoll
 			{
 				const auto node = _timers.pop_front();
 				/* Handle timer cancellation. */
-				if (node->stop_possible())
-				{
-					const auto flags = node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
-					if (flags & flags_t::stop_requested) continue;
-				}
-				schedule_consumer(node);
+				if (!node->stop_possible() || !(node->flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested))
+					schedule_consumer(node);
 			}
 
 		/* Disarm or start a timeout on the timer descriptor. */
@@ -168,15 +164,17 @@ namespace rod::_epoll
 				_timer_started = false;
 				_timer_pending = false;
 			}
+			return;
 		}
-		else if (const auto next_timeout = _timers.front()->timeout; _timer_started && _next_timeout < next_timeout)
+
+		if (const auto next_timeout = _timers.front()->timeout; _timer_started && _next_timeout < next_timeout)
 			_timer_pending = false;
 		else
 		{
-			set_timer(next_timeout);
 			_next_timeout = next_timeout;
-			_timer_pending = false;
+			set_timer(next_timeout);
 		}
+			_timer_pending = false;
 	}
 	inline bool context::set_timer(time_point tp)
 	{
@@ -220,7 +218,7 @@ namespace rod::_epoll
 				if (auto res = _event_fd.read(&token, sizeof(token)); res.has_error())
 					throw std::system_error(res.error(), "read(event_fd)");
 				else
-					_wait_pending = false;
+					_queue_active = false;
 				break;
 			}
 			default: /* IO operation event. */
@@ -253,7 +251,7 @@ namespace rod::_epoll
 			acquire_elapsed_timers();
 
 			/* Acquire pending operations from the producer queue & wait for EPOLL events. */
-			if (_wait_pending || (_wait_pending = acquire_producer_queue()))
+			if (_queue_active || (_queue_active = acquire_producer_queue()))
 				epoll_wait();
 		}
 	}

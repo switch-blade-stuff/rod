@@ -17,6 +17,14 @@ namespace rod::detail
 		constexpr basic_queue(basic_queue &&other) noexcept { swap(other); }
 		constexpr basic_queue &operator=(basic_queue &&other) noexcept { return (swap(other), *this); }
 
+		Node *pop_front() noexcept
+		{
+			const auto node = std::exchange(head, head->*Next);
+			if (!head) tail = {};
+			node->*Next = {};
+			return node;
+		}
+
 		void push_back(Node *node) noexcept
 		{
 			if (tail)
@@ -29,13 +37,6 @@ namespace rod::detail
 		{
 			node->*Next = std::exchange(head, node);
 			if (!tail) tail = node;
-		}
-		[[nodiscard]] Node *pop_front() noexcept
-		{
-			const auto node = std::exchange(head, head->*Next);
-			if (!head) tail = {};
-			node->*Next = {};
-			return node;
 		}
 
 		void merge_back(basic_queue &&other) noexcept

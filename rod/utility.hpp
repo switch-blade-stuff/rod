@@ -238,4 +238,32 @@ namespace rod
 	static void assert_error_code(std::error_code err, const char *msg) { if (err) throw std::system_error(err, msg); }
 	/** @copydoc assert_error_code */
 	static void assert_error_code(std::error_code err, const std::string &msg) { if (err) throw std::system_error(err, msg); }
+
+	namespace detail
+	{
+		template<typename Func>
+		class defer_invoker
+		{
+		public:
+			defer_invoker() = delete;
+			defer_invoker(const defer_invoker &) = delete;
+			defer_invoker &operator=(const defer_invoker &) = delete;
+			defer_invoker(defer_invoker &&) = delete;
+			defer_invoker &operator=(defer_invoker &&) = delete;
+
+			template<typename Func2>
+			constexpr explicit defer_invoker(Func2 &&func) noexcept(std::is_nothrow_constructible_v<Func, Func2>) : _func(std::forward<Func2>(func)) {}
+			constexpr ~defer_invoker() noexcept(nothrow_callable<Func>) { _func(); }
+
+		private:
+			Func _func;
+		};
+	}
+
+	/** Invokes functor \a func on destruction of the returned handle. */
+	template<typename Func>
+	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<detail::defer_invoker<std::decay_t<Func>>, Func>)
+	{
+		return detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
+	}
 }
