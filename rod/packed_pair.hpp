@@ -174,11 +174,10 @@ namespace rod
 
 		constexpr void swap(packed_pair &other) noexcept(std::is_nothrow_swappable_v<T0> && std::is_nothrow_swappable_v<T1>)
 		{
-			using std::swap;
-			swap(first, other.first);
-			swap(second, other.second);
+			adl_swap(first, other.first);
+			adl_swap(second, other.second);
 		}
-		friend constexpr void swap(packed_pair &a, packed_pair &b) noexcept(std::is_nothrow_swappable_v<packed_pair>) { return a.swap(b); }
+		friend constexpr void swap(packed_pair &a, packed_pair &b) noexcept(noexcept(a.swap(b))) { return a.swap(b); }
 
 		ROD_NO_UNIQUE_ADDRESS first_type first;
 		ROD_NO_UNIQUE_ADDRESS second_type second;

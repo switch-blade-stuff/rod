@@ -25,11 +25,11 @@ namespace rod
 		class receiver<Rcv, Shape, Fn>::type : public receiver_adaptor<type, Rcv>
 		{
 			friend receiver_adaptor<type, Rcv>;
-			template<typename, typename, typename>
-			friend struct sender;
 
-			constexpr type(Rcv &&rcv, Shape shape, Fn fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_move_constructible_v<Fn>) : receiver_adaptor<type, Rcv>(std::forward<Rcv>(rcv)), _shape(shape), _fn(std::move(fn)) {}
+		public:
+			constexpr explicit type(Rcv &&rcv, Shape shape, Fn fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_move_constructible_v<Fn>) : receiver_adaptor<type, Rcv>(std::forward<Rcv>(rcv)), _shape(shape), _fn(std::move(fn)) {}
 
+		private:
 			template<typename... Args>
 			void set_value(Args &&...args) && noexcept requires detail::callable<Fn, Shape, Args &...> try
 			{
@@ -54,8 +54,6 @@ namespace rod
 		template<typename Snd, typename Shape, typename Fn>
 		class sender<Snd, Shape, Fn>::type
 		{
-			friend class bulk_t;
-
 		public:
 			using is_sender = std::true_type;
 
@@ -73,8 +71,9 @@ namespace rod
 			template<typename Rcv, typename... Args>
 			constexpr static auto make_rcv(Rcv &&rcv, Args &&...args) { return receiver_t<Rcv>{std::forward<Rcv>(rcv), std::forward<Args>(args)...}; }
 
+		public:
 			template<typename Snd2, typename Fn2>
-			constexpr type(Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _shape(shape) {}
+			constexpr explicit type(Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _shape(shape) {}
 
 		public:
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }

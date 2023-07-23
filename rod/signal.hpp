@@ -128,13 +128,14 @@ namespace rod
 		}
 #endif
 
-		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>) { swap(*this, other); }
-		friend constexpr void swap(basic_signal &a, basic_signal &b) noexcept(std::is_nothrow_swappable_v<storage_t>)
+		constexpr void swap(basic_signal &other) noexcept(std::is_nothrow_swappable_v<storage_t>)
 		{
-			std::swap(a._nodes, b._nodes);
-			std::swap(a._head, b._head);
-			std::swap(a._slot, b._slot);
+			std::swap(_nodes, other._nodes);
+			std::swap(_head, other._head);
+			std::swap(_slot, other._slot);
 		}
+		template<typename F>
+		friend constexpr void swap(basic_signal<F> &a, basic_signal<F> &b) noexcept(noexcept(a.swap(b))) { a.swap(b); }
 
 	private:
 		template<typename... Args>
@@ -160,7 +161,7 @@ namespace rod
 			}
 			return (_head = result);
 		}
-		constexpr void erase(size_type pos) noexcept(std::is_nothrow_destructible_v<value_type>)
+		constexpr void erase(size_type pos)
 		{
 			assert(pos < _nodes.size());
 
@@ -195,6 +196,11 @@ namespace rod
 	 *
 	 * Iterators pointing to listener objects are guaranteed to always remain valid until the listener is
 	 * erased from the signal queue. Stability of pointers and references to listeners is unspecified.
+	 *
+	 * For ABI compatibility purposes, all sink types are equivalent to the following (exposition-only) struct:
+	 * @code{cpp}
+	 * struct sink { void *internal; };
+	 * @endcode
 	 *
 	 * @tparam Signal Signal type associated with the sink. */
 	template<typename Signal>

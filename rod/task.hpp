@@ -333,7 +333,7 @@ namespace rod
 			{
 				if (_handle) _handle.promise().acquire();
 			}
-			shared_task& operator=(const shared_task &other) noexcept
+			shared_task &operator=(const shared_task &other) noexcept
 			{
 				if (_handle != other._handle)
 				{

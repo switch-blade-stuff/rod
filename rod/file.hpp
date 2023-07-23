@@ -37,9 +37,8 @@ namespace rod
 			constexpr void swap(scheduler_handle &other) noexcept(std::is_nothrow_swappable_v<Hnd> && std::is_nothrow_swappable_v<Sch>) { swap(*this, other); }
 			friend constexpr void swap(scheduler_handle &a, scheduler_handle &b) noexcept(std::is_nothrow_swappable_v<Hnd> && std::is_nothrow_swappable_v<Sch>)
 			{
-				using std::swap;
-				swap(static_cast<Hnd &>(a), static_cast<Hnd &>(b));
-				swap(a._sch, b._sch);
+				adl_swap(static_cast<Hnd &>(a), static_cast<Hnd &>(b));
+				adl_swap(a._sch, b._sch);
 			}
 
 		public:

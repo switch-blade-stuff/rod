@@ -271,7 +271,7 @@ namespace rod
 		[[nodiscard]] constexpr bool stop_possible() const noexcept { return _src && _src->stop_possible(); }
 
 		constexpr void swap(in_place_stop_token &other) noexcept { std::swap(_src, other._src); }
-		friend consteval void swap(in_place_stop_token &a, in_place_stop_token &b) noexcept { return a.swap(b); }
+		friend constexpr void swap(in_place_stop_token &a, in_place_stop_token &b) noexcept { return a.swap(b); }
 
 		friend constexpr bool operator==(const in_place_stop_token &, const in_place_stop_token &) noexcept = default;
 

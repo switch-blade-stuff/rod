@@ -82,6 +82,26 @@ namespace rod
 		template<typename... Ts>
 		using concat_tuples_t = typename concat_tuples<Ts...>::type;
 
+		template<typename C>
+		[[nodiscard]] constexpr std::size_t generic_strlen(C *ptr) noexcept
+		{
+			std::size_t i = 0;
+			while (ptr[i] != C{}) ++i;
+			return i;
+		}
+		template<typename C>
+		[[nodiscard]] constexpr std::size_t strlen(C *ptr) noexcept
+		{
+			if (!std::is_constant_evaluated())
+			{
+				if constexpr (std::same_as<C, char>)
+					return std::strlen(ptr);
+				if constexpr (std::same_as<C, wchar_t>)
+					return std::wcslen(ptr);
+			}
+			return generic_strlen(ptr);
+		}
+
 		template<typename F>
 		struct eval_t
 		{
@@ -265,5 +285,68 @@ namespace rod
 	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<detail::defer_invoker<std::decay_t<Func>>, Func>)
 	{
 		return detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
+	}
+
+	namespace detail
+	{
+		template<typename T0, typename T1>
+		struct adl_swappable : std::false_type {};
+		template<typename T0, typename T1>
+		struct nothrow_adl_swappable : std::false_type {};
+
+		template<typename T0, typename T1>
+		inline constexpr bool test_member_swappable(T0 &&a, T1 &&b) noexcept
+		{
+			return requires { std::forward<T0>(a).swap(std::forward<T1>(b)); };
+		}
+		template<typename T0, typename T1>
+		inline constexpr bool test_static_swappable(T0 &&a, T1 &&b) noexcept
+		{
+			using std::swap;
+			return requires { swap(std::forward<T0>(a), std::forward<T1>(b)); };
+		}
+
+		template<typename T0, typename T1>
+		using member_swappable = std::bool_constant<test_member_swappable(std::declval<T0>(), std::declval<T1>())>;
+		template<typename T0, typename T1>
+		using static_swappable = std::bool_constant<test_static_swappable(std::declval<T0>(), std::declval<T1>())>;
+
+		template<typename T0, typename T1> requires member_swappable<T0, T1>::value
+		struct adl_swappable<T0, T1> : std::true_type {};
+		template<typename T0, typename T1> requires static_swappable<T0, T1>::value
+		struct adl_swappable<T0, T1> : std::true_type {};
+
+		template<typename T0, typename T1>
+		inline constexpr bool test_nothrow_member_swappable(T0 &&a, T1 &&b) noexcept
+		{
+			return noexcept(std::forward<T0>(a).swap(std::forward<T1>(b)));
+		}
+		template<typename T0, typename T1>
+		inline constexpr bool test_nothrow_static_swappable(T0 &&a, T1 &&b) noexcept
+		{
+			using std::swap;
+			return noexcept(swap(std::forward<T0>(a), std::forward<T1>(b)));
+		}
+
+		template<typename T0, typename T1>
+		using nothrow_member_swappable = std::bool_constant<test_nothrow_member_swappable(std::declval<T0>(), std::declval<T1>())>;
+		template<typename T0, typename T1>
+		using nothrow_static_swappable = std::bool_constant<test_nothrow_static_swappable(std::declval<T0>(), std::declval<T1>())>;
+
+		template<typename T0, typename T1> requires member_swappable<T0, T1>::value
+		struct nothrow_adl_swappable<T0, T1> : nothrow_member_swappable<T0, T1> {};
+		template<typename T0, typename T1> requires static_swappable<T0, T1>::value
+		struct nothrow_adl_swappable<T0, T1> : nothrow_static_swappable<T0, T1> {};
+	}
+
+	/** Utility used to select either a member overload of `swap` or an ADL overload with associated `std::swap`. */
+	template<typename T0, typename T1> requires detail::adl_swappable<T0, T1>::value
+	inline constexpr void adl_swap(T0 &&a, T1 &&b) noexcept(detail::nothrow_adl_swappable<T0, T1>::value)
+	{
+		using std::swap;
+		if constexpr (!requires { std::forward<T0>(a).swap(std::forward<T1>(b)); })
+			swap(std::forward<T0>(a), std::forward<T1>(b));
+		else
+			std::forward<T0>(a).swap(std::forward<T1>(b));
 	}
 }
