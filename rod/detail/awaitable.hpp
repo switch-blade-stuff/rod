@@ -73,71 +73,6 @@ namespace rod
 
 		template<typename P = undefined_promise>
 		struct undefined_coroutine : std::coroutine_handle<P> { using promise_type = P; };
-
-		/* Promise wrapper with support for custom allocators.
-		 * NOTE: Currently not supported under GCC due to `operator delete` overloading bug. */
-		template<typename Promise, typename Alloc>
-		class with_allocator_promise : public Promise
-		{
-#if !defined(__GNUC__) || defined(__clang__)
-			using alloc_type = typename std::allocator_traits<Alloc>::template rebind_alloc<with_allocator_promise>;
-			using alloc_traits = std::allocator_traits<alloc_type>;
-
-			[[nodiscard]] static constexpr std::size_t align_bytes(std::size_t n) noexcept
-			{
-				const auto mul = sizeof(with_allocator_promise);
-				const auto rem = n % mul;
-				return n + (rem ? mul - rem : 0);
-			}
-
-		public:
-			template<decays_to<Alloc> A, typename... Args>
-			[[nodiscard]] static constexpr void *operator new(std::size_t n, std::allocator_arg_t, A &&a, Args &&...)
-			{
-				if (std::is_constant_evaluated())
-					return ::operator new(n);
-				else
-				{
-					auto alloc = alloc_type{std::forward<A>(a)};
-					const auto num = align_bytes(n) / sizeof(with_allocator_promise);
-					const auto ptr = alloc_traits::allocate(alloc, num);
-					try
-					{
-						std::construct_at(&ptr->_alloc, std::move(alloc));
-						return ptr;
-					}
-					catch (...)
-					{
-						alloc_traits::deallocate(alloc, ptr, num);
-						throw;
-					}
-				}
-			}
-			static constexpr void operator delete(void *mem, std::size_t n)
-			{
-				if (std::is_constant_evaluated())
-					::operator delete(mem);
-				else
-				{
-					const auto ptr = static_cast<with_allocator_promise *>(mem);
-					const auto num = align_bytes(n) / sizeof(with_allocator_promise);
-					auto alloc = std::move(ptr->_alloc);
-					std::destroy_at(&ptr->_alloc);
-					alloc_traits::deallocate(alloc, ptr, num);
-				}
-			}
-
-			constexpr with_allocator_promise() noexcept(std::is_nothrow_default_constructible_v<Promise>) : Promise() {}
-			constexpr with_allocator_promise(const with_allocator_promise &other) noexcept(std::is_nothrow_copy_constructible_v<Promise>) : Promise(other) {}
-			constexpr with_allocator_promise(with_allocator_promise &&other) noexcept(std::is_nothrow_move_constructible_v<Promise>) : Promise(std::move(other)) {}
-			constexpr with_allocator_promise &operator=(const with_allocator_promise &other) noexcept(std::is_nothrow_copy_assignable_v<Promise>) { return (Promise::operator=(other), *this); }
-			constexpr with_allocator_promise &operator=(with_allocator_promise &&other) noexcept(std::is_nothrow_move_assignable_v<Promise>) { return (Promise::operator=(std::move(other)), *this); }
-			constexpr ~with_allocator_promise() {}
-
-		private:
-			union { alloc_type _alloc; };
-#endif
-		};
 	}
 
 	namespace _as_awaitable
@@ -447,5 +382,180 @@ namespace rod
 		std::coroutine_handle<> _cont = {};
 		stop_func _stop_func = {};
 	};
+
+	/** Base type used to implement allocator-aware coroutine promises. */
+	template<typename Promise, typename Alloc = std::allocator<Promise>>
+	class with_allocator_promise;
+
+	namespace detail
+	{
+		template<typename T, typename Alloc>
+		concept with_allocator_awaitable = requires { typename T::template allocator_promise_type<Alloc>; } && std::derived_from<typename T::template allocator_promise_type<Alloc>, with_allocator_promise<typename T::template allocator_promise_type<Alloc>, Alloc>>;
+
+		template<typename Promise, typename Alloc>
+		struct alignas(Alloc) with_allocator_base
+		{
+			using allocator_type = typename std::allocator_traits<Alloc>::template rebind_alloc<Promise>;
+			using traits = std::allocator_traits<allocator_type>;
+
+			[[nodiscard]] static constexpr std::size_t align_size(std::size_t n) noexcept
+			{
+				const auto rem = n % sizeof(Promise);
+				return n + (rem ? sizeof(Promise) - rem : 0);
+			}
+
+			with_allocator_base(const with_allocator_base &) = delete;
+			with_allocator_base &operator=(const with_allocator_base &) = delete;
+			with_allocator_base(with_allocator_base &&) = delete;
+			with_allocator_base &operator=(with_allocator_base &&) = delete;
+
+			constexpr with_allocator_base() noexcept = default;
+			constexpr ~with_allocator_base() noexcept = default;
+		};
+	}
+
+	template<typename Promise, typename Alloc> requires instance_of<Alloc, std::allocator>
+	class with_allocator_promise<Promise, Alloc> : detail::with_allocator_base<Promise, Alloc>
+	{
+	public:
+		template<typename... Args>
+		constexpr void *operator new(std::size_t sz, Args &&...) { return ::operator new(sz, std::align_val_t{alignof(Promise)}); }
+		template<typename... Args>
+		constexpr void operator delete(void *, std::size_t, Args &&...) {}
+
+		constexpr void operator delete(void *ptr, [[maybe_unused]] std::size_t sz)
+		{
+#ifndef __clang__
+			::operator delete(ptr, sz, std::align_val_t{alignof(Promise)});
+#else
+			::operator delete(ptr, std::align_val_t{alignof(Promise)});
+#endif
+		}
+	};
+	template<typename Promise, typename Alloc> requires(!instance_of<Alloc, std::allocator> && std::is_empty_v<Alloc> && std::allocator_traits<Alloc>::is_always_equal::value)
+	class with_allocator_promise<Promise, Alloc> : detail::with_allocator_base<Promise, Alloc>
+	{
+		using base_t = detail::with_allocator_base<Promise, Alloc>;
+		using allocator_type = typename base_t::allocator_type;
+
+		template<typename Alloc2>
+		static constexpr void *allocate(std::size_t sz, Alloc2 &&alloc2)
+		{
+			if (std::is_constant_evaluated())
+				return ::operator new(sz, std::align_val_t{alignof(Promise)});
+			else
+			{
+				auto tmp_alloc = allocator_type{std::forward<Alloc2>(alloc2)};
+				const auto n = base_t::align_size(sz) / sizeof(Promise);
+				return base_t::traits::allocate(tmp_alloc, n);
+			}
+		}
+		static constexpr void deallocate(void *ptr, [[maybe_unused]] std::size_t sz)
+		{
+			if (std::is_constant_evaluated())
+			{
+#ifndef __clang__
+				::operator delete(ptr, sz, std::align_val_t{alignof(Promise)});
+#else
+				::operator delete(ptr, std::align_val_t{alignof(Promise)});
+#endif
+			}
+			else
+			{
+				const auto n = base_t::align_size(sz) / sizeof(Promise);
+				const auto obj = static_cast<Promise *>(ptr);
+
+				auto tmp_alloc = allocator_type{};
+				base_t::traits::deallocate(tmp_alloc, obj, n);
+			}
+		}
+
+	public:
+		template<typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void *operator new(std::size_t sz, std::allocator_arg_t, Alloc2 &&alloc, Args &&...) { return allocate(sz, std::forward<Alloc2>(alloc)); }
+		template<typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void operator delete(void *, std::size_t, std::allocator_arg_t, Alloc2 &&, Args &&...) {}
+
+		template<typename I, typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void *operator new(std::size_t sz, I &&, std::allocator_arg_t, Alloc2 &&alloc, Args &&...) { return allocate(sz, std::forward<Alloc2>(alloc)); }
+		template<typename I, typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void operator delete(void *, std::size_t, I &&, std::allocator_arg_t, Alloc2 &&, Args &&...) {}
+
+		constexpr void operator delete(void *ptr, std::size_t sz) { deallocate(ptr, sz); }
+	};
+	template<typename Promise, typename Alloc> requires(!instance_of<Alloc, std::allocator> && !std::is_empty_v<Alloc> || !std::allocator_traits<Alloc>::is_always_equal::value)
+	class with_allocator_promise<Promise, Alloc> : detail::with_allocator_base<Promise, Alloc>
+	{
+		using base_t = detail::with_allocator_base<Promise, Alloc>;
+		using allocator_type = typename base_t::allocator_type;
+
+		template<typename Alloc2>
+		static constexpr void *allocate(std::size_t sz, Alloc2 &&alloc2)
+		{
+			if (std::is_constant_evaluated())
+				return ::operator new(sz, std::align_val_t{alignof(Promise)});
+			else
+			{
+				const auto n = base_t::align_size(sz + sizeof(allocator_type)) / sizeof(Promise);
+				auto tmp_alloc = allocator_type(std::forward<Alloc2>(alloc2));
+
+				const auto mem = reinterpret_cast<std::byte *>(base_t::traits::allocate(tmp_alloc, n));
+				const auto data = reinterpret_cast<Promise *>(mem + std::max(sizeof(Promise), sizeof(allocator_type)));
+				const auto alloc = reinterpret_cast<allocator_type *>(mem);
+
+				try
+				{
+					std::construct_at(alloc, std::move(tmp_alloc));
+					return data;
+				}
+				catch (...)
+				{
+					base_t::traits::deallocate(tmp_alloc, data, n);
+					throw;
+				}
+			}
+		}
+		static constexpr void deallocate(std::byte *mem, [[maybe_unused]] std::size_t sz)
+		{
+			if (std::is_constant_evaluated())
+			{
+#ifndef __clang__
+				::operator delete(static_cast<void *>(mem), sz, std::align_val_t{alignof(Promise)});
+#else
+				::operator delete(static_cast<void *>(mem), std::align_val_t{alignof(Promise)});
+#endif
+			}
+			else
+			{
+				const auto n = base_t::align_size(sz + sizeof(allocator_type)) / sizeof(Promise);
+				const auto alloc = reinterpret_cast<allocator_type *>(mem - std::max(sizeof(Promise), sizeof(allocator_type)));
+				const auto data = reinterpret_cast<Promise *>(mem);
+
+				auto tmp_alloc = std::move(*alloc);
+				std::destroy_at(alloc);
+				base_t::traits::deallocate(tmp_alloc, data, n);
+			}
+		}
+
+	public:
+		template<typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void *operator new(std::size_t sz, std::allocator_arg_t, Alloc2 &&alloc, Args &&...) { return allocate(sz, std::forward<Alloc2>(alloc)); }
+		template<typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void operator delete(void *, std::size_t, std::allocator_arg_t, Alloc2 &&, Args &&...) {}
+
+		template<typename I, typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void *operator new(std::size_t sz, I &&, std::allocator_arg_t, Alloc2 &&alloc, Args &&...) { return allocate(sz, std::forward<Alloc2>(alloc)); }
+		template<typename I, typename Alloc2, typename... Args> requires std::constructible_from<allocator_type, Alloc2>
+		constexpr void operator delete(void *, std::size_t, I &&, std::allocator_arg_t, Alloc2 &&, Args &&...) {}
+
+		constexpr void operator delete(void *ptr, std::size_t sz) { deallocate(static_cast<std::byte *>(ptr), sz); }
+	};
 }
+
+template<typename T, typename Alloc, typename... Args> requires rod::detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
+struct std::coroutine_traits<T, std::allocator_arg_t, Alloc, Args...> { using promise_type = typename T::template allocator_promise_type<std::decay_t<Alloc>>; };
+template<typename T, typename I, typename Alloc, typename... Args> requires rod::detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
+struct std::coroutine_traits<T, I &, std::allocator_arg_t, Alloc, Args...> { using promise_type = typename T::template allocator_promise_type<std::decay_t<Alloc>>; };
+template<typename T, typename I, typename Alloc, typename... Args> requires rod::detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
+struct std::coroutine_traits<T, I &&, std::allocator_arg_t, Alloc, Args...> { using promise_type = typename T::template allocator_promise_type<std::decay_t<Alloc>>; };
 #endif

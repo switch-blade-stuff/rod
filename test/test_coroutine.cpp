@@ -2,6 +2,9 @@
  * Created by switchblade on 2023-04-09.
  */
 
+#include <memory_resource>
+#include <array>
+
 #include <rod/generator.hpp>
 #include <rod/task.hpp>
 
@@ -36,14 +39,30 @@ int main()
 {
 #ifdef ROD_HAS_COROUTINES
 	[]() -> test_coroutine { TEST_ASSERT((co_await async_return(0)) == 0); }();
-	[]() -> test_coroutine { TEST_ASSERT((co_await async_return(std::allocator_arg, std::allocator<void>{}, 0)) == 0); }();
-
 	{
 		int i = 0, j = 5;
 		auto g = []<typename T>(T i, T j) -> rod::generator<T>
 		{
 			for (; i < j; ++i) co_yield i;
 		}(i, j);
+
+		for (auto curr = g.begin(); curr != g.end(); ++curr, ++i)
+			TEST_ASSERT(*curr == i);
+	}
+
+	std::array<std::byte, 4096> buff = {};
+	{
+		std::pmr::monotonic_buffer_resource res{buff.data(), buff.size()};
+		[&]() -> test_coroutine { TEST_ASSERT((co_await async_return(std::allocator_arg, std::pmr::polymorphic_allocator(&res), 0)) == 0); }();
+	}
+	{
+		std::pmr::monotonic_buffer_resource res{buff.data(), buff.size()};
+
+		int i = 0, j = 5;
+		auto g = []<typename T, typename Alloc>(std::allocator_arg_t, Alloc &&, T i, T j) -> rod::generator<T>
+		{
+			for (; i < j; ++i) co_yield i;
+		}(std::allocator_arg, std::pmr::polymorphic_allocator(&res), i, j);
 
 		for (auto curr = g.begin(); curr != g.end(); ++curr, ++i)
 			TEST_ASSERT(*curr == i);
