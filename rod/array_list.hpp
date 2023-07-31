@@ -652,4 +652,14 @@ namespace rod
 		size_type _data_size = {};
 		size_type _list_size = {};
 	};
+
+	template<typename I, typename S>
+	array_list(I, S) -> array_list<std::iter_value_t<I>>;
+	template<typename I, typename S, typename Alloc = std::allocator<std::iter_value_t<I>>>
+	array_list(I, S, const Alloc &) -> array_list<std::iter_value_t<I>, Alloc>;
+
+	template<typename T>
+	array_list(std::initializer_list<T>) -> array_list<T>;
+	template<typename T, typename Alloc = std::allocator<T>>
+	array_list(std::initializer_list<T>, const Alloc &) -> array_list<T, Alloc>;
 }
