@@ -448,7 +448,7 @@ namespace rod
 			[[nodiscard]] reference operator*() const noexcept { return _handle.promise().value(); }
 			[[nodiscard]] pointer operator->() const noexcept { return std::addressof(operator*()); }
 
-			[[nodiscard]] bool operator==(const iterator &other) const noexcept { return _handle == other._handle; }
+			[[nodiscard]] friend constexpr bool operator==(const iterator &, const iterator &) noexcept = default;
 
 		private:
 			std::coroutine_handle<promise_base<T>> _handle = {};

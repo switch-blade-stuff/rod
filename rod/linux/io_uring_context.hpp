@@ -686,7 +686,7 @@ namespace rod
 			/** Returns the current time point of the clock used by the context. */
 			[[nodiscard]] time_point now() const noexcept { return clock::now(); }
 
-			constexpr bool operator==(const scheduler &) const noexcept = default;
+			[[nodiscard]] friend constexpr bool operator==(const scheduler &, const scheduler &) noexcept = default;
 
 		private:
 			context *_ctx;

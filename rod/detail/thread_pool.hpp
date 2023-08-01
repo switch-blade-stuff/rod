@@ -377,7 +377,7 @@ namespace rod
 		public:
 			constexpr explicit scheduler(thread_pool *pool) noexcept : _pool(pool) {}
 
-			constexpr bool operator==(const scheduler &) const noexcept = default;
+			[[nodiscard]] friend constexpr bool operator==(const scheduler &, const scheduler &) noexcept = default;
 
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }

@@ -364,6 +364,6 @@ namespace rod
 		return {bind_member<Mem>, std::forward<T>(instance)};
 	}
 
-	static_assert(sizeof(delegate<void()>) == sizeof(delegate<int()>));
+	static_assert(alignof(delegate<void()>) == alignof(void *[5]));
 	static_assert(sizeof(delegate<void()>) == sizeof(void *[5]));
 }

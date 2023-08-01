@@ -17,25 +17,23 @@ namespace rod
 		template<typename T>
 		class promise_storage
 		{
-			using state_t = std::optional<T>;
-
 			using lvalue_result = std::add_lvalue_reference_t<T>;
 			using rvalue_result = std::conditional_t<std::is_arithmetic_v<T> || std::is_pointer_v<T>, T, std::add_rvalue_reference_t<T>>;
 
 		public:
 #ifdef NDEBUG
-			[[nodiscard]] lvalue_result result() & { return *_state; }
-			[[nodiscard]] rvalue_result result() && { return *std::move(_state); }
+			[[nodiscard]] lvalue_result result() & { return *_result; }
+			[[nodiscard]] rvalue_result result() && { return *std::move(_result); }
 #else
-			[[nodiscard]] lvalue_result result() & { return _state.value(); }
-			[[nodiscard]] rvalue_result result() && { return std::move(_state).value(); }
+			[[nodiscard]] lvalue_result result() & { return _result.value(); }
+			[[nodiscard]] rvalue_result result() && { return std::move(_result).value(); }
 #endif
 
 			template<typename V> requires std::constructible_from<T, V>
-			constexpr void return_value(V &&value) noexcept(std::is_nothrow_constructible_v<T, V>) { _state.emplace(std::forward<V>(value)); }
+			constexpr void return_value(V &&value) noexcept(std::is_nothrow_constructible_v<T, V>) { _result.emplace(std::forward<V>(value)); }
 
 		private:
-			state_t _state;
+			std::optional<T> _result;
 		};
 		template<typename T>
 		class promise_storage<T &>
@@ -349,7 +347,7 @@ namespace rod
 			/** Releases the underlying coroutine handle. */
 			std::coroutine_handle<> release() { return std::exchange(_handle, std::coroutine_handle<promise_base>{}); }
 
-			[[nodiscard]] constexpr bool operator==(const shared_task &other) const noexcept { return _handle == other._handle; }
+			[[nodiscard]] friend constexpr bool operator==(const shared_task &, const shared_task &) noexcept = default;
 
 			constexpr void swap(shared_task &other) noexcept { std::swap(_handle, other._handle); }
 			friend constexpr void swap(shared_task &a, shared_task &b) noexcept { a.swap(b); }

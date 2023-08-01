@@ -21,8 +21,11 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/thread_pool.hpp
         ${CMAKE_CURRENT_LIST_DIR}/byte_buffer.hpp
         ${CMAKE_CURRENT_LIST_DIR}/io_handle.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/path_base.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/path_view.hpp
         ${CMAKE_CURRENT_LIST_DIR}/file_base.hpp
         ${CMAKE_CURRENT_LIST_DIR}/basic_file.hpp)
 
 list(APPEND ROD_SOURCES
-        ${CMAKE_CURRENT_LIST_DIR}/thread_pool.cpp)
+        ${CMAKE_CURRENT_LIST_DIR}/thread_pool.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/path_base.cpp)

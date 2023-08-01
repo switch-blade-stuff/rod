@@ -413,7 +413,6 @@ namespace rod
 			using io_cmd_t = io_cmd<Op, Buff>;
 
 			static void notify_start(operation_base *ptr) { static_cast<type *>(static_cast<io_operation_base *>(ptr))->start_consumer(); }
-			static void notify_batch(operation_base *ptr) { static_cast<type *>(static_cast<io_operation_base *>(ptr))->batch_consumer(); }
 			static void notify_result(operation_base *ptr) { static_cast<type *>(static_cast<io_operation_base *>(ptr))->complete_result(); }
 			static void notify_partial(operation_base *ptr) { static_cast<type *>(static_cast<io_operation_base *>(ptr))->complete_partial(); }
 			static void notify_stopped(operation_base *ptr) { static_cast<type *>(static_cast<io_stop_operation *>(ptr))->complete_stopped(); }
@@ -664,7 +663,7 @@ namespace rod
 			/** Returns the current time point of the clock used by the context. */
 			[[nodiscard]] time_point now() const noexcept { return clock::now(); }
 
-			constexpr bool operator==(const scheduler &) const noexcept = default;
+			[[nodiscard]] friend constexpr bool operator==(const scheduler &, const scheduler &) noexcept = default;
 
 		private:
 			context *_ctx;

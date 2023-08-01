@@ -238,7 +238,7 @@ namespace rod
 		/** @copydoc erase */
 		constexpr void operator-=(size_type idx) const noexcept(std::is_nothrow_destructible_v<value_type>) { erase(idx); }
 
-		[[nodiscard]] constexpr bool operator==(const sink &) const noexcept = default;
+		[[nodiscard]] friend constexpr bool operator==(const sink &, const sink &) noexcept = default;
 
 	private:
 		Signal *_signal;

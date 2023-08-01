@@ -126,7 +126,7 @@ namespace rod
 			/** Returns the current time point of the clock used by the run loop. */
 			[[nodiscard]] time_point now() const noexcept { return clock::now(); }
 
-			constexpr bool operator==(const scheduler &) const noexcept = default;
+			[[nodiscard]] friend constexpr bool operator==(const scheduler &, const scheduler &) noexcept = default;
 
 		public:
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }

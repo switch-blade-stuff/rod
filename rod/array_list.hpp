@@ -95,7 +95,7 @@ namespace rod
 
 		public:
 			constexpr array_list_iterator() noexcept = default;
-			template<std::same_as<std::add_const_t<T>> U>
+			template<typename U> requires(!std::same_as<T, U> && std::same_as<std::remove_const_t<T>, U>)
 			constexpr array_list_iterator(const array_list_iterator<U, Alloc> &other) noexcept : _node(other._node) {}
 
 			constexpr array_list_iterator &operator++() noexcept
@@ -122,12 +122,12 @@ namespace rod
 				return tmp;
 			}
 
-			[[nodiscard]] constexpr auto get() noexcept { return _node->get(); }
-			[[nodiscard]] constexpr auto operator->() noexcept { return get(); }
-			[[nodiscard]] constexpr auto operator*() noexcept { return *get(); }
+			[[nodiscard]] constexpr decltype(auto) get() noexcept { return _node->get(); }
+			[[nodiscard]] constexpr decltype(auto) operator->() noexcept { return get(); }
+			[[nodiscard]] constexpr decltype(auto) operator*() noexcept { return *get(); }
 
-			[[nodiscard]] constexpr bool operator==(const array_list_iterator &other) noexcept { return _node == other._node; }
-			[[nodiscard]] constexpr bool operator!=(const array_list_iterator &other) noexcept { return _node != other._node; }
+			[[nodiscard]] friend constexpr bool operator==(const array_list_iterator &a, const array_list_iterator &b) noexcept = default;
+			[[nodiscard]] friend constexpr bool operator!=(const array_list_iterator &a, const array_list_iterator &b) noexcept = default;
 
 			constexpr void swap(array_list_iterator &other) noexcept { std::swap(_node, other._node); }
 			friend constexpr void swap(array_list_iterator &a, array_list_iterator &b) noexcept { a.swap(b); }
@@ -484,7 +484,7 @@ namespace rod
 		 * @param args Arguments passed to the constructor of the new element.
 		 * @return Reference to the inserted element. */
 		template<typename... Args>
-		constexpr reference emplace(const_iterator pos, Args &&...args) requires std::constructible_from<value_type, Args...> { return emplace_at(pos._node - _data, std::forward<Args>(args)...); }
+		constexpr reference emplace(const_iterator pos, Args &&...args) requires std::constructible_from<value_type, Args...> { return *emplace_at(pos._node - _data, std::forward<Args>(args)...); }
 
 		/** Erases the last element of the list. */
 		constexpr void pop_back() noexcept(std::is_nothrow_destructible_v<value_type>) { erase(header_t::prev()); }
@@ -510,10 +510,8 @@ namespace rod
 		/** Returns a copy of the list's allocator. */
 		[[nodiscard]] constexpr allocator_type get_allocator() const noexcept(std::is_nothrow_constructible_v<allocator_type, const node_allocator &>) { return _alloc; }
 
-		/** Compares `this` with \a other using `std::lexicographical_compare`. */
-		[[nodiscard]] constexpr bool operator==(const array_list &other) const { return std::lexicographical_compare(begin(), end(), other.begin(), other.end(), std::equal_to<>{}); }
-		/** Compares `this` with \a other using `std::lexicographical_compare_three_way`. */
-		[[nodiscard]] constexpr auto operator<=>(const array_list &other) const { return std::lexicographical_compare_three_way(begin(), end(), other.begin(), other.end(), std::compare_three_way{}); }
+		[[nodiscard]] friend constexpr bool operator==(const array_list &a, const array_list &b) noexcept { return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), std::equal_to<>{}); }
+		[[nodiscard]] friend constexpr auto operator<=>(const array_list &a, const array_list &b) noexcept { return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end(), std::compare_three_way{}); }
 
 		constexpr void swap(array_list &other) noexcept(std::allocator_traits<node_allocator>::is_always_equal::value || std::is_nothrow_swappable_v<node_allocator>)
 		{
@@ -554,7 +552,7 @@ namespace rod
 		}
 
 		template<typename... Args>
-		constexpr header_pointer emplace_at(size_type pos, Args &&...args)
+		constexpr iterator emplace_at(size_type pos, Args &&...args)
 		{
 			const auto node = acquire_node();
 			try
@@ -568,7 +566,7 @@ namespace rod
 				throw;
 			}
 		}
-		constexpr header_pointer destroy_at(size_type pos)
+		constexpr iterator destroy_at(size_type pos)
 		{
 			const auto node = _data + pos;
 			const auto next = unlink_node(node);
@@ -606,7 +604,7 @@ namespace rod
 
 		constexpr void reallocate()
 		{
-			const auto new_size = std::max(_data_size * 2, 1);
+			const auto new_size = std::max<size_type>(_data_size * 2, 1);
 			const auto new_data = std::allocator_traits<node_allocator>::allocate(_alloc, new_size);
 
 			try
@@ -633,7 +631,10 @@ namespace rod
 		constexpr auto acquire_node()
 		{
 			if (_free != nullptr)
-				return std::exchange(_free, _free->next());
+			{
+				auto next = node_pointer(_free->next());
+				return std::exchange(_free, next);
+			}
 
 			if (_list_size >= _data_size)
 				reallocate();
