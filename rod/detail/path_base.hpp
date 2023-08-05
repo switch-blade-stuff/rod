@@ -520,8 +520,10 @@ namespace rod::fs
 			}
 #else
 			template<typename C = value_type>
-			static constexpr size_type root_name_size(std::basic_string_view<C> path, format fmt) noexcept
+			static constexpr size_type root_name_size(std::basic_string_view<C>, format) noexcept
 			{
+				/* Non-windows paths do not supportdrive letters or UNC syntax. */
+				return 0;
 			}
 #endif
 
@@ -971,29 +973,29 @@ namespace rod::fs
 
 		/** Assigns path contents from characters in range [\a first, \a last) \a src. */
 		template<std::forward_iterator I, std::sentinel_for<I> S> requires detail::path_char<std::iter_value_t<I>>
-		constexpr path &assign(I first, S last) { return assign_native(make_string_buff(first, last)); }
+		constexpr path &assign(I first, S last) { return assign_native(std::ranges::subrange(first, last)); }
 		/** Assigns path contents from characters in range [\a first, \a last) \a src using locale \a loc for encoding conversion. */
 		template<std::forward_iterator I, std::sentinel_for<I> S> requires detail::path_char<std::iter_value_t<I>>
-		constexpr path &assign(I first, S last, const std::locale &loc) { return assign_native(make_string_buff(first, last), loc); }
+		constexpr path &assign(I first, S last, const std::locale &loc) { return assign_native(std::ranges::subrange(first, last), loc); }
 
 		/** Clears contents of the path. */
 		constexpr void clear() noexcept { _value.clear(); }
 
 	private:
 		template<typename Src>
-		constexpr path &assign_native(Src &&src, const std::locale &loc)
-		{
-			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
-				_value.assign(make_native_string(std::forward<Src>(src), loc));
-			else
-				_value.assign(make_string_buff(std::forward<Src>(src), loc));
-			return *this;
-		}
-		template<typename Src>
 		constexpr path &assign_native(Src &&src)
 		{
 			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
 				_value.assign(make_native_string(std::forward<Src>(src)));
+			else
+				_value.assign(make_string_buff(std::forward<Src>(src)));
+			return *this;
+		}
+		template<typename Src>
+		constexpr path &assign_native(Src &&src, const std::locale &loc)
+		{
+			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
+				_value.assign(make_native_string(std::forward<Src>(src), loc));
 			else
 				_value.assign(make_string_buff(std::forward<Src>(src)));
 			return *this;
@@ -1019,9 +1021,16 @@ namespace rod::fs
 		/** Appends character range \a src to string representation of `this`. */
 		template<detail::path_source Src>
 		path &concat(Src &&src) { return concat_native(std::forward<Src>(src)); }
+		/** Appends character range \a src to string representation of `this` using locale \a loc for encoding conversion. */
+		template<detail::path_source Src>
+		path &concat(Src &&src, const std::locale &loc) { return concat_native(std::forward<Src>(src), loc); }
+
 		/** Appends characters in range [\a first, \a last) to string representation of `this`. */
 		template<std::forward_iterator I, std::sentinel_for<I> S> requires detail::path_char<std::iter_value_t<I>>
-		path &concat(I first, S last) { return concat_native(make_string_buff(first, last)); }
+		path &concat(I first, S last) { return concat_native(std::ranges::subrange(first, last)); }
+		/** Appends characters in range [\a first, \a last) to string representation of `this` using locale \a loc for encoding conversion. */
+		template<std::forward_iterator I, std::sentinel_for<I> S> requires detail::path_char<std::iter_value_t<I>>
+		path &concat(I first, S last, const std::locale &loc) { return concat_native(std::ranges::subrange(first, last), loc); }
 
 	private:
 		template<typename Src>
@@ -1029,6 +1038,15 @@ namespace rod::fs
 		{
 			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
 				_value.append(make_native_string(std::forward<Src>(src)));
+			else
+				_value.append(make_string_buff(std::forward<Src>(src)));
+			return *this;
+		}
+		template<typename Src>
+		path &concat_native(Src &&src, const std::locale &loc)
+		{
+			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
+				_value.append(make_native_string(std::forward<Src>(src), loc));
 			else
 				_value.append(make_string_buff(std::forward<Src>(src)));
 			return *this;
@@ -1052,10 +1070,10 @@ namespace rod::fs
 
 		/** Appends characters in range [\a first, \a last) to `this`. */
 		template<std::forward_iterator I, std::sentinel_for<I> S> requires detail::path_char<std::iter_value_t<I>>
-		path &append(I first, S last) { return append_native(make_string_buff(first, last)); }
+		path &append(I first, S last) { return append_native(std::ranges::subrange(first, last)); }
 		/** Appends characters in range [\a first, \a last) to `this` using locale \a loc for encoding conversion. */
 		template<std::forward_iterator I, std::sentinel_for<I> S> requires detail::path_char<std::iter_value_t<I>>
-		path &append(I first, S last, const std::locale &loc) { return append_native(make_string_buff(first, last, loc)); }
+		path &append(I first, S last, const std::locale &loc) { return append_native(std::ranges::subrange(first, last), loc); }
 
 	private:
 		template<typename Str>
@@ -1090,18 +1108,18 @@ namespace rod::fs
 		}
 
 		template<typename Src>
-		path &append_native(Src &&src, const std::locale &loc)
-		{
-			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
-				return append_string(make_native_string(std::forward<Src>(src), loc));
-			else
-				return append_string(make_string_buff(std::forward<Src>(src), loc));
-		}
-		template<typename Src>
 		path &append_native(Src &&src)
 		{
 			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
 				return append_string(make_native_string(std::forward<Src>(src)));
+			else
+				return append_string(make_string_buff(std::forward<Src>(src)));
+		}
+		template<typename Src>
+		path &append_native(Src &&src, const std::locale &loc)
+		{
+			if constexpr (!decays_to<detail::path_source_value_t<std::decay_t<Src>>, value_type>)
+				return append_string(make_native_string(std::forward<Src>(src), loc));
 			else
 				return append_string(make_string_buff(std::forward<Src>(src)));
 		}
@@ -1355,7 +1373,7 @@ namespace rod::fs
 			return *this;
 		}
 		/** Replaces extension component of the path with \a other. */
-		path &replace_extension(const path &other = path()) noexcept
+		path &replace_extension(const path &other = path())
 		{
 			/* Remove extension & append a dot it `other` does not have one. */
 			remove_extension();
@@ -1384,7 +1402,7 @@ namespace rod::fs
 
 	private:
 		template<typename Src, typename C = detail::path_source_value_t<std::decay_t<Src>>>
-		[[nodiscard]] constexpr int compare_native(const Src &src, format fmt) const noexcept((std::is_pointer_v<Src> || std::ranges::contiguous_range<Src>) && decays_to<C, value_type>)
+		[[nodiscard]] constexpr int compare_native(const Src &src, format fmt) const noexcept(decays_to<C, value_type> && noexcept(make_string_buff(src)))
 		{
 			if constexpr (!decays_to<C, value_type>)
 				return path_base::compare<value_type>(_value, formatting(), make_native_string(src), fmt);
