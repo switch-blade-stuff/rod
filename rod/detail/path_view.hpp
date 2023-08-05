@@ -87,10 +87,10 @@ namespace rod::fs
 		/** Initializes path component from path \a p and format \a fmt. */
 		path_view_component(const path &p) noexcept : path_view_component(p._value.data(), p._value.size(), true, p.formatting()) {}
 		/** Initializes a path component from string \a str and format \a fmt. */
-		template<typename C = path_base::value_type, typename T = std::char_traits<C>, typename Alloc = std::allocator<C>> requires detail::path_char_type<C>
+		template<typename C = path_base::value_type, typename T = std::char_traits<C>, typename Alloc = std::allocator<C>> requires detail::path_char<C>
 		constexpr path_view_component(const std::basic_string<C, T, Alloc> &str, format fmt = binary_format) noexcept : path_view_component(str.data(), str.size(), true, fmt) {}
 		/** Initializes a path component from string view \a str, null-termination flag \a term and format \a fmt. */
-		template<typename C = path_base::value_type, typename T = std::char_traits<C>> requires detail::path_char_type<C>
+		template<typename C = path_base::value_type, typename T = std::char_traits<C>> requires detail::path_char<C>
 		constexpr path_view_component(std::basic_string_view<C, T> str, bool term, format fmt = binary_format) noexcept : path_view_component(str.data(), str.size(), term, fmt) {}
 
 		constexpr path_view_component &operator=(const path_view_component &) noexcept = default;
