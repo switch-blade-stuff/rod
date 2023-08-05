@@ -550,14 +550,15 @@ namespace rod::fs
 			template<typename C = value_type>
 			static constexpr bool contains_root(std::basic_string_view<C> path, format fmt) noexcept
 			{
-				for (auto pos = find_relative_path(path, fmt); pos != path.size();)
+				for (auto pos = find_relative_path(path, fmt); pos < path.size();)
 				{
-					const auto end = lfind_separator(path, fmt, pos);
+					auto end = lfind_separator(path, fmt, pos);
 					if (root_name_size(path.substr(pos, end), fmt))
 						return true;
 
-					for (pos = end + 1; pos != path.size(); ++pos)
-						if (!is_separator(path[pos], fmt)) break;
+					while (end < path.size() && is_separator(path[end], fmt))
+						++end;
+					pos = end;
 				}
 				return false;
 			}
@@ -770,8 +771,10 @@ namespace rod::fs
 						return {};
 					}
 
-				const auto end = lfind_separator(base, fmt, pos - base.data());
-				return {pos, base.data() + end};
+				if (const auto end = lfind_separator(base, fmt, pos - base.data()); end == std::basic_string_view<C>::npos)
+					return {pos, base.size() - (pos - base.data())};
+				else
+					return {pos, base.data() + end};
 			}
 			template<typename C = value_type>
 			static constexpr std::basic_string_view<C> iter_prev(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, format fmt) noexcept
@@ -1307,7 +1310,7 @@ namespace rod::fs
 
 		[[nodiscard]] friend path operator+(const path &a, const path &b) { return path(a) += b; }
 		template<detail::path_source_type Src>
-		[[nodiscard]] friend path operator+(const path &a, Src &&b) { return path(a) /= std::forward<Src>(b); }
+		[[nodiscard]] friend path operator+(const path &a, Src &&b) { return path(a) += std::forward<Src>(b); }
 
 		[[nodiscard]] friend constexpr bool operator==(const path &a, const path &b) noexcept { return a.native() == b.native(); }
 		[[nodiscard]] friend constexpr auto operator<=>(const path &a, const path &b) noexcept { return a.native() <=> b.native(); }

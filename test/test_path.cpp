@@ -45,4 +45,15 @@ int main()
 	TEST_ASSERT(path.filename() == "name3.ext");
 	path.remove_stem();
 	TEST_ASSERT(path.filename() == ".ext");
+
+	TEST_ASSERT(rod::fs::path("/a/d").lexically_relative("/a/b/c") == rod::fs::path("../../d").lexically_normal());
+	TEST_ASSERT(rod::fs::path("/a/b/c").lexically_relative("/a/d") == rod::fs::path("../b/c").lexically_normal());
+
+	TEST_ASSERT(rod::fs::path("a/b/c").lexically_relative("a/b/c/x/y") == rod::fs::path("../..").lexically_normal());
+	TEST_ASSERT(rod::fs::path("a/b/c").lexically_relative("a/b/c") == rod::fs::path(".").lexically_normal());
+	TEST_ASSERT(rod::fs::path("a/b/c").lexically_relative("a") == rod::fs::path("b/c").lexically_normal());
+
+	TEST_ASSERT(rod::fs::path("a/b").lexically_normal().lexically_proximate("/a/b") == rod::fs::path("a/b").lexically_normal());
+	TEST_ASSERT(rod::fs::path("a/b").lexically_relative("c/d") == rod::fs::path("../../a/b").lexically_normal());
+	TEST_ASSERT(rod::fs::path("a/b").lexically_relative("/a/b") == rod::fs::path());
 }
