@@ -1236,13 +1236,32 @@ namespace rod::fs
 #endif
             return *this;
         }
+
 		/** Removes the file name component of the path. */
 		constexpr path &remove_filename() noexcept
 		{
             _value.erase(find_file_name<value_type>(_value, formatting()));
             return *this;
         }
-		/** Removes the file extension component of the path. */
+		/** Replaces file name component of the path with \a other. */
+		path &replace_filename(const path &other)
+		{
+            remove_filename();
+            return operator/=(other);
+        }
+
+		/** Removes the file stem component of the path. */
+		constexpr path &remove_stem() noexcept
+		{
+			const auto name_start = find_file_name<value_type>(_value, formatting());
+			auto name_view = string_view_type(_value.data() + name_start, _value.size() - name_start);
+#ifdef ROD_WIN32
+			name_view = name_view.substr(0, find_file_ads<value_type>(name_view));
+#endif
+			_value.erase(name_start, file_stem_size<value_type>(name_view));
+			return *this;
+		}
+		/** Removes the extension component of the path. */
 		constexpr path &remove_extension() noexcept
 		{
 			const auto name_start = find_file_name<value_type>(_value, formatting());
@@ -1254,12 +1273,17 @@ namespace rod::fs
 			return *this;
 		}
 
-		/** Replaces file name component of the path with \a other. */
-		path &replace_filename(const path &other)
+		/** Replaces file stem component of the path with \a other. */
+		path &replace_stem(const path &other = path())
 		{
-            remove_filename();
-            return operator/=(other);
-        }
+			const auto name_start = find_file_name<value_type>(_value, formatting());
+			auto name_view = string_view_type(_value.data() + name_start, _value.size() - name_start);
+#ifdef ROD_WIN32
+			name_view = name_view.substr(0, find_file_ads<value_type>(name_view));
+#endif
+			_value.replace(name_start, file_stem_size<value_type>(name_view), other._value);
+			return *this;
+		}
 		/** Replaces extension component of the path with \a other. */
 		path &replace_extension(const path &other = path()) noexcept
 		{

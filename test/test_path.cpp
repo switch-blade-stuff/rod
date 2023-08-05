@@ -29,10 +29,20 @@ int main()
 
 	path += ".ext2";
 	TEST_ASSERT(path.extension() == ".ext2");
-	path.replace_extension();
+	path.remove_extension();
 	TEST_ASSERT(path.extension() == ".ext1");
 	path.replace_extension("ext");
 	TEST_ASSERT(path.extension() == ".ext");
-	path.replace_extension();
+	path.remove_extension();
 	TEST_ASSERT(path.extension() == "");
+
+	path = "name.ext";
+	path.replace_stem("name2");
+	TEST_ASSERT(path.filename() == "name2.ext");
+	path.replace_filename("name3");
+	TEST_ASSERT(path.filename() == "name3");
+	path.replace_extension(".ext");
+	TEST_ASSERT(path.filename() == "name3.ext");
+	path.remove_stem();
+	TEST_ASSERT(path.filename() == ".ext");
 }
