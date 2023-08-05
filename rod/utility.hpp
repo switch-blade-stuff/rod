@@ -8,6 +8,9 @@
 #include <exception>
 #include <variant>
 
+#include <cstring>
+#include <cwchar>
+
 #include "tag.hpp"
 
 namespace rod
@@ -82,24 +85,50 @@ namespace rod
 		template<typename... Ts>
 		using concat_tuples_t = typename concat_tuples<Ts...>::type;
 
-		template<typename C>
-		[[nodiscard]] constexpr std::size_t generic_strlen(C *ptr) noexcept
+		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t generic_strlen(I first, S last) noexcept
 		{
 			std::size_t i = 0;
-			while (ptr[i] != C{}) ++i;
+			while (first++ != last && *first != C{})
+				i += 1;
 			return i;
 		}
-		template<typename C>
-		[[nodiscard]] constexpr std::size_t strlen(C *ptr) noexcept
+		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t strlen(I first, S last) noexcept
 		{
-			if (!std::is_constant_evaluated())
-			{
-				if constexpr (std::same_as<C, char>)
-					return std::strlen(ptr);
-				if constexpr (std::same_as<C, wchar_t>)
-					return std::wcslen(ptr);
-			}
-			return generic_strlen(ptr);
+#if defined(ROD_WIN32) || defined(_GNU_SOURCE) || _POSIX_C_SOURCE >= 200809L
+			if constexpr (std::is_pointer_v<I>)
+				if (!std::is_constant_evaluated())
+				{
+					if constexpr (std::same_as<C, char>)
+						return strnlen(first, static_cast<std::size_t>(last - first));
+					if constexpr (std::same_as<C, wchar_t>)
+						return wcsnlen(first, static_cast<std::size_t>(last - first));
+				}
+#endif
+			return generic_strlen(first, last);
+		}
+
+		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t generic_strlen(I first) noexcept
+		{
+			std::size_t i = 0;
+			while (*first++ != C{})
+				i += 1;
+			return i;
+		}
+		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t strlen(I first) noexcept
+		{
+			if constexpr (std::is_pointer_v<I>)
+				if (!std::is_constant_evaluated())
+				{
+					if constexpr (std::same_as<C, char>)
+						return std::strlen(first);
+					if constexpr (std::same_as<C, wchar_t>)
+						return std::wcslen(first);
+				}
+			return generic_strlen(first);
 		}
 
 		template<typename F>

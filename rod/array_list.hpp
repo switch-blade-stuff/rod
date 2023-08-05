@@ -15,21 +15,28 @@ namespace rod
 
 	namespace detail
 	{
-		template<typename Alloc>
 		struct array_list_header
 		{
-			using difference_type = typename std::allocator_traits<Alloc>::difference_type;
-
 			constexpr array_list_header() noexcept = default;
-			constexpr array_list_header(array_list_header &&other) noexcept : next_off(other.next_off), prev_off(other.prev_off) {}
+			array_list_header(array_list_header &&other) noexcept
+			{
+				if (other.next())
+				{
+					other.next()->prev(this);
+					next(other.next());
+				}
+				if (other.prev())
+				{
+					other.prev()->next(this);
+					prev(other.prev());
+				}
+			}
 
-			constexpr auto next() noexcept { return this + next_off; }
-			constexpr auto next() const noexcept { return this + next_off; }
-			constexpr void next(const array_list_header *node) noexcept { next_off = node - this; }
+			array_list_header *next() const noexcept { return reinterpret_cast<array_list_header *>(reinterpret_cast<std::intptr_t>(this) + next_off); }
+			void next(const array_list_header *node) noexcept { next_off = reinterpret_cast<std::intptr_t>(node) - reinterpret_cast<std::intptr_t>(this); }
 
-			constexpr auto prev() noexcept { return this - prev_off; }
-			constexpr auto prev() const noexcept { return this - prev_off; }
-			constexpr void prev(const array_list_header *node) noexcept { prev_off = this - node; }
+			array_list_header *prev() const noexcept { return reinterpret_cast<array_list_header *>(reinterpret_cast<std::intptr_t>(this) - prev_off); }
+			void prev(const array_list_header *node) noexcept { prev_off = reinterpret_cast<std::intptr_t>(this) - reinterpret_cast<std::intptr_t>(node); }
 
 			constexpr void swap(array_list_header &other)
 			{
@@ -37,12 +44,12 @@ namespace rod
 				std::swap(prev_off, other.prev_off);
 			}
 
-			difference_type next_off = {};
-			difference_type prev_off = {};
+			std::intptr_t next_off = {};
+			std::intptr_t prev_off = {};
 		};
 
 		template<typename T, typename Alloc>
-		struct array_list_node : array_list_header<Alloc>
+		struct array_list_node : array_list_header
 		{
 			template<typename... Args>
 			constexpr explicit array_list_node(Args &&...args) : value(std::forward<Args>(args)...) {}
@@ -53,7 +60,7 @@ namespace rod
 			T value;
 		};
 		template<typename T, typename Alloc> requires(std::is_object_v<T> && !std::is_final_v<T>)
-		struct array_list_node<T, Alloc> : array_list_header<Alloc>, T
+		struct array_list_node<T, Alloc> : array_list_header, T
 		{
 			template<typename... Args>
 			constexpr explicit array_list_node(Args &&...args) : T(std::forward<Args>(args)...) {}
@@ -85,7 +92,7 @@ namespace rod
 			using iterator_category = std::bidirectional_iterator_tag;
 
 		private:
-			using header_t = detail::array_list_header<Alloc>;
+			using header_t = detail::array_list_header;
 			using node_t = detail::array_list_node<value_type, Alloc>;
 
 			using header_pointer = select_allocator_pointer_t<copy_cv_t<T, header_t>, typename std::allocator_traits<Alloc>::template rebind_traits<header_t>>;
@@ -141,9 +148,9 @@ namespace rod
 	 * @tparam T Value type stored by the list.
 	 * @tparam Alloc Allocator used to allocate list buffer. */
 	template<typename T, typename Alloc = std::allocator<T>>
-	class array_list : detail::array_list_header<Alloc>
+	class array_list
 	{
-		using header_t = detail::array_list_header<Alloc>;
+		using header_t = detail::array_list_header;
 		using node_t = detail::array_list_node<T, Alloc>;
 
 		using header_pointer = typename std::allocator_traits<Alloc>::template rebind_traits<header_t>::pointer;
@@ -173,9 +180,9 @@ namespace rod
 
 	public:
 		/** Initializes an empty list. */
-		constexpr array_list() noexcept(std::is_nothrow_default_constructible_v<node_allocator>) = default;
+		constexpr array_list() noexcept(std::is_nothrow_default_constructible_v<node_allocator>) : _header(), _data(nullptr), _free(end()._node) {}
 		/** Initializes an empty list using allocator \a alloc. */
-		constexpr array_list(const allocator_type &alloc) noexcept(std::is_nothrow_constructible_v<node_allocator, const allocator_type &>) : _alloc(alloc) {}
+		constexpr array_list(const allocator_type &alloc) noexcept(std::is_nothrow_constructible_v<node_allocator, const allocator_type &>) : _alloc(alloc), _header(), _data(nullptr), _free(end()._node) {}
 
 		/** Copy-constructs a list from \a other. */
 		constexpr array_list(const array_list &other) : array_list(other, std::allocator_traits<allocator_type>::select_on_container_copy_construction(other.get_allocator())) {}
@@ -317,28 +324,28 @@ namespace rod
 		}
 
 		/** Returns iterator to the first element of the list. */
-		[[nodiscard]] constexpr iterator begin() noexcept { return header_t::next(); }
+		[[nodiscard]] iterator begin() noexcept { return _header.next(); }
 		/** Returns const iterator to the first element of the list. */
-		[[nodiscard]] constexpr const_iterator begin() const noexcept { return cbegin(); }
+		[[nodiscard]] const_iterator begin() const noexcept { return cbegin(); }
 		/** @copydoc begin */
-		[[nodiscard]] constexpr const_iterator cbegin() const noexcept { return header_t::next(); }
+		[[nodiscard]] const_iterator cbegin() const noexcept { return _header.next(); }
 
 		/** Returns iterator one past the last element of the list. */
-		[[nodiscard]] constexpr iterator end() noexcept { return this; }
+		[[nodiscard]] iterator end() noexcept { return &_header; }
 		/** Returns const iterator one past the last element of the list. */
-		[[nodiscard]] constexpr const_iterator end() const noexcept { return cend(); }
+		[[nodiscard]] const_iterator end() const noexcept { return cend(); }
 		/** @copydoc end */
-		[[nodiscard]] constexpr const_iterator cend() const noexcept { return this; }
+		[[nodiscard]] const_iterator cend() const noexcept { return &_header; }
 
 		/** Returns reference to the first element of the list. */
-		[[nodiscard]] constexpr reference front() noexcept { return *node_pointer(header_t::next())->get(); }
+		[[nodiscard]] reference front() noexcept { return *node_pointer(_header.next())->get(); }
 		/** Returns const reference to the first element of the list. */
-		[[nodiscard]] constexpr const_reference front() const noexcept { return *const_node_pointer(header_t::next())->get(); }
+		[[nodiscard]] const_reference front() const noexcept { return *const_node_pointer(_header.next())->get(); }
 
 		/** Returns reference to the last element of the list. */
-		[[nodiscard]] constexpr reference back() noexcept { return *node_pointer(header_t::prev())->get(); }
+		[[nodiscard]] reference back() noexcept { return *node_pointer(_header.prev())->get(); }
 		/** Returns const reference to the last element of the list. */
-		[[nodiscard]] constexpr const_reference back() const noexcept { return *const_node_pointer(header_t::prev())->get(); }
+		[[nodiscard]] const_reference back() const noexcept { return *const_node_pointer(_header.prev())->get(); }
 
 		/** Checks if the list is empty. */
 		[[nodiscard]] constexpr bool empty() const noexcept { return size() == 0; }
@@ -360,7 +367,7 @@ namespace rod
 
 			try
 			{
-				for (header_pointer pos = header_pointer(header_t::next()), next; pos != this; pos = next)
+				for (header_pointer pos = header_pointer(_header.next()), next; pos != &_header; pos = next)
 				{
 					const auto src = node_pointer(pos);
 					const auto dst = new_data + src - _data;
@@ -386,18 +393,18 @@ namespace rod
 		{
 			reserve(n);
 			while (_list_size < n)
-				emplace_at(_list_size);
+				emplace_back();
 			while (_list_size > n)
-				destroy_at(_list_size);
+				pop_back();
 		}
 		/** Resizes the list to contain \a n elements. New elements are copy-initialized from \a val. */
 		constexpr void resize(size_type n, const_reference val)
 		{
 			reserve(n);
 			while (_list_size < n)
-				emplace_at(_list_size, val);
+				push_back(val);
 			while (_list_size > n)
-				destroy_at(_list_size);
+				pop_back();
 		}
 
 		/** Erases all elements of the list. */
@@ -406,40 +413,40 @@ namespace rod
 			for (auto pos = begin(); pos != end(); ++pos)
 				std::destroy_at(pos.get());
 
-			header_t::next(this);
-			header_t::prev(this);
-			_free = nullptr;
+			_header.next(&_header);
+			_header.prev(&_header);
+			_free = end()._node;
 			_list_size = {};
 		}
 
 		/** Inserts a copy-constructed element at the end of the list.
 		 * @param val Value passed to the copy constructor of the new element.
 		 * @return Iterator to the inserted element. */
-		constexpr iterator push_back(const_reference val) { return insert(cend(), val); }
+		iterator push_back(const_reference val) { return insert(cend(), val); }
 		/** Inserts a copy-constructed element at the start of the list.
 		 * @param val Value passed to the copy constructor of the new element.
 		 * @return Iterator to the inserted element. */
-		constexpr iterator push_front(const_reference val) { return insert(cbegin(), val); }
+		iterator push_front(const_reference val) { return insert(cbegin(), val); }
 
 		/** Inserts a move-constructed element at the end of the list.
 		 * @param val Value passed to the move constructor of the new element.
 		 * @return Iterator to the inserted element. */
-		constexpr iterator push_back(value_type &&val) { return insert(cend(), std::forward<value_type>(val)); }
+		iterator push_back(value_type &&val) { return insert(cend(), std::forward<value_type>(val)); }
 		/** Inserts a move-constructed element at the start of the list.
 		 * @param val Value passed to the move constructor of the new element.
 		 * @return Iterator to the inserted element. */
-		constexpr iterator push_front(value_type &&val) { return insert(cbegin(), std::forward<value_type>(val)); }
+		iterator push_front(value_type &&val) { return insert(cbegin(), std::forward<value_type>(val)); }
 
 		/** Inserts a copy-constructed element at the specified position within the list.
 		 * @param pos Position within the list at which to insert the element.
 		 * @param val Value passed to the copy constructor of the new element.
 		 * @return Iterator to the inserted element. */
-		constexpr iterator insert(const_iterator pos, const_reference val) { return emplace(pos, val); }
+		iterator insert(const_iterator pos, const_reference val) { return emplace(pos, val); }
 		/** Inserts a move-constructed element at the specified position within the list.
 		 * @param pos Position within the list at which to insert the element.
 		 * @param val Value passed to the move constructor of the new element.
 		 * @return Iterator to the inserted element. */
-		constexpr iterator insert(const_iterator pos, value_type &&val) { return emplace(pos, std::forward<value_type>(val)); }
+		iterator insert(const_iterator pos, value_type &&val) { return emplace(pos, std::forward<value_type>(val)); }
 
 		/** Inserts elements in range [\a first, \a last) at the specified position within the list.
 		 * @param pos Position within the list at which to insert the elements.
@@ -447,7 +454,7 @@ namespace rod
 		 * @param last Sentinel for the \a first iterator.
 		 * @return Iterator to the first inserted element. */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
-		constexpr iterator insert(const_iterator pos, I first, S last) requires std::constructible_from<value_type, std::iter_value_t<T>>
+		iterator insert(const_iterator pos, I first, S last) requires std::constructible_from<value_type, std::iter_value_t<T>>
 		{
 			if constexpr (std::random_access_iterator<I>)
 				reserve(static_cast<size_type>(last - first));
@@ -461,7 +468,7 @@ namespace rod
 		 * @param il Initializer list containing elements to insert.
 		 * @return Iterator to the first inserted element. */
 		template<typename U = value_type>
-		constexpr iterator insert(const_iterator pos, std::initializer_list<U> il) requires std::constructible_from<value_type, std::add_const_t<U>>
+		iterator insert(const_iterator pos, std::initializer_list<U> il) requires std::constructible_from<value_type, std::add_const_t<U>>
 		{
 			return insert(pos, il.begin(), il.end());
 		}
@@ -471,35 +478,35 @@ namespace rod
 		 * @param args Arguments passed to the constructor of the new element.
 		 * @return Reference to the inserted element. */
 		template<typename... Args>
-		constexpr reference emplace_back(Args &&...args) requires std::constructible_from<value_type, Args...> { return emplace(cend(), std::forward<Args>(args)...); }
+		reference emplace_back(Args &&...args) requires std::constructible_from<value_type, Args...> { return emplace(cend(), std::forward<Args>(args)...); }
 		/** Inserts an in-place constructed element at the start of the list.
 		 * @param pos Position within the list at which to insert the element.
 		 * @param args Arguments passed to the constructor of the new element.
 		 * @return Reference to the inserted element. */
 		template<typename... Args>
-		constexpr reference emplace_front(Args &&...args) requires std::constructible_from<value_type, Args...> { return emplace(cbegin(), std::forward<Args>(args)...); }
+		reference emplace_front(Args &&...args) requires std::constructible_from<value_type, Args...> { return emplace(cbegin(), std::forward<Args>(args)...); }
 
 		/** Inserts an in-place constructed element at the specified position within the list.
 		 * @param pos Position within the list at which to insert the element.
 		 * @param args Arguments passed to the constructor of the new element.
 		 * @return Reference to the inserted element. */
 		template<typename... Args>
-		constexpr reference emplace(const_iterator pos, Args &&...args) requires std::constructible_from<value_type, Args...> { return *emplace_at(pos._node - _data, std::forward<Args>(args)...); }
+		reference emplace(const_iterator pos, Args &&...args) requires std::constructible_from<value_type, Args...> { return *emplace_at(const_cast<node_pointer>(pos._node), std::forward<Args>(args)...); }
 
 		/** Erases the last element of the list. */
-		constexpr void pop_back() noexcept(std::is_nothrow_destructible_v<value_type>) { erase(header_t::prev()); }
+		void pop_back() noexcept(std::is_nothrow_destructible_v<value_type>) { erase(_header.prev()); }
 		/** Erases the first element of the list. */
-		constexpr void pop_front() noexcept(std::is_nothrow_destructible_v<value_type>) { erase(header_t::next()); }
+		void pop_front() noexcept(std::is_nothrow_destructible_v<value_type>) { erase(_header.next()); }
 
 		/** Erases the element located at \a pos.
 		 * @param pos Position within the list at which to erase the element.
 		 * @return Iterator to the element after the erased one, or `end()`. */
-		constexpr iterator erase(const_iterator pos) noexcept(std::is_nothrow_destructible_v<value_type>) { return destroy_at(pos._node - _data); }
+		iterator erase(const_iterator pos) noexcept(std::is_nothrow_destructible_v<value_type>) { return destroy_at(const_cast<node_pointer>(pos._node)); }
 		/** Erases all elements in range [\a first, \a last).
 		 * @param first Iterator to the first element to be erased.
 		 * @param first Iterator one past the last element to be erased.
 		 * @return Iterator to the element after the erased range, or `end()`. */
-		constexpr iterator erase(const_iterator first, const_iterator last) noexcept(std::is_nothrow_destructible_v<value_type>)
+		iterator erase(const_iterator first, const_iterator last) noexcept(std::is_nothrow_destructible_v<value_type>)
 		{
 			auto next = end();
 			for (; first != last; first = next)
@@ -524,41 +531,21 @@ namespace rod
 		friend constexpr void swap(array_list &a, array_list &b) noexcept(std::allocator_traits<node_allocator>::is_always_equal::value || std::is_nothrow_swappable_v<node_allocator>) { a.swap(b); }
 
 	private:
-		constexpr header_pointer link_node(header_pointer node, header_pointer next)
-		{
-			if (next->prev())
-			{
-				next->prev()->next(node);
-				node->prev(next->prev());
-			}
-			next->prev(node);
-			node->next(next);
-
-			_list_size += 1;
-			return node;
-		}
-		constexpr header_pointer unlink_node(header_pointer node)
-		{
-			const auto next = node->next();
-			const auto prev = node->prev();
-
-			if (next)
-				next->prev(prev);
-			if (prev)
-				prev->next(next);
-
-			_list_size -= 1;
-			return node;
-		}
-
 		template<typename... Args>
-		constexpr iterator emplace_at(size_type pos, Args &&...args)
+		constexpr iterator emplace_at(node_pointer next, Args &&...args)
 		{
 			const auto node = acquire_node();
 			try
 			{
 				std::construct_at(node->get(), std::forward<Args>(args)...);
-				return link_node(node, _data + pos);
+
+				next->prev()->next(node);
+				node->prev(next->prev());
+				next->prev(node);
+				node->next(next);
+
+				_list_size += 1;
+				return next;
 			}
 			catch (...)
 			{
@@ -566,14 +553,11 @@ namespace rod
 				throw;
 			}
 		}
-		constexpr iterator destroy_at(size_type pos)
+		constexpr iterator destroy_at(node_pointer node)
 		{
-			const auto node = _data + pos;
-			const auto next = unlink_node(node);
-
+			_list_size -= 1;
 			std::destroy_at(node->get());
-			release_node(node);
-			return next;
+			return release_node(node);
 		}
 
 		constexpr void destroy_data(node_allocator &alloc)
@@ -595,61 +579,64 @@ namespace rod
 		}
 		constexpr void swap_data(array_list &other)
 		{
-			header_t::swap(other);
+			_header.swap(other);
 			std::swap(_data, other._data);
 			std::swap(_free, other._free);
 			std::swap(_data_size, other._data_size);
 			std::swap(_list_size, other._list_size);
 		}
 
-		constexpr void reallocate()
+		constexpr node_pointer acquire_node()
 		{
-			const auto new_size = std::max<size_type>(_data_size * 2, 1);
-			const auto new_data = std::allocator_traits<node_allocator>::allocate(_alloc, new_size);
-
-			try
-			{
-				for (size_type i = 0; i < _data_size; ++i)
-				{
-					const auto dst = new_data + i;
-					const auto src = _data + i;
-
-					std::construct_at(dst, std::move(*src));
-					std::destroy_at(src);
-				}
-
-				std::allocator_traits<node_allocator>::deallocate(_alloc, _data, _data_size);
-				_data_size = new_size;
-				_data = new_data;
-			}
-			catch (...)
-			{
-				std::allocator_traits<node_allocator>::deallocate(_alloc, new_data, new_size);
-				throw;
-			}
-		}
-		constexpr auto acquire_node()
-		{
-			if (_free != nullptr)
+			if (_free != &_header)
 			{
 				auto next = node_pointer(_free->next());
 				return std::exchange(_free, next);
 			}
 
 			if (_list_size >= _data_size)
-				reallocate();
+			{
+				const auto new_size = std::max<size_type>(_data_size * 2, 1);
+				const auto new_data = std::allocator_traits<node_allocator>::allocate(_alloc, new_size);
+
+				try
+				{
+					for (size_type i = 0; i < _data_size; ++i)
+					{
+						const auto dst = new_data + i;
+						const auto src = _data + i;
+
+						std::construct_at(dst, std::move(*src));
+						std::destroy_at(src);
+					}
+
+					std::allocator_traits<node_allocator>::deallocate(_alloc, _data, _data_size);
+					_data_size = new_size;
+					_data = new_data;
+				}
+				catch (...)
+				{
+					std::allocator_traits<node_allocator>::deallocate(_alloc, new_data, new_size);
+					throw;
+				}
+			}
 			return _data + _list_size;
 		}
-		constexpr void release_node(node_pointer node) noexcept
+		constexpr node_pointer release_node(node_pointer node) noexcept
 		{
-			_free->prev(node);
-			node->next(_free);
-			_free = node;
+			const auto next = node->next();
+			const auto prev = node->prev();
+
+			next->prev(prev);
+			prev->next(next);
+			node->next(std::exchange(_free, node));
+			return static_cast<node_pointer>(next);
 		}
 
 		ROD_NO_UNIQUE_ADDRESS node_allocator _alloc;
-		node_pointer _data = {};
-		node_pointer _free = {};
+		header_t _header;
+		node_pointer _data;
+		node_pointer _free;
 		size_type _data_size = {};
 		size_type _list_size = {};
 	};

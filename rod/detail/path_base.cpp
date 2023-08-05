@@ -84,25 +84,31 @@ namespace rod::fs
 		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 
-		result<std::size_t> result;
+		std::error_code err;
+		std::size_t len = 0;
 		if (codepage == codepage_utf8 || codepage == codepage_gb18030)
-			result.emplace_value(::WideCharToMultiByte(codepage, WC_ERR_INVALID_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr));
+			len = ::WideCharToMultiByte(codepage, WC_ERR_INVALID_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr);
 		else
 		{
 			BOOL invalid = false;
-			result.emplace_value(::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, &invalid));
+			len = ::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, &invalid);
 
 			if (invalid) [[unlikely]]
-				result.emplace_error(ERROR_NO_UNICODE_TRANSLATION, std::system_category());
+				err = std::error_code(ERROR_NO_UNICODE_TRANSLATION, std::system_category());
 		}
 
-		if (result.has_value() && *result == 0 && result.emplace_error(::GetLastError(), std::system_category()).value() == ERROR_INVALID_FLAGS)
+		if (!len && !err && (err = std::error_code(static_cast<int>(::GetLastError()), std::system_category())).value() == ERROR_INVALID_FLAGS)
 		{
-			result.emplace_value(::WideCharToMultiByte(codepage, 0, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr));
-			if (*result == 0) [[unlikely]]
-				result.emplace_error(::GetLastError(), std::system_category());
+			len = ::WideCharToMultiByte(codepage, 0, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr);
+			if (len == 0) [[unlikely]]
+				err = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+			else
+				err = {};
 		}
-		return result;
+		if (!err) [[likely]]
+			return len;
+		else
+			return err;
 	}
 	result<std::size_t> detail::path_base::multibyte_to_wide(std::uint32_t codepage, std::span<const char> src, std::span<wchar_t> dst) noexcept
 	{
@@ -209,18 +215,17 @@ namespace rod::fs
 		/* Separate path string into component list & find the approximate string length. */
 		while (result_len < _value.size())
 		{
-			if (is_separator(_value[result_len], formatting()))
+			if (!is_separator(_value[result_len], formatting()))
 			{
-				if (comps.empty() || !comps.back().empty())
-					comps.emplace_back();
-				result_len += 1;
+				const auto tail = string_view_type(_value.data() + result_len, _value.size() - result_len);
+				const auto comp = tail.substr(0, lfind_separator(tail, formatting()));
+				result_len += comp.size();
+				comps.emplace_back(comp);
 			}
-			else
+			else if (comps.empty() || !comps.back().empty())
 			{
-				const auto tail = string_view_type(_value.data() + result_len, _value.data() - result_len);
-				const auto diff = lfind_separator(tail, formatting());
-				comps.emplace_back(tail.substr(0, diff));
-				result_len += diff;
+				comps.emplace_back();
+				result_len += 1;
 			}
 		}
 
@@ -250,7 +255,7 @@ namespace rod::fs
 
 		/* Resolve non-leading dot-dot wildcards. */
 		for (auto pos = comps.begin(); pos != comps.end();)
-			if (auto curr = pos++; *curr == prev_dir && curr != comps.begin() && std::prev(curr) != comps.begin() && *std::prev(curr) != prev_dir)
+			if (auto curr = pos++; *curr == prev_dir && curr != comps.begin() && --curr != comps.begin() && *(--curr) != prev_dir)
 			{
 				if (pos != comps.end())
 					++pos;

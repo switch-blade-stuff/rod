@@ -45,7 +45,9 @@ namespace rod::fs
 
 	public:
 		/** Initializes an empty path component of unknown format. */
-		constexpr path_view_component() noexcept : _data(nullptr), _size(0), _is_null_terminated(false), _formatting(unknown_format), _encoding(byte_encoding) {}
+		constexpr path_view_component() noexcept : path_view_component(unknown_format) {}
+		/** Initializes an empty path component with format \a fmt. */
+		constexpr path_view_component(format fmt) noexcept : _data(nullptr), _size(0), _is_null_terminated(false), _formatting(fmt), _encoding(byte_encoding) {}
 
 		/** Copy-initializes path component from \a other. */
 		constexpr path_view_component(const path_view_component &other) noexcept = default;
@@ -60,22 +62,22 @@ namespace rod::fs
 		/** Initializes a path component from a null-terminated `char` string \a str of length \a len and format \a fmt. */
 		constexpr path_view_component(const char *str, format fmt = binary_format) noexcept : path_view_component(str, rod::detail::strlen(str), true, fmt) {}
 		/** Initializes a path component from a `char` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
-		constexpr path_view_component(const char *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len), _is_null_terminated(term), _formatting(fmt), _encoding(char_encoding) {}
+		constexpr path_view_component(const char *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char)), _is_null_terminated(term), _formatting(fmt), _encoding(char_encoding) {}
 
 		/** Initializes a path component from a `wchar_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 		constexpr path_view_component(const wchar_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::detail::strlen(str), true, fmt) {}
 		/** Initializes a path component from a null-terminated `wchar_t` string \a str of length \a len and format \a fmt. */
-		constexpr path_view_component(const wchar_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len), _is_null_terminated(term), _formatting(fmt), _encoding(wchar_encoding) {}
+		constexpr path_view_component(const wchar_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(wchar_t)), _is_null_terminated(term), _formatting(fmt), _encoding(wchar_encoding) {}
 
 		/** Initializes a path component from a `char8_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 		constexpr path_view_component(const char8_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::detail::strlen(str), true, fmt) {}
 		/** Initializes a path component from a null-terminated `char8_t` string \a str of length \a len and format \a fmt. */
-		constexpr path_view_component(const char8_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len), _is_null_terminated(term), _formatting(fmt), _encoding(char8_encoding) {}
+		constexpr path_view_component(const char8_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char8_t)), _is_null_terminated(term), _formatting(fmt), _encoding(char8_encoding) {}
 
 		/** Initializes a path component from a `char16_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 		constexpr path_view_component(const char16_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::detail::strlen(str), true, fmt) {}
 		/** Initializes a path component from a null-terminated `char16_t` string \a str of length \a len and format \a fmt. */
-		constexpr path_view_component(const char16_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len), _is_null_terminated(term), _formatting(fmt), _encoding(char16_encoding) {}
+		constexpr path_view_component(const char16_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char16_t)), _is_null_terminated(term), _formatting(fmt), _encoding(char16_encoding) {}
 
 		/** Initializes a path component from a null-terminated byte array \a data of length \a len and format \a fmt. */
 		constexpr path_view_component(const std::byte *data, format fmt = binary_format) noexcept : path_view_component(data, rod::detail::strlen(data), true, fmt) {}
@@ -83,12 +85,12 @@ namespace rod::fs
 		constexpr path_view_component(const std::byte *data, size_type len, bool term, format fmt = binary_format) noexcept : _data(data), _size(len), _is_null_terminated(term), _formatting(fmt), _encoding(byte_encoding) {}
 
 		/** Initializes path component from path \a p and format \a fmt. */
-		constexpr path_view_component(const path &p, format fmt = auto_format) noexcept : path_view_component(p._value.data(), p._value.size(), true, fmt) {}
+		path_view_component(const path &p) noexcept : path_view_component(p._value.data(), p._value.size(), true, p.formatting()) {}
 		/** Initializes a path component from string \a str and format \a fmt. */
-		template<typename C = path_base::value_type, typename T = std::char_traits<C>, typename Alloc = std::allocator<C>>
+		template<typename C = path_base::value_type, typename T = std::char_traits<C>, typename Alloc = std::allocator<C>> requires detail::path_char_type<C>
 		constexpr path_view_component(const std::basic_string<C, T, Alloc> &str, format fmt = binary_format) noexcept : path_view_component(str.data(), str.size(), true, fmt) {}
 		/** Initializes a path component from string view \a str, null-termination flag \a term and format \a fmt. */
-		template<typename C = path_base::value_type, typename T = std::char_traits<C>>
+		template<typename C = path_base::value_type, typename T = std::char_traits<C>> requires detail::path_char_type<C>
 		constexpr path_view_component(std::basic_string_view<C, T> str, bool term, format fmt = binary_format) noexcept : path_view_component(str.data(), str.size(), term, fmt) {}
 
 		constexpr path_view_component &operator=(const path_view_component &) noexcept = default;
@@ -100,22 +102,70 @@ namespace rod::fs
 		{
 			switch (_encoding)
 			{
-				case byte_encoding:
-					return std::invoke(std::forward<F>(f), std::span{static_cast<const std::byte *>(_data), _size});
-				case char_encoding:
-					return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const char *>(_data), _size});
-				case wchar_encoding:
-					return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const wchar_t *>(_data), _size});
-				case char8_encoding:
-					return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const char8_t *>(_data), _size});
-				case char16_encoding:
-					return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const char16_t *>(_data), _size});
+			case byte_encoding:
+				return std::invoke(std::forward<F>(f), std::span{static_cast<const std::byte *>(_data), _size});
+			case char_encoding:
+				return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const char *>(_data), _size / sizeof(char)});
+			case wchar_encoding:
+				return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const wchar_t *>(_data), _size / sizeof(wchar_t)});
+			case char8_encoding:
+				return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const char8_t *>(_data), _size / sizeof(char8_t)});
+			case char16_encoding:
+				return std::invoke(std::forward<F>(f), std::basic_string_view{static_cast<const char16_t *>(_data), _size / sizeof(char16_t)});
 			}
 		}
 
+		void iter_next(const path_view_component &base, const std::byte *&pos) noexcept
+		{
+			base.visit([&]<typename V>(V base_view) noexcept
+			{
+				using value_type = std::ranges::range_value_t<V>;
+				if constexpr (decays_to<value_type, std::byte>)
+					operator=(path_view_component(pos = base_view.data() + base_view.size(), 0, base.is_null_terminated()));
+				else
+				{
+					const auto bytes = static_cast<const std::byte *>(base._data);
+					const auto comp_data = static_cast<const value_type *>(_data);
+					auto comp_view = std::basic_string_view(comp_data, native_size());
+					auto new_pos = base_view.data() + (pos - bytes) / sizeof(value_type);
+
+					comp_view = path_base::iter_next<value_type>(comp_view, base_view, new_pos, base.formatting());
+					const auto term = base.is_null_terminated() && comp_view.data() + comp_view.size() == base_view.data() + base_view.size();
+
+					pos = bytes + (new_pos - base_view.data()) * sizeof(value_type);
+					operator=(path_view_component(comp_view, term));
+				}
+			});
+		}
+		void iter_prev(const path_view_component &base, const std::byte *&pos) noexcept
+		{
+			base.visit([&]<typename V>(V base_view) noexcept
+			{
+				using value_type = std::ranges::range_value_t<V>;
+				if constexpr (decays_to<value_type, std::byte>)
+					operator=(path_view_component(pos = base_view.data(), base_view.size(), base.is_null_terminated()));
+				else
+				{
+					const auto bytes = static_cast<const std::byte *>(base._data);
+					const auto comp_data = static_cast<const value_type *>(_data);
+					auto comp_view = std::basic_string_view(comp_data, native_size());
+					auto new_pos = base_view.data() + (pos - bytes) / sizeof(value_type);
+
+					comp_view = path_base::iter_prev<value_type>(comp_view, base_view, new_pos, base.formatting());
+					const auto term = base.is_null_terminated() && comp_view.data() + comp_view.size() == base_view.data() + base_view.size();
+
+					pos = bytes + (new_pos - base_view.data()) * sizeof(value_type);
+					operator=(path_view_component(comp_view, term));
+				}
+			});
+		}
+
+		template<void (path_view_component::*Func)(const path_view_component &, const std::byte *&) noexcept>
+		struct iter_func { void operator()(path_view_component &comp, const path_view_component &base, const std::byte *&pos) const noexcept { (comp.*Func)(base, pos); } };
+
 	public:
 		/** Returns the path component's formatting type. */
-		[[nodiscard]] constexpr format formatting() const noexcept  { return static_cast<format>(_formatting); }
+		[[nodiscard]] constexpr format formatting() const noexcept  { return _formatting; }
 		/** Returns the native size (in codepoints or bytes) of the path component. */
 		[[nodiscard]] constexpr size_type native_size() const noexcept { return visit([&]<typename V>(V sv) noexcept { return _size / sizeof(std::ranges::range_value_t<V>); }); }
 
@@ -195,55 +245,8 @@ namespace rod::fs
 		using path_view_component::default_buffer_size;
 		using path_view_component::preferred_separator;
 
-	private:
-		template<typename V>
-		static inline void iter_next_visitor(V, const path_view &, std::add_const_t<std::ranges::range_value_t<V>> *&, path_view &) noexcept;
-		template<typename V>
-		static inline void iter_prev_visitor(V, const path_view &, std::add_const_t<std::ranges::range_value_t<V>> *&, path_view &) noexcept;
-
-		template<>
-		static inline void iter_next_visitor<std::span<const std::byte>>(std::span<const std::byte> data, const path_view &base, const std::byte *&pos, path_view &comp) noexcept
-		{
-			comp = path_view(data.data(), data.size(), base.formatting());
-			pos = data.data() + data.size();
-		}
-		template<>
-		static inline void iter_prev_visitor<std::span<const std::byte>>(std::span<const std::byte> data, const path_view &base, const std::byte *&pos, path_view &comp) noexcept
-		{
-			comp = path_view(base.formatting());
-			pos = data.data();
-		}
-
-		static void iter_next(const path_view &base, const std::byte *&pos, path_view &comp) noexcept
-		{
-			base.visit([&]<typename V>(V sv) noexcept
-			{
-				using value_type = std::ranges::range_value_t<V>;
-				const auto bytes = static_cast<const std::byte *>(base._data);
-				auto new_pos = sv.data() + (pos - bytes) / sizeof(value_type);
-
-				iter_next_visitor(sv, base, new_pos, comp);
-				pos = bytes + (new_pos - sv.data()) * sizeof(value_type);
-			});
-		}
-		static void iter_prev(const path_view &base, const std::byte *&pos, path_view &comp) noexcept
-		{
-			base.visit([&]<typename V>(V sv) noexcept
-			{
-				using value_type = std::ranges::range_value_t<V>;
-				const auto bytes = static_cast<const std::byte *>(base._data);
-				auto new_pos = sv.data() + (pos - bytes) / sizeof(value_type);
-
-				iter_prev_visitor(sv, base, new_pos, comp);
-				pos = bytes + (new_pos - sv.data()) * sizeof(value_type);
-			});
-		}
-
-		template<auto (*Func)(const path_view &, const std::byte *&, path_view &) noexcept>
-		struct iter_func { void operator()(const path_view &base, const std::byte *&pos, path_view &comp) const { Func(base, pos, comp); } };
-
 	public:
-		using iterator = typename path_base::component_iterator<path_view, const std::byte *, iter_func<iter_next>, iter_func<iter_prev>>;
+		using iterator = typename path_base::component_iterator<path_view_component, const std::byte *, iter_func<&path_view::iter_next>, iter_func<&path_view::iter_prev>>;
 		using const_iterator = iterator;
 
 	public:
@@ -254,29 +257,15 @@ namespace rod::fs
 		/** Returns iterator to the first sub-component of the path. */
 		[[nodiscard]] constexpr iterator begin() const noexcept
 		{
-			return visit([&]<typename V>(V sv) noexcept
+			return path_view_component::visit([&]<typename V>(V base_view) noexcept
 			{
-				using value_type = std::ranges::range_value_t<V>;
-				const auto bytes = static_cast<const std::byte *>(_data);
-
-				if constexpr (decays_to<value_type, std::byte>)
-					return iterator(this, bytes, *this);
+				if constexpr (decays_to<std::ranges::range_value_t<V>, std::byte>)
+					return iterator(*this, this, static_cast<const std::byte *>(_data));
 				else
 				{
-					const auto root_name_end = sv.data() + root_name_size<value_type>(sv, formatting());
-					const value_type *end = root_name_end;
-
-					if (root_name_end == sv.data())
-					{
-						const auto pred = [&](auto ch) { return is_separator(ch, formatting()); };
-						const auto root_path_end = std::find_if_not(root_name_end, sv.data() + sv.size(), pred);
-
-						if (root_path_end == sv.data())
-							end = std::find_if(root_path_end, sv.data() + sv.size(), pred);
-						else
-							end = root_path_end;
-					}
-					return iterator(this, bytes, path_view(sv.data(), end - sv.data(), formatting()));
+					const auto comp_size = path_base::iter_begin(base_view, formatting());
+					const auto term = is_null_terminated() && comp_size == base_view.size();
+					return iterator(path_view_component(base_view.data(), comp_size, term), this, static_cast<const std::byte *>(_data));
 				}
 			});
 		}
@@ -284,14 +273,7 @@ namespace rod::fs
 		[[nodiscard]] constexpr iterator cbegin() const noexcept { return begin(); }
 
 		/** Returns iterator one past the last sub-component of the path. */
-		[[nodiscard]] constexpr iterator end() const noexcept
-		{
-			return visit([&](auto sv) noexcept
-			{
-				const auto bytes = static_cast<const std::byte *>(_data);
-				return iterator(this, bytes + native_size(), path_view(formatting()));
-			});
-		}
+		[[nodiscard]] constexpr iterator end() const noexcept { return iterator({}, this, static_cast<const std::byte *>(_data) + _size); }
 		/** @copydoc end */
 		[[nodiscard]] constexpr iterator cend() const noexcept { return end(); }
 
@@ -303,85 +285,6 @@ namespace rod::fs
 	/** Invokes \a f with a string view or span of bytes depending on the internal encoding of path view \a p. */
 	template<detail::path_view_visitor F>
 	inline constexpr auto visit(F &&f, path_view p) noexcept(detail::nothrow_path_view_visitor<F>::value) { return visit(std::forward<F>(f), static_cast<const path_view_component &>(p)); }
-
-	template<typename V>
-	void path_view::iter_next_visitor(V sv, const path_view &base, std::add_const_t<std::ranges::range_value_t<V>> *&pos, path_view &comp) noexcept
-	{
-		const auto fmt = base.formatting();
-		if (pos += comp.native_size(); pos == sv.data())
-		{
-			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-			const auto root_name_end = sv.data() + root_name_size(sv, fmt);
-			const auto root_path_end = std::find_if_not(root_name_end, sv.data() + sv.size(), pred);
-
-			if (root_name_end != sv.data() && root_name_end != root_path_end)
-			{
-				comp = path_view(root_name_end, root_path_end - root_name_end, fmt);
-				return;
-			}
-		}
-		if (is_separator(*pos, fmt) && comp.empty())
-		{
-			pos += 1;
-			return;
-		}
-
-		if (pos == sv.data() + base.native_size())
-		{
-			comp = path_view(fmt);
-			return;
-		}
-
-		for (; is_separator(*pos, fmt); ++pos)
-			if (pos + 1 == sv.data() + base.native_size())
-			{
-				comp = path_view(fmt);
-				pos -= 1;
-				return;
-			}
-
-		const auto end = lfind_separator(sv, fmt, pos - sv.data());
-		comp = path_view(sv.data(), end, fmt);
-	}
-	template<typename V>
-	void path_view::iter_prev_visitor(V sv, const path_view &base, std::add_const_t<std::ranges::range_value_t<V>> *&pos, path_view &comp) noexcept
-	{
-		const auto fmt = base.formatting();
-		const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-		const auto root_name_end = sv.data() + root_name_size(sv, fmt);
-		const auto root_path_end = std::find_if_not(root_name_end, sv.data() + sv.size(), pred);
-
-		/* Root directory component. */
-		if (root_name_end != root_path_end && pos == root_path_end)
-		{
-			comp = path_view(root_name_end, root_path_end - root_name_end, fmt);
-			pos = root_name_end;
-			return;
-		}
-		/* Root name component. */
-		if (root_name_end != sv.data() && pos == root_name_end)
-		{
-			comp = path_view(sv.data(), root_name_end - sv.data(), fmt);
-			pos = sv.data();
-			return;
-		}
-
-		/* Relative path component. */
-		if (pos == sv.data() + sv.size() && is_separator(pos[-1], fmt))
-		{
-			comp = path_view(fmt);
-			pos -= 1;
-			return;
-		}
-
-		while (pos != root_path_end && is_separator(pos[-1], fmt))
-			--pos;
-		const auto end = pos;
-		while (pos != root_path_end && !is_separator(pos[-1], fmt))
-			--pos;
-
-		comp = path_view(pos, end - pos, fmt);
-	}
 
 	namespace detail
 	{
