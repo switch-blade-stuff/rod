@@ -12,7 +12,7 @@
 
 namespace rod
 {
-	namespace detail
+	namespace _detail
 	{
 		template<typename T>
 		concept delegate_value_type = alignof(T) <= alignof(std::uintptr_t) && sizeof(T) <= sizeof(std::uintptr_t[3]) && std::is_trivially_copyable_v<T> && std::is_trivially_destructible_v<T>;
@@ -134,9 +134,9 @@ namespace rod
 	template<typename F>
 	class delegate
 	{
-		static_assert(detail::delegate_traits<F>::value, "Delegate template parameter must be a function signature");
+		static_assert(_detail::delegate_traits<F>::value, "Delegate template parameter must be a function signature");
 
-		using traits_t = detail::delegate_traits<F>;
+		using traits_t = _detail::delegate_traits<F>;
 		using args_t = typename traits_t::arg_types;
 		using return_t = typename traits_t::return_type;
 
@@ -280,7 +280,7 @@ namespace rod
 		template<typename T, typename... Args, typename... TArgs>
 		void init_obj(type_list_t<Args...>, TArgs &&...args) requires std::is_invocable_r_v<return_t, T &, Args...>
 		{
-			if constexpr(detail::delegate_value_type<T> && std::invocable<const T &, Args...>)
+			if constexpr(_detail::delegate_value_type<T> && std::invocable<const T &, Args...>)
 			{
 				new(std::launder(_local.data)) T(std::forward<TArgs>(args)...);
 				_local.invoke_func = invoke_obj<const T, Args...>;
@@ -298,7 +298,7 @@ namespace rod
 		template<auto Mem, typename T, typename... Args, typename... TArgs>
 		void init_mem(type_list_t<Args...>, TArgs &&...args) requires std::is_invocable_r_v<return_t, decltype(Mem), T &, Args...>
 		{
-			if constexpr(detail::delegate_value_type<T> && std::invocable<decltype(Mem), const T &, Args...>)
+			if constexpr(_detail::delegate_value_type<T> && std::invocable<decltype(Mem), const T &, Args...>)
 			{
 				new(std::launder(_local.data)) T(std::forward<TArgs>(args)...);
 				_local.invoke_func = invoke_mem<Mem, const T, Args...>;
@@ -348,18 +348,18 @@ namespace rod
 	delegate(R (*)(void *, Args...), void *, void *(*)(const void *), void (*)(void *)) -> delegate<R(Args...)>;
 
 	template<typename T>
-	delegate(T &&) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(&std::decay_t<T>::operator())>>>;
+	delegate(T &&) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(&std::decay_t<T>::operator())>>>;
 	template<typename T, typename... Args>
-	delegate(std::in_place_type_t<T>, Args &&...) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(&std::decay_t<T>::operator())>>>;
+	delegate(std::in_place_type_t<T>, Args &&...) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(&std::decay_t<T>::operator())>>>;
 
 	template<auto Mem, typename T>
-	delegate(bind_member_t<Mem>, T &&) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(Mem)>>>;
+	delegate(bind_member_t<Mem>, T &&) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(Mem)>>>;
 	template<auto Mem, typename T, typename... Args>
-	delegate(bind_member_t<Mem>, std::in_place_type_t<T>, Args &&...) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(Mem)>>>;
+	delegate(bind_member_t<Mem>, std::in_place_type_t<T>, Args &&...) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(Mem)>>>;
 
 	/** Creates a delegate from a member pointer and an object instance. */
 	template<auto Mem, typename T>
-	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<detail::strip_qualifiers_t<detail::deduce_signature_t<decltype(Mem)>>>
+	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(Mem)>>>
 	{
 		return {bind_member<Mem>, std::forward<T>(instance)};
 	}

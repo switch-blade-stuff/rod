@@ -9,7 +9,7 @@
 
 #include "config.hpp"
 
-namespace rod::detail
+namespace rod::_detail
 {
 	/* Priority queue implemented as a sorted list. While a more complex data structure will give better
 	 * insert time complexity, it's also going to complicate implementation. Plus the queue is only used

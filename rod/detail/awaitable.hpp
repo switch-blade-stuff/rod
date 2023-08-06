@@ -16,7 +16,7 @@
 
 namespace rod
 {
-	namespace detail
+	namespace _detail
 	{
 		template<typename P, typename A>
 		concept has_await_transform = requires(P p, A a) { p.await_transform(a); };
@@ -79,7 +79,7 @@ namespace rod
 	{
 		struct unit {};
 		template<typename S, typename P>
-		using value_t = detail::single_sender_value_type<S, env_of_t<P>>;
+		using value_t = _detail::single_sender_value_type<S, env_of_t<P>>;
 		template<typename S, typename P>
 		using result_or_unit = std::conditional_t<std::is_void_v<value_t<S, P>>, unit, value_t<S, P>>;
 
@@ -101,7 +101,7 @@ namespace rod
 		public:
 			using is_receiver = std::true_type;
 
-			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const P &>) { return get_env(std::as_const(r._cont_handle.promise())); }
+			friend env_of_t<P> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const P &>) { return get_env(std::as_const(r._cont_handle.promise())); }
 
 			template<typename... Vs> requires std::constructible_from<result_or_unit<S, P>, Vs...>
 			friend void tag_invoke(set_value_t, type &&r, Vs &&...vs) noexcept
@@ -113,7 +113,7 @@ namespace rod
 			template<typename Err>
 			friend void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
 			{
-				r._result_ptr->template emplace<2>(detail::as_except_ptr(std::forward<Err>(err)));
+				r._result_ptr->template emplace<2>(_detail::as_except_ptr(std::forward<Err>(err)));
 				r._cont_handle.resume();
 			}
 			friend void tag_invoke(set_stopped_t, type &&r) noexcept
@@ -158,7 +158,7 @@ namespace rod
 		};
 
 		template<typename S, typename P>
-		concept awaitable_sender = detail::single_sender<S, env_of_t<P>> && sender_to<S, typename receiver<S, P>::type> && requires(P &p)
+		concept awaitable_sender = _detail::single_sender<S, env_of_t<P>> && sender_to<S, typename receiver<S, P>::type> && requires(P &p)
 		{
 			{ p.unhandled_stopped() } -> std::convertible_to<std::coroutine_handle<>>;
 		};
@@ -170,17 +170,17 @@ namespace rod
 
 		public:
 			template<typename T, typename P> requires tag_invocable<as_awaitable_t, T, P &>
-			[[nodiscard]] constexpr detail::is_awaitable decltype(auto) operator()(T &&t, P &p) const noexcept(nothrow_tag_invocable<as_awaitable_t, T, P &>)
+			[[nodiscard]] constexpr _detail::is_awaitable decltype(auto) operator()(T &&t, P &p) const noexcept(nothrow_tag_invocable<as_awaitable_t, T, P &>)
 			{
 				return tag_invoke(*this, std::forward<T>(t), p);
 			}
-			template<typename T, typename P> requires(!tag_invocable<as_awaitable_t, T, P &> && !detail::is_awaitable<T, detail::undefined_promise> && awaitable_sender<T, P>)
+			template<typename T, typename P> requires(!tag_invocable<as_awaitable_t, T, P &> && !_detail::is_awaitable<T, _detail::undefined_promise> && awaitable_sender<T, P>)
 			[[nodiscard]] constexpr awaitable_t<T, P> operator()(T &&t, P &p) const noexcept(std::is_nothrow_constructible_v<awaitable_t<T, P>, T, std::coroutine_handle<P>>)
 			{
 				return awaitable_t<T, P>{std::forward<T>(t), std::coroutine_handle<P>::from_promise(p)};
 			}
 			template<typename T, typename P>
-			[[nodiscard]] constexpr detail::is_awaitable decltype(auto) operator()(T &&t, P &) const noexcept { return std::forward<T>(t); }
+			[[nodiscard]] constexpr _detail::is_awaitable decltype(auto) operator()(T &&t, P &) const noexcept { return std::forward<T>(t); }
 		};
 	}
 
@@ -197,7 +197,7 @@ namespace rod
 	 * @return Awaitable object used to suspend execution until completion of \a snd. */
 	inline constexpr auto as_awaitable = as_awaitable_t{};
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename Child>
 		struct with_await_transform
@@ -230,16 +230,16 @@ namespace rod
 	template<typename S, typename E> requires(!tag_invocable<get_completion_signatures_t, S, E> && !requires { typename std::remove_cvref_t<S>::completion_signatures; })
 	constexpr decltype(auto) get_completion_signatures_t::operator()(S &&, E &&) const
 	{
-		static_assert(detail::is_awaitable<S, detail::env_promise<E>>, "Sender must be an awaitable type");
+		static_assert(_detail::is_awaitable<S, _detail::env_promise<E>>, "Sender must be an awaitable type");
 
-		using result_t = detail::await_result_type<S, detail::env_promise<E>>;
+		using result_t = _detail::await_result_type<S, _detail::env_promise<E>>;
 		if constexpr (!std::is_void_v<std::remove_cv_t<result_t>>)
 			return completion_signatures<set_value_t(result_t), set_error_t(std::exception_ptr), set_stopped_t()>{};
 		else
 			return completion_signatures<set_value_t(), set_error_t(std::exception_ptr), set_stopped_t()>{};
 	}
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename = void>
 		class awaitable_promise;
@@ -277,7 +277,7 @@ namespace rod
 		class awaitable_promise
 		{
 		public:
-			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(detail::nothrow_callable<get_env_t, const R &>) { return get_env(p._rcv); }
+			friend constexpr env_of_t<R> tag_invoke(get_env_t, const awaitable_promise &p) noexcept(_detail::nothrow_callable<get_env_t, const R &>) { return get_env(p._rcv); }
 
 		public:
 			awaitable_promise(auto &, R &r) noexcept : _rcv(r) {}
@@ -291,7 +291,7 @@ namespace rod
 			constexpr std::suspend_always initial_suspend() noexcept { return {}; }
 
 			template<typename A>
-			constexpr decltype(auto) await_transform(A &&a) noexcept(detail::nothrow_callable<as_awaitable_t, A, awaitable_promise &>)
+			constexpr decltype(auto) await_transform(A &&a) noexcept(_detail::nothrow_callable<as_awaitable_t, A, awaitable_promise &>)
 			{
 				return as_awaitable(std::forward<A>(a), *this);
 			}
@@ -340,15 +340,15 @@ namespace rod
 	template<sender S, receiver R> requires(!tag_invocable<connect_t, S, R>)
 	constexpr operation_state decltype(auto) connect_t::operator()(S &&snd, R &&rcv) const
 	{
-		static_assert(detail::is_awaitable<S, detail::awaitable_promise<R>>, "Sender must be an awaitable type");
-		return detail::connect_awaitable<std::decay_t<S>, std::decay_t<R>>(std::forward<S>(snd), std::forward<R>(rcv));
+		static_assert(_detail::is_awaitable<S, _detail::awaitable_promise<R>>, "Sender must be an awaitable type");
+		return _detail::connect_awaitable<std::decay_t<S>, std::decay_t<R>>(std::forward<S>(snd), std::forward<R>(rcv));
 	}
 
-	template<detail::is_awaitable<detail::env_promise<empty_env>> S>
+	template<_detail::is_awaitable<_detail::env_promise<empty_env>> S>
 	inline constexpr bool enable_sender<S> = true;
 
 	/** Base type used to make a child coroutine promise type support awaiting on sender objects. */
-	template<detail::class_type P>
+	template<_detail::class_type P>
 	class with_awaitable_senders
 	{
 		using stop_func = std::coroutine_handle<> (*)(void *) noexcept;
@@ -387,7 +387,7 @@ namespace rod
 	template<typename Promise, typename Alloc = std::allocator<Promise>>
 	class with_allocator_promise;
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename T, typename Alloc>
 		concept with_allocator_awaitable = requires { typename T::template allocator_promise_type<Alloc>; } && std::derived_from<typename T::template allocator_promise_type<Alloc>, with_allocator_promise<typename T::template allocator_promise_type<Alloc>, Alloc>>;
@@ -415,7 +415,7 @@ namespace rod
 	}
 
 	template<typename Promise, typename Alloc> requires instance_of<Alloc, std::allocator>
-	class with_allocator_promise<Promise, Alloc> : detail::with_allocator_base<Promise, Alloc>
+	class with_allocator_promise<Promise, Alloc> : _detail::with_allocator_base<Promise, Alloc>
 	{
 	public:
 		template<typename... Args>
@@ -433,9 +433,9 @@ namespace rod
 		}
 	};
 	template<typename Promise, typename Alloc> requires(!instance_of<Alloc, std::allocator> && std::is_empty_v<Alloc> && std::allocator_traits<Alloc>::is_always_equal::value)
-	class with_allocator_promise<Promise, Alloc> : detail::with_allocator_base<Promise, Alloc>
+	class with_allocator_promise<Promise, Alloc> : _detail::with_allocator_base<Promise, Alloc>
 	{
-		using base_t = detail::with_allocator_base<Promise, Alloc>;
+		using base_t = _detail::with_allocator_base<Promise, Alloc>;
 		using allocator_type = typename base_t::allocator_type;
 
 		template<typename Alloc2>
@@ -484,9 +484,9 @@ namespace rod
 		constexpr void operator delete(void *ptr, std::size_t sz) { deallocate(ptr, sz); }
 	};
 	template<typename Promise, typename Alloc> requires(!instance_of<Alloc, std::allocator> && !std::is_empty_v<Alloc> || !std::allocator_traits<Alloc>::is_always_equal::value)
-	class with_allocator_promise<Promise, Alloc> : detail::with_allocator_base<Promise, Alloc>
+	class with_allocator_promise<Promise, Alloc> : _detail::with_allocator_base<Promise, Alloc>
 	{
-		using base_t = detail::with_allocator_base<Promise, Alloc>;
+		using base_t = _detail::with_allocator_base<Promise, Alloc>;
 		using allocator_type = typename base_t::allocator_type;
 
 		template<typename Alloc2>
@@ -552,10 +552,10 @@ namespace rod
 	};
 }
 
-template<typename T, typename Alloc, typename... Args> requires rod::detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
+template<typename T, typename Alloc, typename... Args> requires rod::_detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
 struct std::coroutine_traits<T, std::allocator_arg_t, Alloc, Args...> { using promise_type = typename T::template allocator_promise_type<std::decay_t<Alloc>>; };
-template<typename T, typename I, typename Alloc, typename... Args> requires rod::detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
+template<typename T, typename I, typename Alloc, typename... Args> requires rod::_detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
 struct std::coroutine_traits<T, I &, std::allocator_arg_t, Alloc, Args...> { using promise_type = typename T::template allocator_promise_type<std::decay_t<Alloc>>; };
-template<typename T, typename I, typename Alloc, typename... Args> requires rod::detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
+template<typename T, typename I, typename Alloc, typename... Args> requires rod::_detail::with_allocator_awaitable<T, std::decay_t<Alloc>>
 struct std::coroutine_traits<T, I &&, std::allocator_arg_t, Alloc, Args...> { using promise_type = typename T::template allocator_promise_type<std::decay_t<Alloc>>; };
 #endif

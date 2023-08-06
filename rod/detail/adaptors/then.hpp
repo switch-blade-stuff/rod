@@ -23,7 +23,7 @@ namespace rod
 		struct deduce_signs<void, Snd, Fn>
 		{
 			template<typename T, typename E>
-			using has_throwing = std::negation<value_types_of_t<copy_cvref_t<T, Snd>, E, detail::bind_front<std::is_nothrow_invocable, Fn>::template type, std::conjunction>>;
+			using has_throwing = std::negation<value_types_of_t<copy_cvref_t<T, Snd>, E, _detail::bind_front<std::is_nothrow_invocable, Fn>::template type, std::conjunction>>;
 			template<typename T, typename E>
 			using error_signs = std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>;
 		};
@@ -31,7 +31,7 @@ namespace rod
 		struct deduce_signs<set_value_t, Snd, Fn>
 		{
 			template<typename... Ts>
-			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<Fn, Ts...>>>;
+			using value_signs = completion_signatures<_detail::make_signature_t<set_value_t, std::invoke_result_t<Fn, Ts...>>>;
 			template<typename T, typename E>
 			using error_signs = typename deduce_signs<void, Snd, Fn>::template error_signs<T, E>;
 
@@ -42,22 +42,22 @@ namespace rod
 		struct deduce_signs<set_error_t, Snd, Fn>
 		{
 			template<typename T>
-			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<Fn, T>>>;
+			using value_signs = completion_signatures<_detail::make_signature_t<set_value_t, std::invoke_result_t<Fn, T>>>;
 			template<typename T, typename E>
 			using error_signs = typename deduce_signs<void, Snd, Fn>::template error_signs<T, E>;
 
 			template<typename T, typename E>
-			using type = make_completion_signatures<copy_cvref_t<T, Snd>, E, error_signs<T, E>, detail::default_set_value, value_signs>;
+			using type = make_completion_signatures<copy_cvref_t<T, Snd>, E, error_signs<T, E>, _detail::default_set_value, value_signs>;
 		};
 		template<typename Snd, typename Fn>
 		struct deduce_signs<set_stopped_t, Snd, Fn>
 		{
-			using value_signs = completion_signatures<detail::make_signature_t<set_value_t, std::invoke_result_t<Fn>>>;
+			using value_signs = completion_signatures<_detail::make_signature_t<set_value_t, std::invoke_result_t<Fn>>>;
 			template<typename T, typename E>
 			using error_signs = typename deduce_signs<void, Snd, Fn>::template error_signs<T, E>;
 
 			template<typename T, typename E>
-			using type = make_completion_signatures<copy_cvref_t<T, Snd>, E, error_signs<T, E>, detail::default_set_value, detail::default_set_error, value_signs>;
+			using type = make_completion_signatures<copy_cvref_t<T, Snd>, E, error_signs<T, E>, _detail::default_set_value, _detail::default_set_error, value_signs>;
 		};
 
 		template<typename Rcv, typename Fn>
@@ -85,7 +85,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			template<typename Snd2, typename Fn2>
-			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Fn2 &&fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_constructible_v<Fn, Fn2> && detail::nothrow_callable<connect_t, Snd2, receiver_t>)
+			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Fn2 &&fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_constructible_v<Fn, Fn2> && _detail::nothrow_callable<connect_t, Snd2, receiver_t>)
 					: operation_base<Rcv, Fn>{std::forward<Rcv>(rcv), std::forward<Fn2>(fn)}, _state(connect(std::forward<Snd2>(snd), receiver_t{this})) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
@@ -105,9 +105,9 @@ namespace rod
 
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const Rcv &>) { return get_env(r._op->rcv); }
 
-			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
+			template<_detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && _detail::callable<T, Rcv, Args...>)
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_forward(T{}, std::forward<Args>(args)...); }
-			template<detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<Fn, Args...>
+			template<_detail::completion_channel T, typename... Args> requires std::same_as<T, C> && std::invocable<Fn, Args...>
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_selected(T{}, std::forward<Args>(args)...); }
 
 		private:
@@ -136,7 +136,7 @@ namespace rod
 		template<typename C, typename Snd, typename Fn>
 		class sender<C, Snd, Fn>::type
 		{
-			using assert_invocable_function = detail::gather_signatures_t<C, Snd, empty_env, detail::bind_front<std::is_invocable, Fn>::template type, std::conjunction>;
+			using assert_invocable_function = _detail::gather_signatures_t<C, Snd, empty_env, _detail::bind_front<std::is_invocable, Fn>::template type, std::conjunction>;
 			static_assert(assert_invocable_function::value, "Functor passed to rod::then must be invocable with completion results of the upstream sender");
 
 		public:
@@ -148,7 +148,7 @@ namespace rod
 			template<typename... Ts>
 			using input_variant = completion_signatures<Ts...>;
 			template<typename T, typename E>
-			using input_signs_t = detail::gather_signatures_t<C, copy_cvref_t<T, Snd>, E, input_tuple, input_variant>;
+			using input_signs_t = _detail::gather_signatures_t<C, copy_cvref_t<T, Snd>, E, input_tuple, input_variant>;
 
 			template<typename T, typename Rcv>
 			using operation_t = typename operation<C, copy_cvref_t<T, Snd>, Rcv, Fn>::type;
@@ -183,22 +183,22 @@ namespace rod
 			template<typename Snd>
 			using completion_scheduler = decltype(get_completion_scheduler<C>(get_env(std::declval<Snd>())));
 			template<typename Fn>
-			using back_adaptor = detail::back_adaptor<upon_channel<C>, std::decay_t<Fn>>;
+			using back_adaptor = _detail::back_adaptor<upon_channel<C>, std::decay_t<Fn>>;
 			template<typename Snd, typename Fn>
 			using sender_t = typename sender<C, Snd, std::decay_t<Fn>>::type;
 
 		public:
-			template<rod::sender Snd, movable_value Fn> requires detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, Snd, Snd, Fn>
+			template<rod::sender Snd, movable_value Fn> requires _detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, Snd, Snd, Fn>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Fn &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, completion_scheduler<Snd>, Snd, Fn>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<C>(get_env(snd)), std::forward<Snd>(snd), std::forward<Fn>(fn));
 			}
-			template<rod::sender Snd, movable_value Fn> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, Snd, Snd, Fn> && tag_invocable<upon_channel<C>, Snd, Fn>)
+			template<rod::sender Snd, movable_value Fn> requires(!_detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, Snd, Snd, Fn> && tag_invocable<upon_channel<C>, Snd, Fn>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Fn &&fn) const noexcept(nothrow_tag_invocable<upon_channel<C>, Snd, Fn>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Fn>(fn));
 			}
-			template<rod::sender Snd, movable_value Fn> requires(!detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, Snd, Snd, Fn> && !tag_invocable<upon_channel<C>, Snd, Fn>)
+			template<rod::sender Snd, movable_value Fn> requires(!_detail::tag_invocable_with_completion_scheduler<upon_channel<C>, C, Snd, Snd, Fn> && !tag_invocable<upon_channel<C>, Snd, Fn>)
 			[[nodiscard]] constexpr sender_t<Snd, Fn> operator()(Snd &&snd, Fn &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Fn>, Snd, Fn>)
 			{
 				return sender_t<Snd, Fn>{std::forward<Snd>(snd), std::forward<Fn>(fn)};

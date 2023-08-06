@@ -46,7 +46,7 @@ namespace rod
 		};
 
 		template<typename Fn, typename Shape, typename... Args>
-		concept bulk_nothrow = detail::nothrow_callable<Fn, Shape, Args &...> && std::is_nothrow_constructible_v<detail::decayed_tuple<Args...>, Args...>;
+		concept bulk_nothrow = _detail::nothrow_callable<Fn, Shape, Args &...> && std::is_nothrow_constructible_v<_detail::decayed_tuple<Args...>, Args...>;
 
 		template<typename Snd, typename Rcv, typename Shape, typename Fn, typename ThrowTag>
 		struct bulk_shared_state
@@ -59,7 +59,7 @@ namespace rod
 				return std::make_pair(i, div + i + static_cast<Shape>(pos < rem));
 			}
 
-			using data_t = value_types_of_t<Snd, env_of_t<Rcv>, detail::decayed_tuple, detail::variant_or_empty>;
+			using data_t = value_types_of_t<Snd, env_of_t<Rcv>, _detail::decayed_tuple, _detail::variant_or_empty>;
 
 			static void notify_task(operation_base *ptr, std::size_t id) noexcept
 			{
@@ -75,10 +75,10 @@ namespace rod
 			constexpr bulk_shared_state(thread_pool *pool, Rcv rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_constructible_v<Fn, Fn2>)
 					: pool(pool), rcv(std::move(rcv)), fn(std::forward<Fn2>(fn)), shape(shape), tasks(required_threads(), bulk_task_base{notify_task, this}) {}
 
-			template<typename... Args> requires(!std::same_as<data_t, detail::empty_variant<>>)
+			template<typename... Args> requires(!std::same_as<data_t, _detail::empty_variant<>>)
 			constexpr void start_bulk(Args &&...args) noexcept
 			{
-				const auto emplace = [&]() { data.template emplace<detail::decayed_tuple<Args...>>(std::forward<Args>(args)...); };
+				const auto emplace = [&]() { data.template emplace<_detail::decayed_tuple<Args...>>(std::forward<Args>(args)...); };
 
 				if constexpr (ThrowTag::value)
 					try { emplace(); } catch (...) { set_error(std::move(rcv), std::current_exception()); }
@@ -90,7 +90,7 @@ namespace rod
 				else
 					start();
 			}
-			template<typename... Args> requires std::same_as<data_t, detail::empty_variant<>>
+			template<typename... Args> requires std::same_as<data_t, _detail::empty_variant<>>
 			constexpr void start_bulk(Args &&...) noexcept
 			{
 				if (shape == Shape{0})
@@ -99,9 +99,9 @@ namespace rod
 					start();
 			}
 
-			template<typename F> requires(!std::same_as<data_t, detail::empty_variant<>>)
+			template<typename F> requires(!std::same_as<data_t, _detail::empty_variant<>>)
 			constexpr void apply(F &&f) noexcept { std::visit([&](auto &tpl) { std::apply([&](auto &...args) { std::invoke(f, args...); }, tpl); }, data); }
-			template<typename F> requires std::same_as<data_t, detail::empty_variant<>>
+			template<typename F> requires std::same_as<data_t, _detail::empty_variant<>>
 			constexpr void apply(F &&f) noexcept { std::invoke(f); }
 
 			constexpr void complete() noexcept
@@ -162,7 +162,7 @@ namespace rod
 
 			template<std::same_as<set_value_t> C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r._state->start_bulk(std::forward<Args>(args)...); }
-			template<detail::completion_channel C, typename... Args> requires(!std::same_as<C, set_value_t>)
+			template<_detail::completion_channel C, typename... Args> requires(!std::same_as<C, set_value_t>)
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._state->rcv), std::forward<Args>(args)...); }
 
 		private:
@@ -211,7 +211,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			template<typename Snd2, typename Fn2>
-			constexpr explicit type(thread_pool *pool, Snd2 &&snd, Rcv &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<shared_state_t, thread_pool *, Rcv, Shape, Fn2> && detail::nothrow_callable<connect_t, Snd, receiver_t>)
+			constexpr explicit type(thread_pool *pool, Snd2 &&snd, Rcv &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<shared_state_t, thread_pool *, Rcv, Shape, Fn2> && _detail::nothrow_callable<connect_t, Snd, receiver_t>)
 					: _shared_state(pool, std::forward<Rcv>(rcv), shape, std::forward<Fn2>(fn)), _connect_state{connect(std::forward<Snd2>(snd), receiver_t{&_shared_state})} {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._connect_state); }
@@ -231,7 +231,7 @@ namespace rod
 
 			struct worker_t
 			{
-				using task_queue_t = detail::atomic_queue<operation_base, &operation_base::next>;
+				using task_queue_t = _detail::atomic_queue<operation_base, &operation_base::next>;
 
 				void stop() noexcept
 				{
@@ -318,7 +318,7 @@ namespace rod
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
 			template<decays_to<sender> T, receiver_of<signs_t> Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return operation_t<Rcv>{s._pool, std::move(rcv)}; }
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_decay_copyable<Rcv>::value) { return operation_t<Rcv>{s._pool, std::move(rcv)}; }
 
 		private:
 			thread_pool *_pool;

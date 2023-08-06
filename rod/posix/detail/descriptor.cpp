@@ -13,7 +13,7 @@
 #include <climits>
 #include <limits>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	std::error_code basic_descriptor::close() noexcept
 	{

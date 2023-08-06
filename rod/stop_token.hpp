@@ -68,7 +68,7 @@ namespace rod
 	template<typename T>
 	using stop_token_of_t = std::remove_cvref_t<decltype(get_stop_token(std::declval<T>()))>;
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename Env>
 		concept stoppable_env = stoppable_token<stop_token_of_t<Env &>>;

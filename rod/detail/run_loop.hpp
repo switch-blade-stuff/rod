@@ -105,7 +105,7 @@ namespace rod
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
 			template<decays_to<sender> T, rod::receiver Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(_detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
 
 		private:
 			template<typename Rcv>
@@ -161,8 +161,8 @@ namespace rod
 
 		private:
 			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a._tp <= b._tp; }};
-			using timer_queue_t = detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::_timer_prev, &timer_operation_base::_timer_next>;
-			using task_queue_t = detail::basic_queue<operation_base, &operation_base::_next>;
+			using timer_queue_t = _detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::_timer_prev, &timer_operation_base::_timer_next>;
+			using task_queue_t = _detail::basic_queue<operation_base, &operation_base::_next>;
 
 		public:
 			run_loop(run_loop &&) = delete;

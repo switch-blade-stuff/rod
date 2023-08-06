@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <utility>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	class mmap_handle
 	{

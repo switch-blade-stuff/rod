@@ -12,7 +12,7 @@
 
 #include "mmap.hpp"
 
-namespace rod::detail
+namespace rod::_detail
 {
 	result<std::size_t, std::error_code> mmap_handle::get_pagesize() noexcept
 	{

@@ -13,7 +13,7 @@ namespace rod
 	template<typename T, typename Alloc>
 	class array_list;
 
-	namespace detail
+	namespace _detail
 	{
 		struct array_list_header
 		{
@@ -92,8 +92,8 @@ namespace rod
 			using iterator_category = std::bidirectional_iterator_tag;
 
 		private:
-			using header_t = detail::array_list_header;
-			using node_t = detail::array_list_node<value_type, Alloc>;
+			using header_t = _detail::array_list_header;
+			using node_t = _detail::array_list_node<value_type, Alloc>;
 
 			using header_pointer = select_allocator_pointer_t<copy_cv_t<T, header_t>, typename std::allocator_traits<Alloc>::template rebind_traits<header_t>>;
 			using node_pointer = select_allocator_pointer_t<copy_cv_t<T, node_t>, typename std::allocator_traits<Alloc>::template rebind_traits<node_t>>;
@@ -150,8 +150,8 @@ namespace rod
 	template<typename T, typename Alloc = std::allocator<T>>
 	class array_list
 	{
-		using header_t = detail::array_list_header;
-		using node_t = detail::array_list_node<T, Alloc>;
+		using header_t = _detail::array_list_header;
+		using node_t = _detail::array_list_node<T, Alloc>;
 
 		using header_pointer = typename std::allocator_traits<Alloc>::template rebind_traits<header_t>::pointer;
 		using const_header_pointer = typename std::allocator_traits<Alloc>::template rebind_traits<header_t>::const_pointer;
@@ -165,8 +165,8 @@ namespace rod
 		using value_type = T;
 		using allocator_type = Alloc;
 
-		using iterator = detail::array_list_iterator<value_type, allocator_type>;
-		using const_iterator = detail::array_list_iterator<std::add_const_t<value_type>, allocator_type>;
+		using iterator = _detail::array_list_iterator<value_type, allocator_type>;
+		using const_iterator = _detail::array_list_iterator<std::add_const_t<value_type>, allocator_type>;
 		using reverse_iterator = std::reverse_iterator<iterator>;
 		using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 

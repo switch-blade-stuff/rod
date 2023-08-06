@@ -16,21 +16,21 @@ namespace rod
 			template<typename Snd>
 			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Sch>
-			using back_adaptor = detail::back_adaptor<transfer_t, std::decay_t<Sch>>;
+			using back_adaptor = _detail::back_adaptor<transfer_t, std::decay_t<Sch>>;
 
 		public:
-			template<sender Snd, scheduler Sch> requires detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch>
+			template<sender Snd, scheduler Sch> requires _detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Sch &&sch) const noexcept(nothrow_tag_invocable<transfer_t, value_scheduler<Snd>, Snd, Sch>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Sch>(sch));
 			}
-			template<sender Snd, scheduler Sch> requires(!detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch> && tag_invocable<transfer_t, Snd, Sch>)
+			template<sender Snd, scheduler Sch> requires(!_detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch> && tag_invocable<transfer_t, Snd, Sch>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Sch &&sch) const noexcept(nothrow_tag_invocable<transfer_t, Snd, Sch>)
 			{
 				return tag_invoke(transfer_t{}, std::forward<Snd>(snd), std::forward<Sch>(sch));
 			}
-			template<sender Snd, scheduler Sch> requires(!detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch> && !tag_invocable<transfer_t, Snd, Sch>)
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Sch &&sch) const noexcept(detail::nothrow_callable<schedule_from_t, Snd, Sch>)
+			template<sender Snd, scheduler Sch> requires(!_detail::tag_invocable_with_completion_scheduler<transfer_t, set_value_t, Snd, Snd, Sch> && !tag_invocable<transfer_t, Snd, Sch>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Sch &&sch) const noexcept(_detail::nothrow_callable<schedule_from_t, Snd, Sch>)
 			{
 				return schedule_from(std::forward<Sch>(sch), std::forward<Snd>(snd));
 			}

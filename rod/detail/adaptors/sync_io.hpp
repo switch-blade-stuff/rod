@@ -62,7 +62,7 @@ namespace rod::_sync_io
 			else
 				r.complete();
 		}
-		template<detail::completion_channel C, typename... Vs> requires(!std::same_as<C, set_value_t> && detail::callable<C, Rcv, Vs...>)
+		template<_detail::completion_channel C, typename... Vs> requires(!std::same_as<C, set_value_t> && _detail::callable<C, Rcv, Vs...>)
 		friend constexpr void tag_invoke(C, type &&r, Vs &&...args) noexcept { C{}(std::move(r._op->_rcv), std::forward<Vs>(args)...); }
 
 	private:
@@ -94,7 +94,7 @@ namespace rod::_sync_io
 		template<typename... Ts>
 		using value_signs_t = completion_signatures<>;
 		template<typename Err>
-		using error_signs_t = detail::concat_tuples_t<completion_signatures<detail::make_signature_t<set_error_t, Err>>,
+		using error_signs_t = _detail::concat_tuples_t<completion_signatures<_detail::make_signature_t<set_error_t, Err>>,
 									std::conditional_t<std::conjunction_v<std::is_nothrow_move_constructible<Args>...>,
 										completion_signatures<set_error_t(std::exception_ptr)>,
 										completion_signatures<>>>;

@@ -22,7 +22,7 @@ namespace rod
 		public:
 			constexpr explicit type(Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : _rcv(std::forward<Rcv>(rcv)) {}
 
-			friend constexpr void tag_invoke(start_t, type &op) noexcept { detail::rcv_try_invoke(std::move(op._rcv), set_value, std::move(op._rcv), T{}(get_env(op._rcv))); }
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { _detail::rcv_try_invoke(std::move(op._rcv), set_value, std::move(op._rcv), T{}(get_env(op._rcv))); }
 
 		private:
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;

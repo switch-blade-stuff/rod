@@ -20,13 +20,13 @@ namespace rod
 
 	private:
 		template<typename... Ts>
-		using first_nothrow_constructible = typename detail::bind_front<std::is_nothrow_constructible, T0>::template type<Ts...>;
+		using first_nothrow_constructible = typename _detail::bind_front<std::is_nothrow_constructible, T0>::template type<Ts...>;
 		template<typename... Ts>
-		using second_nothrow_constructible = typename detail::bind_front<std::is_nothrow_constructible, T1>::template type<Ts...>;
+		using second_nothrow_constructible = typename _detail::bind_front<std::is_nothrow_constructible, T1>::template type<Ts...>;
 
 		template<typename Args0, typename Args1>
-		static constexpr bool nothrow_constructible = std::conjunction_v<detail::apply_tuple_t<second_nothrow_constructible, Args1>,
-		                                                                 detail::apply_tuple_t<first_nothrow_constructible, Args0>>;
+		static constexpr bool nothrow_constructible = std::conjunction_v<_detail::apply_tuple_t<second_nothrow_constructible, Args1>,
+		                                                                 _detail::apply_tuple_t<first_nothrow_constructible, Args0>>;
 
 		template<std::size_t... Is0, typename... Args0, std::size_t... Is1, typename... Args1>
 		constexpr packed_pair(std::index_sequence<Is0...>, std::tuple<Args0...> &args0, std::index_sequence<Is1...>, std::tuple<Args1...> &args1)

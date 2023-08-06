@@ -20,7 +20,7 @@ namespace rod
 		template<typename C, typename Env, typename Fn, typename Snd>
 		struct filter_signs { using type = completion_signatures<Snd>; };
 		template<typename C, typename Env, typename Fn, typename... Args>
-		struct filter_signs<C, Env, Fn, C(Args...)> { using type = make_completion_signatures<std::invoke_result_t<Fn, detail::decayed_ref<Args>...>, Env, completion_signatures<set_error_t(std::exception_ptr)>>; };
+		struct filter_signs<C, Env, Fn, C(Args...)> { using type = make_completion_signatures<std::invoke_result_t<Fn, _detail::decayed_ref<Args>...>, Env, completion_signatures<set_error_t(std::exception_ptr)>>; };
 
 		template<typename C, typename Env, typename Fn, typename Snd>
 		using filter_signs_t = typename filter_signs<C, Env, Fn, Snd>::type;
@@ -28,7 +28,7 @@ namespace rod
 		template<typename, typename, typename>
 		struct deduce_state;
 		template<typename Rcv, typename Fn, template<typename...> typename T, typename... Args>
-		struct deduce_state<Rcv, Fn, T<Args...>> { using type = connect_result_t<std::invoke_result_t<Fn, detail::decayed_ref<Args>...>, Rcv>; };
+		struct deduce_state<Rcv, Fn, T<Args...>> { using type = connect_result_t<std::invoke_result_t<Fn, _detail::decayed_ref<Args>...>, Rcv>; };
 
 		template<typename Rcv, typename Fn, typename T>
 		using deduce_state_t = typename deduce_state<Rcv, Fn, T>::type;
@@ -69,11 +69,11 @@ namespace rod
 		public:
 			constexpr explicit type(operation_base_t *op) noexcept : _op(op) {}
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->_rcv); }
 
-			template<detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && detail::callable<T, Rcv, Args...>)
+			template<_detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && _detail::callable<T, Rcv, Args...>)
 			friend void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_forward(T{}, std::forward<Args>(args)...); }
-			template<detail::completion_channel T, typename... Args> requires decays_to<T, C> && std::invocable<Fn, Args...>
+			template<_detail::completion_channel T, typename... Args> requires decays_to<T, C> && std::invocable<Fn, Args...>
 			friend void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_selected(std::forward<Args>(args)...); }
 
 		private:
@@ -83,14 +83,14 @@ namespace rod
 			constexpr void complete_selected(Args &&...args) noexcept
 			{
 				static_assert(sender_to<std::invoke_result_t<Fn, Args...>, Rcv>, "Sender returned by the functor of `rod::let` must be connectable with it's downstream receiver");
-				using state_t = deduce_state_t<Rcv, Fn, detail::decayed_tuple<Args...>>;
+				using state_t = deduce_state_t<Rcv, Fn, _detail::decayed_tuple<Args...>>;
 
 				const auto connect = [&]()
 				{
-					auto &tuple = _op->_res.template emplace<detail::decayed_tuple<Args...>>(std::forward<Args>(args)...);
+					auto &tuple = _op->_res.template emplace<_detail::decayed_tuple<Args...>>(std::forward<Args>(args)...);
 					return rod::connect(std::apply(std::move(_op->_fn), tuple), std::move(_op->_rcv));
 				};
-				try { start(_op->_state.template emplace<state_t>(detail::eval_t{connect})); }
+				try { start(_op->_state.template emplace<state_t>(_detail::eval_t{connect})); }
 				catch (...) { set_error(std::move(_op->_rcv), std::current_exception()); }
 			}
 
@@ -98,9 +98,9 @@ namespace rod
 		};
 
 		template<typename C, typename Rcv, typename Fn, typename... Ts>
-		using unique_receiver = detail::apply_tuple_list_t<detail::bind_front<receiver, C, Rcv, Fn>::template type, unique_tuple_t<type_list_t<Ts...>>>;
+		using unique_receiver = _detail::apply_tuple_list_t<_detail::bind_front<receiver, C, Rcv, Fn>::template type, unique_tuple_t<type_list_t<Ts...>>>;
 		template<typename C, typename Snd, typename Rcv, typename Fn>
-		using bind_receiver = typename detail::gather_signatures_t<C, Snd, env_of_t<Rcv>, detail::decayed_tuple, detail::bind_front<unique_receiver, C, Rcv, Fn>::template type>::type;
+		using bind_receiver = typename _detail::gather_signatures_t<C, Snd, env_of_t<Rcv>, _detail::decayed_tuple, _detail::bind_front<unique_receiver, C, Rcv, Fn>::template type>::type;
 
 		template<typename C, typename Snd, typename Rcv, typename Fn>
 		class operation<C, Snd, Rcv, Fn>::type : bind_receiver<C, Snd, Rcv, Fn>::operation_base_t
@@ -136,15 +136,15 @@ namespace rod
 			using receiver_t = bind_receiver<C, copy_cvref_t<T, Snd>, Rcv, Fn>;
 
 			template<typename Env, typename... Ts>
-			using apply_filter = unique_tuple_t<detail::concat_tuples_t<filter_signs_t<C, Env, Fn, Ts>...>>;
+			using apply_filter = unique_tuple_t<_detail::concat_tuples_t<filter_signs_t<C, Env, Fn, Ts>...>>;
 			template<typename T, typename Env>
-			using signs_t = detail::apply_tuple_list_t<detail::bind_front<apply_filter, Env>::template type, completion_signatures_of_t<copy_cvref_t<T, Snd>, Env>>;
+			using signs_t = _detail::apply_tuple_list_t<_detail::bind_front<apply_filter, Env>::template type, completion_signatures_of_t<copy_cvref_t<T, Snd>, Env>>;
 
 		public:
 			template<typename Snd2, typename Fn2>
 			constexpr explicit type(Snd2 &&snd, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)) {}
 
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template <decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
@@ -167,20 +167,20 @@ namespace rod
 			template<typename Snd, typename Fn>
 			using sender_t = typename sender<C, std::decay_t<Snd>, std::decay_t<Fn>>::type;
 			template<typename Fn>
-			using back_adaptor = detail::back_adaptor<let_channel, std::decay_t<Fn>>;
+			using back_adaptor = _detail::back_adaptor<let_channel, std::decay_t<Fn>>;
 
 		public:
-			template<rod::sender Snd, movable_value Fn> requires detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, Fn>
+			template<rod::sender Snd, movable_value Fn> requires _detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, Fn>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Fn &&fn) const noexcept(nothrow_tag_invocable<let_channel, value_scheduler<Snd>, Snd, Fn>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<Fn>(fn));
 			}
-			template<rod::sender Snd, movable_value Fn> requires(!detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, Fn> && tag_invocable<let_channel, Snd, Fn>)
+			template<rod::sender Snd, movable_value Fn> requires(!_detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, Fn> && tag_invocable<let_channel, Snd, Fn>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Fn &&fn) const noexcept(nothrow_tag_invocable<let_channel, Snd, Fn>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<Fn>(fn));
 			}
-			template<rod::sender Snd, movable_value Fn> requires(!detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, Fn> && !tag_invocable<let_channel, Snd, Fn>)
+			template<rod::sender Snd, movable_value Fn> requires(!_detail::tag_invocable_with_completion_scheduler<let_channel, set_value_t, Snd, Snd, Fn> && !tag_invocable<let_channel, Snd, Fn>)
 			[[nodiscard]] constexpr sender_t<Snd, Fn> operator()(Snd &&snd, Fn &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Fn>, Snd, Fn>)
 			{
 				return sender_t<Snd, Fn>{std::forward<Snd>(snd), std::forward<Fn>(fn)};

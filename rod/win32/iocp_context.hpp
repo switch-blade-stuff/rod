@@ -20,8 +20,8 @@ namespace rod
 {
 	namespace _iocp
 	{
-		using unique_handle = detail::unique_handle;
-		using ntapi = detail::ntapi;
+		using unique_handle = _detail::unique_handle;
+		using ntapi = _detail::ntapi;
 
 		using time_point = typename filetime_clock::time_point;
 		using clock = filetime_clock;
@@ -43,9 +43,9 @@ namespace rod
 
 		private:
 			template<typename Env>
-			using stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			using stop_signs_t = std::conditional_t<_detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
 			template<typename Env>
-			using signs_t = detail::concat_tuples_t<completion_signatures<Signs...>, stop_signs_t<Env>>;
+			using signs_t = _detail::concat_tuples_t<completion_signatures<Signs...>, stop_signs_t<Env>>;
 
 		public:
 			constexpr explicit sender_base(context *ctx) noexcept : _ctx(ctx) {}
@@ -59,7 +59,7 @@ namespace rod
 		};
 
 		template<typename Env, auto StopFunc>
-		using stop_cb = detail::stop_cb_adaptor<Env, StopFunc>;
+		using stop_cb = _detail::stop_cb_adaptor<Env, StopFunc>;
 
 		template<typename Op, typename Buff>
 		struct io_cmd
@@ -177,12 +177,12 @@ namespace rod
 
 		private:
 			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a.tp <= b.tp; }};
-			using timer_queue_t = detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::timer_prev, &timer_operation_base::timer_next>;
+			using timer_queue_t = _detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::timer_prev, &timer_operation_base::timer_next>;
 
-			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::next>;
-			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::next>;
+			using producer_queue_t = _detail::atomic_queue<operation_base, &operation_base::next>;
+			using consumer_queue_t = _detail::basic_queue<operation_base, &operation_base::next>;
 
-			using io_entry_pool_t = detail::basic_queue<io_entry, &io_entry::next>;
+			using io_entry_pool_t = _detail::basic_queue<io_entry, &io_entry::next>;
 			using io_entry_buff_t = std::vector<io_entry>;
 
 		public:
@@ -262,7 +262,7 @@ namespace rod
 			std::atomic<std::thread::id> _consumer_tid = {};
 
 			/* IOCP object handle & entry buffer. */
-			detail::unique_handle _iocp = {};
+			_detail::unique_handle _iocp = {};
 			io_entry_buff_t _io_entry_buff;
 			io_entry_pool_t _io_entry_pool;
 
@@ -327,7 +327,7 @@ namespace rod
 			void complete_value() noexcept
 			{
 				/* Handle spontaneous stop requests. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 				{
 					_stop_cb.reset();
 					if (get_stop_token(get_env(_rcv)).stop_requested())
@@ -340,7 +340,7 @@ namespace rod
 			}
 			void complete_stopped() noexcept
 			{
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));
 				else
 					std::terminate();
@@ -359,7 +359,7 @@ namespace rod
 			void start_consumer()
 			{
 				/* Bail if a stop has already been requested. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					if (get_stop_token(get_env(_rcv)).stop_requested())
 					{
 						notify_func = notify_stopped;
@@ -371,13 +371,13 @@ namespace rod
 				ctx->add_timer(this);
 
 				/* Initialize the stop callback for stoppable environments. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.init(get_env(_rcv), this);
 			}
 
 			void request_stop()
 			{
-				if constexpr (!detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (!_detail::stoppable_env<env_of_t<Rcv>>)
 					std::terminate();
 				else if (ctx->is_consumer_thread())
 					request_stop_consumer();
@@ -390,7 +390,7 @@ namespace rod
 			}
 			void request_stop_consumer()
 			{
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
 
 				notify_func = notify_stopped;
@@ -441,7 +441,7 @@ namespace rod
 				/* Schedule a bathed read operation. */
 				if (io_operation_base::entry || ctx->acquire_io_entry(this))
 				{
-					if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+					if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 						_stop_cb.init(get_env(_rcv), this);
 					batch_consumer();
 				}
@@ -463,7 +463,7 @@ namespace rod
 
 			void complete_result() noexcept
 			{
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
 				if (!(_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested))
 					complete_result(io_result());
@@ -493,7 +493,7 @@ namespace rod
 				}
 				else
 				{
-					if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+					if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 						_stop_cb.reset();
 					_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel);
 
@@ -520,7 +520,7 @@ namespace rod
 					io_stop_operation::notify_func = notify_stopped;
 					ctx->schedule_consumer(static_cast<io_stop_operation *>(this));
 				}
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));
 				else
 					std::terminate();

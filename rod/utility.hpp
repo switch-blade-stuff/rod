@@ -7,6 +7,7 @@
 #include <system_error>
 #include <exception>
 #include <variant>
+#include <array>
 
 #include <cstring>
 #include <cwchar>
@@ -37,7 +38,7 @@ namespace rod
 	template<typename T, typename... Ts>
 	concept one_of = (std::same_as<T, Ts> || ...);
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename... Ts>
 		using decayed_tuple = std::tuple<std::decay_t<Ts>...>;
@@ -178,7 +179,7 @@ namespace rod
 
 	/** Metaprogramming utility used to copy reference, `const` & `volatile` qualifiers from \a From to \a To. */
 	template<typename From, typename To>
-	using copy_cvref = detail::copy_cvref_impl<From, To>;
+	using copy_cvref = _detail::copy_cvref_impl<From, To>;
 	/** Alias for `typename rod::copy_cvref&lt;From, To&gt;::type`. */
 	template<typename From, typename To>
 	using copy_cvref_t = typename copy_cvref<From, To>::type;
@@ -190,7 +191,7 @@ namespace rod
 	template<typename From, typename To>
 	using copy_cv_t = typename copy_cv<From, To>::type;
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename, template<typename...> typename>
 		struct is_instance_of_impl : std::false_type {};
@@ -200,13 +201,17 @@ namespace rod
 
 	/** Metaprogramming utility used to check if type \a U is an instance of template \a T. */
 	template<typename U, template<typename...> typename T>
-	using is_instance_of = detail::is_instance_of_impl<std::decay_t<U>, T>;
+	using is_instance_of = _detail::is_instance_of_impl<std::decay_t<U>, T>;
 	/** Alias for `rod::is_instance_of&lt;U, T&gt;::value` */
 	template<typename U, template<typename...> typename T>
 	inline constexpr auto is_instance_of_v = is_instance_of<U, T>::value;
+
 	/** Concept used to constrain type \a U to be an instance of template \a T. */
 	template<typename U, template<typename...> typename T>
 	concept instance_of = is_instance_of_v<U, T>;
+	/** Concept used to constrain type \a U to decay into an instance of template \a T. */
+	template<typename U, template<typename...> typename T>
+	concept decays_to_instance_of = instance_of<std::decay_t<U>, T>;
 
 	/** Utility type used to group type pack \a Ts. */
 	template<typename... Ts>
@@ -215,7 +220,7 @@ namespace rod
 	template<typename... Ts>
 	inline constexpr auto type_list = type_list_t<Ts...>{};
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename, typename...>
 		struct is_in_impl;
@@ -234,19 +239,19 @@ namespace rod
 
 	/** Metafunction used to check if type \a U is contained within type pack \a Ts. */
 	template<typename U, typename... Ts>
-	using is_in = detail::is_in_impl<U, Ts...>;
+	using is_in = _detail::is_in_impl<U, Ts...>;
 	/** Alias for `rod::is_in&lt;U, Ts...&gt;::value`. */
 	template<typename U, typename... Ts>
 	inline constexpr auto is_in_v = is_in<U, Ts...>::value;
 
 	/** Metafunction used to check if type \a U is contained within tuple \a T. */
 	template<typename U, typename T>
-	using is_in_tuple = detail::is_in_tuple_impl<U, T>;
+	using is_in_tuple = _detail::is_in_tuple_impl<U, T>;
 	/** Alias for `rod::is_in_tuple&lt;U, T&gt;::value`. */
 	template<typename U, typename T>
 	inline constexpr auto is_in_tuple_v = is_in_tuple<U, T>::value;
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename>
 		struct tuple_of;
@@ -265,9 +270,9 @@ namespace rod
 
 	/** Metafunction used to filter duplicates from the passed tuple type. */
 	template<typename T>
-	using unique_tuple_t = typename detail::make_unique_list<typename detail::tuple_of<T>::template type<>, T>::type;
+	using unique_tuple_t = typename _detail::make_unique_list<typename _detail::tuple_of<T>::template type<>, T>::type;
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename...>
 		struct empty_variant {};
@@ -288,7 +293,7 @@ namespace rod
 	/** @copydoc assert_error_code */
 	static void assert_error_code(std::error_code err, const std::string &msg) { if (err) throw std::system_error(err, msg); }
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename Func>
 		class defer_invoker
@@ -311,12 +316,12 @@ namespace rod
 
 	/** Invokes functor \a func on destruction of the returned handle. */
 	template<typename Func>
-	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<detail::defer_invoker<std::decay_t<Func>>, Func>)
+	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<_detail::defer_invoker<std::decay_t<Func>>, Func>)
 	{
-		return detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
+		return _detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
 	}
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename T0, typename T1>
 		struct adl_swappable : std::false_type {};
@@ -368,14 +373,192 @@ namespace rod
 		struct nothrow_adl_swappable<T0, T1> : nothrow_static_swappable<T0, T1> {};
 	}
 
-	/** Utility used to select either a member overload of `swap` or an ADL overload with associated `std::swap`. */
-	template<typename T0, typename T1> requires detail::adl_swappable<T0, T1>::value
-	inline constexpr void adl_swap(T0 &&a, T1 &&b) noexcept(detail::nothrow_adl_swappable<T0, T1>::value)
+	/** Utility function used to select either a member overload of `swap` or an ADL overload with associated `std::swap`. */
+	template<typename T0, typename T1> requires _detail::adl_swappable<T0, T1>::value
+	inline constexpr void adl_swap(T0 &&a, T1 &&b) noexcept(_detail::nothrow_adl_swappable<T0, T1>::value)
 	{
 		using std::swap;
 		if constexpr (!requires { std::forward<T0>(a).swap(std::forward<T1>(b)); })
 			swap(std::forward<T0>(a), std::forward<T1>(b));
 		else
 			std::forward<T0>(a).swap(std::forward<T1>(b));
+	}
+
+	/** Utility function used to mark a portion of code as unreachable. */
+	[[noreturn]] inline void unreachable() noexcept
+	{
+#if defined(__GNUC__)
+		__builtin_unreachable();
+#elif defined(_MSC_VER)
+		__assume(false);
+#elif !defined(NDEBUG)
+		std::terminate();
+#endif
+	}
+
+	namespace _detail
+	{
+#if defined(_MSC_VER) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+		template<typename T> requires(sizeof(T) == 8)
+		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
+		{
+			switch (n)
+			{
+			case 0: return 0;
+			case 1: return static_cast<T>(readu_le<std::uint8_t>(data));
+			case 2: return static_cast<T>(readu_le<std::uint16_t>(data));
+			case 3:
+			{
+				const auto h = static_cast<T>(readu_le<std::uint8_t>(data + 2));
+				const auto l = static_cast<T>(readu_le<std::uint16_t>(data));
+				return l | (h << 16);
+			}
+			case 4: return static_cast<T>(readu_le<std::uint32_t>(data));
+			case 5:
+			{
+				const auto h = static_cast<T>(readu_le<std::uint8_t>(data + 4));
+				const auto l = static_cast<T>(readu_le<std::uint32_t>(data));
+				return l | (h << 32);
+			}
+			case 6:
+			{
+				const auto h = static_cast<T>(readu_le<std::uint16_t>(data + 4));
+				const auto l = static_cast<T>(readu_le<std::uint32_t>(data));
+				return l | (h << 32);
+			}
+			case 7:
+			{
+				const auto a = static_cast<T>(readu_le<std::uint16_t>(data + 4));
+				const auto b = static_cast<T>(readu_le<std::uint8_t>(data + 6));
+				const auto c = static_cast<T>(readu_le<std::uint32_t>(data));
+				return c | (a << 32) | (b << 48);
+			}
+			case 8: return readu_le<T>(data);
+			default:
+			{
+				if (!std::is_constant_evaluated())
+					unreachable();
+			}
+			}
+		}
+		template<typename T> requires(sizeof(T) == 4)
+		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
+		{
+			switch (n)
+			{
+			case 0: return 0;
+			case 1: return static_cast<T>(readu_le<std::uint8_t>(data));
+			case 2: return static_cast<T>(readu_le<std::uint16_t>(data));
+			case 3:
+			{
+				const auto h = static_cast<T>(readu_le<std::uint8_t>(data + 2));
+				const auto l = static_cast<T>(readu_le<std::uint16_t>(data));
+				return l | (h << 16);
+			}
+			case 4: return readu_le<T>(data);
+			default:
+			{
+				if (!std::is_constant_evaluated())
+					unreachable();
+			}
+			}
+		}
+		template<typename T> requires(sizeof(T) == 2)
+		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
+		{
+			switch (n)
+			{
+			case 0: return 0;
+			case 1: return static_cast<T>(readu_le<std::uint8_t>(data));
+			case 2: return readu_le<T>(data);
+			default:
+			{
+				if (!std::is_constant_evaluated())
+					unreachable();
+			}
+			}
+		}
+#else
+		template<typename T> requires(sizeof(T) == 8)
+		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
+		{
+			switch (n)
+			{
+			case 0: return 0;
+			case 1: return static_cast<T>(readu_be<std::uint8_t>(data));
+			case 2: return static_cast<T>(readu_be<std::uint16_t>(data));
+			case 3:
+			{
+				const auto l = static_cast<T>(readu_be<std::uint8_t>(data + 2));
+				const auto h = static_cast<T>(readu_be<std::uint16_t>(data));
+				return l | (h << 8);
+			}
+			case 4: return static_cast<T>(readu_be<std::uint32_t>(data));
+			case 5:
+			{
+				const auto l = static_cast<T>(readu_be<std::uint8_t>(data + 4));
+				const auto h = static_cast<T>(readu_be<std::uint32_t>(data));
+				return l | (h << 8);
+			}
+			case 6:
+			{
+				const auto l = static_cast<T>(readu_be<std::uint16_t>(data + 4));
+				const auto h = static_cast<T>(readu_be<std::uint32_t>(data));
+				return l | (h << 16);
+			}
+			case 7:
+			{
+				const auto a = static_cast<T>(readu_be<std::uint16_t>(data + 4));
+				const auto b = static_cast<T>(readu_be<std::uint8_t>(data + 6));
+				const auto c = static_cast<T>(readu_be<std::uint32_t>(data));
+				return b | (a << 8) | (c << 24);
+			}
+			case 8: return readu_be<T>(data);
+			default:
+			{
+				if (!std::is_constant_evaluated())
+					unreachable();
+			}
+			}
+		}
+		template<typename T> requires(sizeof(T) == 4)
+		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
+		{
+			switch (n)
+			{
+			case 0: return 0;
+			case 1: return static_cast<T>(readu_be<std::uint8_t>(data));
+			case 2: return static_cast<T>(readu_be<std::uint16_t>(data));
+			case 3:
+			{
+				const auto l = static_cast<T>(readu_be<std::uint8_t>(data + 2));
+				const auto h = static_cast<T>(readu_be<std::uint16_t>(data));
+				return l | (h << 8);
+			}
+			case 4: return readu_be<T>(data);
+			default:
+			{
+				if (!std::is_constant_evaluated())
+					unreachable();
+			}
+			}
+		}
+		template<typename T> requires(sizeof(T) == 2)
+		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
+		{
+			switch (n)
+			{
+			case 0: return 0;
+			case 1: return static_cast<T>(readu_be<std::uint8_t>(data));
+			case 2: return readu_be<T>(data);
+			default:
+			{
+				if (!std::is_constant_evaluated())
+					unreachable();
+			}
+			}
+		}
+	}
+#endif
 	}
 }

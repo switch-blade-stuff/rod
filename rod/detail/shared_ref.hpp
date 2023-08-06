@@ -10,7 +10,7 @@
 
 #include "config.hpp"
 
-namespace rod::detail
+namespace rod::_detail
 {
 	/* Lightweight shared reference counter implementation for cases where shared_ptr is overkill. */
 

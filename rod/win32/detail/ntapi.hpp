@@ -11,7 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	struct ntapi
 	{

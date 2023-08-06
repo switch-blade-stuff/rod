@@ -14,7 +14,7 @@
 #include <climits>
 #include <limits>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	result<system_file, std::error_code> system_file::reopen(native_handle_type fd, int mode) noexcept
 	{

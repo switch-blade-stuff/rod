@@ -8,7 +8,7 @@
 
 #include "basic_queue.hpp"
 
-namespace rod::detail
+namespace rod::_detail
 {
 	template<typename Node, Node *Node::*Next>
 	struct atomic_queue

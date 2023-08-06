@@ -22,7 +22,7 @@ namespace rod::fs
 	constexpr typename path::string_view_type prev_dir = "..";
 #endif
 
-	result<std::size_t> detail::path_base::utf16_to_utf32(std::span<const char16_t> src, void (*put_func)(void *, char32_t), void *data)
+	result<std::size_t> _detail::path_base::utf16_to_utf32(std::span<const char16_t> src, void (*put_func)(void *, char32_t), void *data)
 	{
 		std::size_t result = 0;
 		for (auto pos = src.begin(); pos != src.end(); ++pos, ++result)
@@ -44,7 +44,7 @@ namespace rod::fs
 		}
 		return result;
 	}
-	result<std::size_t> detail::path_base::utf32_to_utf16(std::span<const char32_t> src, void (*put_func)(void *, char16_t), void *data)
+	result<std::size_t> _detail::path_base::utf32_to_utf16(std::span<const char32_t> src, void (*put_func)(void *, char16_t), void *data)
 	{
 		std::size_t result = 0;
 		for (const auto &cp : src)
@@ -68,7 +68,7 @@ namespace rod::fs
 	}
 
 #ifdef ROD_WIN32
-	result<std::size_t> detail::path_base::wide_to_multibyte_with_default(std::uint32_t codepage, std::span<const wchar_t> src, std::span<char> dst) noexcept
+	result<std::size_t> _detail::path_base::wide_to_multibyte_with_default(std::uint32_t codepage, std::span<const wchar_t> src, std::span<char> dst) noexcept
 	{
 		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
@@ -79,7 +79,7 @@ namespace rod::fs
 		else
 			return len;
 	}
-	result<std::size_t> detail::path_base::wide_to_multibyte(std::uint32_t codepage, std::span<const wchar_t> src, std::span<char> dst) noexcept
+	result<std::size_t> _detail::path_base::wide_to_multibyte(std::uint32_t codepage, std::span<const wchar_t> src, std::span<char> dst) noexcept
 	{
 		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
@@ -110,7 +110,7 @@ namespace rod::fs
 		else
 			return err;
 	}
-	result<std::size_t> detail::path_base::multibyte_to_wide(std::uint32_t codepage, std::span<const char> src, std::span<wchar_t> dst) noexcept
+	result<std::size_t> _detail::path_base::multibyte_to_wide(std::uint32_t codepage, std::span<const char> src, std::span<wchar_t> dst) noexcept
 	{
 		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
@@ -120,14 +120,14 @@ namespace rod::fs
 		else
 			return len;
 	}
-	std::uint32_t detail::path_base::system_codepage() noexcept { return ::GetACP(); }
+	std::uint32_t _detail::path_base::system_codepage() noexcept { return ::GetACP(); }
 #endif
 
 	[[maybe_unused]] static path path_from_multibyte(std::span<const std::byte> data) { return {std::string_view{reinterpret_cast<const char *>(data.data()), data.size()}}; }
 	[[maybe_unused]] static path path_from_wide(std::span<const std::byte> data) { return {std::wstring_view{reinterpret_cast<const wchar_t *>(data.data()), data.size()}}; }
 
 #ifdef ROD_WIN32
-	path detail::path_from_binary(std::span<const std::byte> data)
+	path _detail::path_from_binary(std::span<const std::byte> data)
 	{
 		/* For length of 16, assume data is a GUID */
 		if (data.size() == 16)
@@ -147,7 +147,7 @@ namespace rod::fs
 			return path_from_wide(data);
 	}
 #else
-	path detail::path_from_binary(std::span<const std::byte> data) { return path_from_multibyte(data); }
+	path _detail::path_from_binary(std::span<const std::byte> data) { return path_from_multibyte(data); }
 #endif
 
 	path path::make_relative(const path &self, const path &base)

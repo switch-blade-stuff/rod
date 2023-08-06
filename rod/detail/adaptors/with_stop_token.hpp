@@ -34,8 +34,8 @@ namespace rod
 			template<decays_to<type> E>
 			friend constexpr Tok tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
 
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
-			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
@@ -56,7 +56,7 @@ namespace rod
 			constexpr explicit type(Rcv &&rcv, Tok tok) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_move_constructible_v<Tok>) : receiver_adaptor<type, Rcv>(std::forward<Rcv>(rcv)), _tok(std::move(tok)) {}
 
 		private:
-			constexpr env_t get_env() const noexcept(detail::nothrow_callable<get_env_t, const Rcv &> && std::is_nothrow_copy_constructible_v<Tok>)
+			constexpr env_t get_env() const noexcept(_detail::nothrow_callable<get_env_t, const Rcv &> && std::is_nothrow_copy_constructible_v<Tok>)
 			{
 				return env_t{rod::get_env(receiver_adaptor<type, Rcv>::base()), _tok};
 			}
@@ -89,7 +89,7 @@ namespace rod
 			template<typename Snd2>
 			constexpr explicit type(Snd2 &&snd, Tok tok) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_move_constructible_v<Tok>) : _snd(std::forward<Snd2>(snd)), _tok(std::move(tok)) {}
 
-			friend constexpr env_t tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &> && std::is_nothrow_constructible_v<env_t, env_of_t<Snd>, const Tok &>) { return env_t{get_env(s._snd), s._tok}; }
+			friend constexpr env_t tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &> && std::is_nothrow_constructible_v<env_t, env_of_t<Snd>, const Tok &>) { return env_t{get_env(s._snd), s._tok}; }
 			template<decays_to<type> T, typename E>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
@@ -109,22 +109,22 @@ namespace rod
 			template<typename Snd>
 			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Tok>
-			using back_adaptor = detail::back_adaptor<with_stop_token_t, Tok>;
+			using back_adaptor = _detail::back_adaptor<with_stop_token_t, Tok>;
 			template<typename Snd, typename Tok>
 			using sender_t = typename sender<std::decay_t<Snd>, Tok>::type;
 
 		public:
-			template<rod::sender Snd, stoppable_token Tok> requires detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok>
+			template<rod::sender Snd, stoppable_token Tok> requires _detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Tok tok) const noexcept(nothrow_tag_invocable<with_stop_token_t, value_scheduler<Snd>, Snd, Tok>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), tok);
 			}
-			template<rod::sender Snd, stoppable_token Tok> requires(!detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok> && tag_invocable<with_stop_token_t, Snd, Tok>)
+			template<rod::sender Snd, stoppable_token Tok> requires(!_detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok> && tag_invocable<with_stop_token_t, Snd, Tok>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Tok tok) const noexcept(nothrow_tag_invocable<with_stop_token_t, Snd, Tok>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), tok);
 			}
-			template<rod::sender Snd, stoppable_token Tok> requires(!detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok> && !tag_invocable<with_stop_token_t, Snd, Tok>)
+			template<rod::sender Snd, stoppable_token Tok> requires(!_detail::tag_invocable_with_completion_scheduler<with_stop_token_t, set_value_t, Snd, Snd, Tok> && !tag_invocable<with_stop_token_t, Snd, Tok>)
 			[[nodiscard]] constexpr sender_t<Snd, Tok> operator()(Snd &&snd, Tok tok) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Tok>, Snd, Tok>)
 			{
 				return sender_t<Snd, Tok>{std::forward<Snd>(snd), tok};

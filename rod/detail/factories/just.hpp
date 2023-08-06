@@ -110,10 +110,10 @@ namespace rod
 		class transfer_just_t
 		{
 			template<typename Sch>
-			using back_adaptor = detail::back_adaptor<transfer_just_t, std::decay_t<Sch>>;
+			using back_adaptor = _detail::back_adaptor<transfer_just_t, std::decay_t<Sch>>;
 
 			template<typename S, typename... Vs>
-			constexpr static bool default_nothrow = detail::nothrow_callable<just_t, Vs...> && detail::nothrow_callable<transfer_t, std::invoke_result_t<just_t, Vs...>>;
+			constexpr static bool default_nothrow = _detail::nothrow_callable<just_t, Vs...> && _detail::nothrow_callable<transfer_t, std::invoke_result_t<just_t, Vs...>>;
 
 		public:
 			template<scheduler S, typename... Vs> requires tag_invocable<transfer_just_t, S, Vs...>
@@ -148,7 +148,7 @@ namespace rod
 		struct just_invoke_t
 		{
 			template<movable_value F, typename... Args> requires std::invocable<F, Args...>
-			[[nodiscard]] constexpr rod::sender auto operator()(F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<then_t, std::invoke_result_t<just_t, Args...>, F>)
+			[[nodiscard]] constexpr rod::sender auto operator()(F &&fn, Args &&...args) const noexcept(_detail::nothrow_callable<then_t, std::invoke_result_t<just_t, Args...>, F>)
 			{
 				return then(just(std::forward<Args>(args)...), std::forward<F>(fn));
 			}
@@ -168,8 +168,8 @@ namespace rod
 	{
 		struct just_bulk_t
 		{
-			template<movable_value F, std::integral Shape, typename... Args> requires std::invocable<F, Shape, detail::decayed_ref<Args>...>
-			[[nodiscard]] constexpr rod::sender auto operator()(Shape shape, F &&fn, Args &&...args) const noexcept(detail::nothrow_callable<bulk_t, std::invoke_result_t<just_t, Args...>, Shape, F>)
+			template<movable_value F, std::integral Shape, typename... Args> requires std::invocable<F, Shape, _detail::decayed_ref<Args>...>
+			[[nodiscard]] constexpr rod::sender auto operator()(Shape shape, F &&fn, Args &&...args) const noexcept(_detail::nothrow_callable<bulk_t, std::invoke_result_t<just_t, Args...>, Shape, F>)
 			{
 				return bulk(just(std::forward<Args>(args)...), std::move(shape), std::forward<F>(fn));
 			}

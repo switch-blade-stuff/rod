@@ -31,11 +31,11 @@ namespace rod
 		public:
 			constexpr explicit type(operation_t *op) noexcept : _op(op) {}
 
-			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
 
-			template<detail::completion_channel C, typename... Args> requires decays_to<C, set_value_t> && detail::callable<Pred, Args...>
+			template<_detail::completion_channel C, typename... Args> requires decays_to<C, set_value_t> && _detail::callable<Pred, Args...>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_value(std::forward<Args>(args)...); }
-			template<detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			template<_detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && _detail::callable<C, Rcv, Args...>)
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_forward(C{}, std::forward<Args>(args)...); }
 
 		private:
@@ -61,20 +61,20 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			template<typename Snd2, typename Pred2>
-			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2> && noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>))
-					: _pred(std::forward<Pred2>(pred)), _snd(std::forward<Snd2>(snd)), _rcv(std::forward<Rcv>(rcv)), _state(detail::eval_t{[&]() { return connect(_snd, receiver_t{this}); }}) {}
+			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2> && noexcept(_detail::nothrow_callable<connect_t, Snd &, receiver_t>))
+					: _pred(std::forward<Pred2>(pred)), _snd(std::forward<Snd2>(snd)), _rcv(std::forward<Rcv>(rcv)), _state(_detail::eval_t{[&]() { return connect(_snd, receiver_t{this}); }}) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
 		private:
-			void restart() noexcept(detail::nothrow_callable<connect_t, Snd &, receiver_t>)
+			void restart() noexcept(_detail::nothrow_callable<connect_t, Snd &, receiver_t>)
 			{
 				if constexpr (std::is_move_assignable_v<state_t>)
 					_state = connect(_snd, receiver_t{this});
 				else
 				{
 					std::destroy_at(&_state);
-					std::construct_at(&_state, detail::eval_t{[&]() { return connect(_snd, receiver_t{this}); }});
+					std::construct_at(&_state, _detail::eval_t{[&]() { return connect(_snd, receiver_t{this}); }});
 				}
 				start(_state);
 			}
@@ -131,7 +131,7 @@ namespace rod
 			template<typename Snd2, typename Pred2>
 			constexpr explicit type(Snd2 &&snd, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2>) : _pred(std::forward<Pred2>(pred)), _snd(std::forward<Snd2>(snd)) {}
 
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
@@ -171,7 +171,7 @@ namespace rod
 				return sender_t<Snd, Pred>{std::forward<Snd>(snd), std::forward<Pred>(pred)};
 			}
 			template<rod::sender Snd> requires(!tag_invocable<recurse_t, Snd> && std::copy_constructible<std::decay_t<Snd>>)
-			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(detail::nothrow_callable<recurse_t, Snd, always_true>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(_detail::nothrow_callable<recurse_t, Snd, always_true>)
 			{
 				return operator()(std::forward<Snd>(snd), always_true{});
 			}

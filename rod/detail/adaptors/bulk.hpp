@@ -31,7 +31,7 @@ namespace rod
 
 		private:
 			template<typename... Args>
-			void set_value(Args &&...args) && noexcept requires detail::callable<Fn, Shape, Args &...> try
+			void set_value(Args &&...args) && noexcept requires _detail::callable<Fn, Shape, Args &...> try
 			{
 				for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
 				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
@@ -41,7 +41,7 @@ namespace rod
 				rod::set_error(std::move(receiver_adaptor<type, Rcv>::base()), std::current_exception());
 			}
 			template<typename... Args>
-			void set_value(Args &&...args) && noexcept requires detail::nothrow_callable<Fn, Shape, Args &...>
+			void set_value(Args &&...args) && noexcept requires _detail::nothrow_callable<Fn, Shape, Args &...>
 			{
 				for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
 				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
@@ -62,7 +62,7 @@ namespace rod
 			using receiver_t = typename receiver<std::decay_t<Rcv>, std::decay_t<Shape>, std::decay_t<Fn>>::type;
 
 			template<typename... Ts>
-			using test_nothrow = std::is_nothrow_invocable<Fn, Shape, detail::decayed_ref<Ts>...>;
+			using test_nothrow = std::is_nothrow_invocable<Fn, Shape, _detail::decayed_ref<Ts>...>;
 			template<typename S, typename E>
 			using error_signs_t = std::conditional_t<value_types_of_t<S, E, test_nothrow, std::conjunction>::value, completion_signatures<>, completion_signatures<set_error_t(std::exception_ptr)>>;
 			template<typename T, typename E>
@@ -76,12 +76,12 @@ namespace rod
 			constexpr explicit type(Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _shape(shape) {}
 
 		public:
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<decays_to<type> T, typename E>
 			friend constexpr signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<Rcv>>
-			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(detail::nothrow_callable<connect_t, copy_cvref_t<T, Snd>, receiver_t<Rcv>> && std::is_nothrow_constructible_v<receiver_t<Rcv>, Rcv, Shape, Fn>)
+			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_callable<connect_t, copy_cvref_t<T, Snd>, receiver_t<Rcv>> && std::is_nothrow_constructible_v<receiver_t<Rcv>, Rcv, Shape, Fn>)
 			{
 				return connect(std::forward<T>(s)._snd, make_rcv(std::move(rcv), s._shape, std::forward<T>(s)._fn));
 			}
@@ -99,20 +99,20 @@ namespace rod
 			template<typename Snd, typename Shape, typename F>
 			using sender_t = typename sender<std::decay_t<Snd>, Shape, std::decay_t<F>>::type;
 			template<typename Shape, typename F>
-			using back_adaptor = detail::back_adaptor<bulk_t, Shape, std::decay_t<F>>;
+			using back_adaptor = _detail::back_adaptor<bulk_t, Shape, std::decay_t<F>>;
 
 		public:
-			template<rod::sender Snd, std::integral Shape, movable_value F> requires detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F>
+			template<rod::sender Snd, std::integral Shape, movable_value F> requires _detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(nothrow_tag_invocable<bulk_t, value_scheduler<Snd>, Snd, Shape, F>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::move(shape), std::forward<F>(fn));
 			}
-			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && tag_invocable<bulk_t, Snd, Shape, F>)
+			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!_detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && tag_invocable<bulk_t, Snd, Shape, F>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(nothrow_tag_invocable<bulk_t, Snd, Shape, F>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd), std::move(shape), std::forward<F>(fn));
 			}
-			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && !tag_invocable<bulk_t, Snd, Shape, F>)
+			template<rod::sender Snd, std::integral Shape, movable_value F> requires(!_detail::tag_invocable_with_completion_scheduler<bulk_t, set_value_t, Snd, Snd, Shape, F> && !tag_invocable<bulk_t, Snd, Shape, F>)
 			[[nodiscard]] constexpr sender_t<Snd, Shape, F> operator()(Snd &&snd, Shape shape, F &&fn) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, Shape, F>, Snd, Shape, F>)
 			{
 				return sender_t<Snd, Shape, F>{std::forward<Snd>(snd), std::move(shape), std::forward<F>(fn)};

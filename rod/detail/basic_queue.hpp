@@ -8,7 +8,7 @@
 
 #include "config.hpp"
 
-namespace rod::detail
+namespace rod::_detail
 {
 	template<typename Node, Node *Node::*Next>
 	struct basic_queue

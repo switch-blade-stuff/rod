@@ -9,7 +9,7 @@
 
 namespace rod
 {
-	namespace detail
+	namespace _detail
 	{
 		template<typename>
 		struct sender_adaptor_closure {};
@@ -40,12 +40,12 @@ namespace rod
 			using pair_base::operator=;
 			using pair_base::swap;
 
-			template<sender S> requires detail::callable<T0, S> && detail::callable<T1, std::invoke_result_t<T0, S>>
+			template<sender S> requires _detail::callable<T0, S> && _detail::callable<T1, std::invoke_result_t<T0, S>>
 			constexpr std::invoke_result_t<T1, std::invoke_result_t<T0, S>> operator()(S &&snd) && noexcept(nothrow_move_invoke<S>)
 			{
 				return std::move(second)(std::move(first)(std::forward<S>(snd)));
 			}
-			template<sender S> requires detail::callable<const T0 &, S> && detail::callable<const T1 &, std::invoke_result_t<const T0 &, S>>
+			template<sender S> requires _detail::callable<const T0 &, S> && _detail::callable<const T1 &, std::invoke_result_t<const T0 &, S>>
 			constexpr std::invoke_result_t<const T1 &, std::invoke_result_t<const T0 &, S>> operator()(S &&snd) const & noexcept(nothrow_const_invoke<S>)
 			{
 				return second(first(std::forward<S>(snd)));
@@ -86,5 +86,5 @@ namespace rod
 		}
 	}
 
-	using detail::sender_adaptor_closure;
+	using _detail::sender_adaptor_closure;
 }

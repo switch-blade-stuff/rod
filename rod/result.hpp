@@ -578,7 +578,7 @@ namespace rod
 		private:
 			[[noreturn]] constexpr void throw_value_exception() const
 			{
-				if constexpr (!detail::callable<throw_exception_t, const Err &>)
+				if constexpr (!_detail::callable<throw_exception_t, const Err &>)
 					throw bad_result_access{"bad result access (value)"};
 				else
 					throw_exception_t{}(_storage.error);

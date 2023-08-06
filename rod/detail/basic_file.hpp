@@ -110,44 +110,44 @@ namespace rod::_file
 		friend constexpr void swap(basic_file &a, basic_file &b) noexcept(std::is_nothrow_swappable_v<Hnd>) { a.swap(b); }
 
 	public:
-		template<derived_reference<basic_file> F, byte_buffer Buff> requires detail::callable<write_some_t, copy_cvref_t<F, Hnd>, Buff>
-		friend auto tag_invoke(read_some_t, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<read_some_t, copy_cvref_t<F, Hnd>, Buff>)
+		template<derived_reference<basic_file> F, byte_buffer Buff> requires _detail::callable<write_some_t, copy_cvref_t<F, Hnd>, Buff>
+		friend auto tag_invoke(read_some_t, F &&f, Buff &&buff) noexcept(_detail::nothrow_callable<read_some_t, copy_cvref_t<F, Hnd>, Buff>)
 		{
 			return read_some(std::forward<copy_cvref_t<F, Hnd>>(f), std::forward<Buff>(buff));
 		}
-		template<derived_reference<basic_file> F, byte_buffer Buff> requires detail::callable<write_some_t, copy_cvref_t<F, Hnd>, Buff>
-		friend auto tag_invoke(write_some_t, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<write_some_t, copy_cvref_t<F, Hnd>, Buff>)
+		template<derived_reference<basic_file> F, byte_buffer Buff> requires _detail::callable<write_some_t, copy_cvref_t<F, Hnd>, Buff>
+		friend auto tag_invoke(write_some_t, F &&f, Buff &&buff) noexcept(_detail::nothrow_callable<write_some_t, copy_cvref_t<F, Hnd>, Buff>)
 		{
 			return write_some(std::forward<copy_cvref_t<F, Hnd>>(f), std::forward<Buff>(buff));
 		}
-		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires detail::callable<read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
-		friend auto tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
+		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires _detail::callable<read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
+		friend auto tag_invoke(read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(_detail::nothrow_callable<read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
 		{
 			return read_some_at(std::forward<copy_cvref_t<F, Hnd>>(f), pos, std::forward<Buff>(buff));
 		}
-		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires detail::callable<write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
-		friend auto tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
+		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires _detail::callable<write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
+		friend auto tag_invoke(write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(_detail::nothrow_callable<write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
 		{
 			return write_some_at(std::forward<copy_cvref_t<F, Hnd>>(f), pos, std::forward<Buff>(buff));
 		}
 
-		template<derived_reference<basic_file> F, byte_buffer Buff> requires detail::callable<async_read_some_t, copy_cvref_t<F, Hnd>, Buff>
-		friend auto tag_invoke(async_read_some_t, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<async_read_some_t, copy_cvref_t<F, Hnd>, Buff>)
+		template<derived_reference<basic_file> F, byte_buffer Buff> requires _detail::callable<async_read_some_t, copy_cvref_t<F, Hnd>, Buff>
+		friend auto tag_invoke(async_read_some_t, F &&f, Buff &&buff) noexcept(_detail::nothrow_callable<async_read_some_t, copy_cvref_t<F, Hnd>, Buff>)
 		{
 			return async_read_some(static_cast<copy_cvref_t<F, Hnd>>(f), std::forward<Buff>(buff));
 		}
-		template<derived_reference<basic_file> F, byte_buffer Buff> requires detail::callable<async_write_some_t, copy_cvref_t<F, Hnd>, Buff>
-		friend auto tag_invoke(async_write_some_t, F &&f, Buff &&buff) noexcept(detail::nothrow_callable<async_write_some_t, copy_cvref_t<F, Hnd>, Buff>)
+		template<derived_reference<basic_file> F, byte_buffer Buff> requires _detail::callable<async_write_some_t, copy_cvref_t<F, Hnd>, Buff>
+		friend auto tag_invoke(async_write_some_t, F &&f, Buff &&buff) noexcept(_detail::nothrow_callable<async_write_some_t, copy_cvref_t<F, Hnd>, Buff>)
 		{
 			return async_write_some(static_cast<copy_cvref_t<F, Hnd>>(f), std::forward<Buff>(buff));
 		}
-		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires detail::callable<async_read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
-		friend auto tag_invoke(async_read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<async_read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
+		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires _detail::callable<async_read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
+		friend auto tag_invoke(async_read_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(_detail::nothrow_callable<async_read_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
 		{
 			return async_read_some_at(static_cast<copy_cvref_t<F, Hnd>>(f), pos, std::forward<Buff>(buff));
 		}
-		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires detail::callable<async_write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
-		friend auto tag_invoke(async_write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(detail::nothrow_callable<async_write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
+		template<derived_reference<basic_file> F, std::convertible_to<std::size_t> Pos, byte_buffer Buff> requires _detail::callable<async_write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>
+		friend auto tag_invoke(async_write_some_at_t, F &&f, Pos pos, Buff &&buff) noexcept(_detail::nothrow_callable<async_write_some_at_t, copy_cvref_t<F, Hnd>, Pos, Buff>)
 		{
 			return async_write_some_at(static_cast<copy_cvref_t<F, Hnd>>(f), pos, std::forward<Buff>(buff));
 		}

@@ -35,33 +35,33 @@ namespace rod
 		struct env { context *_ctx; };
 
 		template<typename Env, auto StopFunc>
-		using stop_cb = detail::stop_cb_adaptor<Env, StopFunc>;
+		using stop_cb = _detail::stop_cb_adaptor<Env, StopFunc>;
 
 		template<typename, typename>
 		struct io_cmd;
 		template<typename Buff>
 		struct io_cmd<async_read_some_t, Buff>
 		{
-			detail::basic_descriptor fd;
+			_detail::basic_descriptor fd;
 			Buff buff;
 		};
 		template<typename Buff>
 		struct io_cmd<async_write_some_t, Buff>
 		{
-			detail::basic_descriptor fd;
+			_detail::basic_descriptor fd;
 			Buff buff;
 		};
 		template<typename Buff>
 		struct io_cmd<async_read_some_at_t, Buff>
 		{
-			detail::basic_descriptor fd;
+			_detail::basic_descriptor fd;
 			std::size_t pos;
 			Buff buff;
 		};
 		template<typename Buff>
 		struct io_cmd<async_write_some_at_t, Buff>
 		{
-			detail::basic_descriptor fd;
+			_detail::basic_descriptor fd;
 			std::size_t pos;
 			Buff buff;
 		};
@@ -124,9 +124,9 @@ namespace rod
 
 		private:
 			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a.timeout <= b.timeout; }};
-			using timer_queue_t = detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::timer_prev, &timer_operation_base::timer_next>;
-			using producer_queue_t = detail::atomic_queue<operation_base, &operation_base::next>;
-			using consumer_queue_t = detail::basic_queue<operation_base, &operation_base::next>;
+			using timer_queue_t = _detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::timer_prev, &timer_operation_base::timer_next>;
+			using producer_queue_t = _detail::atomic_queue<operation_base, &operation_base::next>;
+			using consumer_queue_t = _detail::basic_queue<operation_base, &operation_base::next>;
 
 			struct event_buff_t
 			{
@@ -226,9 +226,9 @@ namespace rod
 			std::atomic<std::thread::id> _consumer_tid = {};
 
 			/* Descriptors used for EPOLL notifications. */
-			detail::unique_descriptor _epoll_fd = {};
-			detail::unique_descriptor _timer_fd = {};
-			detail::unique_descriptor _event_fd = {};
+			_detail::unique_descriptor _epoll_fd = {};
+			_detail::unique_descriptor _timer_fd = {};
+			_detail::unique_descriptor _event_fd = {};
 
 			/* EPOLL event buffer. */
 			event_buff_t _buff;
@@ -287,7 +287,7 @@ namespace rod
 			void complete_value() noexcept
 			{
 				/* Handle spontaneous stop requests. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 				{
 					_stop_cb.reset();
 					if (get_stop_token(get_env(_rcv)).stop_requested())
@@ -300,7 +300,7 @@ namespace rod
 			}
 			void complete_stopped() noexcept
 			{
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));
 				else
 					std::terminate();
@@ -319,7 +319,7 @@ namespace rod
 			void start_consumer()
 			{
 				/* Bail if a stop has already been requested. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					if (get_stop_token(get_env(_rcv)).stop_requested())
 					{
 						notify_func = notify_stopped;
@@ -331,13 +331,13 @@ namespace rod
 				ctx->add_timer(this);
 
 				/* Initialize the stop callback for stoppable environments. */
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.init(get_env(_rcv), this);
 			}
 
 			void request_stop()
 			{
-				if constexpr (!detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (!_detail::stoppable_env<env_of_t<Rcv>>)
 					std::terminate();
 				else if (ctx->is_consumer_thread())
 					request_stop_consumer();
@@ -350,7 +350,7 @@ namespace rod
 			}
 			void request_stop_consumer()
 			{
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
 
 				notify_func = notify_stopped;
@@ -384,7 +384,7 @@ namespace rod
 		private:
 			void complete_result() noexcept
 			{
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.reset();
 				if (_flags.fetch_or(flags_t::dispatched, std::memory_order_acq_rel) & flags_t::stop_requested)
 					return;
@@ -418,7 +418,7 @@ namespace rod
 
 				/* Schedule read operation via EPOLL. */
 				complete_base::notify_func = notify_result;
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					_stop_cb.init(get_env(_rcv), this);
 
 				_ctx->submit_io_event(static_cast<complete_base *>(this), _cmd);
@@ -440,7 +440,7 @@ namespace rod
 					stop_base::notify_func = notify_stopped;
 					_ctx->schedule_consumer(static_cast<stop_base *>(this));
 				}
-				if constexpr (detail::stoppable_env<env_of_t<Rcv>>)
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					set_stopped(std::move(_rcv));
 				else
 					std::terminate();
@@ -465,9 +465,9 @@ namespace rod
 			using operation_t = typename operation<std::decay_t<Rcv>>::type;
 
 			template<typename Env>
-			using stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			using stop_signs_t = std::conditional_t<_detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
 			template<typename Env>
-			using signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, stop_signs_t<Env>>;
+			using signs_t = _detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, stop_signs_t<Env>>;
 
 		public:
 			constexpr explicit sender(context *ctx) noexcept : _ctx(ctx) {}
@@ -495,9 +495,9 @@ namespace rod
 			using operation_t = typename timer_operation<std::decay_t<Rcv>>::type;
 
 			template<typename Env>
-			using stop_signs_t = std::conditional_t<detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
+			using stop_signs_t = std::conditional_t<_detail::stoppable_env<Env>, completion_signatures<set_stopped_t()>, completion_signatures<>>;
 			template<typename Env>
-			using signs_t = detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, stop_signs_t<Env>>;
+			using signs_t = _detail::concat_tuples_t<completion_signatures<set_value_t(), set_error_t(std::error_code)>, stop_signs_t<Env>>;
 
 		public:
 			constexpr explicit timer_sender(time_point tp, context *ctx) noexcept : _tp(tp), _ctx(ctx) {}

@@ -11,7 +11,7 @@
 #include <system_error>
 #include <utility>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	class basic_handle
 	{

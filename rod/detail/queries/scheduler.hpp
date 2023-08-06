@@ -20,7 +20,7 @@ namespace rod
 		};
 	}
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename S>
 		concept has_scheduler = callable<get_scheduler_t, env_of_t<S>>;
@@ -43,7 +43,7 @@ namespace rod
 		};
 	}
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename S>
 		concept has_delegatee_scheduler = callable<get_delegatee_scheduler_t, env_of_t<S>>;

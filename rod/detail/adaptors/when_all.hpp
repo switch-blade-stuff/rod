@@ -24,7 +24,7 @@ namespace rod
 		{
 			constexpr complete_for(C, Rcv &rcv) noexcept : rcv(rcv) {}
 
-			template<typename... Args> requires detail::callable<C, Rcv, Args...>
+			template<typename... Args> requires _detail::callable<C, Rcv, Args...>
 			constexpr void operator()(Args &...args) const noexcept { C{}(std::move(rcv), std::move(args)...); }
 
 			Rcv &rcv;
@@ -96,8 +96,8 @@ namespace rod
 
 			template<decays_to<type> E>
 			friend constexpr in_place_stop_token tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
-			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
@@ -123,7 +123,7 @@ namespace rod
 				if (state.load(std::memory_order_acquire) != state_t::running)
 					return;
 
-				if constexpr ((detail::nothrow_decay_copyable<Args>::value && ...))
+				if constexpr ((_detail::nothrow_decay_copyable<Args>::value && ...))
 					emplace_value<I>(std::forward<Args>(args)...);
 				else
 				{
@@ -138,7 +138,7 @@ namespace rod
 					return;
 
 				stop_src.request_stop();
-				if constexpr (detail::nothrow_decay_copyable<Err>::value)
+				if constexpr (_detail::nothrow_decay_copyable<Err>::value)
 					emplace_error(std::forward<Err>(err));
 				else
 				{
@@ -175,13 +175,13 @@ namespace rod
 			}
 
 			template<std::size_t I, typename... Args>
-			constexpr void emplace_value(Args &&...args) noexcept((detail::nothrow_decay_copyable<Args>::value && ...))
+			constexpr void emplace_value(Args &&...args) noexcept((_detail::nothrow_decay_copyable<Args>::value && ...))
 			{
 				static_assert(requires { std::get<I>(vals).emplace(std::forward<Args>(args)...); });
 				std::get<I>(vals).emplace(std::forward<Args>(args)...);
 			}
 			template<typename Err>
-			constexpr void emplace_error(Err &&err) noexcept(detail::nothrow_decay_copyable<Err>::value)
+			constexpr void emplace_error(Err &&err) noexcept(_detail::nothrow_decay_copyable<Err>::value)
 			{
 				static_assert(requires { errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err)); });
 				errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err));
@@ -209,7 +209,7 @@ namespace rod
 		public:
 			constexpr explicit type(operation_base_t *op) noexcept : _op(op) {}
 
-			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>{get_env(r._op->rcv), r._op->stop_src.get_token()}; }
+			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>{get_env(r._op->rcv), r._op->stop_src.get_token()}; }
 
 			template<typename... Args>
 			friend void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
@@ -234,18 +234,18 @@ namespace rod
 		};
 
 		template<typename... Ts>
-		using make_val_tuple = std::optional<detail::decayed_tuple<Ts...>>;
+		using make_val_tuple = std::optional<_detail::decayed_tuple<Ts...>>;
 		template<typename S, typename E>
-		using sender_values = detail::gather_signatures_t<set_value_t, S, E, make_val_tuple, std::tuple>;
+		using sender_values = _detail::gather_signatures_t<set_value_t, S, E, make_val_tuple, std::tuple>;
 		template<typename S, typename E>
-		using sender_errors = unique_tuple_t<detail::gather_signatures_t<set_error_t, S, E, std::type_identity_t, type_list_t>>;
+		using sender_errors = unique_tuple_t<_detail::gather_signatures_t<set_error_t, S, E, std::type_identity_t, type_list_t>>;
 
 		template<typename... Ts>
 		using nullable_variant = unique_tuple_t<std::variant<no_error, std::decay_t<Ts>...>>;
 		template<typename E, typename... Snds>
-		using error_data = detail::apply_tuple_list_t<nullable_variant, detail::concat_tuples_t<sender_errors<Snds, E>...>>;
+		using error_data = _detail::apply_tuple_list_t<nullable_variant, _detail::concat_tuples_t<sender_errors<Snds, E>...>>;
 		template<typename E, typename... Snds>
-		using value_data = detail::concat_tuples_t<sender_values<Snds, E>...>;
+		using value_data = _detail::concat_tuples_t<sender_values<Snds, E>...>;
 
 		template<std::size_t... Is, typename Rcv, typename... Snds>
 		class operation<std::index_sequence<Is...>, Rcv, Snds...>::type : operation_base<Rcv, value_data<env_for_t<Rcv>, Snds...>, error_data<env_for_t<Rcv>, Snds...>>::type
@@ -263,7 +263,7 @@ namespace rod
 
 			template<typename Snds2>
 			constexpr explicit type(Snds2 &&snd, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::conjunction_v<std::is_nothrow_constructible<Snds, copy_cvref_t<Snds2, Snds>>...>)
-					: operation_base_t(std::move(rcv), sizeof...(Is)), _state{detail::eval_t{[&]() { return connect(std::get<Is>(std::forward<Snds2>(snd)), receiver_t<Is>{this}); }}...} {}
+					: operation_base_t(std::move(rcv), sizeof...(Is)), _state{_detail::eval_t{[&]() { return connect(std::get<Is>(std::forward<Snds2>(snd)), receiver_t<Is>{this}); }}...} {}
 
 			friend void tag_invoke(start_t, type &op) noexcept
 			{
@@ -278,7 +278,7 @@ namespace rod
 			}
 
 		private:
-			detail::decayed_tuple<connect_result_t<Snds, receiver_t<Is>>...> _state;
+			_detail::decayed_tuple<connect_result_t<Snds, receiver_t<Is>>...> _state;
 		};
 
 		template<std::size_t... Is, typename... Snds>
@@ -299,17 +299,17 @@ namespace rod
 			using receiver_t = typename receiver<I, Rcv, value_data_t<T, Rcv>, error_data_t<T, Rcv>>::type;
 
 			template<typename T, typename E>
-			using has_throwing = std::negation<detail::nothrow_decay_copyable<value_data<E, copy_cvref_t<T, Snds>...>>>;
+			using has_throwing = std::negation<_detail::nothrow_decay_copyable<value_data<E, copy_cvref_t<T, Snds>...>>>;
 			template<typename T, typename E>
-			using error_signs_t = detail::concat_tuples_t<detail::gather_signatures_t<set_error_t, copy_cvref_t<T, Snds>, E,
-					detail::bind_front<detail::make_signature_t, set_error_t>::template type, completion_signatures>...,
+			using error_signs_t = _detail::concat_tuples_t<_detail::gather_signatures_t<set_error_t, copy_cvref_t<T, Snds>, E,
+					_detail::bind_front<_detail::make_signature_t, set_error_t>::template type, completion_signatures>...,
 					std::conditional_t<has_throwing<T, E>::value, completion_signatures<set_error_t(std::exception_ptr)>, completion_signatures<>>>;
 			template<typename T, typename E>
-			using value_signs_t = completion_signatures<detail::apply_tuple_list_t<
-					detail::bind_front<detail::make_signature_t, set_value_t>::template type,
-					detail::concat_tuples_t<value_types_of_t<copy_cvref_t<T, Snds>, E, std::type_identity_t, type_list_t>...>>>;
+			using value_signs_t = completion_signatures<_detail::apply_tuple_list_t<
+					_detail::bind_front<_detail::make_signature_t, set_value_t>::template type,
+					_detail::concat_tuples_t<value_types_of_t<copy_cvref_t<T, Snds>, E, std::type_identity_t, type_list_t>...>>>;
 			template<typename T, typename E>
-			using signs_t = unique_tuple_t<detail::concat_tuples_t<value_signs_t<T, E>, error_signs_t<T, E>, completion_signatures<set_stopped_t()>>>;
+			using signs_t = unique_tuple_t<_detail::concat_tuples_t<value_signs_t<T, E>, error_signs_t<T, E>, completion_signatures<set_stopped_t()>>>;
 
 		public:
 			template<typename... Args> requires std::constructible_from<std::tuple<Snds...>, Args...>
@@ -348,9 +348,9 @@ namespace rod
 			{
 				return tag_invoke(*this, std::forward<Snds>(snds)...);
 			}
-			template<rod::sender... Snds> requires(!tag_invocable<when_all_with_variant_t, Snds...> && (detail::callable<into_variant_t, Snds> && ...))
+			template<rod::sender... Snds> requires(!tag_invocable<when_all_with_variant_t, Snds...> && (_detail::callable<into_variant_t, Snds> && ...))
 			[[nodiscard]] constexpr rod::sender auto operator()(Snds &&...snds) const noexcept(
-			detail::nothrow_callable<when_all_t, std::invoke_result_t<into_variant_t, Snds>...> && (detail::nothrow_callable<into_variant_t, Snds> && ...))
+			_detail::nothrow_callable<when_all_t, std::invoke_result_t<into_variant_t, Snds>...> && (_detail::nothrow_callable<into_variant_t, Snds> && ...))
 			{
 				return when_all_t{}(into_variant(std::forward<Snds>(snds))...);
 			}
@@ -365,7 +365,7 @@ namespace rod
 			}
 			template<rod::scheduler Sch, rod::sender... Snds> requires(!tag_invocable<transfer_when_all_t, Sch, Snds...>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(
-			detail::nothrow_callable<when_all_t, Snds...> && detail::nothrow_callable<transfer_t, std::invoke_result_t<when_all_t, Snds...>, Sch>)
+			_detail::nothrow_callable<when_all_t, Snds...> && _detail::nothrow_callable<transfer_t, std::invoke_result_t<when_all_t, Snds...>, Sch>)
 			{
 				return transfer(when_all_t{}(std::forward<Snds>(snds)...), std::forward<Sch>(sch));
 			}
@@ -380,7 +380,7 @@ namespace rod
 			}
 			template<rod::scheduler Sch, rod::sender... Snds> requires(!tag_invocable<transfer_when_all_with_variant_t, Sch, Snds...>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(
-			detail::nothrow_callable<transfer_when_all_t, Sch, std::invoke_result_t<into_variant_t, Snds>...> && (detail::nothrow_callable<into_variant_t, Snds> && ...))
+			_detail::nothrow_callable<transfer_when_all_t, Sch, std::invoke_result_t<into_variant_t, Snds>...> && (_detail::nothrow_callable<into_variant_t, Snds> && ...))
 			{
 				return transfer_when_all_t{}(std::forward<Sch>(sch), into_variant(std::forward<Snds>(snds))...);
 			}

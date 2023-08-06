@@ -10,7 +10,7 @@
 #define NOMINMAX
 #include <windows.h>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	std::error_code basic_handle::close() noexcept
 	{

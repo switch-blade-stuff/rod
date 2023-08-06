@@ -34,8 +34,8 @@ namespace rod
 
 			template<decays_to<type> E>
 			friend constexpr Sch tag_invoke(get_scheduler_t, E &&e) noexcept { return get_scheduler(e._env); }
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
-			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
@@ -57,8 +57,8 @@ namespace rod
 		public:
 			constexpr explicit type(operation_t *op) noexcept : _op(op) {}
 
-			friend env_t tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &> && std::is_nothrow_constructible_v<env_t, env_of_t<Rcv>>) { return r.get_env(); }
-			template<detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, Args...>
+			friend env_t tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &> && std::is_nothrow_constructible_v<env_t, env_of_t<Rcv>>) { return r.get_env(); }
+			template<_detail::completion_channel C, typename... Args> requires _detail::callable<C, Rcv, Args...>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete(C{}, std::forward<Args>(args)...); }
 
 		private:
@@ -81,11 +81,11 @@ namespace rod
 		public:
 			constexpr explicit type(operation_t *op) noexcept : _op(op) {}
 
-			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
 
-			template<detail::completion_channel C> requires decays_to<C, set_value_t>
+			template<_detail::completion_channel C> requires decays_to<C, set_value_t>
 			friend void tag_invoke(C, type &&r) noexcept { r.complete_value(); }
-			template<detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			template<_detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && _detail::callable<C, Rcv, Args...>)
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_forward(C{}, std::forward<Args>(args)...); }
 
 		private:
@@ -118,7 +118,7 @@ namespace rod
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
 		private:
-			constexpr auto connect() noexcept { return detail::eval_t{[&]() { return rod::connect(schedule(_sch), receiver_t{this}); }}; }
+			constexpr auto connect() noexcept { return _detail::eval_t{[&]() { return rod::connect(schedule(_sch), receiver_t{this}); }}; }
 			constexpr void start() noexcept { return rod::start(std::get<0>(_state)); }
 
 			ROD_NO_UNIQUE_ADDRESS Sch _sch;
@@ -135,15 +135,15 @@ namespace rod
 		template<typename Sch, typename Snd, typename Rcv>
 		void receiver<Sch, Snd, Rcv>::type::complete_value() noexcept
 		{
-			constexpr bool nothrow_start = detail::nothrow_callable<start_t, std::add_lvalue_reference<connect_result_t<Snd, receiver_ref_t>>>;
-			constexpr bool nothrow_connect = detail::nothrow_callable<connect_t, Snd, receiver_ref_t>;
+			constexpr bool nothrow_start = _detail::nothrow_callable<start_t, std::add_lvalue_reference<connect_result_t<Snd, receiver_ref_t>>>;
+			constexpr bool nothrow_connect = _detail::nothrow_callable<connect_t, Snd, receiver_ref_t>;
 
 			auto *op = _op;
 			const auto start = [op]()
 			{
 				/* Use a conversion wrapper to allow emplacement of non-movable types. */
 				const auto conv = [=]() { return connect(std::move(op->_snd), receiver_ref_t{op}); };
-				rod::start(op->_state.template emplace<1>(detail::eval_t{conv}));
+				rod::start(op->_state.template emplace<1>(_detail::eval_t{conv}));
 			};
 
 			if constexpr (!(nothrow_connect && nothrow_start))
@@ -183,7 +183,7 @@ namespace rod
 			template<typename Sch2, typename Snd2>
 			constexpr explicit type(Sch2 &&sch, Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Sch, Sch2> && std::is_nothrow_constructible_v<Snd, Snd2>) : _sch(std::forward<Sch2>(sch)), _snd(std::forward<Snd2>(snd)) {}
 
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 

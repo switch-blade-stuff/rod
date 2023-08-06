@@ -42,8 +42,8 @@ namespace rod
 
 			template<decays_to<type> E>
 			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, Env, Args...>
-			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, Env, Args...>)
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(*std::forward<E>(e)._env, std::forward<Args>(args)...);
 			}
@@ -54,19 +54,19 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		struct shared_state : public detail::shared_base
+		struct shared_state : public _detail::shared_base
 		{
 			using receiver_t = typename receiver<Snd, Env>::type;
 			using state_t = connect_result_t<Snd, receiver_t>;
 			using env_t = typename env<Env>::type;
 
-			using value_data_t = detail::gather_signatures_t<set_value_t, Snd, env_t, detail::bind_front<detail::decayed_tuple, set_value_t>::template type, std::variant>;
-			using error_data_t = detail::gather_signatures_t<set_error_t, Snd, env_t, detail::bind_front<detail::decayed_tuple, set_value_t>::template type, std::variant>;
-			using data_t = unique_tuple_t<detail::concat_tuples_t<std::variant<std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>, value_data_t, error_data_t>>;
+			using value_data_t = _detail::gather_signatures_t<set_value_t, Snd, env_t, _detail::bind_front<_detail::decayed_tuple, set_value_t>::template type, std::variant>;
+			using error_data_t = _detail::gather_signatures_t<set_error_t, Snd, env_t, _detail::bind_front<_detail::decayed_tuple, set_value_t>::template type, std::variant>;
+			using data_t = unique_tuple_t<_detail::concat_tuples_t<std::variant<std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>, value_data_t, error_data_t>>;
 
 			constexpr shared_state(Snd &&snd) : env(get_env(snd)), state2(connect(std::forward<Snd>(snd))) { start(state2); }
 
-			inline auto connect(Snd &&) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t>);
+			inline auto connect(Snd &&) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t>);
 			void detach() noexcept { stop_src.request_stop(); }
 			void notify() noexcept
 			{
@@ -92,15 +92,15 @@ namespace rod
 			using is_receiver = std::true_type;
 
 		public:
-			constexpr explicit type(detail::shared_handle<shared_state<Snd, Env>> hnd) noexcept : _state(std::move(hnd)) {}
+			constexpr explicit type(_detail::shared_handle<shared_state<Snd, Env>> hnd) noexcept : _state(std::move(hnd)) {}
 
 			friend env_t tag_invoke(get_env_t, const type &r) noexcept { return env_t{r._state->stop_src.get_token(), &r._state->env}; }
-			template<detail::completion_channel C, typename... Args>
+			template<_detail::completion_channel C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept
 			{
 				auto &state = *r._state;
 
-				using value_t = detail::decayed_tuple<C, Args...>;
+				using value_t = _detail::decayed_tuple<C, Args...>;
 				static_assert(std::constructible_from<value_t, C, Args...>);
 
 				/* Bail if stop has been requested as per spec. */
@@ -108,7 +108,7 @@ namespace rod
 
 				const auto do_emplace = [&]() { state.data.template emplace<value_t>(C{}, std::forward<Args>(args)...); };
 				if constexpr (!std::is_nothrow_constructible_v<value_t, C, Args...>)
-					try { do_emplace(); } catch (...) { state.data.template emplace<detail::decayed_tuple<set_error_t, std::exception_ptr>>(set_error, std::current_exception()); }
+					try { do_emplace(); } catch (...) { state.data.template emplace<_detail::decayed_tuple<set_error_t, std::exception_ptr>>(set_error, std::current_exception()); }
 				else
 					do_emplace();
 
@@ -117,11 +117,11 @@ namespace rod
 			}
 
 		private:
-			detail::shared_handle<shared_state<Snd, Env>> _state;
+			_detail::shared_handle<shared_state<Snd, Env>> _state;
 		};
 
 		template<typename Snd, typename Env>
-		auto shared_state<Snd, Env>::connect(Snd &&snd) noexcept(detail::nothrow_callable<connect_t, Snd, receiver_t>)
+		auto shared_state<Snd, Env>::connect(Snd &&snd) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t>)
 		{
 			return connect(std::forward<Snd>(snd), receiver_t{static_cast<shared_state *>(this->acquire())});
 		}
@@ -146,7 +146,7 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			type(Rcv &&rcv, detail::shared_handle<shared_state<Snd, Env>> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
+			type(Rcv &&rcv, _detail::shared_handle<shared_state<Snd, Env>> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
 					: operation_base{notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
 			~type() { if (!_state->state1.load(std::memory_order_acquire)) _state->detach(); }
 
@@ -166,7 +166,7 @@ namespace rod
 			}
 
 		private:
-			detail::shared_handle<shared_state<Snd, Env>> _state;
+			_detail::shared_handle<shared_state<Snd, Env>> _state;
 			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			stop_cb_t _on_stop = {};
 		};
@@ -191,7 +191,7 @@ namespace rod
 
 		public:
 			constexpr explicit type(Snd snd) : _state(new shared_state<Snd, Env>{std::move(snd)}) {}
-			constexpr explicit type(detail::shared_handle<shared_state<Snd, Env>> state) noexcept : _state(std::move(state)) {}
+			constexpr explicit type(_detail::shared_handle<shared_state<Snd, Env>> state) noexcept : _state(std::move(state)) {}
 
 			~type() { if (_state) _state->detach(); }
 
@@ -205,7 +205,7 @@ namespace rod
 			friend constexpr type tag_invoke(split_t, T &&s) noexcept { return type{std::forward(s)._state}; }
 
 		private:
-			detail::shared_handle<shared_state<Snd, Env>> _state;
+			_detail::shared_handle<shared_state<Snd, Env>> _state;
 		};
 
 		class ensure_started_t
@@ -214,22 +214,22 @@ namespace rod
 			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
 			template<typename Snd>
 			using sender_t = typename sender<std::decay_t<Snd>, env_of_t<std::decay_t<Snd>>>::type;
-			using back_adaptor = detail::back_adaptor<ensure_started_t>;
+			using back_adaptor = _detail::back_adaptor<ensure_started_t>;
 
 		public:
-			template<rod::sender Snd> requires detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd, Snd>
+			template<rod::sender Snd> requires _detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd, Snd>
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<ensure_started_t, value_scheduler<Snd>, Snd>)
 			{
 				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd));
 			}
-			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd, Snd> && tag_invocable<ensure_started_t, Snd>)
+			template<rod::sender Snd> requires(!_detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd, Snd> && tag_invocable<ensure_started_t, Snd>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<ensure_started_t, Snd>)
 			{
 				return tag_invoke(*this, std::forward<Snd>(snd));
 			}
 
 			/* ensure_started(_ensure_started::sender::type) should forward the argument. */
-			template<rod::sender Snd> requires(!detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd> && !tag_invocable<ensure_started_t, Snd> && !std::derived_from<std::decay_t<Snd>, ensure_started_tag>)
+			template<rod::sender Snd> requires(!_detail::tag_invocable_with_completion_scheduler<ensure_started_t, set_value_t, Snd> && !tag_invocable<ensure_started_t, Snd> && !std::derived_from<std::decay_t<Snd>, ensure_started_tag>)
 			[[nodiscard]] sender_t<Snd> operator()(Snd &&snd) const { return sender_t<Snd>{std::forward<Snd>(snd)}; }
 			template<typename Snd> requires(std::derived_from<std::decay_t<Snd>, ensure_started_tag>)
 			[[nodiscard]] constexpr rod::sender auto operator()(Snd &&snd) const noexcept { return std::forward<Snd>(snd); }

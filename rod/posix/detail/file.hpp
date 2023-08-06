@@ -13,7 +13,7 @@
 #include "../../result.hpp"
 #include "descriptor.hpp"
 
-namespace rod::detail
+namespace rod::_detail
 {
 	class system_file : unique_descriptor
 	{

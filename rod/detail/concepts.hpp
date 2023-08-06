@@ -50,7 +50,7 @@ namespace rod
 	 * @param rcv Receiver used to handle the stop completion channel. */
 	inline constexpr auto set_stopped = set_stopped_t{};
 
-	namespace detail
+	namespace _detail
 	{
 		template<typename T, typename... Ts>
 		struct make_signature { using type = T(Ts...); };
@@ -93,7 +93,7 @@ namespace rod
 	}
 
 	/** Metaprogramming utility used to group multiple completion signatures as one type. */
-	template<detail::completion_signature...>
+	template<_detail::completion_signature...>
 	struct completion_signatures {};
 
 	/** Type trait used to check if type \a R defines a member `is_receiver` type. */
@@ -106,7 +106,7 @@ namespace rod
 
 	/** Concept used to define a receiver type with a known set of completion signatures. */
 	template<typename R, typename Cp>
-	concept receiver_of = receiver<R> && requires { []<typename... Sigs>(completion_signatures<Sigs...>) requires(detail::valid_completion_for<Sigs, R> && ...) {}(Cp{}); };
+	concept receiver_of = receiver<R> && requires { []<typename... Sigs>(completion_signatures<Sigs...>) requires(_detail::valid_completion_for<Sigs, R> && ...) {}(Cp{}); };
 
 	/** Type trait used to check if type \a S defines a member `is_sender` type. */
 	template<typename S>

@@ -11,7 +11,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-namespace rod::detail
+namespace rod::_detail
 {
 	const ntapi ntapi::instance;
 

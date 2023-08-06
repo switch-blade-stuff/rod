@@ -28,24 +28,24 @@ namespace rod
 		struct tagged_signs
 		{
 			template<typename... Us>
-			using tagged_tuple = detail::decayed_tuple<Tag, Us...>;
-			using gather_tag = detail::gather_signatures_t<Tag, S, E, tagged_tuple, type_list_t>;
+			using tagged_tuple = _detail::decayed_tuple<Tag, Us...>;
+			using gather_tag = _detail::gather_signatures_t<Tag, S, E, tagged_tuple, type_list_t>;
 
-			using type = detail::concat_tuples_t<gather_tag, typename tagged_signs<S, E, Ts...>::type>;
+			using type = _detail::concat_tuples_t<gather_tag, typename tagged_signs<S, E, Ts...>::type>;
 		};
 		template<typename S, typename E, typename Tag>
 		struct tagged_signs<S, E, Tag>
 		{
 			template<typename... Us>
-			using tagged_tuple = detail::decayed_tuple<Tag, Us...>;
-			using type = detail::gather_signatures_t<Tag, S, E, tagged_tuple, type_list_t>;
+			using tagged_tuple = _detail::decayed_tuple<Tag, Us...>;
+			using type = _detail::gather_signatures_t<Tag, S, E, tagged_tuple, type_list_t>;
 		};
 		template<typename S, typename E, typename... Ts>
 		using tagged_signs_t = typename tagged_signs<S, E, Ts...>::type;
 		template<typename... Ts>
 		using monostate_variant = std::variant<std::monostate, Ts...>;
 		template <typename S, typename E>
-		using variant_for_t = detail::apply_tuple_list_t<monostate_variant, tagged_signs_t<S, E, set_value_t, set_error_t, set_stopped_t>>;
+		using variant_for_t = _detail::apply_tuple_list_t<monostate_variant, tagged_signs_t<S, E, set_value_t, set_error_t, set_stopped_t>>;
 
 		template<typename, typename, typename>
 		struct receiver1 { class type; };
@@ -73,8 +73,8 @@ namespace rod
 			template<decays_to<type> E, one_of<set_value_t, set_stopped_t> T>
 			friend constexpr Sch tag_invoke(get_completion_scheduler_t<T>, E &&e) noexcept(std::is_nothrow_copy_constructible_v<Sch>) { return e._sch; }
 
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires detail::callable<Q, env_of_t<Snd>, Args...>
-			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(detail::nothrow_callable<Q, env_of_t<Snd>, Args...>)
+			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, env_of_t<Snd>, Args...>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, env_of_t<Snd>, Args...>)
 			{
 				return Q{}(get_env(e._snd), std::forward<Args>(args)...);
 			}
@@ -95,8 +95,8 @@ namespace rod
 		public:
 			constexpr explicit type(operation_t *op) noexcept : _op(op) {}
 
-			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
-			template<detail::completion_channel C, typename... Args> requires detail::callable<C, Rcv, std::decay_t<Args>...>
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+			template<_detail::completion_channel C, typename... Args> requires _detail::callable<C, Rcv, std::decay_t<Args>...>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete(C{}, std::forward<Args>(args)...); }
 
 		private:
@@ -117,11 +117,11 @@ namespace rod
 		public:
 			constexpr explicit type(operation_t *op) noexcept : _op(op) {}
 
-			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
+			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
 
-			template<detail::completion_channel C> requires decays_to<C, set_value_t>
+			template<_detail::completion_channel C> requires decays_to<C, set_value_t>
 			friend void tag_invoke(C, type &&r) noexcept { r.complete_value(); }
-			template<detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && detail::callable<C, Rcv, Args...>)
+			template<_detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && _detail::callable<C, Rcv, Args...>)
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_forward(C{}, std::forward<Args>(args)...); }
 
 		private:
@@ -187,10 +187,10 @@ namespace rod
 		{
 			const auto complete_selected = [&]() noexcept((std::is_nothrow_constructible_v<std::decay_t<Args>, Args> && ...))
 			{
-				_op->_data.template emplace<detail::decayed_tuple<C, Args...>>(C{}, std::forward<Args>(args)...);
+				_op->_data.template emplace<_detail::decayed_tuple<C, Args...>>(C{}, std::forward<Args>(args)...);
 				start(_op->_state2);
 			};
-			detail::rcv_try_invoke(std::move(_op->_rcv), complete_selected);
+			_detail::rcv_try_invoke(std::move(_op->_rcv), complete_selected);
 		}
 		template<typename Sch, typename Snd, typename Rcv>
 		void receiver2<Sch, Snd, Rcv>::type::complete_value() noexcept { _op->complete(); }
@@ -220,8 +220,8 @@ namespace rod
 
 			template<typename T, typename E>
 			using throwing_signs_t = std::conditional_t<
-					value_types_of_t<copy_cvref_t<T, Snd>, E, detail::all_nothrow_decay_copyable, std::conjunction>::value &&
-					error_types_of_t<copy_cvref_t<T, Snd>, E, detail::all_nothrow_decay_copyable>::value,
+					value_types_of_t<copy_cvref_t<T, Snd>, E, _detail::all_nothrow_decay_copyable, std::conjunction>::value &&
+					error_types_of_t<copy_cvref_t<T, Snd>, E, _detail::all_nothrow_decay_copyable>::value,
 					completion_signatures<>, completion_signatures<set_error_t(std::exception_ptr)>>;
 
 			template<typename T, typename E>

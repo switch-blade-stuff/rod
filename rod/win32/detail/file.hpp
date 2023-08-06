@@ -12,8 +12,8 @@
 
 namespace rod::_file
 {
-	using detail::unique_handle;
-	using detail::ntapi;
+	using _detail::unique_handle;
+	using _detail::ntapi;
 
 	class system_handle : unique_handle
 	{
