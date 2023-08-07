@@ -476,6 +476,22 @@ namespace rod::fs
 			/** Converts rendered path to a span of elements. */
 			[[nodiscard]] constexpr std::span<value_type> as_span() const noexcept { return std::span<value_type>(data(), size()); }
 
+			/** Returns reference to the first element of the rendered path. */
+			[[nodiscard]] constexpr const_reference front() const noexcept { return *data(); }
+			/** Returns reference to the last element of the rendered path. */
+			[[nodiscard]] constexpr const_reference back() const noexcept { return data()[size() - 1]; }
+			/** Returns reference to the element at index \a i within the rendered path. */
+			[[nodiscard]] constexpr const_reference operator[](size_type i) const noexcept { return data()[i]; }
+			/** @copydoc operator[]
+			 * @throw std::out_of_range if \a i is greater or equal to `size()`. */
+			[[nodiscard]] constexpr const_reference at(size_type i) const
+			{
+				if (i >= size()) [[unlikely]]
+					throw std::out_of_range("rendered_path::at");
+				else
+					return operator[](i);
+			}
+
 		private:
 			constexpr auto *buff_data() noexcept
 			{
