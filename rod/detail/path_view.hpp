@@ -30,13 +30,7 @@ namespace rod::fs
 				std::invoke_result_t<F, std::basic_string_view<wchar_t>>,
 				std::invoke_result_t<F, std::basic_string_view<char8_t>>,
 				std::invoke_result_t<F, std::basic_string_view<char16_t>>>;
-	}
 
-	template<_path::visitor F>
-	inline constexpr _path::visitor_result<F> visit(F &&f, _path::path_view_component p) noexcept(_path::nothrow_visitor<F>::value);
-
-	namespace _path
-	{
 		enum class encoding : std::uint8_t
 		{
 			byte = 0,
@@ -44,6 +38,7 @@ namespace rod::fs
 			wchar = 2,
 			char8 = 3,
 			char16 = 4,
+			char32 = 5,
 		};
 
 		/** Non-owning view of a portion of a filesystem path. */
@@ -51,7 +46,7 @@ namespace rod::fs
 		{
 		public:
 			using size_type = typename _path::size_type;
-			using format = typename constants::format;
+			using format = typename _path::format;
 
 			using constants::auto_format;
 			using constants::native_format;
@@ -97,42 +92,47 @@ namespace rod::fs
 			/** Move-initializes path component from \a other with format \a fmt. */
 			constexpr path_view_component(path_view_component &&other, format fmt) noexcept : path_view_component(std::forward<path_view_component>(other)) { _formatting = fmt; }
 
-			/** Initializes a path component from a null-terminated `char` string \a str of length \a len and format \a fmt. */
+			constexpr path_view_component &operator=(const path_view_component &) noexcept = default;
+			constexpr path_view_component &operator=(path_view_component &&) noexcept = default;
+
+			/** Initializes a path component from a null-terminated `char` string \a str and format \a fmt. */
 			constexpr path_view_component(const char *str, format fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
 			/** Initializes a path component from a `char` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 			constexpr path_view_component(const char *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char)), _is_null_terminated(term), _formatting(fmt), _encoding(encoding::cchar) {}
 
-			/** Initializes a path component from a `wchar_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
+			/** Initializes a path component from a null-terminated `wchar_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const wchar_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
-			/** Initializes a path component from a null-terminated `wchar_t` string \a str of length \a len and format \a fmt. */
+			/** Initializes a path component from a `wchar_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 			constexpr path_view_component(const wchar_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(wchar_t)), _is_null_terminated(term), _formatting(fmt), _encoding(encoding::wchar) {}
 
-			/** Initializes a path component from a `char8_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
+			/** Initializes a path component from a null-terminated `char8_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const char8_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
-			/** Initializes a path component from a null-terminated `char8_t` string \a str of length \a len and format \a fmt. */
+			/** Initializes a path component from a `char8_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 			constexpr path_view_component(const char8_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char8_t)), _is_null_terminated(term), _formatting(fmt), _encoding(encoding::char8) {}
 
-			/** Initializes a path component from a `char16_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
+			/** Initializes a path component from a null-terminated `char16_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const char16_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
-			/** Initializes a path component from a null-terminated `char16_t` string \a str of length \a len and format \a fmt. */
+			/** Initializes a path component from a `char16_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
 			constexpr path_view_component(const char16_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char16_t)), _is_null_terminated(term), _formatting(fmt), _encoding(encoding::char16) {}
 
-			/** Initializes a path component from a null-terminated byte array \a data of length \a len and format \a fmt. */
+			/** Initializes a path component from a null-terminated `char32_t` string \a str and format \a fmt. */
+			constexpr path_view_component(const char32_t *str, format fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
+			/** Initializes a path component from a `char32_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
+			constexpr path_view_component(const char32_t *str, size_type len, bool term, format fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char32_t)), _is_null_terminated(term), _formatting(fmt), _encoding(encoding::char32) {}
+
+			/** Initializes a path component from a null-terminated byte array \a data and format \a fmt. */
 			constexpr path_view_component(const std::byte *data, format fmt = binary_format) noexcept : path_view_component(data, rod::_detail::strlen(data), true, fmt) {}
 			/** Initializes a path component from a byte array \a data of length \a len, null-termination flag \a term and format \a fmt. */
 			constexpr path_view_component(const std::byte *data, size_type len, bool term, format fmt = binary_format) noexcept : _data(data), _size(len), _is_null_terminated(term), _formatting(fmt), _encoding(encoding::byte) {}
 
-			/** Initializes path component from path \a p and format \a fmt. */
-			path_view_component(const path &p) noexcept : path_view_component(p._value.data(), p._value.size(), true, p.formatting()) {}
+			/** Initializes path component from path \a p. */
+			constexpr path_view_component(const path &p) noexcept : path_view_component(p._value.data(), p._value.size(), true, p.formatting()) {}
 			/** Initializes a path component from string \a str and format \a fmt. */
 			template<accepted_char C = value_type, typename T = std::char_traits<C>, typename Alloc = std::allocator<C>>
 			constexpr path_view_component(const std::basic_string<C, T, Alloc> &str, format fmt = binary_format) noexcept : path_view_component(str.data(), str.size(), true, fmt) {}
 			/** Initializes a path component from string view \a str, null-termination flag \a term and format \a fmt. */
 			template<accepted_char C = value_type, typename T = std::char_traits<C>>
 			constexpr path_view_component(std::basic_string_view<C, T> str, bool term, format fmt = binary_format) noexcept : path_view_component(str.data(), str.size(), term, fmt) {}
-
-			constexpr path_view_component &operator=(const path_view_component &) noexcept = default;
-			constexpr path_view_component &operator=(path_view_component &&) noexcept = default;
 
 		protected:
 			template<typename T>
@@ -153,6 +153,7 @@ namespace rod::fs
 				case encoding::wchar: return std::invoke(std::forward<F>(f), view<wchar_t>());
 				case encoding::char8: return std::invoke(std::forward<F>(f), view<char8_t>());
 				case encoding::char16: return std::invoke(std::forward<F>(f), view<char16_t>());
+				case encoding::char32: return std::invoke(std::forward<F>(f), view<char32_t>());
 				case encoding::byte: return std::invoke(std::forward<F>(f), view<std::byte>());
 				default: unreachable();
 				}
@@ -281,8 +282,12 @@ namespace rod::fs
 			[[nodiscard]] inline constexpr int compare(path_view_component other) const noexcept;
 
 		public:
+			friend inline constexpr bool operator<(path_view_component a, path_view_component b) noexcept;
+			friend inline constexpr bool operator==(path_view_component a, path_view_component b) noexcept;
+			friend inline constexpr auto operator<=>(path_view_component a, path_view_component b) noexcept;
+
 			template<visitor F>
-			friend inline constexpr visitor_result<F> rod::fs::visit(F &&f, path_view_component p) noexcept(nothrow_visitor<F>::value);
+			friend inline constexpr visitor_result<F> visit(F &&f, path_view_component p) noexcept(nothrow_visitor<F>::value);
 
 		protected:
 			const void *_data;
@@ -291,6 +296,20 @@ namespace rod::fs
 			format _formatting;
 			bool _is_null_terminated;
 		};
+
+		/** Invokes \a f with a string view or span of bytes depending on the internal encoding of path component \a p. */
+		template<visitor F>
+		inline constexpr visitor_result<F> visit(F &&f, path_view_component p) noexcept(nothrow_visitor<F>::value) { return p.visit(std::forward<F>(f)); }
+
+		/** Preforms a shallow less-than comparison between \a a and \a b using a byte-wise compare equivalent to `memcmp`.
+		 * @note For component-wise lexicographical comparison use `path_view_component::compare` instead. */
+		inline constexpr bool operator<(path_view_component a, path_view_component b) noexcept { return _path::compare_bytes(a.view<std::uint8_t>(), b.view<std::uint8_t>()) < 0; }
+		/** Preforms a shallow equality comparison between \a a and \a b using a byte-wise compare equivalent to `memcmp`.
+		 * @note For component-wise lexicographical comparison use `path_view_component::compare` instead. */
+		inline constexpr bool operator==(path_view_component a, path_view_component b) noexcept { return _path::compare_bytes(a.view<std::uint8_t>(), b.view<std::uint8_t>()) == 0; }
+		/** Preforms a shallow three-way comparison between \a a and \a b using a byte-wise compare equivalent to `memcmp`.
+		 * @note For component-wise lexicographical comparison use `path_view_component::compare` instead. */
+		inline constexpr auto operator<=>(path_view_component a, path_view_component b) noexcept { return _path::compare_bytes(a.view<std::uint8_t>(), b.view<std::uint8_t>()) <=> 0; }
 
 		template<typename T, size_type N>
 		struct rendered_path_data
@@ -604,13 +623,51 @@ namespace rod::fs
 		public:
 			using iterator = component_iterator<path_view_component, const std::byte *, iter_func < &path_view::iter_next>, iter_func<&path_view::iter_prev>>;
 			using const_iterator = iterator;
+			using reverse_iterator = std::reverse_iterator<iterator>;
+			using const_reverse_iterator = reverse_iterator;
 
 		public:
-			using path_view_component::path_view_component;
-			using path_view_component::operator=;
+			/** Initializes an path view of unknown format. */
+			constexpr path_view() noexcept : path_view(unknown_format) {}
+			/** Initializes an empty path view with format \a fmt. */
+			constexpr path_view(format fmt) noexcept : path_view_component(fmt) {}
+
+			/** Copy-initializes path view from \a other. */
+			constexpr path_view(const path_view &other) noexcept = default;
+			/** Copy-initializes path view from \a other with format \a fmt. */
+			constexpr path_view(const path_view &other, format fmt) noexcept : path_view_component(other, fmt) {}
+
+			/** Move-initializes path view from \a other. */
+			constexpr path_view(path_view &&other) noexcept = default;
+			/** Move-initializes path view from \a other with format \a fmt. */
+			constexpr path_view(path_view &&other, format fmt) noexcept : path_view_component(std::forward<path_view_component>(other), fmt) {}
+
+			constexpr path_view &operator=(const path_view &) noexcept = default;
+			constexpr path_view &operator=(path_view &&) noexcept = default;
+
+			/** Initializes a path view from a path component \a p with automatic formatting. */
+			constexpr path_view(path_view_component p) noexcept : path_view_component(p, auto_format) {}
+			/** Initializes a path view from a path component \a p with format \a fmt. */
+			constexpr path_view(path_view_component p, format fmt) noexcept : path_view_component(p, fmt) {}
+
+			/** Initializes a path view from a null-terminated character string or byte array \a data and format \a fmt. */
+			template<typename C> requires one_of<std::decay_t<C>, std::byte, char, wchar_t, char8_t, char16_t, char32_t>
+			constexpr path_view(const C *data, format fmt = auto_format) noexcept : path_view_component(data, fmt) {}
+			/** Initializes a path view from a null-terminated character string or byte array \a data of length \a len, null-termination flag \a term and format \a fmt. */
+			template<typename C> requires one_of<std::decay_t<C>, std::byte, char, wchar_t, char8_t, char16_t, char32_t>
+			constexpr path_view(const char *data, size_type len, bool term, format fmt = auto_format) noexcept : path_view_component(data, len, term, fmt) {}
+
+			/** Initializes path view from path \a p. */
+			constexpr path_view(const path &p) noexcept : path_view_component(p) {}
+			/** Initializes a path view from string \a str and format \a fmt. */
+			template<accepted_char C = value_type, typename T = std::char_traits<C>, typename Alloc = std::allocator<C>>
+			constexpr path_view(const std::basic_string<C, T, Alloc> &str, format fmt = auto_format) noexcept : path_view_component(str, fmt) {}
+			/** Initializes a path view from string view \a str, null-termination flag \a term and format \a fmt. */
+			template<accepted_char C = value_type, typename T = std::char_traits<C>>
+			constexpr path_view(std::basic_string_view<C, T> str, bool term, format fmt = auto_format) noexcept : path_view_component(str, term, fmt) {}
 
 		public:
-			/** Returns iterator to the first sub-component of the path. */
+			/** Returns iterator to the first sub-component of the path view. */
 			[[nodiscard]] constexpr iterator begin() const noexcept
 			{
 				return path_view_component::visit([&]<typename V>(V base_view) noexcept
@@ -621,17 +678,221 @@ namespace rod::fs
 					{
 					    const auto comp_size = _path::iter_begin(base_view, formatting());
 					    const auto term = is_null_terminated() && comp_size == base_view.size();
-					    return iterator(path_view_component(base_view.data(), comp_size, term), this, static_cast<const std::byte *>(_data));
+					    return iterator({base_view.data(), comp_size, term}, this, static_cast<const std::byte *>(_data));
 					}
 				});
 			}
 			/** @copydoc begin */
 			[[nodiscard]] constexpr iterator cbegin() const noexcept { return begin(); }
 
-			/** Returns iterator one past the last sub-component of the path. */
-			[[nodiscard]] constexpr iterator end() const noexcept { return iterator({}, this, static_cast<const std::byte *>(_data) + _size); }
+			/** Returns iterator one past the last sub-component of the path view. */
+			[[nodiscard]] constexpr iterator end() const noexcept
+			{
+				return iterator({}, this, static_cast<const std::byte *>(_data) + _size);
+			}
 			/** @copydoc end */
 			[[nodiscard]] constexpr iterator cend() const noexcept { return end(); }
+
+			/** Returns reverse iterator to the last sub-component of the path view. */
+			[[nodiscard]] constexpr reverse_iterator rbegin() const { return reverse_iterator(end()); }
+			/** @copydoc rbegin */
+			[[nodiscard]] constexpr reverse_iterator crbegin() const { return reverse_iterator(cend()); }
+
+			/** Returns reverse iterator one past the last sub-component of the path view. */
+			[[nodiscard]] constexpr reverse_iterator rend() const { return reverse_iterator(begin()); }
+			/** @copydoc rend */
+			[[nodiscard]] constexpr reverse_iterator crend() const { return reverse_iterator(cbegin()); }
+
+		private:
+			template<typename C>
+			[[nodiscard]] static constexpr bool ends_with(std::basic_string_view<C> parent, std::basic_string_view<C> substr) noexcept
+			{
+				const auto parent_end = parent.data() + parent.size();
+				const auto substr_end = substr.data() + substr.size();
+				return parent_end == substr_end;
+			}
+
+		public:
+			/** Checks if the path view is absolute.
+			 * @note Byte-backed path views are always considered to be absolute. */
+			[[nodiscard]] constexpr bool is_absolute() const noexcept
+			{
+				return visit([&]<typename V>(V view)
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+						return _path::is_absolute(view, formatting());
+					else
+						return true;
+				});
+			}
+			/** Checks if the path view is relative (not absolute).
+			 * @note Byte-backed path views are always considered to be absolute. */
+			[[nodiscard]] constexpr bool is_relative() const noexcept { return !is_absolute(); }
+
+			/** Returns a view of the root path component of this path view. */
+			[[nodiscard]] constexpr path_view root_path() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = root_path_substr(view, formatting());
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return {};
+				});
+			}
+			/** Returns a view of the root name component of this path view. */
+			[[nodiscard]] constexpr path_view root_name() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = root_name_substr(view, formatting());
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return {};
+				});
+			}
+			/** Returns a view of the root directory component of this path view. */
+			[[nodiscard]] constexpr path_view root_directory() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = root_dir_substr(view, formatting());
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return {};
+				});
+			}
+
+			/** Checks if the path view has a non-empty root path. */
+			[[nodiscard]] constexpr bool has_root_path() const noexcept { return !root_path().empty(); }
+			/** Checks if the path view has a non-empty root name. */
+			[[nodiscard]] constexpr bool has_root_name() const noexcept { return !root_name().empty(); }
+			/** Checks if the path view has a non-empty root directory. */
+			[[nodiscard]] constexpr bool has_root_directory() const noexcept { return !root_directory().empty(); }
+
+			/** Returns a view of the relative path component of this path view. */
+			[[nodiscard]] constexpr path_view relative_path() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = relative_path_substr(view, formatting());
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return *this;
+				});
+			}
+			/** Returns a view of the parent path component of this path view. */
+			[[nodiscard]] constexpr path_view parent_path() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = parent_path_substr(view, formatting());
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return {};
+				});
+			}
+			/** Returns a view of the filename component of this path view. */
+			[[nodiscard]] constexpr path_view filename() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = file_name_substr(view, formatting());
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return *this;
+				});
+			}
+
+			/** Checks if the path has a non-empty relative path component. */
+			[[nodiscard]] constexpr bool has_relative_path() const noexcept { return !relative_path().empty(); }
+			/** Checks if the path has a non-empty parent path component. */
+			[[nodiscard]] constexpr bool has_parent_path() const noexcept { return !parent_path().empty(); }
+			/** Checks if the path has a non-empty filename component. */
+			[[nodiscard]] constexpr bool has_filename() const noexcept { return !filename().empty(); }
+
+			/** Returns a view of the stem component of this path view. */
+			[[nodiscard]] constexpr path_view stem() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = file_stem_substr(file_name_substr(view, formatting()));
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return {};
+				});
+			}
+			/** Returns a view of the extension component of this path view. */
+			[[nodiscard]] constexpr path_view extension() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto comp = file_ext_substr(file_name_substr(view, formatting()));
+						const auto term = is_null_terminated() && ends_with(view, comp);
+						return path_view(comp, term, formatting());
+					}
+					return {};
+				});
+			}
+
+			/** Checks if the path has a non-empty stem component. */
+			[[nodiscard]] constexpr bool has_stem() const noexcept { return !stem().empty(); }
+			/** Checks if the path has a non-empty extension component. */
+			[[nodiscard]] constexpr bool has_extension() const noexcept { return !extension().empty(); }
+
+		public:
+			/** Returns copy of the view with the filename component removed. */
+			[[nodiscard]] constexpr path_view remove_filename() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto str = view.substr(0, find_file_name(view, formatting()));
+						const auto term = is_null_terminated() && str.size() == view.size();
+						return path_view(str, term, formatting());
+					}
+					return *this;
+				});
+			}
+			/** Returns copy of the view with the extension component removed. */
+			[[nodiscard]] constexpr path_view remove_extension() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto name = find_file_name(view, formatting());
+						const auto stem = file_stem_size(view.substr(name));
+						const auto term = is_null_terminated() && name + stem == view.size();
+						return path_view(view.substr(0, name + stem), term, formatting());
+					}
+					return *this;
+				});
+			}
 
 		public:
 			/** Swaps contents of `this` with \a other. */
@@ -648,38 +909,78 @@ namespace rod::fs
 			path_view view;
 		};
 
-		inline path from_view_like(path_view_like p, path::format fmt);
-		inline path from_view_like(path_view_like p, const std::locale &loc, path::format fmt);
+		inline path from_view_like(path_view_like p, path::format fmt)
+		{
+			return visit([&]<typename V>(V view)
+			{
+				if constexpr (std::same_as<V, std::span<const std::byte>>)
+					return from_binary(view);
+				else
+					return path(view, fmt);
+			}, p.view);
+		}
+		inline path from_view_like(path_view_like p, const std::locale &loc, path::format fmt)
+		{
+			return visit([&]<typename V>(V view)
+			{
+				if constexpr (std::same_as<V, std::span<const std::byte>>)
+					return from_binary(view);
+				else
+					return path(view, loc, fmt);
+			}, p.view);
+		}
 
 		path::path(path_view_like p, path::format fmt) : path(from_view_like(p, fmt)) {}
 		path::path(path_view_like p, const std::locale &loc, path::format fmt) : path(from_view_like(p, loc, fmt)) {}
+
+		template<typename C>
+		bool operator==(path_view_component, const C *) = delete;
+		template<typename C>
+		bool operator==(const C *, path_view_component) = delete;
+		template<typename C>
+		bool operator==(path_view_component, std::basic_string_view<C>) = delete;
+		template<typename C>
+		bool operator==(std::basic_string_view<C>, path_view_component) = delete;
+
+		bool operator==(path_view_component, const std::byte *) = delete;
+		bool operator==(const std::byte *, path_view_component) = delete;
+		bool operator==(path_view_component, std::span<const std::byte>) = delete;
+		bool operator==(std::span<const std::byte>, path_view_component) = delete;
+
+		template<typename C>
+		bool operator<(path_view_component, const C *) = delete;
+		template<typename C>
+		bool operator<(const C *, path_view_component) = delete;
+		template<typename C>
+		bool operator<(path_view_component, std::basic_string_view<C>) = delete;
+		template<typename C>
+		bool operator<(std::basic_string_view<C>, path_view_component) = delete;
+
+		bool operator<(path_view_component, const std::byte *) = delete;
+		bool operator<(const std::byte *, path_view_component) = delete;
+		bool operator<(path_view_component, std::span<const std::byte>) = delete;
+		bool operator<(std::span<const std::byte>, path_view_component) = delete;
+
+		template<typename C>
+		auto operator<=>(path_view_component, const C *) = delete;
+		template<typename C>
+		auto operator<=>(const C *, path_view_component) = delete;
+		template<typename C>
+		auto operator<=>(path_view_component, std::basic_string_view<C>) = delete;
+		template<typename C>
+		auto operator<=>(std::basic_string_view<C>, path_view_component) = delete;
+
+		auto operator<=>(path_view_component, const std::byte *) = delete;
+		auto operator<=>(const std::byte *, path_view_component) = delete;
+		auto operator<=>(path_view_component, std::span<const std::byte>) = delete;
+		auto operator<=>(std::span<const std::byte>, path_view_component) = delete;
 	}
 
 	using _path::path_view;
 	using _path::path_view_component;
 
-	/** Invokes \a f with a string view or span of bytes depending on the internal encoding of path component \a p. */
-	template<_path::visitor F>
-	inline constexpr _path::visitor_result<F> visit(F &&f, path_view_component p) noexcept(_path::nothrow_visitor<F>::value) { return p.visit(std::forward<F>(f)); }
-
-	path _path::from_view_like(path_view_like p, path::format fmt)
-	{
-		return visit([&]<typename V>(V view)
-		{
-			if constexpr (std::same_as<V, std::span<const std::byte>>)
-				return from_binary(view);
-			else
-				return path(view, fmt);
-		}, p.view);
-	}
-	path _path::from_view_like(path_view_like p, const std::locale &loc, path::format fmt)
-	{
-		return visit([&]<typename V>(V view)
-		{
-			if constexpr (std::same_as<V, std::span<const std::byte>>)
-				return from_binary(view);
-			else
-				return path(view, loc, fmt);
-		}, p.view);
-	}
+	using _path::visit;
+	using _path::operator<;
+	using _path::operator==;
+	using _path::operator<=>;
 }

@@ -367,21 +367,27 @@ namespace rod::fs
 			}
 		}
 
+		enum class format : std::uint8_t
+		{
+			auto_format = 0,
+			native_format = 1,
+			binary_format = 2,
+			generic_format = 3,
+			unknown_format = 4,
+		};
+
 		struct constants
 		{
-			enum format : std::uint8_t
-			{
-				/** Automatic path formatting mode, path format will be deduced at runtime. */
-				auto_format = 0,
-				/** Native path formatting mode, path manipulation functions and queries will use native parsing rules. */
-				native_format = 1,
-				/** Binary path formatting mode, path manipulation functions and queries will be treated as no-ops. */
-				binary_format = 2,
-				/** Generic path formatting mode, path manipulation functions and queries will use generic parsing rules. */
-				generic_format = 3,
-				/** Unknown path formatting mode, path manipulation functions and queries will use implementation-defined rules (usually equivalent to `auto_format`). */
-				unknown_format = 4,
-			};
+			/** Automatic path formatting mode, path format will be deduced at runtime. */
+			static constexpr auto auto_format = format::auto_format;
+			/** Native path formatting mode, path manipulation functions and queries will use native parsing rules. */
+			static constexpr auto native_format = format::native_format;
+			/** Binary path formatting mode, path manipulation functions and queries will be treated as no-ops. */
+			static constexpr auto binary_format = format::binary_format;
+			/** Generic path formatting mode, path manipulation functions and queries will use generic parsing rules. */
+			static constexpr auto generic_format = format::generic_format;
+			/** Unknown path formatting mode, path manipulation functions and queries will use implementation-defined rules (usually equivalent to `auto_format`). */
+			static constexpr auto unknown_format = format::unknown_format;
 
 #ifdef ROD_WIN32
 			/** Preferred separator character of the current system. */
@@ -407,7 +413,7 @@ namespace rod::fs
 		};
 
 		template<typename C = value_type>
-		inline constexpr std::size_t lfind_separator(std::basic_string_view<C> path, constants::format fmt, std::size_t idx = 0) noexcept
+		inline constexpr std::size_t lfind_separator(std::basic_string_view<C> path, format fmt, std::size_t idx = 0) noexcept
 		{
 			switch (fmt)
 			{
@@ -427,7 +433,7 @@ namespace rod::fs
 			}
 		}
 		template<typename C = value_type>
-		inline constexpr std::size_t rfind_separator(std::basic_string_view<C> path, constants::format fmt, std::size_t idx = std::basic_string_view<C>::npos) noexcept
+		inline constexpr std::size_t rfind_separator(std::basic_string_view<C> path, format fmt, std::size_t idx = std::basic_string_view<C>::npos) noexcept
 		{
 			switch (fmt)
 			{
@@ -447,7 +453,7 @@ namespace rod::fs
 			}
 		}
 		template<typename C = value_type>
-		inline constexpr bool is_separator(C ch, constants::format fmt) noexcept
+		inline constexpr bool is_separator(C ch, format fmt) noexcept
 		{
 			switch (fmt)
 			{
@@ -474,13 +480,13 @@ namespace rod::fs
 			return (ch & ~case_mask) <= drive_max;
 		}
 		template<typename C = value_type>
-		inline constexpr bool is_unc_drive_path(std::basic_string_view<C> path, constants::format fmt)
+		inline constexpr bool is_unc_drive_path(std::basic_string_view<C> path, format fmt)
 		{
 			return path.size() >= 6 && is_separator(path[0], fmt) && is_separator(path[1], fmt) && path[2] == '?' && is_separator(path[3], fmt) && path[5] == ':' && is_drive_letter(path[4]);
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::size_t namespace_prefix_size(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t namespace_prefix_size(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			if (path.size() >= 4 && is_separator(path[3], fmt) && (path.size() == 4 || !is_separator(path[4], fmt)))
 			{
@@ -492,7 +498,7 @@ namespace rod::fs
 			return 0;
 		}
 		template<typename C = value_type>
-		inline constexpr std::size_t hostname_prefix_size(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t hostname_prefix_size(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			if (path.size() >= 3 && is_separator(path[1], fmt) && !is_separator(path[2], fmt))
 			{
@@ -505,7 +511,7 @@ namespace rod::fs
 			return 0;
 		}
 		template<typename C = value_type>
-		inline constexpr std::size_t root_name_size(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t root_name_size(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			if (fmt != constants::binary_format && path.size() >= 2)
 			{
@@ -600,7 +606,7 @@ namespace rod::fs
 		};
 
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> iter_next(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> iter_next(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, format fmt) noexcept
 		{
 			if (pos += comp.size(); pos == base.data())
 			{
@@ -633,7 +639,7 @@ namespace rod::fs
 				return {pos, base.data() + end};
 		}
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> iter_prev(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> iter_prev(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, format fmt) noexcept
 		{
 			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
 			const auto root_name_end = base.data() + root_name_size(base, fmt);
@@ -662,7 +668,7 @@ namespace rod::fs
 			return {pos, end};
 		}
 		template<typename C = value_type>
-		inline constexpr std::size_t iter_begin(std::basic_string_view<C> base, constants::format fmt) noexcept
+		inline constexpr std::size_t iter_begin(std::basic_string_view<C> base, format fmt) noexcept
 		{
 			const auto root_name_end = base.data() + root_name_size(base, fmt);
 			if (base.data() == root_name_end)
@@ -679,7 +685,7 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr int compare(std::basic_string_view<C> a_str, constants::format a_fmt, std::basic_string_view<C> b_str, constants::format b_fmt) noexcept
+		inline constexpr int compare(std::basic_string_view<C> a_str, format a_fmt, std::basic_string_view<C> b_str, format b_fmt) noexcept
 		{
 			const auto a_root_name_end = a_str.begin() + root_name_size(a_str, a_fmt);
 			const auto b_root_name_end = b_str.begin() + root_name_size(b_str, b_fmt);
@@ -748,7 +754,7 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::size_t hash_value(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t hash_value(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			fnv1a_builder builder;
 			const auto root_name_end = path.begin() + root_name_size(path, fmt);
@@ -772,7 +778,7 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::size_t find_relative_path(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t find_relative_path(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
 			const auto root_name_end = path.begin() + root_name_size(path, fmt);
@@ -780,7 +786,7 @@ namespace rod::fs
 			return static_cast<std::size_t>(std::distance(path.begin(), root_path_end));
 		}
 		template<typename C = value_type>
-		inline constexpr std::size_t parent_path_size(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t parent_path_size(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			const auto min = find_relative_path(path, fmt);
 			std::size_t i = path.size();
@@ -794,7 +800,7 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr bool is_absolute(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr bool is_absolute(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			/* Always treat binary format as absolute. */
 			if (fmt == constants::binary_format)
@@ -809,7 +815,7 @@ namespace rod::fs
 			return !path.empty() && is_separator(path[0], fmt);
 		}
 		template<typename C = value_type>
-		inline constexpr bool contains_root(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr bool contains_root(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			for (auto pos = find_relative_path(path, fmt); pos < path.size();)
 			{
@@ -825,17 +831,17 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> root_path_substr(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> root_path_substr(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			return path.substr(0, find_relative_path(path, fmt));
 		}
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> root_name_substr(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> root_name_substr(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			return path.substr(0, root_name_size(path, fmt));
 		}
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> root_dir_substr(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> root_dir_substr(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
 			const auto root_name_end = path.begin() + root_name_size(path, fmt);
@@ -844,18 +850,18 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> relative_path_substr(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> relative_path_substr(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			return path.substr(find_relative_path(path, fmt));
 		}
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> parent_path_substr(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::basic_string_view<C> parent_path_substr(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			return path.substr(0, parent_path_size(path, fmt));
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::size_t find_file_name(std::basic_string_view<C> path, constants::format fmt) noexcept
+		inline constexpr std::size_t find_file_name(std::basic_string_view<C> path, format fmt) noexcept
 		{
 			const auto sep = rfind_separator(path, fmt);
 #ifdef ROD_WIN32
@@ -875,6 +881,12 @@ namespace rod::fs
 		template<typename C = value_type>
 		inline constexpr std::size_t file_stem_size(std::basic_string_view<C> path) noexcept
 		{
+#ifdef ROD_WIN32
+			const auto ads_pos = path.find_first_of(':');
+			if (ads_pos != std::basic_string_view<C>::npos)
+				path = path.substr(0, ads_pos);
+#endif
+
 			if (const auto dot = path.rfind('.'); dot == std::basic_string_view<C>::npos || dot == 0 || (dot == 1 && path[0] != '.'))
 				return path.size();
 			else
@@ -882,46 +894,11 @@ namespace rod::fs
 		}
 
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> file_name_substr(std::basic_string_view<C> path, constants::format fmt) noexcept
-		{
-			return path.substr(find_file_name(path, fmt));
-		}
-
-#ifdef ROD_WIN32
+		inline constexpr std::basic_string_view<C> file_name_substr(std::basic_string_view<C> path, format fmt) noexcept { return path.substr(find_file_name(path, fmt)); }
 		template<typename C = value_type>
-		inline constexpr std::size_t find_file_ads(std::basic_string_view<C> path) noexcept
-		{
-			const auto ads_pos = path.find_first_of(':');
-			if (ads_pos == std::basic_string_view<C>::npos)
-				return path.size();
-			else
-				return ads_pos;
-		}
-
+		inline constexpr std::basic_string_view<C> file_stem_substr(std::basic_string_view<C> path) noexcept { return path.substr(0, file_stem_size(path)); }
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> file_stem_substr(std::basic_string_view<C> path) noexcept
-		{
-			path = path.substr(0, find_file_ads(path));
-			return path.substr(0, file_stem_size(path));
-		}
-		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> file_ext_substr(std::basic_string_view<C> path) noexcept
-		{
-			path = path.substr(0, find_file_ads(path));
-			return path.substr(file_stem_size(path));
-		}
-#else
-		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> file_stem_substr(std::basic_string_view<C> path) noexcept
-		{
-			return path.substr(0, file_stem_size(path));
-		}
-		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> file_ext_substr(std::basic_string_view<C> path) noexcept
-		{
-			return path.substr(file_stem_size(path));
-		}
-#endif
+		inline constexpr std::basic_string_view<C> file_ext_substr(std::basic_string_view<C> path) noexcept { return path.substr(file_stem_size(path)); }
 
 		/** Container of a filesystem-specific path representation. */
 		class path : public constants
@@ -933,7 +910,7 @@ namespace rod::fs
 			using string_type = typename _path::string_type;
 			using value_type = typename _path::value_type;
 			using size_type = typename _path::size_type;
-			using format = typename constants::format;
+			using format = typename _path::format;
 
 		private:
 			void iter_next(const path &base, const value_type *&pos) { assign(_path::iter_next<value_type>(_value, base._value, pos, base.formatting())); }
@@ -945,6 +922,8 @@ namespace rod::fs
 		public:
 			using iterator = component_iterator<path, const value_type *, iter_func<&path::iter_next>, iter_func<&path::iter_prev>>;
 			using const_iterator = iterator;
+			using reverse_iterator = std::reverse_iterator<iterator>;
+			using const_reverse_iterator = reverse_iterator;
 
 		public:
 			constexpr path(const path &) = default;
@@ -1168,6 +1147,18 @@ namespace rod::fs
 			/** @copydoc end */
 			[[nodiscard]] iterator cend() const { return end(); }
 
+			/** Returns reverse iterator to the last sub-component of the path.
+			 * @note Path iterators allocate memory for each sub-component of the path, consider using `path_view` to avoid memory allocation. */
+			[[nodiscard]] reverse_iterator rbegin() const { return reverse_iterator(end()); }
+			/** @copydoc rbegin */
+			[[nodiscard]] reverse_iterator crbegin() const { return reverse_iterator(cend()); }
+
+			/** Returns reverse iterator one past the last sub-component of the path.
+			 * @note Path iterators allocate memory for each sub-component of the path, consider using `path_view` to avoid memory allocation. */
+			[[nodiscard]] reverse_iterator rend() const { return reverse_iterator(begin()); }
+			/** @copydoc rend */
+			[[nodiscard]] reverse_iterator crend() const { return reverse_iterator(cbegin()); }
+
 		public:
 			/** Returns the path's formatting type. */
 			[[nodiscard]] constexpr format formatting() const noexcept { return _formatting; }
@@ -1368,9 +1359,6 @@ namespace rod::fs
 			{
 				const auto name_start = find_file_name<value_type>(_value, formatting());
 				auto name_view = string_view_type(_value.data() + name_start, _value.size() - name_start);
-#ifdef ROD_WIN32
-				name_view = name_view.substr(0, find_file_ads<value_type>(name_view));
-#endif
 				_value.erase(name_start, file_stem_size<value_type>(name_view));
 				return *this;
 			}
@@ -1379,9 +1367,6 @@ namespace rod::fs
 			{
 				const auto name_start = find_file_name<value_type>(_value, formatting());
 				auto name_view = string_view_type(_value.data() + name_start, _value.size() - name_start);
-#ifdef ROD_WIN32
-				name_view = name_view.substr(0, find_file_ads<value_type>(name_view));
-#endif
 				_value.erase(name_start + file_stem_size<value_type>(name_view));
 				return *this;
 			}
@@ -1391,9 +1376,6 @@ namespace rod::fs
 			{
 				const auto name_start = find_file_name<value_type>(_value, formatting());
 				auto name_view = string_view_type(_value.data() + name_start, _value.size() - name_start);
-#ifdef ROD_WIN32
-				name_view = name_view.substr(0, find_file_ads<value_type>(name_view));
-#endif
 				_value.replace(name_start, file_stem_size<value_type>(name_view), other._value);
 				return *this;
 			}
@@ -1462,27 +1444,36 @@ namespace rod::fs
 				return is;
 			}
 
-			[[nodiscard]] friend constexpr bool operator==(const path &a, const path &b) noexcept { return a.compare(b) == 0; }
-			[[nodiscard]] friend constexpr auto operator<=>(const path &a, const path &b) noexcept { return a.compare(b) <=> 0; }
-
-			template<accepted_source Src>
-			[[nodiscard]] friend constexpr bool operator==(const path &a, const Src &b) noexcept { return a.compare(b) == 0; }
-			template<accepted_source Src>
-			[[nodiscard]] friend constexpr bool operator==(const Src &a, const path &b) noexcept { return b.compare(a) == 0; }
-			template<accepted_source Src>
-			[[nodiscard]] friend constexpr auto operator<=>(const path &a, const Src &b) noexcept { return a.compare(b) <=> 0; }
-			template<accepted_source Src>
-			[[nodiscard]] friend constexpr auto operator<=>(const Src &a, const path &b) noexcept { return -b.compare(a) <=> 0; }
-
 		private:
 			string_type _value;
 			format _formatting;
 		};
 
-		path from_binary(std::span<const std::byte> data);
+		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(b) == 0`. */
+		[[nodiscard]] inline constexpr bool operator==(const path &a, const path &b) noexcept { return a.compare(b) == 0; }
+		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(b) <=> 0`. */
+		[[nodiscard]] inline constexpr auto operator<=>(const path &a, const path &b) noexcept { return a.compare(b) <=> 0; }
+
+		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(path(b)) == 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr bool operator==(const path &a, const Src &b) noexcept { return a.compare(b) == 0; }
+		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `path(a).compare(b) == 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr bool operator==(const Src &a, const path &b) noexcept { return b.compare(a) == 0; }
+
+		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(path(b)) <=> 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr auto operator<=>(const path &a, const Src &b) noexcept { return a.compare(b) <=> 0; }
+		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `path(a).compare(b) <=> 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr auto operator<=>(const Src &a, const path &b) noexcept { return -b.compare(a) <=> 0; }
+
+		ROD_API_PUBLIC path from_binary(std::span<const std::byte> data);
 	}
 
 	using _path::path;
+	using _path::operator==;
+	using _path::operator<=>;
 }
 
 template<>
