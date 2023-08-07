@@ -22,132 +22,143 @@ namespace rod::fs
 	constexpr typename path::string_view_type prev_dir = "..";
 #endif
 
-	result<std::size_t> _detail::path_base::utf16_to_utf32(std::span<const char16_t> src, void (*put_func)(void *, char32_t), void *data)
+	namespace _path
 	{
-		std::size_t result = 0;
-		for (auto pos = src.begin(); pos != src.end(); ++pos, ++result)
+		result<cvt_status> utf16_to_utf32(const char16_t *src_first, const char16_t *src_last, char32_t *dst_first, char32_t *dst_last) noexcept
 		{
-			if (*pos > 0xdfff) [[unlikely]]
-				return std::make_error_code(std::errc::invalid_argument);
-
-			auto cp = static_cast<char32_t>(*pos);
-			if (cp > 0xd7ff && cp <= 0xdbff)
+			auto src_pos = src_first;
+			auto dst_pos = dst_first;
+			for (char32_t cp;; *dst_pos = cp, ++src_pos, ++dst_pos)
 			{
-				if (++pos == src.end()) [[unlikely]]
+				if (src_pos == src_last || dst_pos == dst_last)
+				{
+					cvt_status status;
+					status.n_src = src_pos - src_first;
+					status.n_dst = dst_pos - dst_first;
+					status.done = src_pos == src_last;
+					return status;
+				}
+				else if (cp = *src_pos; cp > 0xdfff) [[unlikely]]
+					break;
+				else if (cp > 0xd7ff && cp <= 0xdbff)
+				{
+					if (++src_pos == src_last) [[unlikely]]
+						break;
+					if (const auto lh = *src_pos; lh >= 0xdc00 && lh <= 0xdfff) [[likely]]
+						cp = (cp << 10) + lh + 0xfca02400;
+					else
+						break;
+				}
+			}
+			return std::make_error_code(std::errc::invalid_argument);
+		}
+		result<cvt_status> utf32_to_utf16(const char32_t *src_first, const char32_t *src_last, char16_t *dst_first, char16_t *dst_last) noexcept
+		{
+			auto src_pos = src_first;
+			auto dst_pos = dst_first;
+			for (;;)
+			{
+				if (src_pos == src_last || dst_pos == dst_last)
+				{
+					cvt_status status;
+					status.n_src = src_pos - src_first;
+					status.n_dst = dst_pos - dst_first;
+					status.done = src_pos == src_last;
+					return status;
+				}
+
+				if (const auto cp = *src_pos++; (cp > 0xd7ff && cp <= 0xdfff) || cp > 0x10ffff) [[unlikely]]
 					return std::make_error_code(std::errc::invalid_argument);
-				if (const char32_t lh = *pos; lh < 0xdc00 || lh > 0xdfff) [[unlikely]]
-					return std::make_error_code(std::errc::invalid_argument);
+				else if (cp > 0xffff)
+				{
+					*dst_pos++ = static_cast<char16_t>(0xd7c0 + (cp >> 10));
+					*dst_pos++ = static_cast<char16_t>(0xdc00 + (cp & 0x3ff));
+				}
 				else
-					cp = (cp << 10) + lh + 0xfca02400;
+					*dst_pos++ = static_cast<char16_t>(cp);
 			}
-			put_func(data, cp);
 		}
-		return result;
-	}
-	result<std::size_t> _detail::path_base::utf32_to_utf16(std::span<const char32_t> src, void (*put_func)(void *, char16_t), void *data)
-	{
-		std::size_t result = 0;
-		for (const auto &cp : src)
+
+#ifdef ROD_WIN32
+		result<std::size_t> wide_to_multibyte_with_default(std::uint32_t codepage, const wchar_t *src, std::size_t n_src, char *dst, std::size_t n_dst) noexcept
 		{
-			if ((cp > 0xd7ff && cp <= 0xdfff) || cp > 0x10ffff) [[unlikely]]
+			if (n_src > INT_MAX || n_dst > INT_MAX) [[unlikely]]
 				return std::make_error_code(std::errc::invalid_argument);
 
-			if (cp > 0xffff)
-			{
-				put_func(data, static_cast<char16_t>(0xd7c0 + (cp >> 10)));
-				put_func(data, static_cast<char16_t>(0xdc00 + (cp & 0x3ff)));
-				result += 2;
-			}
+			auto len = ::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, src, static_cast<int>(n_src), dst, static_cast<int>(n_dst), nullptr, nullptr);
+			if (len == 0 && (len = ::WideCharToMultiByte(codepage, 0, src, static_cast<int>(n_src), dst, static_cast<int>(n_dst), nullptr, nullptr)) == 0) [[unlikely]]
+				return std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+			else
+				return len;
+		}
+		result<std::size_t> wide_to_multibyte(std::uint32_t codepage, const wchar_t *src, std::size_t n_src, char *dst, std::size_t n_dst) noexcept
+		{
+			if (n_src > INT_MAX || n_dst > INT_MAX) [[unlikely]]
+				return std::make_error_code(std::errc::invalid_argument);
+
+			std::error_code err;
+			std::size_t dst_len;
+			if (codepage == codepage_utf8 || codepage == codepage_gb18030)
+				dst_len = ::WideCharToMultiByte(codepage, WC_ERR_INVALID_CHARS, src, static_cast<int>(n_src), dst, static_cast<int>(n_dst), nullptr, nullptr);
 			else
 			{
-				put_func(data, static_cast<char16_t>(cp));
-				result += 1;
+				BOOL invalid = false;
+				dst_len = ::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, src, static_cast<int>(n_src), dst, static_cast<int>(n_dst), nullptr, &invalid);
+				if (invalid) [[unlikely]]
+					err = std::error_code(ERROR_NO_UNICODE_TRANSLATION, std::system_category());
 			}
-		}
-		return result;
-	}
 
-#ifdef ROD_WIN32
-	result<std::size_t> _detail::path_base::wide_to_multibyte_with_default(std::uint32_t codepage, std::span<const wchar_t> src, std::span<char> dst) noexcept
-	{
-		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
-			return std::make_error_code(std::errc::invalid_argument);
-
-		auto len = ::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr);
-		if (len == 0 && (len = ::WideCharToMultiByte(codepage, 0, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr)) == 0) [[unlikely]]
-			return std::error_code(static_cast<int>(::GetLastError()), std::system_category());
-		else
-			return len;
-	}
-	result<std::size_t> _detail::path_base::wide_to_multibyte(std::uint32_t codepage, std::span<const wchar_t> src, std::span<char> dst) noexcept
-	{
-		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
-			return std::make_error_code(std::errc::invalid_argument);
-
-		std::error_code err;
-		std::size_t len = 0;
-		if (codepage == codepage_utf8 || codepage == codepage_gb18030)
-			len = ::WideCharToMultiByte(codepage, WC_ERR_INVALID_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr);
-		else
-		{
-			BOOL invalid = false;
-			len = ::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, &invalid);
-
-			if (invalid) [[unlikely]]
-				err = std::error_code(ERROR_NO_UNICODE_TRANSLATION, std::system_category());
-		}
-
-		if (!len && !err && (err = std::error_code(static_cast<int>(::GetLastError()), std::system_category())).value() == ERROR_INVALID_FLAGS)
-		{
-			len = ::WideCharToMultiByte(codepage, 0, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size()), nullptr, nullptr);
-			if (len == 0) [[unlikely]]
-				err = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+			if (!dst_len && !err && (err = std::error_code(static_cast<int>(::GetLastError()), std::system_category())).value() == ERROR_INVALID_FLAGS)
+			{
+				dst_len = ::WideCharToMultiByte(codepage, 0, src, static_cast<int>(n_src), dst, static_cast<int>(n_dst), nullptr, nullptr);
+				if (dst_len == 0) [[unlikely]]
+					err = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+				else
+					err = {};
+			}
+			if (!err) [[likely]]
+				return dst_len;
 			else
-				err = {};
+				return err;
 		}
-		if (!err) [[likely]]
-			return len;
-		else
-			return err;
-	}
-	result<std::size_t> _detail::path_base::multibyte_to_wide(std::uint32_t codepage, std::span<const char> src, std::span<wchar_t> dst) noexcept
-	{
-		if (src.size() > INT_MAX || dst.size() > INT_MAX) [[unlikely]]
-			return std::make_error_code(std::errc::invalid_argument);
+		result<std::size_t> multibyte_to_wide(std::uint32_t codepage, const char *src, std::size_t n_src, wchar_t *dst, std::size_t n_dst) noexcept
+		{
+			if (n_src > INT_MAX || n_dst > INT_MAX) [[unlikely]]
+				return std::make_error_code(std::errc::invalid_argument);
 
-		if (const auto len = ::MultiByteToWideChar(codepage, MB_ERR_INVALID_CHARS, src.data(), static_cast<int>(src.size()), dst.data(), static_cast<int>(dst.size())); len == 0) [[unlikely]]
-			return std::error_code(static_cast<int>(::GetLastError()), std::system_category());
-		else
-			return len;
-	}
-	std::uint32_t _detail::path_base::system_codepage() noexcept { return ::GetACP(); }
+			if (const auto dst_len = ::MultiByteToWideChar(codepage, MB_ERR_INVALID_CHARS, src, static_cast<int>(n_src), dst, static_cast<int>(n_dst)); dst_len == 0) [[unlikely]]
+				return std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+			else
+				return static_cast<std::size_t>(dst_len);
+		}
+		std::uint32_t system_codepage() noexcept { return ::GetACP(); }
 #endif
+	}
 
-	[[maybe_unused]] static path path_from_multibyte(std::span<const std::byte> data) { return {std::string_view{reinterpret_cast<const char *>(data.data()), data.size()}}; }
-	[[maybe_unused]] static path path_from_wide(std::span<const std::byte> data) { return {std::wstring_view{reinterpret_cast<const wchar_t *>(data.data()), data.size()}}; }
+	[[maybe_unused]] static path from_wide(std::span<const std::byte> data) { return {std::wstring_view{reinterpret_cast<const wchar_t *>(data.data()), data.size()}}; }
+	static path from_multibyte(std::span<const std::byte> data) { return {std::string_view{reinterpret_cast<const char *>(data.data()), data.size()}}; }
 
 #ifdef ROD_WIN32
-	path _detail::path_from_binary(std::span<const std::byte> data)
+	path from_binary(std::span<const std::byte> data)
 	{
-		/* For length of 16, assume data is a GUID */
-		if (data.size() == 16)
+		if (data.size() == sizeof(GUID))
 		{
 			GUID guid;
-			wchar_t buff[40];
-
 			std::memcpy(&guid, data.data(), sizeof(GUID));
+
+			wchar_t buff[40];
 			const auto n = ::StringFromGUID2(guid, buff, 40);
 			return path{std::wstring_view(buff, n - 1), path::binary_format};
 		}
 
-		/* Assume data is a wchar_t string unless it's size is not a multiple of wchar_t. */
+		/* Assume data is a native wide string unless it's size is not a multiple of wchar_t. */
 		if (data.size() % sizeof(wchar_t))
-			return path_from_multibyte(data);
+			return from_multibyte(data);
 		else
-			return path_from_wide(data);
+			return from_wide(data);
 	}
 #else
-	path _detail::path_from_binary(std::span<const std::byte> data) { return path_from_multibyte(data); }
+	path from_binary(std::span<const std::byte> data) { return from_multibyte(data); }
 #endif
 
 	path path::make_relative(const path &self, const path &base)

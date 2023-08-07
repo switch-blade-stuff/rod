@@ -17,15 +17,14 @@ namespace rod
 		struct sender { struct type; };
 
 		template<typename T, typename Rcv>
-		class operation<T, Rcv>::type
+		class operation<T, Rcv>::type : empty_base<Rcv>
 		{
+			using rcv_base = empty_base<Rcv>;
+
 		public:
-			constexpr explicit type(Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : _rcv(std::forward<Rcv>(rcv)) {}
+			constexpr explicit type(Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : rcv_base(std::forward<Rcv>(rcv)) {}
 
-			friend constexpr void tag_invoke(start_t, type &op) noexcept { _detail::rcv_try_invoke(std::move(op._rcv), set_value, std::move(op._rcv), T{}(get_env(op._rcv))); }
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { _detail::rcv_try_invoke(std::move(op.rcv_base::value()), set_value, std::move(op.rcv_base::value()), T{}(get_env(op.rcv_base::value()))); }
 		};
 		template<typename T>
 		struct sender<T>::type

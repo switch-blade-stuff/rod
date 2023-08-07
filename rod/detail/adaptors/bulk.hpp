@@ -22,38 +22,42 @@ namespace rod
 		struct sender { class type; };
 
 		template<typename Rcv, typename Shape, typename Fn>
-		class receiver<Rcv, Shape, Fn>::type : public receiver_adaptor<type, Rcv>
+		class receiver<Rcv, Shape, Fn>::type : public receiver_adaptor<type, Rcv>, empty_base<Fn>
 		{
 			friend receiver_adaptor<type, Rcv>;
 
+			using adaptor_base = receiver_adaptor<type, Rcv>;
+			using func_base = empty_base<Fn>;
+
 		public:
-			constexpr explicit type(Rcv &&rcv, Shape shape, Fn fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_move_constructible_v<Fn>) : receiver_adaptor<type, Rcv>(std::forward<Rcv>(rcv)), _shape(shape), _fn(std::move(fn)) {}
+			template<typename Rcv2, typename Fn2>
+			constexpr explicit type(Rcv2 &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Rcv, Rcv2> && std::is_nothrow_constructible_v<Fn, Fn2>) : adaptor_base(std::forward<Rcv2>(rcv)), func_base(std::forward<Fn2>(fn)), _shape(shape) {}
 
 		private:
 			template<typename... Args>
-			void set_value(Args &&...args) && noexcept requires _detail::callable<Fn, Shape, Args &...> try
+			constexpr void try_complete(Args &&...args) noexcept(_detail::nothrow_callable<Fn, Shape, Args &...>)
 			{
-				for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
-				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
-			}
-			catch (...)
-			{
-				rod::set_error(std::move(receiver_adaptor<type, Rcv>::base()), std::current_exception());
+				for (auto i = Shape{}; i != _shape; ++i) std::invoke(func_base::value(), i, args...);
+				rod::set_value(std::move(adaptor_base::base()), std::forward<Args>(args)...);
 			}
 			template<typename... Args>
-			void set_value(Args &&...args) && noexcept requires _detail::nothrow_callable<Fn, Shape, Args &...>
+			constexpr void set_value(Args &&...args) && noexcept requires _detail::callable<Fn, Shape, Args &...>
 			{
-				for (auto i = Shape{}; i != _shape; ++i) _fn(i, args...);
-				rod::set_value(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Args>(args)...);
+				if constexpr (!noexcept(try_complete(std::forward<Args>(args)...)))
+					try { try_complete(std::forward<Args>(args)...); } catch (...) { rod::set_error(std::move(adaptor_base::base()), std::current_exception()); }
+				else
+					try_complete(std::forward<Args>(args)...);
 			}
 
 			Shape _shape = {};
-			ROD_NO_UNIQUE_ADDRESS Fn _fn;
 		};
 
 		template<typename Snd, typename Shape, typename Fn>
-		class sender<Snd, Shape, Fn>::type
+		class sender<Snd, Shape, Fn>::type : empty_base<Snd>, empty_base<Fn>
 		{
+			using sender_base = empty_base<Snd>;
+			using func_base = empty_base<Fn>;
+
 		public:
 			using is_sender = std::true_type;
 
@@ -73,22 +77,20 @@ namespace rod
 
 		public:
 			template<typename Snd2, typename Fn2>
-			constexpr explicit type(Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _shape(shape) {}
+			constexpr explicit type(Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : sender_base(std::forward<Snd2>(snd)), func_base(std::forward<Fn2>(fn)), _shape(shape) {}
 
 		public:
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s.sender_base::value()); }
 			template<decays_to<type> T, typename E>
 			friend constexpr signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<Rcv>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_callable<connect_t, copy_cvref_t<T, Snd>, receiver_t<Rcv>> && std::is_nothrow_constructible_v<receiver_t<Rcv>, Rcv, Shape, Fn>)
 			{
-				return connect(std::forward<T>(s)._snd, make_rcv(std::move(rcv), s._shape, std::forward<T>(s)._fn));
+				return connect(std::forward<T>(s).sender_base::value(), make_rcv(std::move(rcv), s._shape, std::forward<T>(s).func_base::value()));
 			}
 
 		private:
-			ROD_NO_UNIQUE_ADDRESS Snd _snd;
-			ROD_NO_UNIQUE_ADDRESS Fn _fn;
 			Shape _shape;
 		};
 

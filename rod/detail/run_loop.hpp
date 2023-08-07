@@ -60,11 +60,11 @@ namespace rod
 		};
 
 		template<typename Rcv, typename Base>
-		class operation<Rcv, Base>::type : Base
+		class operation<Rcv, Base>::type : Base, empty_base<Rcv>
 		{
 			static void notify_complete(operation_base *p) noexcept
 			{
-				auto &rcv = static_cast<type *>(p)->_rcv;
+				auto &rcv = *static_cast<type *>(p)->empty_base<Rcv>::get();
 				if (rod::get_stop_token(get_env(rcv)).stop_requested())
 					set_stopped(std::move(rcv));
 				else
@@ -75,17 +75,14 @@ namespace rod
 			type() = delete;
 			type(const type &) = delete;
 
-			template<typename... Args>
-			constexpr type(run_loop *loop, Rcv rcv, Args &&...args) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : Base(loop, notify_complete, std::forward<Args>(args)...), _rcv(std::move(rcv)) {}
+			template<typename Rcv2, typename... Args>
+			constexpr explicit type(run_loop *loop, Rcv2 &&rcv, Args &&...args) : Base(loop, notify_complete, std::forward<Args>(args)...), empty_base<Rcv>(std::forward<Rcv2>(rcv)) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op.Base::start(); }
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 		};
 
 		template<typename OpBase, typename... Args>
-		class sender
+		class sender : std::tuple<Args...>
 		{
 			friend class scheduler;
 
@@ -97,7 +94,7 @@ namespace rod
 			using operation_t = typename operation<std::decay_t<Rcv>, OpBase>::type;
 			using signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
 
-			constexpr sender(run_loop *loop, Args ...args) noexcept : _args{std::move(args)...}, _loop(loop) {}
+			constexpr sender(run_loop *loop, Args ...args) noexcept : std::tuple<Args...>(std::move(args)...), _loop(loop) {}
 
 		public:
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._loop}; }
@@ -105,13 +102,16 @@ namespace rod
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
 			template<decays_to<sender> T, rod::receiver Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(_detail::nothrow_decay_copyable<Rcv>::value) { return s.connect(std::forward<Rcv>(rcv)); }
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && (_detail::nothrow_decay_copyable<Args>::value && ...)) { return s.connect(std::forward<Rcv>(rcv)); }
 
 		private:
 			template<typename Rcv>
-			auto connect(Rcv &&rcv) { return std::apply([&](auto &...args) { return operation_t<Rcv>{_loop, std::forward<Rcv>(rcv), std::move(args)...}; }, _args); }
+			[[nodiscard]] constexpr operation_t<Rcv> connect(Rcv &&rcv)
+			{
+				const auto factory = [&](auto &...args) { return operation_t<Rcv>(_loop, std::forward<Rcv>(rcv), std::move(args)...); };
+				return std::apply(factory, static_cast<std::tuple<Args...> &>(*this));
+			}
 
-			ROD_NO_UNIQUE_ADDRESS std::tuple<Args...> _args;
 			run_loop *_loop;
 		};
 

@@ -86,76 +86,6 @@ namespace rod
 		template<typename... Ts>
 		using concat_tuples_t = typename concat_tuples<Ts...>::type;
 
-		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
-		[[nodiscard]] constexpr std::size_t generic_strlen(I first, S last) noexcept
-		{
-			std::size_t i = 0;
-			while (first++ != last && *first != C{})
-				i += 1;
-			return i;
-		}
-		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
-		[[nodiscard]] constexpr std::size_t strlen(I first, S last) noexcept
-		{
-#if defined(ROD_WIN32) || defined(_GNU_SOURCE) || _POSIX_C_SOURCE >= 200809L
-			if constexpr (std::is_pointer_v<I>)
-				if (!std::is_constant_evaluated())
-				{
-					if constexpr (std::same_as<C, char>)
-						return strnlen(first, static_cast<std::size_t>(last - first));
-					if constexpr (std::same_as<C, wchar_t>)
-						return wcsnlen(first, static_cast<std::size_t>(last - first));
-				}
-#endif
-			return generic_strlen(first, last);
-		}
-
-		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
-		[[nodiscard]] constexpr std::size_t generic_strlen(I first) noexcept
-		{
-			std::size_t i = 0;
-			while (*first++ != C{})
-				i += 1;
-			return i;
-		}
-		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
-		[[nodiscard]] constexpr std::size_t strlen(I first) noexcept
-		{
-			if constexpr (std::is_pointer_v<I>)
-				if (!std::is_constant_evaluated())
-				{
-					if constexpr (std::same_as<C, char>)
-						return std::strlen(first);
-					if constexpr (std::same_as<C, wchar_t>)
-						return std::wcslen(first);
-				}
-			return generic_strlen(first);
-		}
-
-		template<typename F>
-		struct eval_t
-		{
-			using type = std::invoke_result_t<F>;
-
-			operator type() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
-			type operator()() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(func)(); }
-
-			ROD_NO_UNIQUE_ADDRESS F func;
-		};
-		template<typename F>
-		eval_t(F) -> eval_t<F>;
-
-		template<typename Err>
-		[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept
-		{
-			if constexpr (decays_to<Err, std::exception_ptr>)
-				return std::forward<Err>(err);
-			else if constexpr (decays_to<Err, std::error_code>)
-				return std::make_exception_ptr(std::system_error(std::forward<Err>(err)));
-			else
-				return std::make_exception_ptr(std::forward<Err>(err));
-		}
-
 		template<template<typename...> typename T, typename... Ts>
 		struct bind_front { template<typename... Us> using type = apply_tuple_t<T, Ts..., Us...>; };
 		template<template<typename...> typename T, typename... Ts>
@@ -274,55 +204,6 @@ namespace rod
 
 	namespace _detail
 	{
-		template<typename...>
-		struct empty_variant {};
-
-		inline auto deduce_variant_or_empty(type_list_t<>) -> empty_variant<>;
-		template<typename... Ts>
-		inline auto deduce_variant_or_empty(type_list_t<Ts...>) -> std::variant<Ts...>;
-		template<typename... Ts>
-		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
-	}
-
-	/** Utility function used to throw `std::system_error` if the passed error evaluated to `true`.
-	 * @param[in] err Error to assert the value of. */
-	static void assert_error_code(std::error_code err) { if (err) throw std::system_error(err); }
-	/** @copydoc assert_error_code
-	 * @param[in] msg Message passed to `std::system_error`. */
-	static void assert_error_code(std::error_code err, const char *msg) { if (err) throw std::system_error(err, msg); }
-	/** @copydoc assert_error_code */
-	static void assert_error_code(std::error_code err, const std::string &msg) { if (err) throw std::system_error(err, msg); }
-
-	namespace _detail
-	{
-		template<typename Func>
-		class defer_invoker
-		{
-		public:
-			defer_invoker() = delete;
-			defer_invoker(const defer_invoker &) = delete;
-			defer_invoker &operator=(const defer_invoker &) = delete;
-			defer_invoker(defer_invoker &&) = delete;
-			defer_invoker &operator=(defer_invoker &&) = delete;
-
-			template<typename Func2>
-			constexpr explicit defer_invoker(Func2 &&func) noexcept(std::is_nothrow_constructible_v<Func, Func2>) : _func(std::forward<Func2>(func)) {}
-			constexpr ~defer_invoker() noexcept(nothrow_callable<Func>) { _func(); }
-
-		private:
-			Func _func;
-		};
-	}
-
-	/** Invokes functor \a func on destruction of the returned handle. */
-	template<typename Func>
-	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<_detail::defer_invoker<std::decay_t<Func>>, Func>)
-	{
-		return _detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
-	}
-
-	namespace _detail
-	{
 		template<typename T0, typename T1>
 		struct adl_swappable : std::false_type {};
 		template<typename T0, typename T1>
@@ -384,6 +265,245 @@ namespace rod
 			std::forward<T0>(a).swap(std::forward<T1>(b));
 	}
 
+	namespace _detail
+	{
+		template<typename T>
+		class empty_base
+		{
+		public:
+			constexpr empty_base() noexcept(std::is_nothrow_default_constructible_v<T>) requires std::constructible_from<T> = default;
+
+			constexpr empty_base(const empty_base &other) noexcept(std::is_nothrow_copy_constructible_v<T>) requires std::copy_constructible<T> : _value(other._value) {}
+			constexpr empty_base &operator=(const empty_base &other) noexcept(std::is_nothrow_copy_assignable_v<T>) requires std::assignable_from<T, const T &> { return (_value = other._value, *this); }
+
+			constexpr empty_base(empty_base &&other) noexcept(std::is_nothrow_move_constructible_v<T>) requires std::move_constructible<T> : _value(std::move(other._value)) {}
+			constexpr empty_base &operator=(empty_base &&other) noexcept(std::is_nothrow_move_assignable_v<T>) requires std::assignable_from<T, T &&> { return (_value = std::move(other._value), *this); }
+
+			template<typename... Args> requires std::constructible_from<T, Args...>
+			constexpr explicit empty_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : _value(std::forward<Args>(args)...) {}
+			template<typename U = T> requires(!decays_to<U, empty_base> && std::assignable_from<T, U>)
+			constexpr empty_base &operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T, U>) { return (_value = std::forward<U>(value), *this); }
+
+			/** Returns pointer to the contained value. */
+			[[nodiscard]] constexpr T *get() noexcept { return std::addressof(_value); }
+			/** @copydoc get */
+			[[nodiscard]] constexpr const T *get() const noexcept { return std::addressof(_value); }
+
+			/** Returns reference to the contained value. */
+			[[nodiscard]] constexpr auto &value() & noexcept { return _value; }
+			/** @copydoc value */
+			[[nodiscard]] constexpr auto &value() const & noexcept { return _value; }
+			/** @copydoc value */
+			[[nodiscard]] constexpr auto &&value() && noexcept { return std::move(_value); }
+			/** @copydoc value */
+			[[nodiscard]] constexpr auto &&value() const && noexcept { return std::move(_value); }
+
+			constexpr void swap(empty_base &other) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { adl_swap(_value, other._value); }
+
+		private:
+			T _value;
+		};
+		template<typename T> requires(std::is_object_v<T> && std::is_empty_v<T> && !std::is_final_v<T>)
+		class empty_base<T> : T
+		{
+		public:
+			constexpr empty_base() noexcept(std::is_nothrow_default_constructible_v<T>) = default;
+			constexpr empty_base(const empty_base &) noexcept(std::is_nothrow_copy_constructible_v<T>) = default;
+			constexpr empty_base &operator=(const empty_base &) noexcept(std::is_nothrow_copy_assignable_v<T>) = default;
+			constexpr empty_base(empty_base &&) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
+			constexpr empty_base &operator=(empty_base &&) noexcept(std::is_nothrow_move_assignable_v<T>) = default;
+
+			template<typename... Args> requires std::constructible_from<T, Args...>
+			constexpr explicit empty_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : T(std::forward<Args>(args)...) {}
+			template<typename U = T> requires(!decays_to<U, empty_base> && std::assignable_from<T, U>)
+			constexpr empty_base &operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T, U>) { return (*get() = std::forward<U>(value), *this); }
+
+			/** Returns pointer to the contained value. */
+			[[nodiscard]] constexpr T *get() noexcept { return std::addressof(static_cast<T &>(*this)); }
+			/** @copydoc get */
+			[[nodiscard]] constexpr const T *get() const noexcept { return std::addressof(static_cast<const T &>(*this)); }
+
+			/** Returns reference to the contained value. */
+			[[nodiscard]] constexpr auto &value() & noexcept { return static_cast<T &>(*this); }
+			/** @copydoc value */
+			[[nodiscard]] constexpr auto &value() const & noexcept { return static_cast<const T &>(*this); }
+			/** @copydoc value */
+			[[nodiscard]] constexpr auto &&value() && noexcept { return static_cast<T &&>(*this); }
+			/** @copydoc value */
+			[[nodiscard]] constexpr auto &&value() const && noexcept { return static_cast<const T &&>(*this); }
+
+			constexpr void swap(empty_base &other) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { adl_swap(*get(), other.*get()); }
+		};
+
+		template<typename T>
+		constexpr void swap(empty_base<T> &a, empty_base<T> &b) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { a.swap(b); }
+
+		template<typename T>
+		[[nodiscard]] constexpr auto operator<=>(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() <=> *b.get())) requires(requires { *a.get() <=> *b.get(); }) { return *a.get() <=> *b.get(); }
+		template<typename T>
+		[[nodiscard]] constexpr bool operator==(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() == *b.get())) requires(requires { *a.get() == *b.get(); }) { return *a.get() == *b.get(); }
+		template<typename T>
+		[[nodiscard]] constexpr bool operator!=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() != *b.get())) requires(requires { *a.get() != *b.get(); }) { return *a.get() != *b.get(); }
+		template<typename T>
+		[[nodiscard]] constexpr bool operator<=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() <= *b.get())) requires(requires { *a.get() <= *b.get(); }) { return *a.get() <= *b.get(); }
+		template<typename T>
+		[[nodiscard]] constexpr bool operator>=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() >= *b.get())) requires(requires { *a.get() >= *b.get(); }) { return *a.get() >= *b.get(); }
+		template<typename T>
+		[[nodiscard]] constexpr bool operator<(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() < *b.get())) requires(requires { *a.get() < *b.get(); }) { return *a.get() < *b.get(); }
+		template<typename T>
+		[[nodiscard]] constexpr bool operator>(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() > *b.get())) requires(requires { *a.get() > *b.get(); }) { return *a.get() > *b.get(); }
+	}
+
+	/** Utility type used to store a potentially-empty object using EBO that can be used as an alternative
+	 * to the `[[no_unique_address]]` attribute for cases where it is not supported or has no effect. */
+	template<typename T>
+	using empty_base = _detail::empty_base<T>;
+
+	namespace _detail
+	{
+		template<typename...>
+		struct empty_variant {};
+
+		inline auto deduce_variant_or_empty(type_list_t<>) -> empty_variant<>;
+		template<typename... Ts>
+		inline auto deduce_variant_or_empty(type_list_t<Ts...>) -> std::variant<Ts...>;
+		template<typename... Ts>
+		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
+	}
+
+	/** Utility function used to throw `std::system_error` if the passed error evaluated to `true`.
+	 * @param[in] err Error to assert the value of. */
+	static void assert_error_code(std::error_code err) { if (err) throw std::system_error(err); }
+	/** @copydoc assert_error_code
+	 * @param[in] msg Message passed to `std::system_error`. */
+	static void assert_error_code(std::error_code err, const char *msg) { if (err) throw std::system_error(err, msg); }
+	/** @copydoc assert_error_code */
+	static void assert_error_code(std::error_code err, const std::string &msg) { if (err) throw std::system_error(err, msg); }
+
+	namespace _detail
+	{
+		template<typename Err>
+		[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept
+		{
+			if constexpr (decays_to<Err, std::exception_ptr>)
+				return std::forward<Err>(err);
+			else if constexpr (decays_to<Err, std::error_code>)
+				return std::make_exception_ptr(std::system_error(std::forward<Err>(err)));
+			else
+				return std::make_exception_ptr(std::forward<Err>(err));
+		}
+
+		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t generic_strlen(I first, S last) noexcept
+		{
+			std::size_t i = 0;
+			while (first++ != last && *first != C{})
+				i += 1;
+			return i;
+		}
+		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t strlen(I first, S last) noexcept
+		{
+#if defined(ROD_WIN32) || defined(_GNU_SOURCE) || _POSIX_C_SOURCE >= 200809L
+			if constexpr (std::is_pointer_v<I>)
+				if (!std::is_constant_evaluated())
+				{
+					if constexpr (std::same_as<C, char>)
+						return strnlen(first, static_cast<std::size_t>(last - first));
+					if constexpr (std::same_as<C, wchar_t>)
+						return wcsnlen(first, static_cast<std::size_t>(last - first));
+				}
+#endif
+			return generic_strlen(first, last);
+		}
+
+		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t generic_strlen(I first) noexcept
+		{
+			std::size_t i = 0;
+			while (*first++ != C{})
+				i += 1;
+			return i;
+		}
+		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
+		[[nodiscard]] constexpr std::size_t strlen(I first) noexcept
+		{
+			if constexpr (std::is_pointer_v<I>)
+				if (!std::is_constant_evaluated())
+				{
+					if constexpr (std::same_as<C, char>)
+						return std::strlen(first);
+					if constexpr (std::same_as<C, wchar_t>)
+						return std::wcslen(first);
+				}
+			return generic_strlen(first);
+		}
+
+		template<typename F>
+		class defer_invoker : empty_base<F>
+		{
+		public:
+			defer_invoker() = delete;
+			defer_invoker(const defer_invoker &) = delete;
+			defer_invoker &operator=(const defer_invoker &) = delete;
+			defer_invoker(defer_invoker &&) = delete;
+			defer_invoker &operator=(defer_invoker &&) = delete;
+
+			template<typename F2>
+			constexpr explicit defer_invoker(F2 &&func) noexcept(std::is_nothrow_constructible_v<F, F2>) : empty_base<F>(std::forward<F2>(func)) {}
+			constexpr ~defer_invoker() noexcept(nothrow_callable<F>) { std::invoke(empty_base<F>::value()); }
+		};
+
+		template<typename F>
+		struct eval_t : empty_base<F>
+		{
+			using type = std::invoke_result_t<F>;
+
+			using empty_base<F>::empty_base;
+			using empty_base<F>::operator=;
+
+			operator type() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(empty_base<F>::value())(); }
+			type operator()() && noexcept(requires (F f) { { f() } noexcept; }) { return std::move(empty_base<F>::value())(); }
+		};
+		template<typename F>
+		eval_t(F) -> eval_t<F>;
+	}
+
+	/** Invokes functor \a func on destruction of the returned handle. */
+	template<typename Func>
+	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<_detail::defer_invoker<std::decay_t<Func>>, Func>)
+	{
+		return _detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
+	}
+
+	/** Utility function used to preform a copy of an input range into an output range via `const_cast`. */
+	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
+	inline constexpr Out const_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = const_cast<To>(*first)))
+	{
+		using to_type = std::iter_value_t<Out>;
+		for (; first != last; ++first, ++out)
+			*out = const_cast<To>(*first);
+		return out;
+	}
+	/** Utility function used to preform a copy of an input range into an output range via `static_cast`. */
+	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
+	inline constexpr Out static_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = static_cast<To>(*first)))
+	{
+		using to_type = std::iter_value_t<Out>;
+		for (; first != last; ++first, ++out)
+			*out = static_cast<To>(*first);
+		return out;
+	}
+	/** Utility function used to preform a copy of an input range into an output range via `reinterpret_cast`. */
+	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
+	inline static Out reinterpret_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = reinterpret_cast<To>(*first)))
+	{
+		using to_type = std::iter_value_t<Out>;
+		for (; first != last; ++first, ++out)
+			*out = reinterpret_cast<To>(*first);
+		return out;
+	}
+
 	/** Utility function used to mark a portion of code as unreachable. */
 	[[noreturn]] inline void unreachable() noexcept
 	{
@@ -393,172 +513,6 @@ namespace rod
 		__assume(false);
 #elif !defined(NDEBUG)
 		std::terminate();
-#endif
-	}
-
-	namespace _detail
-	{
-#if defined(_MSC_VER) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-		template<typename T> requires(sizeof(T) == 8)
-		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
-		{
-			switch (n)
-			{
-			case 0: return 0;
-			case 1: return static_cast<T>(readu_le<std::uint8_t>(data));
-			case 2: return static_cast<T>(readu_le<std::uint16_t>(data));
-			case 3:
-			{
-				const auto h = static_cast<T>(readu_le<std::uint8_t>(data + 2));
-				const auto l = static_cast<T>(readu_le<std::uint16_t>(data));
-				return l | (h << 16);
-			}
-			case 4: return static_cast<T>(readu_le<std::uint32_t>(data));
-			case 5:
-			{
-				const auto h = static_cast<T>(readu_le<std::uint8_t>(data + 4));
-				const auto l = static_cast<T>(readu_le<std::uint32_t>(data));
-				return l | (h << 32);
-			}
-			case 6:
-			{
-				const auto h = static_cast<T>(readu_le<std::uint16_t>(data + 4));
-				const auto l = static_cast<T>(readu_le<std::uint32_t>(data));
-				return l | (h << 32);
-			}
-			case 7:
-			{
-				const auto a = static_cast<T>(readu_le<std::uint16_t>(data + 4));
-				const auto b = static_cast<T>(readu_le<std::uint8_t>(data + 6));
-				const auto c = static_cast<T>(readu_le<std::uint32_t>(data));
-				return c | (a << 32) | (b << 48);
-			}
-			case 8: return readu_le<T>(data);
-			default:
-			{
-				if (!std::is_constant_evaluated())
-					unreachable();
-			}
-			}
-		}
-		template<typename T> requires(sizeof(T) == 4)
-		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
-		{
-			switch (n)
-			{
-			case 0: return 0;
-			case 1: return static_cast<T>(readu_le<std::uint8_t>(data));
-			case 2: return static_cast<T>(readu_le<std::uint16_t>(data));
-			case 3:
-			{
-				const auto h = static_cast<T>(readu_le<std::uint8_t>(data + 2));
-				const auto l = static_cast<T>(readu_le<std::uint16_t>(data));
-				return l | (h << 16);
-			}
-			case 4: return readu_le<T>(data);
-			default:
-			{
-				if (!std::is_constant_evaluated())
-					unreachable();
-			}
-			}
-		}
-		template<typename T> requires(sizeof(T) == 2)
-		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
-		{
-			switch (n)
-			{
-			case 0: return 0;
-			case 1: return static_cast<T>(readu_le<std::uint8_t>(data));
-			case 2: return readu_le<T>(data);
-			default:
-			{
-				if (!std::is_constant_evaluated())
-					unreachable();
-			}
-			}
-		}
-#else
-		template<typename T> requires(sizeof(T) == 8)
-		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
-		{
-			switch (n)
-			{
-			case 0: return 0;
-			case 1: return static_cast<T>(readu_be<std::uint8_t>(data));
-			case 2: return static_cast<T>(readu_be<std::uint16_t>(data));
-			case 3:
-			{
-				const auto l = static_cast<T>(readu_be<std::uint8_t>(data + 2));
-				const auto h = static_cast<T>(readu_be<std::uint16_t>(data));
-				return l | (h << 8);
-			}
-			case 4: return static_cast<T>(readu_be<std::uint32_t>(data));
-			case 5:
-			{
-				const auto l = static_cast<T>(readu_be<std::uint8_t>(data + 4));
-				const auto h = static_cast<T>(readu_be<std::uint32_t>(data));
-				return l | (h << 8);
-			}
-			case 6:
-			{
-				const auto l = static_cast<T>(readu_be<std::uint16_t>(data + 4));
-				const auto h = static_cast<T>(readu_be<std::uint32_t>(data));
-				return l | (h << 16);
-			}
-			case 7:
-			{
-				const auto a = static_cast<T>(readu_be<std::uint16_t>(data + 4));
-				const auto b = static_cast<T>(readu_be<std::uint8_t>(data + 6));
-				const auto c = static_cast<T>(readu_be<std::uint32_t>(data));
-				return b | (a << 8) | (c << 24);
-			}
-			case 8: return readu_be<T>(data);
-			default:
-			{
-				if (!std::is_constant_evaluated())
-					unreachable();
-			}
-			}
-		}
-		template<typename T> requires(sizeof(T) == 4)
-		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
-		{
-			switch (n)
-			{
-			case 0: return 0;
-			case 1: return static_cast<T>(readu_be<std::uint8_t>(data));
-			case 2: return static_cast<T>(readu_be<std::uint16_t>(data));
-			case 3:
-			{
-				const auto l = static_cast<T>(readu_be<std::uint8_t>(data + 2));
-				const auto h = static_cast<T>(readu_be<std::uint16_t>(data));
-				return l | (h << 8);
-			}
-			case 4: return readu_be<T>(data);
-			default:
-			{
-				if (!std::is_constant_evaluated())
-					unreachable();
-			}
-			}
-		}
-		template<typename T> requires(sizeof(T) == 2)
-		[[nodiscard]] inline constexpr T read_buffer(const std::byte *data, std::size_t n) noexcept
-		{
-			switch (n)
-			{
-			case 0: return 0;
-			case 1: return static_cast<T>(readu_be<std::uint8_t>(data));
-			case 2: return readu_be<T>(data);
-			default:
-			{
-				if (!std::is_constant_evaluated())
-					unreachable();
-			}
-			}
-		}
-	}
 #endif
 	}
 }

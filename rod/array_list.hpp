@@ -148,7 +148,7 @@ namespace rod
 	 * @tparam T Value type stored by the list.
 	 * @tparam Alloc Allocator used to allocate list buffer. */
 	template<typename T, typename Alloc = std::allocator<T>>
-	class array_list
+	class array_list : empty_base<typename std::allocator_traits<Alloc>::template rebind_alloc<_detail::array_list_node<T, Alloc>>>
 	{
 		using header_t = _detail::array_list_header;
 		using node_t = _detail::array_list_node<T, Alloc>;
@@ -160,6 +160,7 @@ namespace rod
 		using const_node_pointer = typename std::allocator_traits<Alloc>::template rebind_traits<node_t>::const_pointer;
 
 		using node_allocator = typename std::allocator_traits<Alloc>::template rebind_alloc<node_t>;
+		using allocator_base = empty_base<node_allocator>;
 
 	public:
 		using value_type = T;
@@ -182,23 +183,23 @@ namespace rod
 		/** Initializes an empty list. */
 		constexpr array_list() noexcept(std::is_nothrow_default_constructible_v<node_allocator>) : _header(), _data(nullptr), _free(end()._node) {}
 		/** Initializes an empty list using allocator \a alloc. */
-		constexpr array_list(const allocator_type &alloc) noexcept(std::is_nothrow_constructible_v<node_allocator, const allocator_type &>) : _alloc(alloc), _header(), _data(nullptr), _free(end()._node) {}
+		constexpr array_list(const allocator_type &alloc) noexcept(std::is_nothrow_constructible_v<node_allocator, const allocator_type &>) : allocator_base(alloc), _header(), _data(nullptr), _free(end()._node) {}
 
 		/** Copy-constructs a list from \a other. */
 		constexpr array_list(const array_list &other) : array_list(other, std::allocator_traits<allocator_type>::select_on_container_copy_construction(other.get_allocator())) {}
 		/** Copy-constructs a list from \a other with allocator \a alloc. */
-		constexpr array_list(const array_list &other, const allocator_type &alloc) : _alloc(alloc)
+		constexpr array_list(const array_list &other, const allocator_type &alloc) : allocator_base(alloc)
 		{
 			reserve(other.size());
 			copy_data(other);
 		}
 
 		/** Move-constructs a list from \a other. */
-		constexpr array_list(array_list &&other) noexcept(std::is_nothrow_move_constructible_v<node_allocator>) : _alloc(std::move(other._alloc)) { swap_data(other); }
+		constexpr array_list(array_list &&other) noexcept(std::is_nothrow_move_constructible_v<node_allocator>) : allocator_base(std::move(other)) { swap_data(other); }
 		/** Move-constructs a list from \a other with allocator \a alloc. */
-		constexpr array_list(array_list &&other, const allocator_type &alloc) noexcept(std::allocator_traits<node_allocator>::is_always_equal::value && std::is_nothrow_constructible_v<node_allocator, const allocator_type &>) : _alloc(alloc)
+		constexpr array_list(array_list &&other, const allocator_type &alloc) noexcept(std::allocator_traits<node_allocator>::is_always_equal::value && std::is_nothrow_constructible_v<node_allocator, const allocator_type &>) : allocator_base(alloc)
 		{
-			if (std::allocator_traits<node_allocator>::is_always_equal::value || _alloc == other._alloc)
+			if (std::allocator_traits<node_allocator>::is_always_equal::value || allocator_base::value() == other.allocator_base::value())
 				swap_data(other);
 			else
 			{
@@ -210,26 +211,26 @@ namespace rod
 		/** Initializes a list with \a n default-constructed elements. */
 		constexpr array_list(size_type n) : array_list(n, node_allocator{}) {}
 		/** Initializes a list with \a n default-constructed elements using allocator \a alloc. */
-		constexpr array_list(size_type n, const allocator_type &alloc) : _alloc(alloc) { resize(n); }
+		constexpr array_list(size_type n, const allocator_type &alloc) : allocator_base(alloc) { resize(n); }
 
 		/** Initializes a list with \a n elements copy-constructed from \a val. */
 		constexpr array_list(size_type n, const_reference val) : array_list(n, val, node_allocator{}) {}
 		/** Initializes a list with \a n elements copy-constructed from \a val using allocator \a alloc. */
-		constexpr array_list(size_type n, const_reference val, const allocator_type &alloc) : _alloc(alloc) { resize(n, val); }
+		constexpr array_list(size_type n, const_reference val, const allocator_type &alloc) : allocator_base(alloc) { resize(n, val); }
 
 		/** Initializes a list with elements in range [\a first, \a last). */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
 		constexpr array_list(I first, S last) requires std::constructible_from<value_type, std::iter_value_t<T>> { insert(first, last); }
 		/** Initializes a list with elements in range [\a first, \a last) using allocator \a alloc. */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
-		constexpr array_list(I first, S last, const allocator_type &alloc) requires std::constructible_from<value_type, std::iter_value_t<T>> : _alloc(alloc) { insert(first, last); }
+		constexpr array_list(I first, S last, const allocator_type &alloc) requires std::constructible_from<value_type, std::iter_value_t<T>> : allocator_base(alloc) { insert(first, last); }
 
 		/** Initializes a list with elements from initializer list \a il. */
 		template<typename U = T>
 		constexpr array_list(std::initializer_list<U> il) requires std::constructible_from<value_type, std::add_const_t<U>> { insert(il); }
 		/** Initializes a list with elements from initializer list \a il using allocator \a alloc. */
 		template<typename U = T>
-		constexpr array_list(std::initializer_list<U> il, const allocator_type &alloc) requires std::constructible_from<value_type, std::add_const_t<U>> : _alloc(alloc) { insert(il); }
+		constexpr array_list(std::initializer_list<U> il, const allocator_type &alloc) requires std::constructible_from<value_type, std::add_const_t<U>> : allocator_base(alloc) { insert(il); }
 
 		constexpr array_list &operator=(const array_list &other)
 		{
@@ -237,10 +238,10 @@ namespace rod
 			{
 				if (std::allocator_traits<allocator_type>::propagate_on_container_copy_assignment::value)
 				{
-					auto old_alloc = std::move(_alloc);
-					_alloc = other._alloc;
+					auto old_alloc = std::move(allocator_base::value());
+					allocator_base::operator=(other.allocator_base::value());
 
-					if (!std::allocator_traits<node_allocator>::is_always_equal::value && _alloc != old_alloc) [[unlikely]]
+					if (!std::allocator_traits<node_allocator>::is_always_equal::value && allocator_base::value() != old_alloc) [[unlikely]]
 						destroy_data(old_alloc);
 				}
 				assign(other.begin(), other.end());
@@ -253,15 +254,15 @@ namespace rod
 			{
 				if (std::allocator_traits<allocator_type>::propagate_on_container_move_assignment::value)
 				{
-					auto old_alloc = std::move(_alloc);
-					_alloc = std::move(other._alloc);
+					auto old_alloc = std::move(allocator_base::value());
+					allocator_base::operator=(std::move(other.allocator_base::value()));
 
-					if (!std::allocator_traits<node_allocator>::is_always_equal::value && old_alloc != other._alloc) [[unlikely]]
+					if (!std::allocator_traits<node_allocator>::is_always_equal::value && old_alloc != other.allocator_base::value()) [[unlikely]]
 						destroy_data(old_alloc);
 
 					swap_data(other);
 				}
-				else if (!std::allocator_traits<node_allocator>::is_always_equal::value && _alloc != other._alloc)
+				else if (!std::allocator_traits<node_allocator>::is_always_equal::value && allocator_base::value() != other.allocator_base::value())
 					assign(std::move_iterator(other.begin()), std::move_iterator(other.end()));
 				else
 					swap_data(other);
@@ -269,7 +270,7 @@ namespace rod
 			return *this;
 		}
 
-		constexpr ~array_list() { destroy_data(_alloc); }
+		constexpr ~array_list() { destroy_data(allocator_base::value()); }
 
 		/** Replaces contents of the list with \a n elements copy-constructed from \a val. */
 		constexpr void assign(size_type n, const_reference val)
@@ -337,6 +338,20 @@ namespace rod
 		/** @copydoc end */
 		[[nodiscard]] const_iterator cend() const noexcept { return &_header; }
 
+		/** Returns reverse iterator to the last element of the list. */
+		[[nodiscard]] reverse_iterator rbegin() noexcept { return std::reverse_iterator(end()); }
+		/** Returns const reverse iterator to the last of the list. */
+		[[nodiscard]] const_reverse_iterator rbegin() const noexcept { return std::reverse_iterator(end()); }
+		/** @copydoc rbegin */
+		[[nodiscard]] const_reverse_iterator crbegin() const noexcept { return std::reverse_iterator(cend()); }
+
+		/** Returns reverse iterator one past the first element of the list. */
+		[[nodiscard]] reverse_iterator rend() noexcept { return std::reverse_iterator(begin()); }
+		/** Returns const reverse iterator one past the first element of the list. */
+		[[nodiscard]] const_reverse_iterator rend() const noexcept { return std::reverse_iterator(begin()); }
+		/** @copydoc rend */
+		[[nodiscard]] const_reverse_iterator crend() const noexcept { return std::reverse_iterator(cbegin()); }
+
 		/** Returns reference to the first element of the list. */
 		[[nodiscard]] reference front() noexcept { return *node_pointer(_header.next())->get(); }
 		/** Returns const reference to the first element of the list. */
@@ -363,7 +378,7 @@ namespace rod
 				return;
 
 			const auto new_size = std::max(_data_size * 2, n);
-			const auto new_data = std::allocator_traits<node_allocator>::allocate(_alloc, new_size);
+			const auto new_data = std::allocator_traits<node_allocator>::allocate(allocator_base::value(), new_size);
 
 			try
 			{
@@ -377,13 +392,13 @@ namespace rod
 					std::destroy_at(src);
 				}
 
-				std::allocator_traits<node_allocator>::deallocate(_alloc, _data, _data_size);
+				std::allocator_traits<node_allocator>::deallocate(allocator_base::value(), _data, _data_size);
 				_data_size = new_size;
 				_data = new_data;
 			}
 			catch (...)
 			{
-				std::allocator_traits<node_allocator>::deallocate(_alloc, new_data, new_size);
+				std::allocator_traits<node_allocator>::deallocate(allocator_base::value(), new_data, new_size);
 				throw;
 			}
 		}
@@ -515,7 +530,7 @@ namespace rod
 		}
 
 		/** Returns a copy of the list's allocator. */
-		[[nodiscard]] constexpr allocator_type get_allocator() const noexcept(std::is_nothrow_constructible_v<allocator_type, const node_allocator &>) { return _alloc; }
+		[[nodiscard]] constexpr allocator_type get_allocator() const noexcept(std::is_nothrow_constructible_v<allocator_type, const node_allocator &>) { return allocator_base::value(); }
 
 		[[nodiscard]] friend constexpr bool operator==(const array_list &a, const array_list &b) noexcept { return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), std::equal_to<>{}); }
 		[[nodiscard]] friend constexpr auto operator<=>(const array_list &a, const array_list &b) noexcept { return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end(), std::compare_three_way{}); }
@@ -523,9 +538,9 @@ namespace rod
 		constexpr void swap(array_list &other) noexcept(std::allocator_traits<node_allocator>::is_always_equal::value || std::is_nothrow_swappable_v<node_allocator>)
 		{
 			if constexpr (std::allocator_traits<node_allocator>::propagate_on_container_swap::value)
-				adl_swap(_alloc, other._alloc);
+				adl_swap(allocator_base::value(), other.allocator_base::value());
 			else
-				assert(_alloc == other._alloc);
+				assert(allocator_base::value() == other.allocator_base::value());
 			swap_data(other);
 		}
 		friend constexpr void swap(array_list &a, array_list &b) noexcept(std::allocator_traits<node_allocator>::is_always_equal::value || std::is_nothrow_swappable_v<node_allocator>) { a.swap(b); }
@@ -597,7 +612,7 @@ namespace rod
 			if (_list_size >= _data_size)
 			{
 				const auto new_size = std::max<size_type>(_data_size * 2, 1);
-				const auto new_data = std::allocator_traits<node_allocator>::allocate(_alloc, new_size);
+				const auto new_data = std::allocator_traits<node_allocator>::allocate(allocator_base::value(), new_size);
 
 				try
 				{
@@ -610,13 +625,13 @@ namespace rod
 						std::destroy_at(src);
 					}
 
-					std::allocator_traits<node_allocator>::deallocate(_alloc, _data, _data_size);
+					std::allocator_traits<node_allocator>::deallocate(allocator_base::value(), _data, _data_size);
 					_data_size = new_size;
 					_data = new_data;
 				}
 				catch (...)
 				{
-					std::allocator_traits<node_allocator>::deallocate(_alloc, new_data, new_size);
+					std::allocator_traits<node_allocator>::deallocate(allocator_base::value(), new_data, new_size);
 					throw;
 				}
 			}
@@ -633,7 +648,6 @@ namespace rod
 			return static_cast<node_pointer>(next);
 		}
 
-		ROD_NO_UNIQUE_ADDRESS node_allocator _alloc;
 		header_t _header;
 		node_pointer _data;
 		node_pointer _free;

@@ -43,12 +43,10 @@ namespace rod
 		};
 
 		template<typename Snd>
-		class sender<Snd>::type
+		class sender<Snd>::type : empty_base<Snd>
 		{
-		public:
-			using is_sender = std::true_type;
+			using snd_base = empty_base<Snd>;
 
-		private:
 			template<typename Rcv>
 			using receiver_t = typename receiver<Rcv, into_variant_type<Snd, env_of_t<Rcv>>>::type;
 
@@ -60,22 +58,22 @@ namespace rod
 			using signs_t = make_completion_signatures<Snd, E, error_signs_t<E>, _detail::bind_front<value_signs_t, E>::template type>;
 
 		public:
-			template<typename Snd2>
-			constexpr type(Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Snd, Snd2>) : _snd(std::forward<Snd2>(snd)) {}
+			using is_sender = std::true_type;
 
 		public:
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			template<typename Snd2>
+			constexpr type(Snd2 &&snd) noexcept(std::is_nothrow_constructible_v<Snd, Snd2>) : snd_base(std::forward<Snd2>(snd)) {}
+
+		public:
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s.snd_base::value()); }
 			template<typename E>
 			friend constexpr signs_t<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t<Rcv>> && std::is_nothrow_move_constructible_v<Rcv>)
 			{
-				return connect(std::move(s._snd), receiver_t<Rcv>{std::move(rcv)});
+				return connect(std::move(s.snd_base::value()), receiver_t<Rcv>{std::move(rcv)});
 			}
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS Snd _snd;
 		};
 
 		class into_variant_t

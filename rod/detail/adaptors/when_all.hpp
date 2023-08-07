@@ -88,22 +88,23 @@ namespace rod
 		struct env { class type; };
 
 		template<typename Env>
-		class env<Env>::type
+		class env<Env>::type : empty_base<Env>
 		{
+			using env_base = empty_base<Env>;
+
 		public:
 			template<typename Env2>
-			constexpr explicit type(Env2 &&env, in_place_stop_token tok) noexcept(std::is_nothrow_constructible_v<Env, Env2>) : _env(std::forward<Env2>(env)), _tok(tok) {}
+			constexpr explicit type(Env2 &&env, in_place_stop_token tok) noexcept(std::is_nothrow_constructible_v<Env, Env2>) : env_base(std::forward<Env2>(env)), _tok(tok) {}
 
 			template<decays_to<type> E>
 			friend constexpr in_place_stop_token tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
 			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
-				return Q{}(std::forward<E>(e)._env, std::forward<Args>(args)...);
+				return Q{}(std::forward<E>(e).env_base::value(), std::forward<Args>(args)...);
 			}
 
 		private:
-			ROD_NO_UNIQUE_ADDRESS Env _env;
 			in_place_stop_token _tok;
 		};
 
@@ -111,11 +112,14 @@ namespace rod
 		using env_for_t = typename env<env_of_t<T>>::type;
 
 		template<typename Rcv, typename Vals, typename Errs>
-		struct operation_base<Rcv, Vals, Errs>::type
+		struct operation_base<Rcv, Vals, Errs>::type : empty_base<Errs>, empty_base<Vals>, empty_base<Rcv>
 		{
 			using stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
+			using errs_base = empty_base<Errs>;
+			using vals_base = empty_base<Vals>;
+			using rcv_base = empty_base<Rcv>;
 
-			constexpr type(Rcv &&rcv, std::size_t count) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : rcv(std::forward<Rcv>(rcv)), count(count) {}
+			constexpr type(Rcv &&rcv, std::size_t count) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : rcv_base(std::forward<Rcv>(rcv)), count(count) {}
 
 			template<std::size_t I, typename... Args>
 			void set_value(Args &&...args) noexcept
@@ -163,13 +167,13 @@ namespace rod
 				{
 				default:
 				case state_t::stopped:
-					complete_stopped(rcv);
+					complete_stopped(rcv_base::value());
 					break;
 				case state_t::running:
-					complete_value(rcv, vals);
+					complete_value(rcv_base::value(), vals_base::value());
 					break;
 				case state_t::error:
-					complete_error(rcv, errs);
+					complete_error(rcv_base::value(), errs_base::value());
 					break;
 				}
 			}
@@ -177,19 +181,15 @@ namespace rod
 			template<std::size_t I, typename... Args>
 			constexpr void emplace_value(Args &&...args) noexcept((_detail::nothrow_decay_copyable<Args>::value && ...))
 			{
-				static_assert(requires { std::get<I>(vals).emplace(std::forward<Args>(args)...); });
-				std::get<I>(vals).emplace(std::forward<Args>(args)...);
+				static_assert(requires { std::get<I>(vals_base::value()).emplace(std::forward<Args>(args)...); });
+				std::get<I>(vals_base::value()).emplace(std::forward<Args>(args)...);
 			}
 			template<typename Err>
 			constexpr void emplace_error(Err &&err) noexcept(_detail::nothrow_decay_copyable<Err>::value)
 			{
-				static_assert(requires { errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err)); });
-				errs.template emplace<std::decay_t<Err>>(std::forward<Err>(err));
+				static_assert(requires { errs_base::value().template emplace<std::decay_t<Err>>(std::forward<Err>(err)); });
+				errs_base::value().template emplace<std::decay_t<Err>>(std::forward<Err>(err));
 			}
-
-			ROD_NO_UNIQUE_ADDRESS Errs errs = {};
-			ROD_NO_UNIQUE_ADDRESS Vals vals = {};
-			ROD_NO_UNIQUE_ADDRESS Rcv rcv;
 
 			std::atomic<state_t> state = state_t::running;
 			std::atomic<std::size_t> count;
@@ -209,7 +209,7 @@ namespace rod
 		public:
 			constexpr explicit type(operation_base_t *op) noexcept : _op(op) {}
 
-			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>{get_env(r._op->rcv), r._op->stop_src.get_token()}; }
+			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>{get_env(r._op->rcv_base::value()), r._op->stop_src.get_token()}; }
 
 			template<typename... Args>
 			friend void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
@@ -256,6 +256,7 @@ namespace rod
 			using operation_base_t = typename operation_base<Rcv, value_data_t, error_data_t>::type;
 			template<std::size_t I>
 			using receiver_t = typename receiver<I, Rcv, value_data_t, error_data_t>::type;
+			using rcv_base = typename operation_base_t::rcv_base;
 
 		public:
 			type(type &&) = delete;
@@ -267,10 +268,10 @@ namespace rod
 
 			friend void tag_invoke(start_t, type &op) noexcept
 			{
-				op.stop_cb.emplace(get_stop_token(get_env(op.rcv)), stop_trigger{op.stop_src});
+				op.stop_cb.emplace(get_stop_token(get_env(op.rcv_base::value())), stop_trigger{op.stop_src});
 
 				if (op.stop_src.stop_requested())
-					[[unlikely]] set_stopped(std::move(op.rcv));
+					[[unlikely]] set_stopped(std::move(op.rcv_base::value()));
 				else if constexpr (sizeof...(Snds) != 0)
 					std::apply([](auto &...ops) noexcept { (start(ops), ...); }, op._state);
 				else
@@ -282,7 +283,7 @@ namespace rod
 		};
 
 		template<std::size_t... Is, typename... Snds>
-		class sender<std::index_sequence<Is...>, Snds...>::type
+		class sender<std::index_sequence<Is...>, Snds...>::type : std::tuple<Snds...>
 		{
 		public:
 			using is_sender = std::true_type;
@@ -313,7 +314,7 @@ namespace rod
 
 		public:
 			template<typename... Args> requires std::constructible_from<std::tuple<Snds...>, Args...>
-			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Snds...>, Args...>) : _snds{std::forward<Args>(args)...} {}
+			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Snds...>, Args...>) : std::tuple<Snds...>(std::forward<Args>(args)...) {}
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 			template<decays_to<type> T, typename E>
@@ -322,11 +323,8 @@ namespace rod
 			template<decays_to<type> T, rod::receiver Rcv> requires(sender_to<copy_cvref_t<T, Snds>, receiver_t<Is, T, Rcv>> && ...)
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, std::tuple<Snds...>>, Rcv>)
 			{
-				return operation_t<T, Rcv>{std::forward<T>(s)._snds, std::move(rcv)};
+				return operation_t<T, Rcv>{static_cast<copy_cvref_t<T, std::tuple<Snds...>>>(s), std::move(rcv)};
 			}
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS std::tuple<Snds...> _snds;
 		};
 
 		class when_all_t

@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "../../utility.hpp"
+
 #include "../queries/completion.hpp"
 #include "../adaptors/transfer.hpp"
 #include "../adaptors/then.hpp"
@@ -24,21 +26,19 @@ namespace rod
 		struct sender { class type; };
 
 		template<typename C, typename Rcv, movable_value... Ts>
-		class operation<C, Rcv, Ts...>::type
+		class operation<C, Rcv, Ts...>::type : empty_base<Rcv>, std::tuple<Ts...>
 		{
+			using rcv_base = empty_base<Rcv>;
+
 		public:
 			template<typename Vals>
 			constexpr explicit type(Vals &&vals, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::conjunction_v<std::is_nothrow_constructible<Ts, copy_cvref_t<Vals, Ts>>...>)
-					: _values(std::forward<Vals>(vals)), _rcv(std::forward<Rcv>(rcv)) {}
+					: std::tuple<Ts...>(std::forward<Vals>(vals)), rcv_base(std::forward<Rcv>(rcv)) {}
 
-			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op._rcv), std::move(vals)...); }, op._values); }
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS std::tuple<Ts...> _values;
-			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
+			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op.rcv_base::value()), std::move(vals)...); }, static_cast<std::tuple<Ts...> &>(op)); }
 		};
 		template<typename C, movable_value... Ts>
-		class sender<C, Ts...>::type
+		class sender<C, Ts...>::type : std::tuple<Ts...>
 		{
 		public:
 			using is_sender = std::true_type;
@@ -51,17 +51,17 @@ namespace rod
 		public:
 			constexpr type() noexcept(std::is_nothrow_default_constructible_v<std::tuple<Ts...>>) = default;
 			template<typename... Args> requires std::constructible_from<std::tuple<Ts...>, Args...>
-			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Ts...>, Args...>) : _values{std::forward<Args>(args)...} {}
+			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Ts...>, Args...>) : std::tuple<Ts...>(std::forward<Args>(args)...) {}
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
 			template<decays_to<type> T, receiver_of<signs_t> Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, copy_cvref_t<T, std::tuple<Ts...>>, Rcv>) { return operation_t<Rcv>{std::forward<T>(s)._values, std::move(rcv)}; }
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS std::tuple<Ts...> _values;
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, copy_cvref_t<T, std::tuple<Ts...>>, Rcv>)
+			{
+				return operation_t<Rcv>{static_cast<copy_cvref_t<T, std::tuple<Ts...>>>(s), std::move(rcv)};
+			}
 		};
 
 		class just_t

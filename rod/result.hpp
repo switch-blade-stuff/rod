@@ -48,7 +48,7 @@ namespace rod
 		};
 
 		template<typename Val, typename Err>
-		union storage
+		struct storage
 		{
 			constexpr storage() {}
 			constexpr storage(const storage &) {}
@@ -57,11 +57,14 @@ namespace rod
 			constexpr storage &operator=(storage &&) {}
 			constexpr ~storage() {}
 
-			Val value;
-			Err error;
+			union
+			{
+				Val value;
+				Err error;
+			};
 		};
 		template<typename Err>
-		union storage<void, Err>
+		struct storage<void, Err>
 		{
 			constexpr storage() {}
 			constexpr storage(const storage &) {}
@@ -70,7 +73,7 @@ namespace rod
 			constexpr storage &operator=(storage &&) {}
 			constexpr ~storage() {}
 
-			Err error;
+			union { Err error; };
 		};
 
 		/** Utility type used to return a value or error result.
