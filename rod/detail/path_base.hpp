@@ -1449,31 +1449,84 @@ namespace rod::fs
 			format _formatting;
 		};
 
-		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(b) == 0`. */
+		/** Preforms a component-wise lexicographical equality comparison between \a a and \a b. Equivalent to `a.compare(b) == 0`. */
 		[[nodiscard]] inline constexpr bool operator==(const path &a, const path &b) noexcept { return a.compare(b) == 0; }
-		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(b) <=> 0`. */
+		/** Preforms a component-wise lexicographical three-way comparison between \a a and \a b. Equivalent to `a.compare(b) <=> 0`. */
 		[[nodiscard]] inline constexpr auto operator<=>(const path &a, const path &b) noexcept { return a.compare(b) <=> 0; }
 
-		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(path(b)) == 0`. */
-		template<_path::accepted_source Src>
-		[[nodiscard]] inline constexpr bool operator==(const path &a, const Src &b) noexcept { return a.compare(b) == 0; }
-		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `path(a).compare(b) == 0`. */
-		template<_path::accepted_source Src>
-		[[nodiscard]] inline constexpr bool operator==(const Src &a, const path &b) noexcept { return b.compare(a) == 0; }
-
-		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `a.compare(path(b)) <=> 0`. */
-		template<_path::accepted_source Src>
-		[[nodiscard]] inline constexpr auto operator<=>(const path &a, const Src &b) noexcept { return a.compare(b) <=> 0; }
-		/** Preforms a component-wise lexicographical comparison between \a a and \a b. Equivalent to `path(a).compare(b) <=> 0`. */
-		template<_path::accepted_source Src>
-		[[nodiscard]] inline constexpr auto operator<=>(const Src &a, const path &b) noexcept { return -b.compare(a) <=> 0; }
-
 		ROD_API_PUBLIC path from_binary(std::span<const std::byte> data);
+
+		template<typename P>
+		struct compare_equal
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr bool operator()(const P &a, const P &b) const noexcept { return a.compare(b) == 0; }
+		};
+		template<typename P>
+		struct compare_three_way
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr auto operator()(const P &a, const P &b) const noexcept { return a.compare(b) <=> 0; }
+		};
+
+		template<typename P>
+		struct compare_not_equal
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr bool operator()(const P &a, const P &b) const noexcept { return a.compare(b) != 0; }
+		};
+		template<typename P>
+		struct compare_less_than
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr bool operator()(const P &a, const P &b) const noexcept { return a.compare(b) < 0; }
+		};
+		template<typename P>
+		struct compare_less_equal
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr bool operator()(const P &a, const P &b) const noexcept { return a.compare(b) <= 0; }
+		};
+		template<typename P>
+		struct compare_greater_than
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr bool operator()(const P &a, const P &b) const noexcept { return a.compare(b) > 0; }
+		};
+		template<typename P>
+		struct compare_greater_equal
+		{
+			static_assert(one_of<std::decay_t<P>, path, path_view, path_view_component>, "can only compare path types");
+			[[nodiscard]] constexpr bool operator()(const P &a, const P &b) const noexcept { return a.compare(b) >= 0; }
+		};
 	}
 
 	using _path::path;
 	using _path::operator==;
 	using _path::operator<=>;
+
+	/** Functor used for lexicographical equality comparison of paths. */
+	template<typename P>
+	using path_compare_equal = _path::compare_equal<P>;
+	/** Functor used for lexicographical three-way comparison of paths. */
+	template<typename P>
+	using path_compare_three_way = _path::compare_three_way<P>;
+
+	/** Functor used for lexicographical inequality comparison of paths. */
+	template<typename P>
+	using path_compare_not_equal = _path::compare_not_equal<P>;
+	/** Functor used for lexicographical less-than comparison of paths. */
+	template<typename P>
+	using path_compare_less_than = _path::compare_less_than<P>;
+	/** Functor used for lexicographical less-equal comparison of paths. */
+	template<typename P>
+	using path_compare_less_equal = _path::compare_less_equal<P>;
+	/** Functor used for lexicographical greater-than comparison of paths. */
+	template<typename P>
+	using path_compare_greater_than = _path::compare_greater_than<P>;
+	/** Functor used for lexicographical greater-equal comparison of paths. */
+	template<typename P>
+	using path_compare_greater_equal = _path::compare_greater_equal<P>;
 }
 
 template<>

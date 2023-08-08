@@ -266,6 +266,10 @@ namespace rod::fs
 			constexpr rendered_path<false, T, Alloc, BuffSize> render_unterminated(const std::locale &loc, const Alloc &alloc = Alloc());
 
 		public:
+			/** Lexicographically compares `this` with \a other. */
+			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
+			[[nodiscard]] inline constexpr int compare(path_view_component other) const noexcept;
+
 			/** Swaps contents of `this` with \a other. */
 			constexpr void swap(path_view_component &other) noexcept
 			{
@@ -276,10 +280,6 @@ namespace rod::fs
 				std::swap(_is_null_terminated, other._is_null_terminated);
 			}
 			friend constexpr void swap(path_view_component &a, path_view_component &b) noexcept { a.swap(b); }
-
-			/** Lexicographically compares `this` with \a other. */
-			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
-			[[nodiscard]] inline constexpr int compare(path_view_component other) const noexcept;
 
 		public:
 			friend inline constexpr bool operator<(path_view_component a, path_view_component b) noexcept;
@@ -623,8 +623,9 @@ namespace rod::fs
 			else
 			{
 				/* Comparison via rendered_path. */
-				const auto a_rendered = rendered_path<false, T, Alloc, BuffSize>(*this);
-				const auto b_rendered = rendered_path<false, T, Alloc, BuffSize>(other);
+				auto alloc = Alloc();
+				const auto a_rendered = rendered_path<false, T, Alloc, BuffSize>(*this, alloc);
+				const auto b_rendered = rendered_path<false, T, Alloc, BuffSize>(other, alloc);
 				return _path::compare<T>({a_rendered.data(), a_rendered.size()}, formatting(), {b_rendered.data(), b_rendered.size()}, other.formatting());
 			}
 		}
@@ -911,6 +912,10 @@ namespace rod::fs
 			}
 
 		public:
+			/** Lexicographically compares `this` with \a other. */
+			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
+			[[nodiscard]] constexpr int compare(path_view other) const noexcept { return path_view_component::compare(other); }
+
 			/** Swaps contents of `this` with \a other. */
 			constexpr void swap(path_view &other) noexcept { path_view_component::swap(other); }
 			friend constexpr void swap(path_view &a, path_view &b) noexcept { a.swap(b); }
@@ -948,6 +953,20 @@ namespace rod::fs
 
 		path::path(path_view_like p, path::format fmt) : path(from_view_like(p, fmt)) {}
 		path::path(path_view_like p, const std::locale &loc, path::format fmt) : path(from_view_like(p, loc, fmt)) {}
+
+		/** Preforms a component-wise lexicographical equality comparison between \a a and \a b. Equivalent to `a.compare(path(b)) == 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr bool operator==(const path &a, const Src &b) noexcept { return path_view(a).compare(b) == 0; }
+		/** Preforms a component-wise lexicographical equality comparison between \a a and \a b. Equivalent to `path(a).compare(b) == 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr bool operator==(const Src &a, const path &b) noexcept { return path_view(a).compare(b) == 0; }
+
+		/** Preforms a component-wise lexicographical three-way comparison between \a a and \a b. Equivalent to `a.compare(path(b)) <=> 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr auto operator<=>(const path &a, const Src &b) noexcept { return path_view(a).compare(b) <=> 0; }
+		/** Preforms a component-wise lexicographical three-way comparison between \a a and \a b. Equivalent to `path(a).compare(b) <=> 0`. */
+		template<_path::accepted_source Src>
+		[[nodiscard]] inline constexpr auto operator<=>(const Src &a, const path &b) noexcept { return path_view(a).compare(b) <=> 0; }
 
 		template<typename C>
 		bool operator==(path_view_component, const C *) = delete;
