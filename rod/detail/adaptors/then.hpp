@@ -61,10 +61,15 @@ namespace rod
 		};
 
 		template<typename Rcv, typename Fn>
-		struct operation_base
+		struct operation_base : empty_base<Rcv>, empty_base<Fn>
 		{
-			ROD_NO_UNIQUE_ADDRESS Rcv rcv;
-			ROD_NO_UNIQUE_ADDRESS Fn fn;
+			template<typename Rcv2, typename Fn2>
+			constexpr operation_base(Rcv2 &&rcv, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Rcv, Rcv2> && std::is_nothrow_constructible_v<Fn, Fn2>) : empty_base<Rcv>(std::forward<Rcv2>(rcv)), empty_base<Fn>(std::forward<Fn2>(fn)) {}
+
+			[[nodiscard]] constexpr decltype(auto) rcv() noexcept { return empty_base<Rcv>::value(); }
+			[[nodiscard]] constexpr decltype(auto) func() noexcept { return empty_base<Fn>::value(); }
+			[[nodiscard]] constexpr decltype(auto) rcv() const noexcept { return empty_base<Rcv>::value(); }
+			[[nodiscard]] constexpr decltype(auto) func() const noexcept { return empty_base<Fn>::value(); }
 		};
 
 		template<typename, typename, typename, typename>
@@ -84,9 +89,9 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			template<typename Snd2, typename Fn2>
-			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Fn2 &&fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_constructible_v<Fn, Fn2> && _detail::nothrow_callable<connect_t, Snd2, receiver_t>)
-					: operation_base<Rcv, Fn>{std::forward<Rcv>(rcv), std::forward<Fn2>(fn)}, _state(connect(std::forward<Snd2>(snd), receiver_t{this})) {}
+			template<typename Snd2, typename Rcv2, typename Fn2>
+			constexpr explicit type(Snd2 &&snd, Rcv2 &&rcv, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<operation_base<Rcv, Fn>, Rcv2, Fn2> && _detail::nothrow_callable<connect_t, Snd2, receiver_t>)
+					: operation_base<Rcv, Fn>(std::forward<Rcv2>(rcv), std::forward<Fn2>(fn)), _state(connect(std::forward<Snd2>(snd), receiver_t(this))) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
@@ -103,7 +108,7 @@ namespace rod
 		public:
 			constexpr explicit type(operation_base<Rcv, Fn> *op) noexcept : _op(op) {}
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const Rcv &>) { return get_env(r._op->rcv); }
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(nothrow_tag_invocable<get_env_t, const Rcv &>) { return get_env(r._op->rcv()); }
 
 			template<_detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && _detail::callable<T, Rcv, Args...>)
 			friend constexpr void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_forward(T{}, std::forward<Args>(args)...); }
@@ -112,20 +117,20 @@ namespace rod
 
 		private:
 			template<typename T, typename... Args>
-			constexpr void complete_forward(T, Args &&...args) noexcept { T{}(std::move(_op->rcv), std::forward<Args>(args)...); }
+			constexpr void complete_forward(T, Args &&...args) noexcept { T{}(std::move(_op->rcv()), std::forward<Args>(args)...); }
 			template<typename T, typename... Args>
 			constexpr void complete_selected(T, Args &&...args) noexcept
 			{
 				const auto do_invoke = [&]()
 				{
 					if constexpr (std::same_as<std::invoke_result_t<Fn, Args...>, void>)
-						(std::invoke(std::move(_op->fn), std::forward<Args>(args)...), set_value(std::move(_op->rcv)));
+						(std::invoke(std::move(_op->func()), std::forward<Args>(args)...), set_value(std::move(_op->rcv())));
 					else
-						set_value(std::move(_op->rcv), std::invoke(std::move(_op->fn), std::forward<Args>(args)...));
+						set_value(std::move(_op->rcv()), std::invoke(std::move(_op->func()), std::forward<Args>(args)...));
 				};
 
 				if constexpr (!std::is_nothrow_invocable_v<Fn, Args...>)
-					try { do_invoke(); } catch (...) { set_error(std::move(_op->rcv), std::current_exception()); }
+					try { do_invoke(); } catch (...) { set_error(std::move(_op->rcv()), std::current_exception()); }
 				else
 					do_invoke();
 			}
@@ -134,7 +139,7 @@ namespace rod
 		};
 
 		template<typename C, typename Snd, typename Fn>
-		class sender<C, Snd, Fn>::type
+		class sender<C, Snd, Fn>::type : empty_base<Snd>, empty_base<Fn>
 		{
 			using assert_invocable_function = _detail::gather_signatures_t<C, Snd, empty_env, _detail::bind_front<std::is_invocable, Fn>::template type, std::conjunction>;
 			static_assert(assert_invocable_function::value, "Functor passed to rod::then must be invocable with completion results of the upstream sender");
@@ -158,23 +163,22 @@ namespace rod
 			template<typename T, typename E>
 			using signs_t = typename deduce_signs<C, Snd, Fn>::template type<T, E>;
 
+			using snd_base = empty_base<Snd>;
+			using func_base = empty_base<Fn>;
+
 		public:
 			template<typename Snd2, typename Fn2>
-			constexpr explicit type(Snd2 &&snd, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Fn, Fn2>) : _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)) {}
+			constexpr explicit type(Snd2 &&snd, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Fn, Fn2>) : snd_base(std::forward<Snd2>(snd)), func_base(std::forward<Fn2>(fn)) {}
 
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const Snd &>) { return get_env(s._snd); }
+			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const Snd &>) { return get_env(s.snd_base::value()); }
 			template<decays_to<type> T, typename E>
 			friend constexpr signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires receiver_of<receiver_t<Rcv>, input_signs_t<T, env_of_t<Rcv>>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Fn>>)
 			{
-				return operation_t<T, Rcv>{std::forward<T>(s)._snd, std::move(rcv), std::forward<T>(s)._fn};
+				return operation_t<T, Rcv>{std::forward<T>(s).snd_base::value(), std::move(rcv), std::forward<T>(s).func_base::value()};
 			}
-
-		private:
-			ROD_NO_UNIQUE_ADDRESS Snd _snd;
-			ROD_NO_UNIQUE_ADDRESS Fn _fn;
 		};
 
 		template<typename C>

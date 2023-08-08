@@ -54,7 +54,7 @@ namespace rod
 		};
 
 		template<typename Snd, typename Env>
-		struct shared_state : public _detail::shared_base
+		struct shared_state : public _detail::shared_base, empty_base<Env>
 		{
 			using receiver_t = typename receiver<Snd, Env>::type;
 			using state_t = connect_result_t<Snd, receiver_t>;
@@ -64,7 +64,10 @@ namespace rod
 			using error_data_t = _detail::gather_signatures_t<set_error_t, Snd, env_t, _detail::bind_front<_detail::decayed_tuple, set_value_t>::template type, std::variant>;
 			using data_t = unique_tuple_t<_detail::concat_tuples_t<std::variant<std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>, value_data_t, error_data_t>>;
 
-			constexpr shared_state(Snd &&snd) : env(get_env(snd)), state2(connect(std::forward<Snd>(snd))) { start(state2); }
+			constexpr shared_state(Snd &&snd) : empty_base<Env>(get_env(snd)), state2(connect(std::forward<Snd>(snd))) { start(state2); }
+
+			[[nodiscard]] constexpr decltype(auto) env() noexcept { return empty_base<Env>::value(); }
+			[[nodiscard]] constexpr decltype(auto) env() const noexcept { return empty_base<Env>::value(); }
 
 			inline auto connect(Snd &&) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t>);
 			void detach() noexcept { stop_src.request_stop(); }
@@ -75,9 +78,7 @@ namespace rod
 					op->_notify(op);
 			}
 
-			ROD_NO_UNIQUE_ADDRESS Env env;
 			data_t data = std::tuple<set_stopped_t>{};
-
 			in_place_stop_source stop_src = {};
 			std::atomic<void *> state1 = {};
 			state_t state2;
@@ -94,7 +95,7 @@ namespace rod
 		public:
 			constexpr explicit type(_detail::shared_handle<shared_state<Snd, Env>> hnd) noexcept : _state(std::move(hnd)) {}
 
-			friend env_t tag_invoke(get_env_t, const type &r) noexcept { return env_t{r._state->stop_src.get_token(), &r._state->env}; }
+			friend env_t tag_invoke(get_env_t, const type &r) noexcept { return env_t{r._state->stop_src.get_token(), &r._state->env()}; }
 			template<_detail::completion_channel C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept
 			{
@@ -127,7 +128,7 @@ namespace rod
 		}
 
 		template<typename Snd, typename Rcv, typename Env>
-		class operation<Snd, Rcv, Env>::type : operation_base
+		class operation<Snd, Rcv, Env>::type : operation_base, empty_base<Rcv>
 		{
 			using stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
 
@@ -138,7 +139,7 @@ namespace rod
 
 				std::visit([&](auto &data) noexcept
 				{
-					std::apply([&](auto c, auto &...args) noexcept { c(std::move(op->_rcv), std::move(args)...); }, data);
+					std::apply([&](auto c, auto &...args) noexcept { c(std::move(op->empty_base<Rcv>::value()), std::move(args)...); }, data);
 				}, op->_state->data);
 			}
 
@@ -147,7 +148,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			type(Rcv &&rcv, _detail::shared_handle<shared_state<Snd, Env>> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
-					: operation_base{notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
+					: operation_base{notify_complete}, _state(std::move(handle)), empty_base<Rcv>(std::forward<Rcv>(rcv)) {}
 			~type() { if (!_state->state1.load(std::memory_order_acquire)) _state->detach(); }
 
 			friend void tag_invoke(start_t, type &op) noexcept
@@ -167,7 +168,6 @@ namespace rod
 
 		private:
 			_detail::shared_handle<shared_state<Snd, Env>> _state;
-			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			stop_cb_t _on_stop = {};
 		};
 

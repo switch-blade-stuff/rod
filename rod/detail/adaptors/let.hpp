@@ -71,10 +71,10 @@ namespace rod
 			using is_receiver = std::true_type;
 
 		private:
-			using operation_base_t = typename operation_base<C, Rcv, Fn, Ts...>::type;
+			using operation_base = typename operation_base<C, Rcv, Fn, Ts...>::type;
 
 		public:
-			constexpr explicit type(operation_base_t *op) noexcept : _op(op) {}
+			constexpr explicit type(operation_base *op) noexcept : _op(op) {}
 
 			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return get_env(r._op->rcv()); }
 
@@ -101,7 +101,7 @@ namespace rod
 				catch (...) { set_error(std::move(_op->rcv()), std::current_exception()); }
 			}
 
-			operation_base_t *_op = {};
+			operation_base *_op = {};
 		};
 
 		template<typename C, typename Rcv, typename Fn, typename... Ts>
@@ -110,10 +110,10 @@ namespace rod
 		using bind_receiver = typename _detail::gather_signatures_t<C, Snd, env_of_t<Rcv>, _detail::decayed_tuple, _detail::bind_front<unique_receiver, C, Rcv, Fn>::template type>::type;
 
 		template<typename C, typename Snd, typename Rcv, typename Fn>
-		class operation<C, Snd, Rcv, Fn>::type : bind_receiver<C, Snd, Rcv, Fn>::operation_base_t
+		class operation<C, Snd, Rcv, Fn>::type : bind_receiver<C, Snd, Rcv, Fn>::operation_base
 		{
 		private:
-			using operation_base_t = typename bind_receiver<C, Snd, Rcv, Fn>::operation_base_t;
+			using operation_base = typename bind_receiver<C, Snd, Rcv, Fn>::operation_base;
 			using receiver_t = bind_receiver<C, Snd, Rcv, Fn>;
 			using state_t = connect_result_t<Snd, receiver_t>;
 
@@ -122,7 +122,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			template<typename Snd2>
-			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Fn fn) : operation_base_t(std::forward<Rcv>(rcv), std::move(fn)), _state(connect(std::forward<Snd>(snd), receiver_t{this})) {}
+			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Fn fn) : operation_base(std::forward<Rcv>(rcv), std::move(fn)), _state(connect(std::forward<Snd>(snd), receiver_t(this))) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 

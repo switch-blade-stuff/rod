@@ -89,7 +89,7 @@ namespace rod
 		struct sender { class type; };
 
 		template<typename Snd, typename Env>
-		struct shared_state<Snd, Env>::type : public _detail::shared_base
+		struct shared_state<Snd, Env>::type : public _detail::shared_base, empty_base<Env>
 		{
 			using receiver_t = typename receiver<Snd, Env>::type;
 			using state_t = connect_result_t<Snd, receiver_t>;
@@ -101,7 +101,10 @@ namespace rod
 			using bind_data = typename _detail::bind_front<std::variant, std::tuple<set_stopped_t>, std::tuple<set_error_t, std::exception_ptr>>::template type<Ts...>;
 			using data_t = unique_tuple_t<_detail::apply_tuple_list_t<bind_data, _detail::concat_tuples_t<values_list, errors_list>>>;
 
-			constexpr type(Snd &&snd) : env(get_env(snd)), state(connect(std::forward<Snd>(snd), receiver_t{this})) {}
+			constexpr type(Snd &&snd) : empty_base<Env>(get_env(snd)), state(connect(std::forward<Snd>(snd), receiver_t(this))) {}
+
+			[[nodiscard]] constexpr decltype(auto) env() noexcept { return empty_base<Env>::value(); }
+			[[nodiscard]] constexpr decltype(auto) env() const noexcept { return empty_base<Env>::value(); }
 
 			void notify_all() noexcept
 			{
@@ -116,7 +119,6 @@ namespace rod
 			}
 
 			in_place_stop_source stop_src;
-			ROD_NO_UNIQUE_ADDRESS Env env;
 			state_t state;
 
 			data_t data = std::tuple<set_stopped_t>{};
@@ -126,7 +128,7 @@ namespace rod
 		template<typename Snd, typename Env>
 		typename env<Env>::type receiver<Snd, Env>::type::get_env() const noexcept
 		{
-			return typename env<Env>::type{_state->stop_src.get_token(), &_state->env};
+			return typename env<Env>::type{_state->stop_src.get_token(), &_state->env()};
 		}
 		template<typename Snd, typename Env>
 		template<_detail::completion_channel C, typename... Args>
@@ -139,7 +141,7 @@ namespace rod
 		}
 
 		template<typename Snd, typename Env, typename Rcv>
-		class operation<Snd, Env, Rcv>::type : operation_base
+		class operation<Snd, Env, Rcv>::type : operation_base, empty_base<Rcv>
 		{
 			using stop_cb_t = std::optional<stop_callback_for_t<stop_token_of_t<env_of_t<Rcv> &>, stop_trigger>>;
 			using shared_state_t = typename shared_state<Snd, Env>::type;
@@ -150,7 +152,7 @@ namespace rod
 				op->_stop_cb.reset();
 				std::visit([&](const auto &val) noexcept
 				{
-					std::apply([&](auto t, const auto &...args) noexcept { t(std::move(op->_rcv), args...); }, val);
+					std::apply([&](auto t, const auto &...args) noexcept { t(std::move(op->empty_base<Rcv>::value()), args...); }, val);
 				}, op->_state->data);
 			}
 
@@ -159,7 +161,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			constexpr explicit type(Rcv &&rcv, _detail::shared_handle<shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
-					: operation_base{{}, notify_complete}, _state(std::move(handle)), _rcv(std::forward<Rcv>(rcv)) {}
+					: operation_base{{}, notify_complete}, _state(std::move(handle)), empty_base<Rcv>(std::forward<Rcv>(rcv)) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
@@ -171,7 +173,7 @@ namespace rod
 
 				/* If the queue pointer is not a sentinel, initialize the stop callback. */
 				auto *ptr = queue.load(std::memory_order_acquire);
-				if (ptr != state) _stop_cb.emplace(get_stop_token(get_env(_rcv)), stop_trigger{state->stop_src});
+				if (ptr != state) _stop_cb.emplace(get_stop_token(get_env(empty_base<Rcv>::value())), stop_trigger{state->stop_src});
 
 				/* Attempt to enqueue this operation to the shared state queue. */
 				do
@@ -199,7 +201,6 @@ namespace rod
 			}
 
 			_detail::shared_handle<shared_state_t> _state;
-			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			stop_cb_t _stop_cb = {};
 		};
 

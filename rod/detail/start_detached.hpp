@@ -62,7 +62,7 @@ namespace rod
 			using receiver_t = typename receiver<Del, Snd>::type;
 
 		public:
-			explicit detached_state(Snd &&snd) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t>) : base_t(connect(std::forward<Snd>(snd), receiver_t{this})) { start(static_cast<base_t &>(*this)); }
+			explicit detached_state(Snd &&snd) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t>) : base_t(connect(std::forward<Snd>(snd), receiver_t(this))) { start(static_cast<base_t &>(*this)); }
 
 			~detached_state()
 			{

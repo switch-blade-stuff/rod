@@ -49,7 +49,7 @@ namespace rod
 		concept bulk_nothrow = _detail::nothrow_callable<Fn, Shape, Args &...> && std::is_nothrow_constructible_v<_detail::decayed_tuple<Args...>, Args...>;
 
 		template<typename Snd, typename Rcv, typename Shape, typename Fn, typename ThrowTag>
-		struct bulk_shared_state
+		struct bulk_shared_state : empty_base<value_types_of_t<Snd, env_of_t<Rcv>, _detail::decayed_tuple, _detail::variant_or_empty>>, empty_base<Rcv>, empty_base<Fn>
 		{
 			static constexpr std::pair<Shape, Shape> split_tasks(Shape n, std::size_t pos, std::size_t size) noexcept
 			{
@@ -60,6 +60,9 @@ namespace rod
 			}
 
 			using data_t = value_types_of_t<Snd, env_of_t<Rcv>, _detail::decayed_tuple, _detail::variant_or_empty>;
+			using data_base = empty_base<data_t>;
+			using func_base = empty_base<Fn>;
+			using rcv_base = empty_base<Rcv>;
 
 			static void notify_task(operation_base *ptr, std::size_t id) noexcept
 			{
@@ -73,20 +76,20 @@ namespace rod
 
 			template<typename Fn2>
 			constexpr bulk_shared_state(thread_pool *pool, Rcv rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::is_nothrow_constructible_v<Fn, Fn2>)
-					: pool(pool), rcv(std::move(rcv)), fn(std::forward<Fn2>(fn)), shape(shape), tasks(required_threads(), bulk_task_base{notify_task, this}) {}
+					: rcv_base(std::move(rcv)), func_base(std::forward<Fn2>(fn)), pool(pool), shape(shape), tasks(required_threads(), bulk_task_base{notify_task, this}) {}
 
 			template<typename... Args> requires(!std::same_as<data_t, _detail::empty_variant<>>)
 			constexpr void start_bulk(Args &&...args) noexcept
 			{
-				const auto emplace = [&]() { data.template emplace<_detail::decayed_tuple<Args...>>(std::forward<Args>(args)...); };
+				const auto emplace = [&]() { data_base::value().template emplace<_detail::decayed_tuple<Args...>>(std::forward<Args>(args)...); };
 
 				if constexpr (ThrowTag::value)
-					try { emplace(); } catch (...) { set_error(std::move(rcv), std::current_exception()); }
+					try { emplace(); } catch (...) { set_error(std::move(rcv_base::value()), std::current_exception()); }
 				else
 					emplace();
 
 				if (shape == Shape{0})
-					apply([&](auto &...vs) { set_value(std::move(rcv), std::move(vs)...); });
+					apply([&](auto &...vs) { set_value(std::move(rcv_base::value()), std::move(vs)...); });
 				else
 					start();
 			}
@@ -94,13 +97,13 @@ namespace rod
 			constexpr void start_bulk(Args &&...) noexcept
 			{
 				if (shape == Shape{0})
-					set_value(std::move(rcv));
+					set_value(std::move(rcv_base::value()));
 				else
 					start();
 			}
 
 			template<typename F> requires(!std::same_as<data_t, _detail::empty_variant<>>)
-			constexpr void apply(F &&f) noexcept { std::visit([&](auto &tpl) { std::apply([&](auto &...args) { std::invoke(f, args...); }, tpl); }, data); }
+			constexpr void apply(F &&f) noexcept { std::visit([&](auto &tpl) { std::apply([&](auto &...args) { std::invoke(f, args...); }, tpl); }, data_base::value()); }
 			template<typename F> requires std::same_as<data_t, _detail::empty_variant<>>
 			constexpr void apply(F &&f) noexcept { std::invoke(f); }
 
@@ -110,9 +113,9 @@ namespace rod
 					return;
 
 				if (!has_error.test(std::memory_order_acquire))
-					apply([&](auto &...args) { set_value(std::move(rcv), std::move(args)...); });
+					apply([&](auto &...args) { set_value(std::move(rcv_base::value()), std::move(args)...); });
 				else
-					set_error(std::move(rcv), std::move(err));
+					set_error(std::move(rcv_base::value()), std::move(err));
 			}
 			constexpr void set_exception() noexcept
 			{
@@ -127,7 +130,7 @@ namespace rod
 				apply([&](auto &...args)
 				{
 					auto [i, n] = split_tasks(shape, id, required_threads());
-					for (; i != n; ++i) std::invoke(fn, i, args...);
+					for (; i != n; ++i) std::invoke(func_base::value(), i, args...);
 				});
 			}
 
@@ -135,10 +138,6 @@ namespace rod
 			inline void start() noexcept;
 
 			thread_pool *pool;
-
-			ROD_NO_UNIQUE_ADDRESS data_t data;
-			ROD_NO_UNIQUE_ADDRESS Rcv rcv;
-			ROD_NO_UNIQUE_ADDRESS Fn fn;
 			Shape shape;
 
 			std::vector<bulk_task_base> tasks;
@@ -158,23 +157,23 @@ namespace rod
 		public:
 			constexpr explicit type(shared_state_t *state) noexcept : _state(state) {}
 
-			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept { return get_env(r._state->rcv); }
+			friend constexpr env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept { return get_env(r._state->rcv_base::value()); }
 
 			template<std::same_as<set_value_t> C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r._state->start_bulk(std::forward<Args>(args)...); }
 			template<_detail::completion_channel C, typename... Args> requires(!std::same_as<C, set_value_t>)
-			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._state->rcv), std::forward<Args>(args)...); }
+			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { C{}(std::move(r._state->rcv_base::value()), std::forward<Args>(args)...); }
 
 		private:
 			shared_state_t *_state;
 		};
 
 		template<typename Rcv>
-		class operation<Rcv>::type : operation_base
+		class operation<Rcv>::type : operation_base, empty_base<Rcv>
 		{
 			static void notify_complete(operation_base *p, std::size_t) noexcept
 			{
-				auto &rcv = static_cast<type *>(p)->_rcv;
+				auto &rcv = static_cast<type *>(p)->empty_base<Rcv>::value();
 				if (rod::get_stop_token(get_env(rcv)).stop_requested())
 					set_stopped(std::move(rcv));
 				else
@@ -185,14 +184,13 @@ namespace rod
 			type() = delete;
 			type(const type &) = delete;
 
-			constexpr explicit type(thread_pool *pool, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : operation_base{notify_complete}, _rcv(std::forward<Rcv>(rcv)), _pool(pool) {}
+			constexpr explicit type(thread_pool *pool, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) : operation_base{notify_complete}, empty_base<Rcv>(std::forward<Rcv>(rcv)), _pool(pool) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
 		private:
 			inline void start() noexcept;
 
-			ROD_NO_UNIQUE_ADDRESS Rcv _rcv;
 			thread_pool *_pool;
 		};
 		template<typename Snd, typename Rcv, typename Shape, typename Fn>
@@ -324,7 +322,7 @@ namespace rod
 			thread_pool *_pool;
 		};
 		template<typename Snd, typename Shape, typename Fn>
-		class bulk_sender<Snd, Shape, Fn>::type
+		class bulk_sender<Snd, Shape, Fn>::type : empty_base<Snd>, empty_base<Fn>
 		{
 			friend class scheduler;
 
@@ -347,24 +345,25 @@ namespace rod
 			template<typename T, typename Rcv>
 			using operation_t = typename bulk_operation<copy_cvref_t<T, Snd>, std::decay_t<Rcv>, Shape, Fn>::type;
 
+			using snd_base = empty_base<Snd>;
+			using func_base = empty_base<Fn>;
+
 		public:
 			template<typename Snd2, typename Fn2>
 			constexpr explicit type(thread_pool *pool, Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Fn, Fn2>)
-					: _snd(std::forward<Snd2>(snd)), _fn(std::forward<Fn2>(fn)), _pool(pool), _shape(shape) {}
+					: snd_base(std::forward<Snd2>(snd)), func_base(std::forward<Fn2>(fn)), _pool(pool), _shape(shape) {}
 
-			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept { return get_env(s._snd); }
+			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept { return get_env(s.snd_base::value()); }
 			template<decays_to<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env &&) noexcept { return {}; }
 
 			template<decays_to<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, thread_pool *, copy_cvref_t<T, Snd>, Rcv, Shape, copy_cvref_t<T, Fn>>)
 			{
-				return operation_t<T, Rcv>{s._pool,  std::forward<T>(s)._snd, std::move(rcv), s._shape, std::forward<T>(s)._fn};
+				return operation_t<T, Rcv>{s._pool,  std::forward<T>(s).snd_base::value(), std::move(rcv), s._shape, std::forward<T>(s).func_base::value()};
 			}
 
 		private:
-			ROD_NO_UNIQUE_ADDRESS Snd _snd;
-			ROD_NO_UNIQUE_ADDRESS Fn _fn;
 			thread_pool *_pool;
 			Shape _shape;
 		};

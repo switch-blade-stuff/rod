@@ -201,13 +201,13 @@ namespace rod
 		template<std::size_t I, typename Rcv, typename Vals, typename Errs>
 		class receiver<I, Rcv, Vals, Errs>::type
 		{
-			using operation_base_t = typename operation_base<Rcv, Vals, Errs>::type;
+			using operation_base = typename operation_base<Rcv, Vals, Errs>::type;
 
 		public:
 			using is_receiver = std::true_type;
 
 		public:
-			constexpr explicit type(operation_base_t *op) noexcept : _op(op) {}
+			constexpr explicit type(operation_base *op) noexcept : _op(op) {}
 
 			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>{get_env(r._op->rcv_base::value()), r._op->stop_src.get_token()}; }
 
@@ -230,7 +230,7 @@ namespace rod
 			}
 
 		private:
-			operation_base_t *_op = {};
+			operation_base *_op = {};
 		};
 
 		template<typename... Ts>
@@ -253,10 +253,10 @@ namespace rod
 			using value_data_t = value_data<env_for_t<Rcv>, Snds...>;
 			using error_data_t = error_data<env_for_t<Rcv>, Snds...>;
 
-			using operation_base_t = typename operation_base<Rcv, value_data_t, error_data_t>::type;
+			using operation_base = typename operation_base<Rcv, value_data_t, error_data_t>::type;
 			template<std::size_t I>
 			using receiver_t = typename receiver<I, Rcv, value_data_t, error_data_t>::type;
-			using rcv_base = typename operation_base_t::rcv_base;
+			using rcv_base = typename operation_base::rcv_base;
 
 		public:
 			type(type &&) = delete;
@@ -264,7 +264,7 @@ namespace rod
 
 			template<typename Snds2>
 			constexpr explicit type(Snds2 &&snd, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::conjunction_v<std::is_nothrow_constructible<Snds, copy_cvref_t<Snds2, Snds>>...>)
-					: operation_base_t(std::move(rcv), sizeof...(Is)), _state{_detail::eval_t{[&]() { return connect(std::get<Is>(std::forward<Snds2>(snd)), receiver_t<Is>{this}); }}...} {}
+					: operation_base(std::move(rcv), sizeof...(Is)), _state{_detail::eval_t{[&]() { return connect(std::get<Is>(std::forward<Snds2>(snd)), receiver_t<Is>{this}); }}...} {}
 
 			friend void tag_invoke(start_t, type &op) noexcept
 			{

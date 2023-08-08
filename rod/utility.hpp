@@ -272,24 +272,12 @@ namespace rod
 		{
 		public:
 			constexpr empty_base() noexcept(std::is_nothrow_default_constructible_v<T>) requires std::constructible_from<T> = default;
-
-			constexpr empty_base(const empty_base &other) noexcept(std::is_nothrow_copy_constructible_v<T>) requires std::copy_constructible<T> : _value(other._value) {}
-			constexpr empty_base &operator=(const empty_base &other) noexcept(std::is_nothrow_copy_assignable_v<T>) requires std::assignable_from<T, const T &> { return (_value = other._value, *this); }
-
-			constexpr empty_base(empty_base &&other) noexcept(std::is_nothrow_move_constructible_v<T>) requires std::move_constructible<T> : _value(std::move(other._value)) {}
-			constexpr empty_base &operator=(empty_base &&other) noexcept(std::is_nothrow_move_assignable_v<T>) requires std::assignable_from<T, T &&> { return (_value = std::move(other._value), *this); }
-
 			template<typename... Args> requires std::constructible_from<T, Args...>
 			constexpr explicit empty_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : _value(std::forward<Args>(args)...) {}
 			template<typename U = T> requires(!decays_to<U, empty_base> && std::assignable_from<T, U>)
 			constexpr empty_base &operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T, U>) { return (_value = std::forward<U>(value), *this); }
 
-			/** Returns pointer to the contained value. */
-			[[nodiscard]] constexpr T *get() noexcept { return std::addressof(_value); }
-			/** @copydoc get */
-			[[nodiscard]] constexpr const T *get() const noexcept { return std::addressof(_value); }
-
-			/** Returns reference to the contained value. */
+			/** Returns reference to the underlying value. */
 			[[nodiscard]] constexpr auto &value() & noexcept { return _value; }
 			/** @copydoc value */
 			[[nodiscard]] constexpr auto &value() const & noexcept { return _value; }
@@ -297,6 +285,11 @@ namespace rod
 			[[nodiscard]] constexpr auto &&value() && noexcept { return std::move(_value); }
 			/** @copydoc value */
 			[[nodiscard]] constexpr auto &&value() const && noexcept { return std::move(_value); }
+
+			/** Returns pointer to the underlying value. */
+			[[nodiscard]] constexpr auto get() noexcept requires(!std::is_reference_v<T>) { return std::addressof(value()); }
+			/** @copydoc get */
+			[[nodiscard]] constexpr auto get() const noexcept requires(!std::is_reference_v<T>) { return std::addressof(value()); }
 
 			constexpr void swap(empty_base &other) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { adl_swap(_value, other._value); }
 
@@ -308,22 +301,12 @@ namespace rod
 		{
 		public:
 			constexpr empty_base() noexcept(std::is_nothrow_default_constructible_v<T>) = default;
-			constexpr empty_base(const empty_base &) noexcept(std::is_nothrow_copy_constructible_v<T>) = default;
-			constexpr empty_base &operator=(const empty_base &) noexcept(std::is_nothrow_copy_assignable_v<T>) = default;
-			constexpr empty_base(empty_base &&) noexcept(std::is_nothrow_move_constructible_v<T>) = default;
-			constexpr empty_base &operator=(empty_base &&) noexcept(std::is_nothrow_move_assignable_v<T>) = default;
-
 			template<typename... Args> requires std::constructible_from<T, Args...>
 			constexpr explicit empty_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : T(std::forward<Args>(args)...) {}
 			template<typename U = T> requires(!decays_to<U, empty_base> && std::assignable_from<T, U>)
 			constexpr empty_base &operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T, U>) { return (*get() = std::forward<U>(value), *this); }
 
-			/** Returns pointer to the contained value. */
-			[[nodiscard]] constexpr T *get() noexcept { return std::addressof(static_cast<T &>(*this)); }
-			/** @copydoc get */
-			[[nodiscard]] constexpr const T *get() const noexcept { return std::addressof(static_cast<const T &>(*this)); }
-
-			/** Returns reference to the contained value. */
+			/** Returns reference to the underlying value. */
 			[[nodiscard]] constexpr auto &value() & noexcept { return static_cast<T &>(*this); }
 			/** @copydoc value */
 			[[nodiscard]] constexpr auto &value() const & noexcept { return static_cast<const T &>(*this); }
@@ -332,26 +315,31 @@ namespace rod
 			/** @copydoc value */
 			[[nodiscard]] constexpr auto &&value() const && noexcept { return static_cast<const T &&>(*this); }
 
-			constexpr void swap(empty_base &other) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { adl_swap(*get(), other.*get()); }
+			/** Returns pointer to the underlying value. */
+			[[nodiscard]] constexpr auto get() noexcept requires(!std::is_reference_v<T>) { return std::addressof(value()); }
+			/** @copydoc get */
+			[[nodiscard]] constexpr auto get() const noexcept requires(!std::is_reference_v<T>) { return std::addressof(value()); }
+
+			constexpr void swap(empty_base &other) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { adl_swap(value(), other.value()); }
 		};
 
 		template<typename T>
 		constexpr void swap(empty_base<T> &a, empty_base<T> &b) noexcept(std::is_nothrow_swappable_v<T>) requires std::swappable<T> { a.swap(b); }
 
 		template<typename T>
-		[[nodiscard]] constexpr auto operator<=>(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() <=> *b.get())) requires(requires { *a.get() <=> *b.get(); }) { return *a.get() <=> *b.get(); }
+		[[nodiscard]] constexpr auto operator<=>(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() <=> b.value())) requires(requires { a.value() <=> b.value(); }) { return a.value() <=> b.value(); }
 		template<typename T>
-		[[nodiscard]] constexpr bool operator==(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() == *b.get())) requires(requires { *a.get() == *b.get(); }) { return *a.get() == *b.get(); }
+		[[nodiscard]] constexpr bool operator==(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() == b.value())) requires(requires { a.value() == b.value(); }) { return a.value() == b.value(); }
 		template<typename T>
-		[[nodiscard]] constexpr bool operator!=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() != *b.get())) requires(requires { *a.get() != *b.get(); }) { return *a.get() != *b.get(); }
+		[[nodiscard]] constexpr bool operator!=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() != b.value())) requires(requires { a.value() != b.value(); }) { return a.value() != b.value(); }
 		template<typename T>
-		[[nodiscard]] constexpr bool operator<=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() <= *b.get())) requires(requires { *a.get() <= *b.get(); }) { return *a.get() <= *b.get(); }
+		[[nodiscard]] constexpr bool operator<=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() <= b.value())) requires(requires { a.value() <= b.value(); }) { return a.value() <= b.value(); }
 		template<typename T>
-		[[nodiscard]] constexpr bool operator>=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() >= *b.get())) requires(requires { *a.get() >= *b.get(); }) { return *a.get() >= *b.get(); }
+		[[nodiscard]] constexpr bool operator>=(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() >= b.value())) requires(requires { a.value() >= b.value(); }) { return a.value() >= b.value(); }
 		template<typename T>
-		[[nodiscard]] constexpr bool operator<(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() < *b.get())) requires(requires { *a.get() < *b.get(); }) { return *a.get() < *b.get(); }
+		[[nodiscard]] constexpr bool operator<(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() < b.value())) requires(requires { a.value() < b.value(); }) { return a.value() < b.value(); }
 		template<typename T>
-		[[nodiscard]] constexpr bool operator>(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(*a.get() > *b.get())) requires(requires { *a.get() > *b.get(); }) { return *a.get() > *b.get(); }
+		[[nodiscard]] constexpr bool operator>(const empty_base<T> &a, const empty_base<T> &b) noexcept(noexcept(a.value() > b.value())) requires(requires { a.value() > b.value(); }) { return a.value() > b.value(); }
 	}
 
 	/** Utility type used to store a potentially-empty object using EBO that can be used as an alternative

@@ -301,13 +301,14 @@ namespace rod
 		};
 
 		template<typename F>
-		struct connect_awaiter
+		struct connect_awaiter : private empty_base<F>
 		{
+			using empty_base<F>::empty_base;
+			using empty_base<F>::operator=;
+
 			constexpr bool await_ready() const noexcept { return false; }
 			[[noreturn]] void await_resume() noexcept { std::terminate(); }
-			void await_suspend(std::coroutine_handle<>) noexcept { suspend(); }
-
-			ROD_NO_UNIQUE_ADDRESS F suspend;
+			constexpr void await_suspend(std::coroutine_handle<>) noexcept { std::invoke(empty_base<F>::value()); }
 		};
 		template<typename F>
 		connect_awaiter(F &&) -> connect_awaiter<std::decay_t<F>>;

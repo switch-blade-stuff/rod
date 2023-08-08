@@ -120,7 +120,7 @@ namespace rod
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { op.start(); }
 
 		private:
-			constexpr auto connect() noexcept { return _detail::eval_t{[&]() { return rod::connect(schedule(sch_base::value()), receiver_t{this}); }}; }
+			constexpr auto connect() noexcept { return _detail::eval_t{[&]() { return rod::connect(schedule(sch_base::value()), receiver_t(this)); }}; }
 			constexpr void start() noexcept { return rod::start(std::get<0>(_state)); }
 			state_t _state;
 		};

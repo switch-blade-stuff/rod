@@ -283,7 +283,7 @@ namespace rod
 
 	/** Structure used to associate callback `CB` with an `in_place_stop_source`. */
 	template<typename CB>
-	class in_place_stop_callback : in_place_stop_source::node_t
+	class in_place_stop_callback : in_place_stop_source::node_t, empty_base<CB>
 	{
 		using node_base = in_place_stop_source::node_t;
 
@@ -291,15 +291,12 @@ namespace rod
 		using callback_type = CB;
 
 	private:
-		static void invoke(node_base *node) noexcept { static_cast<in_place_stop_callback *>(node)->_cb(); }
+		static void invoke(node_base *node) noexcept { std::invoke(static_cast<in_place_stop_callback *>(node)->empty_base<CB>::value()); }
 
 	public:
 		/** Adds a stop callback function \a fn to the stop source associated with stop token \a st. */
 		template<typename F> requires std::constructible_from<CB, F>
-		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st._src, invoke), _cb(std::forward<F>(fn)) {}
-
-	private:
-		ROD_NO_UNIQUE_ADDRESS CB _cb;
+		in_place_stop_callback(in_place_stop_token st, F &&fn) noexcept(std::is_nothrow_constructible_v<CB, F>) : node_base(st._src, invoke), empty_base<CB>(std::forward<F>(fn)) {}
 	};
 
 	template<typename F>
