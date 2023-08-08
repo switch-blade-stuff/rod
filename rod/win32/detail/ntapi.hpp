@@ -8,8 +8,7 @@
 
 #ifdef ROD_WIN32
 
-#include <cstddef>
-#include <cstdint>
+#include <system_error>
 
 namespace rod::_detail
 {
@@ -57,14 +56,14 @@ namespace rod::_detail
 
 		using io_apc_routine = void (ROD_NTAPI *)(_In_ ulong_ptr apc_ctx, _In_ io_status_block *iosb, _In_ ulong);
 
-		using RtlNtStatusToDosError_t = ulong (ROD_NTAPI *)(_In_ long status);
-		using NtWaitForSingleObject_t = long (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ large_integer *timeout);
-		using NtReadFile_t = long (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ulong_ptr apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff, _In_ ulong len, _In_opt_ large_integer *off, _In_opt_ ulong *key);
-		using NtWriteFile_t = long (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ulong_ptr apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff, _In_ ulong len, _In_opt_ large_integer *off, _In_opt_ ulong *key);
+		using RtlNtStatusToDosError_t = ulong (ROD_NTAPI *)(_In_ ulong status);
+		using NtWaitForSingleObject_t = ulong (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ large_integer *timeout);
+		using NtReadFile_t = ulong (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ulong_ptr apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff, _In_ ulong len, _In_opt_ large_integer *off, _In_opt_ ulong *key);
+		using NtWriteFile_t = ulong (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ulong_ptr apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff, _In_ ulong len, _In_opt_ large_integer *off, _In_opt_ ulong *key);
 
-		using NtCancelIoFileEx_t = long (ROD_NTAPI *)(_In_ void *file, _Out_  io_status_block *iosb, _Out_ io_status_block *status);
-		using NtSetIoCompletion_t = long (ROD_NTAPI *)(_In_ void *hnd, _In_ ulong key_ctx, _In_ ulong_ptr apc_ctx, _In_ long status, _In_ ulong info);
-		using NtRemoveIoCompletionEx_t = long (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ulong count, _Out_ ulong *removed, _In_opt_ large_integer *timeout, _In_ bool alert);
+		using NtCancelIoFileEx_t = ulong (ROD_NTAPI *)(_In_ void *file, _Out_  io_status_block *iosb, _Out_ io_status_block *status);
+		using NtSetIoCompletion_t = ulong (ROD_NTAPI *)(_In_ void *hnd, _In_ ulong key_ctx, _In_ ulong_ptr apc_ctx, _In_ long status, _In_ ulong info);
+		using NtRemoveIoCompletionEx_t = ulong (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ulong count, _Out_ ulong *removed, _In_opt_ large_integer *timeout, _In_ bool alert);
 
 		enum file_info_type
 		{
@@ -75,9 +74,33 @@ namespace rod::_detail
 		using file_mode_info = ulong;
 		using file_alignment_info = ulong;
 
-		using NtQueryInformationFile_t = long (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *status, _Out_ void *info, _In_ ulong len, _In_ file_info_type type);
+		using NtQueryInformationFile_t = ulong (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *status, _Out_ void *info, _In_ ulong len, _In_ file_info_type type);
 
+		struct status_category_type : std::error_category
+		{
+			struct entry
+			{
+				long ntstatus = {};
+				ulong dos_err = {};
+				int posix_err = {};
+				std::string msg = {};
+			};
+
+			static const entry *find_entry(long ntstatus);
+
+			status_category_type() noexcept = default;
+			~status_category_type() override = default;
+			const char *name() const noexcept override { return "ntapi::status_category"; }
+
+			std::string message(int value) const override;
+			std::error_condition default_error_condition(int value) const noexcept override;
+			bool equivalent(const std::error_code &code, int value) const noexcept override;
+			bool equivalent(int value, const std::error_condition &cnd) const noexcept override;
+		};
+
+		static const std::error_category *status_category();
 		static const ntapi instance;
+
 		ntapi();
 
 		void *ntdll;
