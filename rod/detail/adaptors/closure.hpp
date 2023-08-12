@@ -40,16 +40,10 @@ namespace rod
 			using pair_base::operator=;
 			using pair_base::swap;
 
-			template<sender S> requires _detail::callable<T0, S> && _detail::callable<T1, std::invoke_result_t<T0, S>>
-			constexpr std::invoke_result_t<T1, std::invoke_result_t<T0, S>> operator()(S &&snd) && noexcept(nothrow_move_invoke<S>)
-			{
-				return std::move(second)(std::move(first)(std::forward<S>(snd)));
-			}
 			template<sender S> requires _detail::callable<const T0 &, S> && _detail::callable<const T1 &, std::invoke_result_t<const T0 &, S>>
-			constexpr std::invoke_result_t<const T1 &, std::invoke_result_t<const T0 &, S>> operator()(S &&snd) const & noexcept(nothrow_const_invoke<S>)
-			{
-				return second(first(std::forward<S>(snd)));
-			}
+			constexpr std::invoke_result_t<const T1 &, std::invoke_result_t<const T0 &, S>> operator()(S &&snd) const & noexcept(nothrow_const_invoke<S>) { return second()(first()(std::forward<S>(snd))); }
+			template<sender S> requires _detail::callable<T0, S> && _detail::callable<T1, std::invoke_result_t<T0, S>>
+			constexpr std::invoke_result_t<T1, std::invoke_result_t<T0, S>> operator()(S &&snd) && noexcept(nothrow_move_invoke<S>) { return std::move(second())(std::move(first())(std::forward<S>(snd))); }
 		};
 		template<typename F, typename... Args>
 		class back_adaptor : public sender_adaptor_closure<back_adaptor<F, Args...>>, packed_pair<F, std::tuple<Args...>>
@@ -67,23 +61,14 @@ namespace rod
 			template<typename T, typename... Ts>
 			constexpr back_adaptor(T &&f, std::tuple<Ts &&...> args) noexcept(std::is_nothrow_constructible_v<pair_base, T, std::tuple<Ts && ...>>) : pair_base(std::forward<T>(f), std::move(args)) {}
 
-			template<typename S> requires callable<F, S, Args...>
-			constexpr decltype(auto) operator()(S &&snd) && noexcept(nothrow_callable<F, S, Args...>)
-			{
-				return std::apply([&snd, this](Args &...as) -> decltype(auto) { return std::move(first)(std::forward<S>(snd), static_cast<Args &&>(as)...); }, second);
-			}
 			template<typename S> requires callable<const F &, S, const Args &...>
-			constexpr decltype(auto) operator()(S &&snd) const & noexcept(nothrow_callable<const F &, S, const Args &...>)
-			{
-				return std::apply([&snd, this](const Args &...as) -> decltype(auto) { return first(std::forward<S>(snd), as...); }, second);
-			}
+			constexpr decltype(auto) operator()(S &&snd) const & noexcept(nothrow_callable<const F &, S, const Args &...>) { return std::apply([&](const Args &...as) -> decltype(auto) { return first()(std::forward<S>(snd), as...); }, second()); }
+			template<typename S> requires callable<F, S, Args...>
+			constexpr decltype(auto) operator()(S &&snd) && noexcept(nothrow_callable<F, S, Args...>) { return std::apply([&](Args &...as) -> decltype(auto) { return std::move(first())(std::forward<S>(snd), static_cast<Args &&>(as)...); }, second()); }
 		};
 
 		template<is_sender_adaptor A0, is_sender_adaptor A1>
-		constexpr bind_compose<std::decay_t<A0>, std::decay_t<A1>> operator|(A0 &&a, A1 &&b) noexcept(std::is_nothrow_constructible_v<bind_compose<std::decay_t<A0>, std::decay_t<A1>>, A0, A1>)
-		{
-			return {std::forward<A0>(a), std::forward<A1>(b)};
-		}
+		constexpr bind_compose<std::decay_t<A0>, std::decay_t<A1>> operator|(A0 &&a, A1 &&b) noexcept(std::is_nothrow_constructible_v<bind_compose<std::decay_t<A0>, std::decay_t<A1>>, A0, A1>) { return {std::forward<A0>(a), std::forward<A1>(b)}; }
 	}
 
 	using _detail::sender_adaptor_closure;

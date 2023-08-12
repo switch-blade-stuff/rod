@@ -357,28 +357,49 @@ namespace rod
 		inline auto deduce_variant_or_empty(type_list_t<Ts...>) -> std::variant<Ts...>;
 		template<typename... Ts>
 		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
-	}
 
-	/** Utility function used to throw `std::system_error` if the passed error evaluated to `true`.
-	 * @param[in] err Error to assert the value of. */
-	static void assert_error_code(std::error_code err) { if (err) throw std::system_error(err); }
-	/** @copydoc assert_error_code
-	 * @param[in] msg Message passed to `std::system_error`. */
-	static void assert_error_code(std::error_code err, const char *msg) { if (err) throw std::system_error(err, msg); }
-	/** @copydoc assert_error_code */
-	static void assert_error_code(std::error_code err, const std::string &msg) { if (err) throw std::system_error(err, msg); }
+		[[noreturn]] inline constexpr void throw_error_code(const std::error_code &err, const std::string &msg = {})
+		{
+			if (err.category() != std::generic_category() || err.value() != int(std::errc::not_enough_memory))
+				throw std::system_error(err, msg);
+			else
+				throw std::bad_alloc();
+		}
 
-	namespace _detail
-	{
 		template<typename Err>
-		[[nodiscard]] constexpr decltype(auto) as_except_ptr(Err &&err) noexcept
+		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(!requires { error.throw_exception(); } && std::derived_from<std::decay_t<Err>, std::exception>)
+		{
+			throw std::forward<Err>(error);
+		}
+		template<typename Err>
+		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(requires { error.throw_exception(); })
+		{
+			error.throw_exception();
+		}
+		template<typename Err>
+		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to<Err, std::exception_ptr>)
+		{
+			std::rethrow_exception(std::forward<Err>(error));
+		}
+		template<typename Err>
+		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to<Err, std::error_code>)
+		{
+			throw_error_code(error);
+		}
+
+		template<typename Err>
+		[[nodiscard]] inline static std::exception_ptr to_except_ptr(Err &&error) noexcept
 		{
 			if constexpr (decays_to<Err, std::exception_ptr>)
-				return std::forward<Err>(err);
-			else if constexpr (decays_to<Err, std::error_code>)
-				return std::make_exception_ptr(std::system_error(std::forward<Err>(err)));
+				return std::forward<Err>(error);
+			else if constexpr (std::derived_from<std::decay_t<Err>, std::exception>)
+				return std::make_exception_ptr(std::forward<Err>(error));
+			else if constexpr (decays_to<Err, std::error_code> || std::convertible_to<Err, std::error_code>)
+				return std::make_exception_ptr(std::system_error(static_cast<std::error_code>(error)));
+			else if constexpr (requires { throw_exception(std::forward<Err>(error)); })
+				try { throw_exception(std::forward<Err>(error)); } catch (...) { return std::current_exception(); }
 			else
-				return std::make_exception_ptr(std::forward<Err>(err));
+				return std::make_exception_ptr(std::forward<Err>(error));
 		}
 
 		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
@@ -428,18 +449,18 @@ namespace rod
 		}
 
 		template<typename F>
-		class defer_invoker : empty_base<F>
+		class defer_guard : empty_base<F>
 		{
 		public:
-			defer_invoker() = delete;
-			defer_invoker(const defer_invoker &) = delete;
-			defer_invoker &operator=(const defer_invoker &) = delete;
-			defer_invoker(defer_invoker &&) = delete;
-			defer_invoker &operator=(defer_invoker &&) = delete;
+			defer_guard() = delete;
+			defer_guard(const defer_guard &) = delete;
+
+			constexpr defer_guard(defer_guard &&) noexcept(std::is_nothrow_move_constructible_v<F>) = default;
+			constexpr defer_guard &operator=(defer_guard &&) noexcept(std::is_nothrow_move_assignable_v<F>) = default;
 
 			template<typename F2>
-			constexpr explicit defer_invoker(F2 &&func) noexcept(std::is_nothrow_constructible_v<F, F2>) : empty_base<F>(std::forward<F2>(func)) {}
-			constexpr ~defer_invoker() noexcept(nothrow_callable<F>) { std::invoke(empty_base<F>::value()); }
+			constexpr explicit defer_guard(F2 &&func) noexcept(std::is_nothrow_constructible_v<F, F2>) : empty_base<F>(std::forward<F2>(func)) {}
+			constexpr ~defer_guard() noexcept(nothrow_callable<F> && std::is_nothrow_destructible_v<F>) { std::invoke(empty_base<F>::value()); }
 		};
 
 		template<typename F>
@@ -457,12 +478,9 @@ namespace rod
 		eval_t(F) -> eval_t<F>;
 	}
 
-	/** Invokes functor \a func on destruction of the returned handle. */
+	/** Invokes functor \a func on destruction of the returned guard. */
 	template<typename Func>
-	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<_detail::defer_invoker<std::decay_t<Func>>, Func>)
-	{
-		return _detail::defer_invoker<std::decay_t<Func>>{std::forward<Func>(func)};
-	}
+	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<std::decay_t<Func>, Func>) { return _detail::defer_guard<std::decay_t<Func>>(std::forward<Func>(func)); }
 
 	/** Utility function used to preform a copy of an input range into an output range via `const_cast`. */
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>

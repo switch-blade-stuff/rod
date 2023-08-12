@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "detail/io_handle.hpp"
+#include "detail/system_handle.hpp"
 #include "fs.hpp"
 
 #ifdef ROD_WIN32

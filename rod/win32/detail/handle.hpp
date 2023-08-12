@@ -4,61 +4,48 @@
 
 #pragma once
 
-#include "ntapi.hpp"
+#include "../../detail/config.hpp"
 
 #ifdef ROD_WIN32
 
-#include <system_error>
-#include <utility>
+#include "../../result.hpp"
+#include "ntapi.hpp"
 
-namespace rod::_detail
+namespace rod::_win32
 {
-	class basic_handle
+	struct io_handle
 	{
-		static void *invalid_handle() noexcept { return reinterpret_cast<void *>(static_cast<std::uintptr_t>(-1)); }
+		using native_handle_type = void *;
 
-	public:
-		constexpr basic_handle() noexcept = default;
-		constexpr explicit basic_handle(void *handle) noexcept : _handle(handle) {}
+		io_handle(const io_handle &) noexcept = delete;
+		io_handle &operator=(const io_handle &) noexcept = delete;
 
-		ROD_API_PUBLIC std::error_code close() noexcept;
-		ROD_API_PUBLIC std::error_code wait() const noexcept;
+		io_handle() noexcept : value(-1) {}
+		io_handle(io_handle &&other) noexcept : value(std::exchange(other.value, -1)) {}
+		io_handle &operator=(io_handle &&other) noexcept { return (std::swap(value, other.value), *this); }
 
-		void *release() noexcept { return std::exchange(_handle, invalid_handle()); }
-		void *release(void *hnd) noexcept { return std::exchange(_handle, hnd); }
+		explicit io_handle(std::intptr_t value) noexcept : value(value) {}
+		explicit io_handle(native_handle_type hnd) noexcept : handle(hnd) {}
 
-		[[nodiscard]] bool is_open() const noexcept { return _handle != invalid_handle(); }
-		[[nodiscard]] void *native_handle() const noexcept { return _handle; }
+		~io_handle() { if (is_open()) close().value(); }
 
-		constexpr void swap(basic_handle &other) noexcept { std::swap(_handle, other._handle); }
-		friend constexpr void swap(basic_handle &a, basic_handle &b) noexcept { a.swap(b); }
+		[[nodiscard]] ROD_API_PUBLIC result<io_handle> clone() const noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::wstring> path() const noexcept;
 
-	private:
-		void *_handle = invalid_handle();
-	};
+		[[nodiscard]] bool is_open() const noexcept { return value != io_handle().value; }
+		[[nodiscard]] native_handle_type native_handle() const noexcept { return handle; }
 
-	class unique_handle : basic_handle
-	{
-	public:
-		unique_handle(const unique_handle &) = delete;
-		unique_handle &operator=(const unique_handle &) = delete;
+		ROD_API_PUBLIC result<> close() noexcept;
+		native_handle_type release() noexcept { return std::exchange(handle, io_handle().handle); }
+		native_handle_type release(native_handle_type hnd) noexcept { return std::exchange(handle, hnd); }
 
-		constexpr unique_handle() noexcept = default;
-		constexpr unique_handle(unique_handle &&other) noexcept { swap(other); }
-		constexpr unique_handle &operator=(unique_handle &&other) noexcept { return (swap(other), *this); }
+		void swap(io_handle &other) noexcept { std::swap(value, other.value); }
 
-		constexpr explicit unique_handle(void *handle) noexcept : basic_handle(handle) {}
-
-		~unique_handle() { if (is_open()) close(); }
-
-		using basic_handle::wait;
-		using basic_handle::close;
-		using basic_handle::is_open;
-		using basic_handle::release;
-		using basic_handle::native_handle;
-
-		constexpr void swap(unique_handle &other) noexcept { basic_handle::swap(other); }
-		friend constexpr void swap(unique_handle &a, unique_handle &b) noexcept { a.swap(b); }
+		union
+		{
+			native_handle_type handle;
+			std::intptr_t value;
+		};
 	};
 }
 #endif

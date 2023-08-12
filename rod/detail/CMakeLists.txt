@@ -20,11 +20,13 @@ list(APPEND ROD_HEADERS
         ${CMAKE_CURRENT_LIST_DIR}/receiver_adaptor.hpp
         ${CMAKE_CURRENT_LIST_DIR}/thread_pool.hpp
         ${CMAKE_CURRENT_LIST_DIR}/byte_buffer.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/io_handle.hpp
         ${CMAKE_CURRENT_LIST_DIR}/path_base.hpp
         ${CMAKE_CURRENT_LIST_DIR}/path_view.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/file_base.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/basic_file.hpp)
+        ${CMAKE_CURRENT_LIST_DIR}/fs_status_code.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/io_status_code.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/native_handle.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/system_handle.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/path_handle.hpp)
 
 list(APPEND ROD_SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/thread_pool.cpp

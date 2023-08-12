@@ -10,24 +10,48 @@
 #define NOMINMAX
 #include <windows.h>
 
-namespace rod::_detail
+namespace rod::_win32
 {
-	std::error_code basic_handle::close() noexcept
+	result<> io_handle::close() noexcept
 	{
-		if (is_open() && !::CloseHandle(_handle)) [[unlikely]]
-			return {static_cast<int>(::GetLastError()), std::system_category()};
-		else
-			return {};
-	}
-	std::error_code basic_handle::wait() const noexcept
-	{
-		for (;;)
+		if (is_open())
 		{
-			if (const auto status = ntapi::instance.NtWaitForSingleObject(native_handle(), true, nullptr); !status)
-				return {};
-			else if (status != STATUS_USER_APC && status != 0x00000102 /* STATUS_TIMEOUT */)
-				return std::error_code{static_cast<int>(ntapi::instance.RtlNtStatusToDosError(status)), std::system_category()};
+			if (!::CloseHandle(handle)) [[unlikely]]
+				return _ntapi::dos_error_code(::GetLastError());
+			else
+				value = io_handle().value;
 		}
+		return {};
+	}
+
+	result<io_handle> io_handle::clone() const noexcept
+	{
+		native_handle_type result = INVALID_HANDLE_VALUE;
+		if (::DuplicateHandle(GetCurrentProcess(), handle, ::GetCurrentProcess(), &result, 0, 0, DUPLICATE_SAME_ACCESS) == 0)
+			return _ntapi::dos_error_code(::GetLastError());
+		else
+			return result;
+	}
+	result<std::wstring> io_handle::path() const noexcept
+	{
+		try
+		{
+			auto result = std::wstring(32768, '\0');
+			std::copy_n(L"\\!!", 3, result.data());
+
+			if (const auto len = ::GetFinalPathNameByHandleW(handle, result.data() + 3, (result.size() - 2) * sizeof(wchar_t), VOLUME_NAME_NT); !len) [[unlikely]]
+				return _ntapi::dos_error_code(::GetLastError());
+			else
+				result.resize(len / sizeof(wchar_t) + 3);
+
+			/* Detect unlinked files. */
+			if (result.find(L"\\$Extend\\$Deleted\\") == std::wstring::npos) [[likely]]
+				return result;
+			else
+				return {};
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (const std::system_error &e) { return e.code(); }
 	}
 }
 #endif

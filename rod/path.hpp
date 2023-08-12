@@ -6,3 +6,4 @@
 
 #include "detail/path_base.hpp"
 #include "detail/path_view.hpp"
+#include "detail/path_handle.hpp"

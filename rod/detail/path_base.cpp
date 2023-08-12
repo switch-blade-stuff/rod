@@ -161,12 +161,12 @@ namespace rod::fs::_path
 
 	path path::make_relative(const path &self, const path &base)
 	{
-		const auto self_root_name = root_name_substr<value_type>(self._value, self.formatting());
-		const auto base_root_name = root_name_substr<value_type>(base._value, base.formatting());
+		const auto self_root_name = root_name_substr<value_type>(self._string, self.format());
+		const auto base_root_name = root_name_substr<value_type>(base._string, base.format());
 
 		path result;
 		if (self_root_name != base_root_name || self.is_absolute() != base.is_absolute() || (!self.has_root_directory() && base.has_root_directory()) ||
-		    contains_root<value_type>(self._value, self.formatting()) || contains_root<value_type>(base._value, base.formatting()))
+		    contains_root<value_type>(self._string, self.format()) || contains_root<value_type>(base._string, base.format()))
 			return result;
 
 		const auto self_begin = self.begin(), self_end = self.end();
@@ -213,21 +213,21 @@ namespace rod::fs::_path
 
 	path path::lexically_normal() const
 	{
-		if (empty() || formatting() == binary_format)
+		if (empty() || format() == binary_format)
 			return *this;
 
-		size_type filename_pos = root_name_size<value_type>(_value, formatting());
+		size_type filename_pos = root_name_size<value_type>(_string, format());
 		size_type result_len = filename_pos;
 		array_list<string_view_type> comps;
 		string_type result_string;
 
 		/* Separate path string into component list & find the approximate string length. */
-		while (result_len < _value.size())
+		while (result_len < _string.size())
 		{
-			if (!is_separator(_value[result_len], formatting()))
+			if (!is_separator(_string[result_len], format()))
 			{
-				const auto tail = string_view_type(_value.data() + result_len, _value.size() - result_len);
-				const auto comp = tail.substr(0, lfind_separator(tail, formatting()));
+				const auto tail = string_view_type(_string.data() + result_len, _string.size() - result_len);
+				const auto comp = tail.substr(0, lfind_separator(tail, format()));
 				result_len += comp.size();
 				comps.emplace_back(comp);
 			}
@@ -289,7 +289,7 @@ namespace rod::fs::_path
 
 		/* Build the result string. */
 		result_string.reserve(result_len);
-		result_string = string_view_type(_value.data(), filename_pos);
+		result_string = string_view_type(_string.data(), filename_pos);
 #ifdef ROD_WIN32
 		std::ranges::replace(result_string, '/', preferred_separator);
 #endif
@@ -309,11 +309,11 @@ namespace rod::fs::_path
 	}
 	path path::lexically_relative(const path &base) const
 	{
-		if (formatting() == binary_format || base.formatting() == binary_format)
+		if (format() == binary_format || base.format() == binary_format)
 			return {};
 
 #ifdef ROD_WIN32
-		const auto both_unc = is_unc_drive_path<value_type>(_value, formatting()) && is_unc_drive_path<value_type>(base._value, base.formatting());
+		const auto both_unc = is_unc_drive_path<value_type>(_string, format()) && is_unc_drive_path<value_type>(base._string, base.format());
 		return make_relative(both_unc ? relative_path() : *this, both_unc ? base.relative_path() : base);
 #else
 		return make_relative(*this, base);

@@ -113,7 +113,7 @@ namespace rod
 			template<typename Err>
 			friend void tag_invoke(set_error_t, type &&r, Err &&err) noexcept
 			{
-				r._result_ptr->template emplace<2>(_detail::as_except_ptr(std::forward<Err>(err)));
+				r._result_ptr->template emplace<2>(_detail::to_except_ptr(std::forward<Err>(err)));
 				r._cont_handle.resume();
 			}
 			friend void tag_invoke(set_stopped_t, type &&r) noexcept

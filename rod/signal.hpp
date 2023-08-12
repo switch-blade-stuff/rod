@@ -10,7 +10,6 @@
 #include <limits>
 
 #include "detail/config.hpp"
-#include "packed_pair.hpp"
 #include "generator.hpp"
 #include "delegate.hpp"
 
