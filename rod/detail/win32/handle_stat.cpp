@@ -23,7 +23,7 @@ namespace rod::_handle
 
 	inline static result<std::unique_ptr<wchar_t[]>> make_buffer(std::size_t size) noexcept
 	{
-		try { return std::unique_ptr<wchar_t[]>(new(buff_align) wchar_t[buff_size]); }
+		try { return std::unique_ptr<wchar_t[]>(new(buff_align) wchar_t[size]); }
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
