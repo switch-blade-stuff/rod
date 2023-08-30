@@ -179,6 +179,9 @@ namespace rod
 		using size_type = typename std::allocator_traits<allocator_type>::size_type;
 		using difference_type = typename std::allocator_traits<allocator_type>::difference_type;
 
+	private:
+		constexpr static size_type apply_growth(size_type n) noexcept { return n + n / 2; }
+
 	public:
 		/** Initializes an empty list. */
 		constexpr array_list() noexcept(std::is_nothrow_default_constructible_v<node_allocator>) : _header(), _data(nullptr), _free(end()._node) {}
@@ -377,7 +380,7 @@ namespace rod
 			if (n <= _data_size)
 				return;
 
-			const auto new_size = std::max(_data_size * 2, n);
+			const auto new_size = std::max(apply_growth(_data_size), n);
 			const auto new_data = std::allocator_traits<node_allocator>::allocate(allocator_base::value(), new_size);
 
 			try
@@ -519,7 +522,7 @@ namespace rod
 		iterator erase(const_iterator pos) noexcept(std::is_nothrow_destructible_v<value_type>) { return destroy_at(const_cast<node_pointer>(pos._node)); }
 		/** Erases all elements in range [\a first, \a last).
 		 * @param first Iterator to the first element to be erased.
-		 * @param first Iterator one past the last element to be erased.
+		 * @param last Iterator one past the last element to be erased.
 		 * @return Iterator to the element after the erased range, or `end()`. */
 		iterator erase(const_iterator first, const_iterator last) noexcept(std::is_nothrow_destructible_v<value_type>)
 		{
@@ -611,7 +614,7 @@ namespace rod
 
 			if (_list_size >= _data_size)
 			{
-				const auto new_size = std::max<size_type>(_data_size * 2, 1);
+				const auto new_size = std::max<size_type>(apply_growth(_data_size), 1);
 				const auto new_data = std::allocator_traits<node_allocator>::allocate(allocator_base::value(), new_size);
 
 				try

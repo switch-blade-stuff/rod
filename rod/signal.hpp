@@ -105,7 +105,7 @@ namespace rod
 				pos = node.next;
 
 				const auto invoke = [&]() -> decltype(auto) { return std::invoke(acc, std::invoke(*node.value, args...)); };
-				if constexpr (!std::convertible_to<std::invoke_result_t<A, R>, bool>)
+				if constexpr (!std::constructible_from<bool, std::invoke_result_t<A, R>>)
 					invoke();
 				else if (!static_cast<bool>(invoke()))
 					break;

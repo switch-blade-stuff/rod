@@ -114,7 +114,7 @@ namespace rod
 		};
 
 		/* IO entries used to represent scheduled IO operations similar to how linux io_uring entry queues work.
-		 * Entries are batched to allow for IO requests whose size overflows `ntapi::ulong` + potential support
+		 * Entries are batched to allow for IO requests whose size overflows `ULONG` + potential support
 		 * for vectorized IO later on. */
 		struct io_entry
 		{
@@ -249,7 +249,7 @@ namespace rod
 			ROD_API_PUBLIC void schedule_pending(io_operation_base *node) noexcept;
 
 			void schedule_complete(std::pair<io_entry *, std::uint8_t> entry) noexcept;
-			std::pair<io_entry *, std::uint8_t> find_entry(ntapi::ulong_ptr apc) noexcept;
+			std::pair<io_entry *, std::uint8_t> find_entry(ULONG_PTR apc) noexcept;
 
 			void acquire_pending_events() noexcept;
 			bool acquire_producer_queue() noexcept;

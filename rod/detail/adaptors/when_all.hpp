@@ -7,7 +7,7 @@
 #include <optional>
 
 #include "../../stop_token.hpp"
-#include "../concepts.hpp"
+#include "../async_base.hpp"
 
 #include "into_variant.hpp"
 #include "transfer.hpp"

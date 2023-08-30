@@ -29,7 +29,7 @@ namespace rod::_io_uring
 
 	enum event_id : std::uint64_t { timer_timeout = 1, queue_dispatch, timer_cancel };
 
-	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
+	[[noreturn]] inline void throw_errno(const char *msg) { ROD_THROW(std::system_error{errno, std::system_category(), msg}); }
 
 	context::context() : context(default_entries) {}
 	context::context(std::size_t entries)
@@ -99,7 +99,7 @@ namespace rod::_io_uring
 		{
 			const std::uint64_t token = 1;
 			if (const auto err = _event_fd.write(&token, sizeof(token)).error_or({}); err)
-				throw std::system_error{err, "write(event_fd)"};
+				ROD_THROW(std::system_error{err, "write(event_fd)"});
 		}
 	}
 	void context::schedule_consumer(operation_base *node)
@@ -240,9 +240,9 @@ namespace rod::_io_uring
 			case event_id::queue_dispatch: /* Producer queue notification event. */
 			{
 				if (std::uint64_t token; event.res < 0)
-					throw std::system_error(std::error_code{-event.res, std::system_category()}, "read(event_fd)");
+					ROD_THROW(std::system_error(std::error_code{-event.res, std::system_category()}, "read(event_fd)"));
 				else if (auto res = _event_fd.read(&token, sizeof(token)); res.has_error())
-					throw std::system_error(res.error(), "read(event_fd)");
+					ROD_THROW(std::system_error(res.error(), "read(event_fd)"));
 				else
 					_queue_active = false;
 				break;
@@ -320,7 +320,7 @@ namespace rod::_io_uring
 				break;
 			}
 			else if (const auto err = std::error_code{-res, std::system_category()}; err.value() != EINTR)
-				throw std::system_error(err, "io_uring_enter");
+				ROD_THROW(std::system_error(err, "io_uring_enter"));
 		}
 	}
 
@@ -328,7 +328,7 @@ namespace rod::_io_uring
 	{
 		/* Make sure only one thread is allowed to run at a given time. */
 		if (std::thread::id id = {}; !_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
-			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run` at a given time");
+			ROD_THROW(std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run` at a given time"));
 
 		struct thread_guard
 		{

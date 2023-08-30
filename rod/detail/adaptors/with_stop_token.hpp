@@ -8,7 +8,7 @@
 
 #include "../receiver_adaptor.hpp"
 #include "../../stop_token.hpp"
-#include "../concepts.hpp"
+#include "../async_base.hpp"
 #include "closure.hpp"
 
 namespace rod

@@ -59,8 +59,8 @@ namespace rod
 			time_point _tp;
 		};
 
-		template<typename Rcv, typename Base>
-		class operation<Rcv, Base>::type : Base, empty_base<Rcv>
+		template<typename Base, typename Rcv>
+		class operation<Base, Rcv>::type : Base, empty_base<Rcv>
 		{
 			static void notify_complete(operation_base *p) noexcept
 			{
@@ -91,7 +91,7 @@ namespace rod
 
 		private:
 			template<typename Rcv>
-			using operation_t = typename operation<std::decay_t<Rcv>, OpBase>::type;
+			using operation_t = typename operation<OpBase, std::decay_t<Rcv>>::type;
 			using signs_t = completion_signatures<set_value_t(), set_stopped_t()>;
 
 			constexpr sender(run_loop *loop, Args ...args) noexcept : std::tuple<Args...>(std::move(args)...), _loop(loop) {}

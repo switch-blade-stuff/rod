@@ -16,7 +16,7 @@ int main()
 		auto base_snd = rod::just_invoke([](int i)
 		{
 			TEST_ASSERT(i == 1);
-			throw test_error{};
+			ROD_THROW(test_error{});
 		}, 1) | rod::upon_error([](const std::exception_ptr &e)
 		{
 			TEST_ASSERT(e);

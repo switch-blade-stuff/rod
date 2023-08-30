@@ -5,7 +5,7 @@
 #pragma once
 
 #include "../queries/scheduler.hpp"
-#include "../concepts.hpp"
+#include "../async_base.hpp"
 
 namespace rod
 {

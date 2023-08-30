@@ -4,8 +4,6 @@
 
 #include "iocp_context.hpp"
 
-#ifdef ROD_WIN32
-
 #include <cassert>
 #include <ranges>
 #include <array>
@@ -15,7 +13,7 @@
 #include <windows.h>
 
 /* The following (undocumented) NTDLL functions are used:
- *  NtSetIoCompletion(iocp, key, apc, status, info)
+ *  NtSetIoCompletion(iocp, key, apc, ntstatus, info)
  *  NtRemoveIoCompletionEx(iocp, buff, size, removed, timeout, alert)
  *
  * PostQueuedCompletionStatus and GetQueuedCompletionStatusEx are not used
@@ -31,8 +29,8 @@ namespace rod::_iocp
 	constexpr std::size_t default_entries = 128;
 #endif
 
-	[[noreturn]] inline void throw_status(auto status, const char *msg) { throw std::system_error{static_cast<int>(ntapi::instance.RtlNtStatusToDosError(status)), std::system_category(), msg}; }
-	[[noreturn]] inline void throw_last_error(const char *msg) { throw std::system_error{static_cast<int>(::GetLastError()), std::system_category(), msg}; }
+	[[noreturn]] inline void throw_status(auto status, const char *msg) { ROD_THROW(std::system_error{int(ntapi::instance.RtlNtStatusToDosError(status)), std::system_category(), msg}); }
+	[[noreturn]] inline void throw_last_error(const char *msg) { ROD_THROW(std::system_error{int(::GetLastError()), std::system_category(), msg}); }
 
 	bool io_entry::get_state() const noexcept
 	{
@@ -69,7 +67,7 @@ namespace rod::_iocp
 		for (std::size_t i = 0; i < entry->started; ++i)
 		{
 			if (const auto &iosb = entry->batch[i]; iosb.status < 0) [[unlikely]]
-				return std::error_code{static_cast<int>(ntapi::instance.RtlNtStatusToDosError(iosb.status)), std::system_category()};
+				return std::error_code{int(ntapi::instance.RtlNtStatusToDosError(iosb.status)), std::system_category()};
 			else
 				result += iosb.info;
 		}
@@ -77,9 +75,9 @@ namespace rod::_iocp
 	}
 	std::size_t io_operation_base::start_io(io_cmd<async_read_some_at_t, std::span<std::byte>> cmd)
 	{
-		ntapi::large_integer offset;
+		LARGE_INTEGER offset;
 		std::size_t batch_bytes = 0;
-		ntapi::ulong chunk;
+		ULONG chunk;
 
 		entry->parent_notified = false;
 		entry->started = 0;
@@ -89,10 +87,10 @@ namespace rod::_iocp
 			iosb.status = STATUS_PENDING;
 			iosb.info = 0;
 
-			chunk = static_cast<ntapi::ulong>(cmd.buff.size() - batch_bytes);
-			offset.quad = static_cast<ntapi::longlong>(cmd.pos);
+			chunk = static_cast<ULONG>(cmd.buff.size() - batch_bytes);
+			offset.quad = static_cast<LONGLONG>(cmd.pos);
 
-			if (const auto status = ntapi::instance.NtReadFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ntapi::ulong_ptr>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
+			if (const auto status = ntapi::instance.NtReadFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ULONG_PTR>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
 				entry->pending += (status == STATUS_PENDING || notify_func != nullptr);
 			else
 			{
@@ -104,9 +102,9 @@ namespace rod::_iocp
 	}
 	std::size_t io_operation_base::start_io(io_cmd<async_write_some_at_t, std::span<std::byte>> cmd)
 	{
-		ntapi::large_integer offset;
+		LARGE_INTEGER offset;
 		std::size_t batch_bytes = 0;
-		ntapi::ulong chunk;
+		ULONG chunk;
 
 		entry->parent_notified = false;
 		entry->started = 0;
@@ -116,10 +114,10 @@ namespace rod::_iocp
 			iosb.status = STATUS_PENDING;
 			iosb.info = 0;
 
-			chunk = static_cast<ntapi::ulong>(cmd.buff.size() - batch_bytes);
-			offset.quad = static_cast<ntapi::longlong>(cmd.pos);
+			chunk = static_cast<ULONG>(cmd.buff.size() - batch_bytes);
+			offset.quad = static_cast<LONGLONG>(cmd.pos);
 
-			if (const auto status = ntapi::instance.NtWriteFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ntapi::ulong_ptr>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
+			if (const auto status = ntapi::instance.NtWriteFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ULONG_PTR>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
 				entry->pending += (status == STATUS_PENDING || notify_func != nullptr);
 			else
 			{
@@ -179,10 +177,10 @@ namespace rod::_iocp
 		while (pending_ops != 0)
 		{
 			std::array<ntapi::io_completion_info, buff_size> buff;
-			ntapi::large_integer zero_timeout = {.quad = 0};
-			ntapi::ulong received;
+			LARGE_INTEGER zero_timeout = {.quad = 0};
+			ULONG received;
 
-			if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), static_cast<ntapi::ulong>(std::min(buff_size, pending_ops)), &received, &zero_timeout, false); status < 0)
+			if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), static_cast<ULONG>(std::min(buff_size, pending_ops)), &received, &zero_timeout, false); status < 0)
 				throw_status(status, "NtRemoveIoCompletionEx");
 
 			for (auto &event: std::ranges::take_view(buff, received))
@@ -295,9 +293,9 @@ namespace rod::_iocp
 		else if (!std::exchange(entry.first->parent_notified, true))
 			schedule_consumer(entry.first->parent);
 	}
-	inline std::pair<io_entry *, std::uint8_t> context::find_entry(ntapi::ulong_ptr apc) noexcept
+	inline std::pair<io_entry *, std::uint8_t> context::find_entry(ULONG_PTR apc) noexcept
 	{
-		const auto diff = apc - reinterpret_cast<ntapi::ulong_ptr>(_io_entry_buff.data());
+		const auto diff = apc - reinterpret_cast<ULONG_PTR>(_io_entry_buff.data());
 		const auto iosb = reinterpret_cast<ntapi::io_status_block *>(apc);
 		const auto ptr = _io_entry_buff.data() + diff / sizeof(io_entry);
 		const auto idx = static_cast<std::uint8_t>(iosb - ptr->batch);
@@ -364,14 +362,14 @@ namespace rod::_iocp
 	inline std::error_code context::port_bind(void *hnd)
 	{
 		if (::CreateIoCompletionPort(hnd, _iocp.native_handle(), 0, 0) != _iocp.native_handle()) [[unlikely]]
-			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+			return std::error_code{int(::GetLastError()), std::system_category()};
 		if (!::SetFileCompletionNotificationModes(hnd, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE)) [[unlikely]]
-			return std::error_code{static_cast<int>(::GetLastError()), std::system_category()};
+			return std::error_code{int(::GetLastError()), std::system_category()};
 		return {};
 	}
 	inline void context::port_wait()
 	{
-		static constinit ntapi::large_integer zero_timeout = {};
+		static constinit LARGE_INTEGER zero_timeout = {};
 #ifdef _WIN64
 		constexpr std::size_t buff_size = 8192 / sizeof(ntapi::io_completion_info);
 #else
@@ -380,7 +378,7 @@ namespace rod::_iocp
 
 		auto timeout = _producer_queue.active() ? &zero_timeout : nullptr;
 		std::array<ntapi::io_completion_info, buff_size> buff;
-		ntapi::ulong received;
+		ULONG received;
 
 		if (const auto status = ntapi::instance.NtRemoveIoCompletionEx(_iocp.native_handle(), buff.data(), buff_size, &received, timeout, _timer_started); status < 0)
 			throw_status(status, "NtRemoveIoCompletionEx");
@@ -409,7 +407,7 @@ namespace rod::_iocp
 	{
 		/* Make sure only one thread is allowed to run at a given time. */
 		if (std::thread::id id = {}; !_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
-			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `iocp_context::run` at a given time");
+			ROD_THROW(std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `iocp_context::run` at a given time"));
 
 		const auto g = defer_invoke([&]()
 		{
@@ -439,4 +437,3 @@ namespace rod::_iocp
 		schedule(this);
 	}
 }
-#endif

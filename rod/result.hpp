@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <system_error>
 #include <optional>
 #include <memory>
 
@@ -21,6 +20,21 @@ namespace rod
 	{
 		template<typename Val, typename Err>
 		class result;
+
+		template<typename T>
+		struct is_result : std::false_type {};
+		template<typename Val, typename Err>
+		struct is_result<result<Val, Err>> : std::true_type {};
+
+		template<typename T, typename Val>
+		struct is_result_with_value : std::false_type {};
+		template<typename Val, typename Err>
+		struct is_result_with_value<result<Val, Err>, Val> : std::true_type {};
+
+		template<typename T, typename Err>
+		struct is_result_with_error : std::false_type {};
+		template<typename Val, typename Err>
+		struct is_result_with_error<result<Val, Err>, Err> : std::true_type {};
 
 		/** Exception thrown when an invalid state was requested from `rod::result`. */
 		class bad_result_access : public std::runtime_error
@@ -71,6 +85,22 @@ namespace rod
 		};
 
 		/** Utility type used to return a value or error result.
+		 *
+		 * For the purposes of ABI compatibility and interop, result types are equivalent to the following struct:
+		 * @code{cpp}
+		 * struct result
+		 * {
+		 * 	union
+		 * 	{
+		 * 		Val value;
+		 * 		Err error;
+		 * 	};
+		 * 	uint8_t state;
+		 * };
+		 * @endcode
+		 *
+		 * Where `state` is `0` for `value` and `1` for `error`.
+		 *
 		 * @tparam Val Value type stored by the result.
 		 * @tparam Err Error type stored by the result. */
 		template<typename Val = void, typename Err = std::error_code>
@@ -79,9 +109,14 @@ namespace rod
 			template<typename, typename>
 			friend class result;
 
-			static_assert(!std::is_void_v<Err>, "`rod::result` does not support `void` errors, use `std::optional&lt;Val&gt;` instead");
+			static_assert(!std::is_void_v<Err>, "`result` does not support `void` errors, use `std::optional&lt;Val&gt;` instead");
 
 		public:
+			template<typename NewVal>
+			using rebind_value = result<NewVal, Err>;
+			template<typename NewErr>
+			using rebind_error = result<Val, NewErr>;
+
 			using value_type = Val;
 			using error_type = Err;
 
@@ -187,7 +222,7 @@ namespace rod
 			{
 				if (has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						std::construct_at(&_storage.value, other._storage.value);
 				}
 				else if (has_error())
@@ -199,7 +234,7 @@ namespace rod
 			{
 				if (has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						std::construct_at(&_storage.value, std::move(other._storage.value));
 				}
 				else if (has_error())
@@ -215,7 +250,7 @@ namespace rod
 
 				if (other.has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						assign_value(other._storage.value);
 				}
 				else if (other.has_error())
@@ -232,7 +267,7 @@ namespace rod
 
 				if (other.has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						assign_value(std::move(other._storage.value));
 				}
 				else if (other.has_error())
@@ -246,7 +281,7 @@ namespace rod
 			{
 				if (has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						std::construct_at(&_storage.value, other._storage.value);
 				}
 				else if (has_error())
@@ -256,7 +291,7 @@ namespace rod
 			{
 				if (has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						std::construct_at(&_storage.value, std::move(other._storage.value));
 				}
 				else if (has_error())
@@ -270,7 +305,7 @@ namespace rod
 
 				if (other.has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						assign_value(other._storage.value);
 				}
 				else if (other.has_error())
@@ -286,7 +321,7 @@ namespace rod
 
 				if (other.has_value())
 				{
-					if constexpr (std::is_void_v<Val>)
+					if constexpr (!std::is_void_v<Val>)
 						assign_value(std::move(other._storage.value));
 				}
 				else if (other.has_error())
@@ -358,7 +393,7 @@ namespace rod
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return _storage.value;
+					return static_cast<Val &>(_storage.value);
 			}
 			/** @copydoc value */
 			constexpr decltype(auto) value() &&
@@ -366,7 +401,7 @@ namespace rod
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return std::move(_storage.value);
+					return static_cast<Val &&>(_storage.value);
 			}
 			/** @copydoc value */
 			constexpr decltype(auto) value() const &
@@ -374,7 +409,7 @@ namespace rod
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return _storage.value;
+					return static_cast<std::add_const_t<Val> &>(_storage.value);
 			}
 			/** @copydoc value */
 			constexpr decltype(auto) value() const &&
@@ -382,7 +417,7 @@ namespace rod
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return std::move(_storage.value);
+					return static_cast<std::add_const_t<Val> &&>(_storage.value);
 			}
 
 			/** Returns the contained value or \a val if result does not contain a value. */
@@ -411,7 +446,7 @@ namespace rod
 				if (!has_error())
 					throw_missing_error();
 				else
-					return _storage.error;
+					return static_cast<Err &>(_storage.error);
 			}
 			/** @copydoc error */
 			constexpr decltype(auto) error() &&
@@ -419,7 +454,7 @@ namespace rod
 				if (!has_error())
 					throw_missing_error();
 				else
-					return std::move(_storage.error);
+					return static_cast<Err &&>(_storage.error);
 			}
 			/** @copydoc error */
 			constexpr decltype(auto) error() const &
@@ -427,7 +462,7 @@ namespace rod
 				if (!has_error())
 					throw_missing_error();
 				else
-					return _storage.error;
+					return static_cast<std::add_const_t<Err> &>(_storage.error);
 			}
 			/** @copydoc error */
 			constexpr decltype(auto) error() const &&
@@ -435,7 +470,7 @@ namespace rod
 				if (!has_error())
 					throw_missing_error();
 				else
-					return std::move(_storage.error);
+					return static_cast<std::add_const_t<Err> &&>(_storage.error);
 			}
 
 			/** Returns the error state or \a err if result does not contain a value. */
@@ -557,13 +592,13 @@ namespace rod
 			[[noreturn]] constexpr void throw_missing_value() const
 			{
 				if constexpr (!requires { _detail::throw_exception(_storage.error); })
-					throw bad_result_access("bad result access (value)");
+					ROD_THROW(bad_result_access("bad result access (value)"));
 				else
 					_detail::throw_exception(_storage.error);
 			}
 			[[noreturn]] constexpr void throw_missing_error() const
 			{
-				throw bad_result_access("bad result access (error)");
+				ROD_THROW(bad_result_access("bad result access (error)"));
 			}
 
 			template<typename Val2> requires(!std::is_void_v<Val>)
@@ -628,6 +663,27 @@ namespace rod
 		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &&> result<Val, Err>::operator*() const && noexcept { return std::move(*operator->()); }
 	}
 
+	/** Utility used to check if \a T is an instance of `rod::result`. */
+	template<typename T>
+	using is_result = _result::is_result<T>;
+	/** Alias for `is_result&lt;T&gt;::value` */
+	template<typename T>
+	inline constexpr bool is_result_v = is_result<T>::value;
+
+	/** Utility used to check if \a T is an instance of `rod::result` with value type \a Val. */
+	template<typename T, typename Val>
+	using is_result_with_value = _result::is_result_with_value<T, Val>;
+	/** Alias for `is_result_with_value&lt;T, Val&gt;::value` */
+	template<typename T, typename Val>
+	inline constexpr bool is_result_with_value_v = is_result_with_value<T, Val>::value;
+
+	/** Utility used to check if \a T is an instance of `rod::result` with error type \a Err. */
+	template<typename T, typename Err>
+	using is_result_with_error = _result::is_result_with_value<T, Err>;
+	/** Alias for `is_result_with_error&lt;T, Err&gt;::value` */
+	template<typename T, typename Err>
+	inline constexpr bool is_result_with_error_v = is_result_with_error<T, Err>::value;
+
 	using _result::bad_result_access;
 	using _result::result;
 
@@ -638,9 +694,4 @@ namespace rod
 	inline constexpr auto in_place_value = in_place_value_t{};
 	/** Instance of `rod::in_place_error_t`. */
 	inline constexpr auto in_place_error = in_place_error_t{};
-
-	using _result::throw_exception_t;
-
-	/** Customization point object used to produce a C++ exception from an error object. Default overload exists for `std::error_code`. */
-	inline constexpr auto throw_exception = throw_exception_t{};
 }

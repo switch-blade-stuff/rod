@@ -7,33 +7,39 @@
 #include "../result.hpp"
 #include "path_view.hpp"
 
-namespace rod::fs
+namespace rod
 {
-	/** Status code type used by filesystem facilities. */
+	/** Status code type with path annotation used by filesystem facilities. */
 	class fs_status_code
 	{
 	public:
 		/** Initializes filesystem status code from an error code. */
-		fs_status_code(std::error_code err) : _err(err) {}
+		fs_status_code(std::error_code err) noexcept : _err(err) {}
+		/** Initializes filesystem status code from a value and error category. */
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		fs_status_code(V value, const std::error_category &cat) noexcept : _err(value, cat) {}
+
+		/** Initializes filesystem status code from an error code code and one path via move. */
+		fs_status_code(std::error_code err, path &&p) noexcept : _err(err), _paths{std::move(p)} {}
+		/** Initializes filesystem status code from an error code and two paths via move. */
+		fs_status_code(std::error_code err, path &&p1, path &&p2) noexcept : _err(err), _paths{std::move(p1), std::move(p2)} {}
+		/** Initializes filesystem status code from a value, error category, code and one path via move. */
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		fs_status_code(V value, const std::error_category &cat, path &&p) noexcept : _err(value, cat), _paths{std::move(p)} {}
+		/** Initializes filesystem status code from a value, error category, and two paths via move. */
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		fs_status_code(V value, const std::error_category &cat, path &&p1, path &&p2) noexcept : _err(value, cat), _paths{std::move(p1), std::move(p2)} {}
+
 		/** Initializes filesystem status code from an error code and one path via copy. */
 		fs_status_code(std::error_code err, const path &p) : _err(err), _paths{p} {}
-		/** Initializes filesystem status code from an error code code and one path via move. */
-		fs_status_code(std::error_code err, path &&p) : _err(err), _paths{std::move(p)} {}
 		/** Initializes filesystem status code from an error code and two paths via copy. */
 		fs_status_code(std::error_code err, const path &p1, const path &p2) : _err(err), _paths{p1, p2} {}
-		/** Initializes filesystem status code from an error code and two paths via move. */
-		fs_status_code(std::error_code err, path &&p1, path &&p2) : _err(err), _paths{std::move(p1), std::move(p2)} {}
-
-		/** Initializes filesystem status code from a value and error category. */
-		fs_status_code(auto value, const std::error_category &cat) : _err(value, cat) {}
 		/** Initializes filesystem status code from a value, error category, and one path via copy. */
-		fs_status_code(auto value, const std::error_category &cat, const path &p) : _err(value, cat), _paths{p} {}
-		/** Initializes filesystem status code from a value, error category, code and one path via move. */
-		fs_status_code(auto value, const std::error_category &cat, path &&p) : _err(value, cat), _paths{std::move(p)} {}
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		fs_status_code(V value, const std::error_category &cat, const path &p) : _err(value, cat), _paths{p} {}
 		/** Initializes filesystem status code from a value, error category, and two paths via copy. */
-		fs_status_code(auto value, const std::error_category &cat, const path &p1, const path &p2) : _err(value, cat), _paths{p1, p2} {}
-		/** Initializes filesystem status code from a value, error category, and two paths via move. */
-		fs_status_code(auto value, const std::error_category &cat, path &&p1, path &&p2) : _err(value, cat), _paths{std::move(p1), std::move(p2)} {}
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		fs_status_code(V value, const std::error_category &cat, const path &p1, const path &p2) : _err(value, cat), _paths{p1, p2} {}
 
 		/** Resets the status code to an empty state. */
 		void clear() noexcept
@@ -98,4 +104,8 @@ namespace rod::fs
 		std::error_code _err;
 		path _paths[2];
 	};
+
+	/** Result type with `fs_status_code` error type. */
+	template<typename T = void>
+	using fs_result = result<T, fs_status_code>;
 }

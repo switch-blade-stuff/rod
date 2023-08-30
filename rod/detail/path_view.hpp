@@ -6,7 +6,7 @@
 
 #include "path_base.hpp"
 
-namespace rod::fs
+namespace rod
 {
 	namespace _path
 	{
@@ -476,7 +476,7 @@ namespace rod::fs
 			[[nodiscard]] constexpr const_reference at(size_type i) const
 			{
 				if (i >= size()) [[unlikely]]
-					throw std::out_of_range("rendered_path::at");
+					ROD_THROW(std::out_of_range("rendered_path::at"));
 				else
 					return operator[](i);
 			}
@@ -915,7 +915,7 @@ namespace rod::fs
 		struct path_view_like
 		{
 			constexpr path_view_like() noexcept = default;
-			template<typename T> requires(std::is_convertible_v<T, path_view> && !std::is_convertible_v<T, path>)
+			template<typename T> requires(std::constructible_from<path_view, T> && !std::is_convertible_v<T, path>)
 			constexpr path_view_like(T &&value) noexcept(std::is_nothrow_constructible_v<path_view, T>) : view(std::forward<T>(value)) {}
 
 			path_view view;

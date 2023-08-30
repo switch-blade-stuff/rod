@@ -22,7 +22,7 @@ namespace rod::_epoll
 
 	enum event_id : std::uint64_t { timer_timeout = 1, queue_dispatch };
 
-	[[noreturn]] inline void throw_errno(const char *msg) { throw std::system_error{errno, std::system_category(), msg}; }
+	[[noreturn]] inline void throw_errno(const char *msg) { ROD_THROW(std::system_error{errno, std::system_category(), msg}); }
 
 	inline _detail::unique_descriptor init_epoll_fd()
 	{
@@ -92,7 +92,7 @@ namespace rod::_epoll
 			/* Notify the event file descriptor to wake up the consumer thread. */
 			const std::uint64_t token = 1;
 			if (const auto err = _event_fd.write(&token, sizeof(token)).error_or({}); err)
-				throw std::system_error{err, "write(event_fd)"};
+				ROD_THROW(std::system_error{err, "write(event_fd)"});
 		}
 	}
 	void context::schedule_consumer(operation_base *node)
@@ -195,7 +195,7 @@ namespace rod::_epoll
 			if ((n_events = ::epoll_wait(_epoll_fd.native_handle(), events, _buff.size, blocking ? -1 : 0)) >= 0)
 				break;
 			else if (const auto err = std::error_code{errno, std::system_category()}; err.value() != EINTR)
-				throw std::system_error(err, "epoll_wait");
+				ROD_THROW(std::system_error(err, "epoll_wait"));
 		}
 		for (auto pos = static_cast<std::size_t>(n_events); pos-- != 0;)
 		{
@@ -209,14 +209,14 @@ namespace rod::_epoll
 				// Read the eventfd to clear the signal.
 				std::uint64_t token;
 				if (auto res = _timer_fd.read(&token, sizeof(token)); res.has_error())
-					throw std::system_error(res.error(), "read(timer_fd)");
+					ROD_THROW(std::system_error(res.error(), "read(timer_fd)"));
 				break;
 			}
 			case event_id::queue_dispatch: /* Producer queue notification event. */
 			{
 				std::uint64_t token;
 				if (auto res = _event_fd.read(&token, sizeof(token)); res.has_error())
-					throw std::system_error(res.error(), "read(event_fd)");
+					ROD_THROW(std::system_error(res.error(), "read(event_fd)"));
 				else
 					_queue_active = false;
 				break;
@@ -232,7 +232,7 @@ namespace rod::_epoll
 	{
 		/* Make sure only one thread is allowed to run at a given time. */
 		if (std::thread::id id = {}; !_consumer_tid.compare_exchange_strong(id, std::this_thread::get_id(), std::memory_order_acq_rel))
-			throw std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run` at a given time");
+			ROD_THROW(std::system_error(std::make_error_code(std::errc::device_or_resource_busy), "Only one thread may invoke `epoll_context::run` at a given time"));
 
 		struct thread_guard
 		{

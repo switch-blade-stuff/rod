@@ -19,7 +19,7 @@
 #include "../result.hpp"
 #include "../hash.hpp"
 
-namespace rod::fs
+namespace rod
 {
 	namespace _path
 	{
@@ -739,7 +739,7 @@ namespace rod::fs
 		inline constexpr int compare_bytes(std::span<const std::uint8_t> a_bytes, std::span<const std::uint8_t> b_bytes) noexcept
 		{
 			if (const auto cmp = static_cast<std::ptrdiff_t>(a_bytes.size() - b_bytes.size()); cmp)
-				return static_cast<int>(cmp);
+				return int(cmp);
 
 			if (!std::is_constant_evaluated())
 				return std::memcmp(a_bytes.data(), b_bytes.data(), a_bytes.size());
@@ -936,7 +936,7 @@ namespace rod::fs
 			constexpr path(format_type fmt) noexcept : _string(), _format(fmt) {}
 
 			/** Initializes a path from C-style string \a str and format \a fmt. */
-			constexpr path(const value_type *str, format_type fmt = auto_format) noexcept : _string(str), _format(fmt) {}
+			constexpr path(const value_type *str, format_type fmt = auto_format) : _string(str), _format(fmt) {}
 			/** Initializes a path from a move-constructed string \a str and format \a fmt. */
 			constexpr path(string_type &&str, format_type fmt = auto_format) noexcept : _string(std::forward<string_type>(str)), _format(fmt) {}
 
@@ -1453,7 +1453,14 @@ namespace rod::fs
 		/** Preforms a component-wise lexicographical three-way comparison between \a a and \a b. Equivalent to `a.compare(b) <=> 0`. */
 		[[nodiscard]] inline constexpr auto operator<=>(const path &a, const path &b) noexcept { return a.compare(b) <=> 0; }
 
+		[[maybe_unused]] static path from_wide(std::span<const std::byte> data) { return {std::wstring_view{reinterpret_cast<const wchar_t *>(data.data()), data.size()}}; }
+		[[maybe_unused]] static path from_multibyte(std::span<const std::byte> data) { return {std::string_view{reinterpret_cast<const char *>(data.data()), data.size()}}; }
+
+#ifdef ROD_WIN32
 		ROD_API_PUBLIC path from_binary(std::span<const std::byte> data);
+#else
+		path from_binary(std::span<const std::byte> data) { return from_multibyte(data); }
+#endif
 
 		template<typename P>
 		struct compare_equal
@@ -1529,4 +1536,4 @@ namespace rod::fs
 }
 
 template<>
-struct std::hash<rod::fs::path> { [[nodiscard]] constexpr std::size_t operator()(const rod::fs::path &p) const noexcept { return rod::fs::_path::hash_string<typename rod::fs::path::value_type>(p.native(), p.format()); } };
+struct std::hash<rod::path> { [[nodiscard]] constexpr std::size_t operator()(const rod::path &p) const noexcept { return rod::_path::hash_string<typename rod::path::value_type>(p.native(), p.format()); } };

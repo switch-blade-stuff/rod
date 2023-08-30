@@ -8,7 +8,7 @@
 
 #include "../stop_token.hpp"
 #include "shared_ref.hpp"
-#include "concepts.hpp"
+#include "async_base.hpp"
 
 namespace rod
 {
@@ -22,18 +22,17 @@ namespace rod
 		template<typename Del, typename Snd>
 		class receiver<Del, Snd>::type
 		{
+			using state_t = detached_state<Del, Snd>;
+
 		public:
 			using is_receiver = std::true_type;
-
-		private:
-			using state_t = detached_state<Del, Snd>;
 
 		public:
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 
 			[[noreturn]] friend void tag_invoke(set_error_t, type &&, auto...) noexcept { std::terminate(); }
-			[[noreturn]] friend void tag_invoke(set_error_t, type &&, std::error_code e) noexcept { throw std::system_error(e); }
-			[[noreturn]] friend void tag_invoke(set_error_t, type &&, const std::exception_ptr &e) noexcept { rethrow_exception(e); }
+			template<typename Err> requires requires (const Err &err) { _detail::throw_exception(err); }
+			[[noreturn]] friend void tag_invoke(set_error_t, type &&, const Err &err) noexcept { _detail::throw_exception(err); }
 
 			template<_detail::completion_channel C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...) noexcept { Del{}(r._state); }
@@ -139,6 +138,7 @@ namespace rod
 
 	/** Synchronously starts the passed sender and returns it's state.
 	 * @param snd Sender to start & detach.
+	 * @return State of the started operation.
 	 * @note Destructor of the returned state blocks until the started operation completes.
 	 * @note If the operation completes via the error channel, `std::terminate` is called. */
 	inline constexpr auto detach_local = detach_local_t{};

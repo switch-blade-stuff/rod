@@ -15,14 +15,16 @@ namespace rod
 	{
 	public:
 		/** Initializes IO status code from an error code. */
-		io_status_code(std::error_code err) : _err(err) {}
+		io_status_code(std::error_code err) noexcept : _err(err) {}
 		/** Initializes IO status code from an error code and number of bytes transferred. */
-		io_status_code(std::error_code err, std::size_t bytes) : _err(err), _bytes(bytes) {}
+		io_status_code(std::error_code err, std::size_t bytes) noexcept : _err(err), _bytes(bytes) {}
 
 		/** Initializes IO status code from a value and error category. */
-		io_status_code(auto value, const std::error_category &cat) : _err(value, cat) {}
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		io_status_code(V value, const std::error_category &cat) noexcept : _err(value, cat) {}
 		/** Initializes IO status code from a value, error category, and number of bytes transferred. */
-		io_status_code(auto value, const std::error_category &cat, std::size_t bytes) : _err(value, cat), _bytes(bytes) {}
+		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
+		io_status_code(V value, const std::error_category &cat, std::size_t bytes) noexcept : _err(value, cat), _bytes(bytes) {}
 
 		/** Resets the status code to an empty state. */
 		void clear() noexcept
@@ -73,4 +75,8 @@ namespace rod
 		std::error_code _err;
 		std::size_t _bytes = 0;
 	};
+
+	/** Result type with `io_status_code` error type. */
+	template<typename T>
+	using io_result = result<T, io_status_code>;
 }

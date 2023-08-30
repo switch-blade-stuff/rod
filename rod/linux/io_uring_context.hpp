@@ -458,7 +458,7 @@ namespace rod
 
 				if (complete_base::result >= 0)
 					[[likely]] set_value(std::move(_rcv), static_cast<std::size_t>(complete_base::result));
-				else if (const auto err = static_cast<int>(-complete_base::result); err != ECANCELED)
+				else if (const auto err = int(-complete_base::result); err != ECANCELED)
 					set_error(std::move(_rcv), std::error_code{err, std::system_category()});
 				else
 					set_stopped(std::move(_rcv));

@@ -24,7 +24,7 @@ namespace rod
 		{
 			using return_type = R;
 			using arg_types = type_list_t<Args...>;
-			using native_function = R(*)(void *, Args...);
+			using native_function = R (*)(void *, Args...);
 
 			template<typename T>
 			constexpr static bool is_invocable = std::is_invocable_r_v<R, T, Args...>;
@@ -125,10 +125,35 @@ namespace rod
 	 * can be directly constructed from a member function pointer and object instance,
 	 * and can be used to invoke C-style APIs taking a callback and data pointer.
 	 *
-	 * For ABI compatibility purposes, all delegate types are equivalent to the following (exposition-only) struct:
+	 * For ABI compatibility and interop purposes, delegate types are equivalent to the following struct:
 	 * @code{cpp}
-	 * struct delegate { void *internal[5]; };
+	 * struct delegate
+	 * {
+	 * 	Ret (*invoke_func)(void *data, Args...args);
+	 * 	uintptr_t flags;
+	 *
+	 * 	union
+	 * 	{
+	 * 		struct
+	 * 		{
+	 * 			void *(*copy_func)(const void *data);
+	 * 			void (*delete_func)(void *data);
+	 * 			void *data;
+	 * 		} udata;
+	 * 		struct
+	 * 		{
+	 * 			uintptr_t data[3];
+	 * 		} local;
+	 * 	};
+	 * };
 	 * @endcode
+	 *
+	 * Where `flags` is `0` or a combination the following flags:
+	 * <table>
+	 * <tr><th>Flag<th><th>Value</th><th>Description</th></tr>
+	 * <tr><td>DELEGATE_FLAG_LOCAL<th><th>1</th><th>If set, data pointer is obtained from `local.data`, otherwise `udata.data`</th></tr>
+	 * <tr><td>DELEGATE_FLAG_OWNED<th><th>2</th><th>If set, delegate takes ownership of user data. When `DELEGATE_FLAG_LOCAL` is not set, `udata.delete_func` is used to destroy the data.</th></tr>
+	 * </table
 	 *
 	 * @tparam F Function signature of the delegate. */
 	template<typename F>
@@ -155,14 +180,12 @@ namespace rod
 
 		struct udata_storage
 		{
-			native_function_type invoke_func;
 			void *(*copy_func)(const void *);
 			void (*delete_func)(void *);
 			void *data;
 		};
 		struct local_storage
 		{
-			native_function_type invoke_func;
 			std::uintptr_t data[3];
 		};
 
@@ -182,7 +205,7 @@ namespace rod
 		static void *copy_obj(const void *ptr) { return new T(*reinterpret_cast<T *>(ptr)); }
 
 	public:
-		constexpr delegate() noexcept : _udata(), _flags() {}
+		constexpr delegate() noexcept : _invoke_func(), _flags(), _udata() {}
 
 		delegate(const delegate &other) : delegate()
 		{
@@ -228,9 +251,9 @@ namespace rod
 		delegate(bind_member_t<Mem>, std::in_place_type_t<T>, Args &&...args) : delegate() { init_mem<Mem, std::decay_t<T>>(args_t{}, std::forward<Args>(args)...); }
 
 		/** Initializes the delegate from an invoker callback and a user data pointer. */
-		delegate(native_function_type invoke, void *data) noexcept : _udata{.invoke_func = invoke, .data = data}, _flags() {}
+		delegate(native_function_type invoke, void *data) noexcept : _invoke_func(invoke), _udata{.data = data}, _flags() {}
 		/** Initializes the delegate from an invoker callback, user data pointer, copy and deleter functions. */
-		delegate(native_function_type invoke, void *data, void *(*copy_fn)(const void *), void (*delete_fn)(void *)) noexcept : _udata{invoke, copy_fn, delete_fn, data}, _flags(flags_t::is_owned) {}
+		delegate(native_function_type invoke, void *data, void *(*copy_fn)(const void *), void (*delete_fn)(void *)) noexcept : _invoke_func(invoke), _udata{copy_fn, delete_fn, data}, _flags(flags_t::is_owned) {}
 
 		/** Initializes the delegate from a pointer to member or member function and object instance.
 		 * @param instance Either a pointer to an instance or a value instance to invoke the pointer to member or member function on. */
@@ -246,7 +269,7 @@ namespace rod
 		void reset()
 		{
 			destroy_udata();
-			_local = {};
+			_invoke_func = {};
 			_flags = {};
 		}
 
@@ -254,7 +277,7 @@ namespace rod
 		 * @note Returned pointer might be a const-casted pointer to internal storage. */
 		[[nodiscard]] void *data() const noexcept { return (_flags & flags_t::is_local) ? const_cast<std::uintptr_t *>(_local.data) : _udata.data; }
 		/** Returns pointer to the C-style invoker function of the delegate. */
-		[[nodiscard]] native_function_type native_function() const noexcept { return (_flags & flags_t::is_local) ? _local.invoke_func : _udata.invoke_func; }
+		[[nodiscard]] native_function_type native_function() const noexcept { return _invoke_func; }
 
 		/** Invokes the underlying functor with \a args. */
 		template<typename... Args>
@@ -266,15 +289,16 @@ namespace rod
 		/** Exchanges the contents of this delegate with \a other. */
 		constexpr void swap(delegate &other) noexcept
 		{
-			std::swap(_local, other._local);
+			std::swap(_invoke_func, other._invoke_func);
 			std::swap(_flags, other._flags);
+			std::swap(_local, other._local);
 		}
 
 	private:
 		template<typename T, typename... Args>
 		void init_ptr(type_list_t<Args...>, T *ptr) noexcept requires std::is_invocable_r_v<return_t, T &, Args...>
 		{
-			_udata.invoke_func = invoke_obj<T, Args...>;
+			_invoke_func = invoke_obj<T, Args...>;
 			_udata.data = ptr;
 		}
 		template<typename T, typename... Args, typename... TArgs>
@@ -283,16 +307,17 @@ namespace rod
 			if constexpr(_detail::delegate_value_type<T> && std::invocable<const T &, Args...>)
 			{
 				new(std::launder(_local.data)) T(std::forward<TArgs>(args)...);
-				_local.invoke_func = invoke_obj<const T, Args...>;
+				_invoke_func = invoke_obj<const T, Args...>;
 				_flags = flags_t::is_owned | flags_t::is_local;
 			}
 			else
 			{
+				_invoke_func = invoke_obj<T, Args...>;
+				_flags = flags_t::is_owned;
+
 				_udata.data = new T(std::forward<TArgs>(args)...);
-				_udata.invoke_func = invoke_obj<T, Args...>;
 				_udata.delete_func = delete_obj<T>;
 				_udata.copy_func = copy_obj<T>;
-				_flags = flags_t::is_owned;
 			}
 		}
 		template<auto Mem, typename T, typename... Args, typename... TArgs>
@@ -301,23 +326,25 @@ namespace rod
 			if constexpr(_detail::delegate_value_type<T> && std::invocable<decltype(Mem), const T &, Args...>)
 			{
 				new(std::launder(_local.data)) T(std::forward<TArgs>(args)...);
-				_local.invoke_func = invoke_mem<Mem, const T, Args...>;
+				_invoke_func = invoke_mem<Mem, const T, Args...>;
 				_flags = flags_t::is_owned | flags_t::is_local;
 			}
 			else
 			{
+				_invoke_func = invoke_mem<Mem, T, Args...>;
+				_flags = flags_t::is_owned;
+
 				_udata.data = new T(std::forward<TArgs>(args)...);
-				_udata.invoke_func = invoke_mem<Mem, T, Args...>;
 				_udata.delete_func = delete_obj<T>;
 				_udata.copy_func = copy_obj<T>;
-				_flags = flags_t::is_owned;
 			}
 		}
 
 		void copy_from(const delegate &other)
 		{
-			_local = other._local;
+			_invoke_func = other._invoke_func;
 			_flags = other._flags;
+			_local = other._local;
 
 			/* Copy the userdata object if required. */
 			if (_flags == flags_t::is_owned && _udata.copy_func)
@@ -329,12 +356,14 @@ namespace rod
 				_udata.delete_func(_udata.data);
 		}
 
+		native_function_type _invoke_func;
+		std::uintptr_t _flags;
+
 		union
 		{
 			local_storage _local;
 			udata_storage _udata;
 		};
-		std::uintptr_t _flags;
 	};
 
 	template<typename F>
@@ -359,10 +388,7 @@ namespace rod
 
 	/** Creates a delegate from a member pointer and an object instance. */
 	template<auto Mem, typename T>
-	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(Mem)>>>
-	{
-		return {bind_member<Mem>, std::forward<T>(instance)};
-	}
+	[[nodiscard]] inline auto member_delegate(T &&instance) -> delegate<_detail::strip_qualifiers_t<_detail::deduce_signature_t<decltype(Mem)>>> { return {bind_member<Mem>, std::forward<T>(instance)}; }
 
 	static_assert(alignof(delegate<void()>) == alignof(void *[5]));
 	static_assert(sizeof(delegate<void()>) == sizeof(void *[5]));

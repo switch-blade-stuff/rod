@@ -13,23 +13,6 @@
 #define ROD_POSIX
 #endif
 
-#if (_MSC_VER >= 800) || defined(__MINGW32__) || defined(_STDCALL_SUPPORTED)
-#define ROD_NTAPI __stdcall
-#else
-#define _cdecl
-#define __cdecl
-#define ROD_NTAPI
-#endif
-
-#ifdef _MSC_VER
-#include <sal.h>
-#else
-#define _In_
-#define _In_opt_
-#define _Out_
-#define _Out_writes_to_(A, B)
-#endif
-
 #if defined(ROD_WIN32)
 #define ROD_HIDDEN
 #define ROD_VISIBLE
@@ -90,11 +73,18 @@
 #undef ROD_HAS_EPOLL
 #endif
 
-#if !defined(ROD_NO_LIBURING) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
+#if !defined(ROD_NO_LIBURING) && __has_include(<liburing.h>) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 #ifndef ROD_HAS_LIBURING
 #define ROD_HAS_LIBURING
 #endif
 #elif defined(ROD_HAS_LIBURING)
 #undef ROD_HAS_LIBURING
 #endif
+#endif
+
+#if defined(__cpp_exceptions) || defined(_HAS_EXCEPTIONS)
+#define ROD_HAS_EXCEPTIONS
+#define ROD_THROW(exception) throw exception
+#else
+#define ROD_THROW(exception) (((void) (exception)), std::terminate())
 #endif
