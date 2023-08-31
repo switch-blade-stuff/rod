@@ -69,7 +69,7 @@ namespace rod
 
 		/* Default implementations for basic_handle. */
 		ROD_API_PUBLIC result<path> do_to_object_path(const basic_handle &) noexcept;
-		ROD_API_PUBLIC result<path> do_to_native_path(const basic_handle &, native_path_format) noexcept;
+		ROD_API_PUBLIC result<path> do_to_native_path(const basic_handle &, native_path_format, dev_t, ino_t) noexcept;
 
 		template<typename Res>
 		concept path_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<path>, result<path>>;
@@ -79,14 +79,28 @@ namespace rod
 			template<typename Hnd> requires tag_invocable<to_object_path_t, const Hnd &>
 			[[nodiscard]] path_result auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
 			template<typename Hnd> requires(!tag_invocable<to_object_path_t, const Hnd &>)
-			[[nodiscard]] path_result auto operator()(const Hnd &hnd) const noexcept { return do_to_object_path(hnd); }
+			[[nodiscard]] result<path> operator()(const Hnd &hnd) const noexcept { return do_to_object_path(hnd); }
 		};
 		struct to_native_path_t
 		{
 			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format>
-			[[nodiscard]] path_result auto operator()(const Hnd &hnd, native_path_format fmt) const noexcept { return tag_invoke(*this, hnd, fmt); }
+			[[nodiscard]] path_result auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept { return tag_invoke(*this, hnd, fmt); }
 			template<typename Hnd> requires(!tag_invocable<to_native_path_t, const Hnd &, native_path_format>)
-			[[nodiscard]] path_result auto operator()(const Hnd &hnd, native_path_format fmt) const noexcept { return do_to_native_path(hnd, fmt); }
+			[[nodiscard]] result<path> operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept
+			{
+				dev_t dev = 0;
+				ino_t ino = 0;
+
+				if (fmt == native_path_format::generic)
+				{
+					stat st;
+					if (auto res = get_stat(st, hnd, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
+						return res.error();
+					dev = st.dev;
+					ino = st.ino;
+				}
+				return do_to_native_path(hnd, fmt, dev, ino);
+			}
 		};
 
 		/** Basic system handle type. */

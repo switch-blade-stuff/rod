@@ -9,7 +9,7 @@
 
 #include "utility.hpp"
 
-/* TODO:
+/* FIXME:
  * Once P1028R5 (SG14 status_code and standard error object) is finalized and made part of the
  * language (expected to be somewhere around C++26), transition to using std::status_code instead
  * of std::error_code and implement an std::error_code - based shim for older language versions. */

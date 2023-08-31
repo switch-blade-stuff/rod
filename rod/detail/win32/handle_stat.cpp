@@ -291,7 +291,8 @@ namespace rod::_handle
 		else
 			return res;
 
-		/* Try to get unique device & file IDs from the filesystem. */
+		/* Try to get device & file IDs from the filesystem with better uniqueness than FileStatInformation or FileAllInformation.
+		 * This is only possible if FileIdInformation or FileObjectIdInformation is available. */
 		if (bool(q & (stat::query::dev | stat::query::ino)))
 		{
 			auto id_info = reinterpret_cast<file_id_information *>(buff->get());

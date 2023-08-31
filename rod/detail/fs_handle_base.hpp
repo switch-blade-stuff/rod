@@ -11,14 +11,6 @@ namespace rod
 {
 	namespace _handle
 	{
-		[[nodiscard]] constexpr file_perm operator~(file_perm h) noexcept { return file_perm(~std::uint16_t(h)); }
-		[[nodiscard]] constexpr file_perm operator&(file_perm a, file_perm b) noexcept { return file_perm(std::uint16_t(a) & std::uint16_t(b)); }
-		[[nodiscard]] constexpr file_perm operator|(file_perm a, file_perm b) noexcept { return file_perm(std::uint16_t(a) | std::uint16_t(b)); }
-		[[nodiscard]] constexpr file_perm operator^(file_perm a, file_perm b) noexcept { return file_perm(std::uint16_t(a) ^ std::uint16_t(b)); }
-		[[nodiscard]] constexpr file_perm &operator&=(file_perm &a, file_perm b) noexcept { return a = a & b; }
-		[[nodiscard]] constexpr file_perm &operator|=(file_perm &a, file_perm b) noexcept { return a = a | b; }
-		[[nodiscard]] constexpr file_perm &operator^=(file_perm &a, file_perm b) noexcept { return a = a ^ b; }
-
 		/** Flags used to control behavior of filesystem handles. */
 		enum class file_flags : std::uint16_t
 		{
@@ -55,9 +47,9 @@ namespace rod
 		[[nodiscard]] constexpr file_flags operator&(file_flags a, file_flags b) noexcept { return file_flags(std::uint16_t(a) & std::uint16_t(b)); }
 		[[nodiscard]] constexpr file_flags operator|(file_flags a, file_flags b) noexcept { return file_flags(std::uint16_t(a) | std::uint16_t(b)); }
 		[[nodiscard]] constexpr file_flags operator^(file_flags a, file_flags b) noexcept { return file_flags(std::uint16_t(a) ^ std::uint16_t(b)); }
-		[[nodiscard]] constexpr file_flags &operator&=(file_flags &a, file_flags b) noexcept { return a = a & b; }
-		[[nodiscard]] constexpr file_flags &operator|=(file_flags &a, file_flags b) noexcept { return a = a | b; }
-		[[nodiscard]] constexpr file_flags &operator^=(file_flags &a, file_flags b) noexcept { return a = a ^ b; }
+		constexpr file_flags &operator&=(file_flags &a, file_flags b) noexcept { return a = a & b; }
+		constexpr file_flags &operator|=(file_flags &a, file_flags b) noexcept { return a = a | b; }
+		constexpr file_flags &operator^=(file_flags &a, file_flags b) noexcept { return a = a ^ b; }
 
 		/** Flags used to control kernel caching behavior of filesystem handles. */
 		enum class file_caching : std::uint8_t
@@ -87,9 +79,9 @@ namespace rod
 		[[nodiscard]] constexpr file_caching operator&(file_caching a, file_caching b) noexcept { return file_caching(std::uint8_t(a) & std::uint8_t(b)); }
 		[[nodiscard]] constexpr file_caching operator|(file_caching a, file_caching b) noexcept { return file_caching(std::uint8_t(a) | std::uint8_t(b)); }
 		[[nodiscard]] constexpr file_caching operator^(file_caching a, file_caching b) noexcept { return file_caching(std::uint8_t(a) ^ std::uint8_t(b)); }
-		[[nodiscard]] constexpr file_caching &operator&=(file_caching &a, file_caching b) noexcept { return a = a & b; }
-		[[nodiscard]] constexpr file_caching &operator|=(file_caching &a, file_caching b) noexcept { return a = a | b; }
-		[[nodiscard]] constexpr file_caching &operator^=(file_caching &a, file_caching b) noexcept { return a = a ^ b; }
+		constexpr file_caching &operator&=(file_caching &a, file_caching b) noexcept { return a = a & b; }
+		constexpr file_caching &operator|=(file_caching &a, file_caching b) noexcept { return a = a | b; }
+		constexpr file_caching &operator^=(file_caching &a, file_caching b) noexcept { return a = a ^ b; }
 
 		template<typename Res>
 		concept link_result = is_result_with_value_v<Res, void>;

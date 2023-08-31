@@ -93,9 +93,9 @@ namespace rod
 		[[nodiscard]] constexpr file_perm operator&(file_perm a, file_perm b) noexcept { return file_perm(std::int16_t(a) & std::int16_t(b)); }
 		[[nodiscard]] constexpr file_perm operator|(file_perm a, file_perm b) noexcept { return file_perm(std::int16_t(a) | std::int16_t(b)); }
 		[[nodiscard]] constexpr file_perm operator^(file_perm a, file_perm b) noexcept { return file_perm(std::int16_t(a) ^ std::int16_t(b)); }
-		[[nodiscard]] constexpr file_perm &operator&=(file_perm &a, file_perm b) noexcept { return a = a & b; }
-		[[nodiscard]] constexpr file_perm &operator|=(file_perm &a, file_perm b) noexcept { return a = a | b; }
-		[[nodiscard]] constexpr file_perm &operator^=(file_perm &a, file_perm b) noexcept { return a = a ^ b; }
+		constexpr file_perm &operator&=(file_perm &a, file_perm b) noexcept { return a = a & b; }
+		constexpr file_perm &operator|=(file_perm &a, file_perm b) noexcept { return a = a | b; }
+		constexpr file_perm &operator^=(file_perm &a, file_perm b) noexcept { return a = a ^ b; }
 
 		/** Structure containing file stats of a filesystem object, derived from POSIX `struct stat`. */
 		struct stat
@@ -208,9 +208,9 @@ namespace rod
 		[[nodiscard]] constexpr stat::query operator&(stat::query a, stat::query b) noexcept { return stat::query(int(a) & int(b)); }
 		[[nodiscard]] constexpr stat::query operator|(stat::query a, stat::query b) noexcept { return stat::query(int(a) | int(b)); }
 		[[nodiscard]] constexpr stat::query operator^(stat::query a, stat::query b) noexcept { return stat::query(int(a) ^ int(b)); }
-		[[nodiscard]] constexpr stat::query &operator&=(stat::query &a, stat::query b) noexcept { return a = a & b; }
-		[[nodiscard]] constexpr stat::query &operator|=(stat::query &a, stat::query b) noexcept { return a = a | b; }
-		[[nodiscard]] constexpr stat::query &operator^=(stat::query &a, stat::query b) noexcept { return a = a ^ b; }
+		constexpr stat::query &operator&=(stat::query &a, stat::query b) noexcept { return a = a & b; }
+		constexpr stat::query &operator|=(stat::query &a, stat::query b) noexcept { return a = a | b; }
+		constexpr stat::query &operator^=(stat::query &a, stat::query b) noexcept { return a = a ^ b; }
 
 		/* Default implementation for path types. */
 		ROD_API_PUBLIC fs_result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept;

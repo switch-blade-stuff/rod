@@ -44,9 +44,9 @@ namespace rod
 	[[nodiscard]] constexpr discovery_mode operator&(discovery_mode a, discovery_mode b) noexcept { return discovery_mode(int(a) & int(b)); }
 	[[nodiscard]] constexpr discovery_mode operator|(discovery_mode a, discovery_mode b) noexcept { return discovery_mode(int(a) | int(b)); }
 	[[nodiscard]] constexpr discovery_mode operator^(discovery_mode a, discovery_mode b) noexcept { return discovery_mode(int(a) ^ int(b)); }
-	[[nodiscard]] constexpr discovery_mode &operator&=(discovery_mode &a, discovery_mode b) noexcept { return a = a & b; }
-	[[nodiscard]] constexpr discovery_mode &operator|=(discovery_mode &a, discovery_mode b) noexcept { return a = a | b; }
-	[[nodiscard]] constexpr discovery_mode &operator^=(discovery_mode &a, discovery_mode b) noexcept { return a = a ^ b; }
+	constexpr discovery_mode &operator&=(discovery_mode &a, discovery_mode b) noexcept { return a = a & b; }
+	constexpr discovery_mode &operator|=(discovery_mode &a, discovery_mode b) noexcept { return a = a | b; }
+	constexpr discovery_mode &operator^=(discovery_mode &a, discovery_mode b) noexcept { return a = a ^ b; }
 
 	/** Structure representing metadata of a discovered path. */
 	struct discovered_path
