@@ -13,15 +13,9 @@ namespace rod::_handle
 
 	constexpr auto buff_size = std::size_t(65536);
 
-	inline static result<std::unique_ptr<wchar_t[]>> make_buffer(std::size_t size) noexcept
-	{
-		try { return std::unique_ptr<wchar_t[]>(new(std::align_val_t(8)) wchar_t[size]); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-
 	inline static result<> do_link(const ntapi &ntapi, basic_handle &hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		auto buff = make_buffer(sizeof(file_link_information) + buff_size);
+		auto buff = make_info_buffer(sizeof(file_link_information) + buff_size);
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
@@ -51,7 +45,7 @@ namespace rod::_handle
 	}
 	inline static result<> do_relink(const ntapi &ntapi, basic_handle &hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		auto buff = make_buffer(sizeof(file_rename_information) + buff_size);
+		auto buff = make_info_buffer(sizeof(file_rename_information) + buff_size);
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 

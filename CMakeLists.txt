@@ -132,6 +132,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         # Filesystem base
         rod/detail/path_base.hpp
         rod/detail/path_view.hpp
+        rod/detail/path_util.hpp
         rod/detail/path_handle.hpp
         rod/detail/path_discovery.hpp
         # rod/detail/directory_handle.hpp
@@ -163,9 +164,9 @@ target_sources(${PROJECT_NAME} PRIVATE
         rod/result.cpp)
 
 # Posix implementation
-if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
-
-endif ()
+# if (POSIX)
+#
+# endif ()
 
 # Linux implementation
 if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
@@ -180,6 +181,7 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/ntapi.hpp
             rod/detail/win32/ntapi.cpp
             rod/detail/win32/path_base.cpp
+            rod/detail/win32/path_util.cpp
             rod/detail/win32/file_clock.cpp
             rod/detail/win32/handle_base.cpp
             rod/detail/win32/handle_stat.cpp

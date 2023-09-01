@@ -34,8 +34,6 @@ namespace rod
 			symlink,
 			/** Handle or path references a regular directory. */
 			directory,
-			/** Handle or path references an NTFS junction/mount point. */
-			mount_point,
 			/** Handle or path references a block device. */
 			block,
 			/** Handle or path references a character device. */
@@ -252,7 +250,7 @@ namespace rod
 	using _handle::set_stat_t;
 
 	/** Customization point object used to query selected stats for the specified filesystem object.
-	 * @note Some of the queried fields may not be supported by the platform or the filesystems, which will be indicated by a clear bit in the returned mask.
+	 * @note Some of the queried fields may not be supported by the platform or the filesystems, which will be indicated by a cleared bit in the returned mask.
 	 *
 	 * @overload Queries stats of a handle.
 	 * @param hnd Handle to query stats from.

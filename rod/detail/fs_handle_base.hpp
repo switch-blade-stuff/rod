@@ -306,11 +306,11 @@ namespace rod
 				return res;
 			}
 
-		protected:
+		private:
 			mutable dev_t _dev = 0;
 			mutable ino_t _ino = 0;
 
-			/* TODO: Consider making flags a generic uint64 member of basic_handle instead and encode handle usage and internal flags as well. */
+			/* FIXME: Consider making flags a generic uint64 member of basic_handle instead and encode handle usage and internal flags as well. */
 			file_flags _flags = file_flags::none;
 		};
 	}
@@ -321,6 +321,8 @@ namespace rod
 	{
 		typename Hnd::extent_type;
 		typename Hnd::size_type;
+
+		{ hnd.flags() } -> std::convertible_to<_handle::file_flags>;
 
 		_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, const file_timeout &>;
 		_detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, const file_timeout &>;
@@ -348,12 +350,16 @@ namespace rod
 	using _handle::link_t;
 	using _handle::relink_t;
 	using _handle::unlink_t;
+
+	/* TODO: Document usage */
+	inline constexpr auto link = link_t{};
+	/* TODO: Document usage */
+	inline constexpr auto relink = relink_t{};
+	/* TODO: Document usage */
+	inline constexpr auto unlink = unlink_t{};
+
 	using _handle::reopen_t;
 
-	/** Returns current path of the object referenced by the handle.
-	 * @note Object referenced by the handle may not have a valid path, in which case an empty path is returned instead.
-	 * @note Returned path may not be a valid filesystem path and may instead represent some internal object ID. */
-
-	/** Returns current path of the object referenced by the handle using native path format \a fmt.
-	 * @note Certain path formats (such as volume & object ID) may not be supported by either the underlying filesystem or the OS, in which case `std::errc::not_supported` is returned. */
+	/* TODO: Document usage */
+	inline constexpr auto reopen = reopen_t{};
 }

@@ -3,9 +3,7 @@
  */
 
 #include "../path_discovery.hpp"
-
 #include "ntapi.hpp"
-#include <ShlObj.h>
 
 namespace rod::_detail
 {
@@ -28,15 +26,19 @@ namespace rod::_detail
 
 	result<> find_temp_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
 	{
+		/* TODO: Implement */
 	}
 	result<> find_data_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
 	{
+		/* TODO: Implement */
 	}
 	result<> find_state_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
 	{
+		/* TODO: Implement */
 	}
 	result<> find_config_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
 	{
+		/* TODO: Implement */
 	}
 
 	result<path> find_working_dir() noexcept
@@ -78,10 +80,13 @@ namespace rod::_detail
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
+	result<path> find_runtime_dir() noexcept
+	{
+		return with_shell_path(FOLDERID_LocalAppData, [](auto *p) { return path(p); });
+	}
 
-	/* TODO: Implement these */
-	result<path> find_temp_file_dir() noexcept {}
-	result<path> find_temp_pipe_dir() noexcept {}
+	result<path> find_temp_file_dir() noexcept { /* TODO: Implement */ }
+	result<path> find_temp_pipe_dir() noexcept { /* TODO: Implement */ }
 
 	result<path> find_user_home_dir() noexcept
 	{
@@ -101,9 +106,6 @@ namespace rod::_detail
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
-
-	/* All of these use %LocalAppData% */
-	result<path> find_runtime_dir() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto *p) { return path(p); }); }
 	result<path> find_data_home_dir() noexcept { return find_runtime_dir(); }
 	result<path> find_cache_home_dir() noexcept { return find_runtime_dir(); }
 	result<path> find_state_home_dir() noexcept { return find_runtime_dir(); }

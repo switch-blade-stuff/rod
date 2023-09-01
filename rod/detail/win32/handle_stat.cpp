@@ -18,19 +18,13 @@ namespace rod::_handle
 	constexpr auto standard_info_mask = stat::query::size | stat::query::alloc | stat::query::blocks | stat::query::nlink;
 	constexpr auto internal_info_mask = stat::query::ino;
 
-	constexpr auto buff_size = std::size_t(32769);
-
-	inline static result<std::unique_ptr<wchar_t[]>> make_buffer(std::size_t size) noexcept
-	{
-		try { return std::unique_ptr<wchar_t[]>(new(std::align_val_t(8)) wchar_t[size]); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
+	constexpr std::size_t buff_size = 32769;
 
 	inline static result<file_type> query_file_type(const ntapi &ntapi, const basic_handle &hnd, ULONG file_attr, ULONG reparse_tag) noexcept
 	{
 		if ((file_attr & FILE_ATTRIBUTE_REPARSE_POINT) && !reparse_tag)
 		{
-			auto buff = make_buffer(sizeof(reparse_data_buffer) + buff_size);
+			auto buff = make_info_buffer(sizeof(reparse_data_buffer) + buff_size);
 			if (buff.has_error()) [[unlikely]]
 				return buff.error();
 
@@ -267,7 +261,7 @@ namespace rod::_handle
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto buff = make_buffer(buff_size);
+		auto buff = make_info_buffer(buff_size);
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
@@ -322,7 +316,6 @@ namespace rod::_handle
 					st.ino = ino;
 			}
 		}
-		/* If FileIdInformation failed, try to get device number from volume ID. */
 		if (bool(q & stat::query::dev))
 		{
 			if (const auto len = ::GetFinalPathNameByHandleW(hnd.native_handle(), buff->get(), buff_size, VOLUME_NAME_NT); !len || len >= buff_size) [[unlikely]]
@@ -340,7 +333,6 @@ namespace rod::_handle
 				done |= stat::query::dev;
 			}
 		}
-		/* If FileIdInformation failed, try to use Win8 FileObjectIdInformation. */
 		if (bool(q & stat::query::ino))
 		{
 			auto objid_info = reinterpret_cast<file_objectid_information *>(buff->get());
@@ -466,6 +458,8 @@ namespace rod::_handle
 		/* If we still need more data then do the slow thing and open the handle. */
 		const auto share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
 		const auto flags = FILE_FLAG_BACKUP_SEMANTICS | (nofollow ? FILE_FLAG_OPEN_REPARSE_POINT : 0);
+
+		/* FIXME: replace with a NtCreateFile with proper support for NT paths. */
 		if (const auto handle = basic_handle(::CreateFileW(rpath.c_str(), FILE_READ_ATTRIBUTES, share, nullptr, OPEN_EXISTING, flags, nullptr)); !handle.is_open()) [[unlikely]]
 			return dos_error_code(::GetLastError());
 		else if (auto res = do_get_stat(st, handle, q); res.has_value()) [[likely]]

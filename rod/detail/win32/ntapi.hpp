@@ -8,7 +8,8 @@
 #define NOMINMAX
 #include <combaseapi.h>
 #include <winioctl.h>
-#include <Windows.h>
+#include <windows.h>
+#include <ShlObj.h>
 
 #ifdef _MSC_VER
 #include <sal.h>
@@ -42,13 +43,8 @@ namespace rod::_win32
 		constexpr auto attr_regular = FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | FILE_ATTRIBUTE_SPARSE_FILE | FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED | FILE_ATTRIBUTE_TEMPORARY |
 		                              FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_SYSTEM;
 
-		if (file_attr & FILE_ATTRIBUTE_REPARSE_POINT)
-		{
-			if (reparse_tag == IO_REPARSE_TAG_SYMLINK)
-				return file_type::symlink;
-			if (reparse_tag == IO_REPARSE_TAG_MOUNT_POINT)
-				return file_type::mount_point;
-		}
+		if (file_attr & FILE_ATTRIBUTE_REPARSE_POINT && (reparse_tag == IO_REPARSE_TAG_MOUNT_POINT || reparse_tag == IO_REPARSE_TAG_SYMLINK))
+			return file_type::symlink;
 		if (file_attr & FILE_ATTRIBUTE_DIRECTORY)
 			return file_type::directory;
 		else if (file_attr & attr_regular)
@@ -416,6 +412,12 @@ namespace rod::_win32
 		file_alignment_information alignment_info;
 		file_name_information name_info;
 	};
+
+	inline static result<std::unique_ptr<wchar_t[]>> make_info_buffer(std::size_t size) noexcept
+	{
+		try { return std::unique_ptr<wchar_t[]>(new(std::align_val_t(8)) wchar_t[size]); }
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+	}
 
 	using NtSetInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _In_ void *info, _In_ ULONG len, _In_ file_info_type type);
 	using NtQueryInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);

@@ -306,7 +306,7 @@ namespace rod
 		{
 			if constexpr(_detail::delegate_value_type<T> && std::invocable<const T &, Args...>)
 			{
-				new(std::launder(_local.data)) T(std::forward<TArgs>(args)...);
+				new (_local.data) T(std::forward<TArgs>(args)...);
 				_invoke_func = invoke_obj<const T, Args...>;
 				_flags = flags_t::is_owned | flags_t::is_local;
 			}
@@ -325,7 +325,7 @@ namespace rod
 		{
 			if constexpr(_detail::delegate_value_type<T> && std::invocable<decltype(Mem), const T &, Args...>)
 			{
-				new(std::launder(_local.data)) T(std::forward<TArgs>(args)...);
+				new (_local.data) T(std::forward<TArgs>(args)...);
 				_invoke_func = invoke_mem<Mem, const T, Args...>;
 				_flags = flags_t::is_owned | flags_t::is_local;
 			}

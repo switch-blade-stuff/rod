@@ -35,7 +35,7 @@ namespace rod::_handle
 			if (const auto len = ::GetFinalPathNameByHandleW(hnd.native_handle(), result.data() + 3, result.size() - 2, VOLUME_NAME_NT); !len) [[unlikely]]
 				return _win32::dos_error_code(::GetLastError());
 			else
-				result.resize(len / sizeof(wchar_t) + 3);
+				result.resize(len + 3);
 
 			/* Detect unlinked files. */
 			if (result.find(L"\\$Extend\\$Deleted\\") == std::wstring::npos) [[likely]]
@@ -73,7 +73,7 @@ namespace rod::_handle
 			if (const auto len = ::GetFinalPathNameByHandleW(hnd.native_handle(), result.data(), result.size(), flags); !len) [[unlikely]]
 				return _win32::dos_error_code(::GetLastError());
 			else
-				result.resize(len / sizeof(wchar_t) + 3);
+				result.resize(len + 3);
 
 			if (fmt == native_path_format::volume_id)
 				return std::move(result);

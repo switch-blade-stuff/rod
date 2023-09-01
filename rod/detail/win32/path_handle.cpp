@@ -3,10 +3,6 @@
  */
 
 #include "../path_handle.hpp"
-
-#include <cstdlib>
-
-#include "../path_discovery.hpp"
 #include "ntapi.hpp"
 
 namespace rod
@@ -16,7 +12,7 @@ namespace rod
 	result<path_handle> path_handle::open(path_view path) noexcept { return open({}, path); }
 	result<path_handle> path_handle::open(const path_handle &base, path_view path) noexcept
 	{
-		constexpr auto flags = 0x20 /* FILE_SYNCHRONOUS_IO_NONALERT */ | 1 /* FILE_DIRECTORY_FILE */;
+		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 		constexpr auto access = SYNCHRONIZE;
 

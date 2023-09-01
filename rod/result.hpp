@@ -175,10 +175,10 @@ namespace rod
 				_state = is_value;
 			}
 			/** Initializes a value result using \a val. */
-			template<typename U = Val, typename = std::enable_if<!std::is_void_v<U> && !std::is_void_v<Val> && !std::same_as<Val, Err>>>
+			template<typename U = Val, typename = std::enable_if<!decays_to_same<U, Err> && !std::is_void_v<Val>>>
 			constexpr result(U &&val) noexcept(std::is_nothrow_constructible_v<Val, U>) requires std::constructible_from<Val, U> : result(in_place_value_t{}, std::forward<U>(val)) {}
 			/** Initializes an error result using \a err. */
-			template<typename U = Err, typename = std::enable_if<!std::is_void_v<U> && !std::same_as<Val, Err>>>
+			template<typename U = Err, typename = std::enable_if<!decays_to_same<U, Val>>>
 			constexpr result(U &&err) noexcept(std::is_nothrow_constructible_v<Err, U>) requires std::constructible_from<Err, U> : result(in_place_error_t{}, std::forward<U>(err)) {}
 
 			/** Direct-initializes result's value from passed arguments.
