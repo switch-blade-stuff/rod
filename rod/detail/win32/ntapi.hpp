@@ -84,6 +84,7 @@ namespace rod::_win32
 	};
 
 	using RtlNtStatusToDosError_t = ULONG (ROD_NTAPI *)(_In_ ntstatus status);
+	using RtlIsDosDeviceName_Ustr_t = ULONG (ROD_NTAPI *)(_In_ const unicode_string *ustr);
 	using RtlDosPathNameToNtPathName_U_t = bool (ROD_NTAPI *)(_In_ const wchar_t *dos_name, _Out_ unicode_string *nt_name, _Out_ const wchar_t **part, _Out_ rtl_relative_name_u *relative);
 
 	struct io_status_block
@@ -461,6 +462,7 @@ namespace rod::_win32
 		void *bcrypt;
 
 		RtlNtStatusToDosError_t RtlNtStatusToDosError;
+		RtlIsDosDeviceName_Ustr_t RtlIsDosDeviceName_Ustr;
 		RtlDosPathNameToNtPathName_U_t RtlDosPathNameToNtPathName_U;
 
 		NtReadFile_t NtReadFile;

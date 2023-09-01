@@ -409,7 +409,11 @@ namespace rod::_handle
 
 		/* If possible, try to get all requested data using `NtQueryAttributesFile` to avoid opening a handle altogether. */
 		if (auto status = ntapi->NtQueryAttributesFile(&obj_attrib, &basic_info); is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
+		{
+			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
+			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath))
+				return status_error_code(status);
+		}
 
 		/* Data is only useful if the target is not a symlink or we don't want to follow symlinks. */
 		is_dir = basic_info.attributes & FILE_ATTRIBUTE_DIRECTORY;

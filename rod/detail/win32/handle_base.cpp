@@ -145,7 +145,7 @@ namespace rod::_handle
 				if (remove_prefix)
 				{
 					for (auto name : reserved_names)
-						if (buff.find(name) != buff.npos || buff.ends_with(name.substr(0, name.size() - 1)))
+						if (buff.find(name) != std::wstring_view::npos || buff.ends_with(name.substr(0, name.size() - 1)))
 						{
 							remove_prefix = false;
 							break;

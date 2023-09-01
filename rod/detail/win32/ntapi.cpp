@@ -45,6 +45,10 @@ namespace rod::_win32
 				result.RtlNtStatusToDosError = *sym;
 			else
 				return sym.error();
+			if (auto sym = load_sym<RtlIsDosDeviceName_Ustr_t>(result.ntdll, "RtlIsDosDeviceName_Ustr"); sym.has_value()) [[likely]]
+				result.RtlIsDosDeviceName_Ustr = *sym;
+			else
+				return sym.error();
 			if (auto sym = load_sym<RtlDosPathNameToNtPathName_U_t>(result.ntdll, "RtlDosPathNameToNtPathName_U"); sym.has_value()) [[likely]]
 				result.RtlDosPathNameToNtPathName_U = *sym;
 			else
