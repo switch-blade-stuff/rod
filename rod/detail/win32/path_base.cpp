@@ -3,11 +3,7 @@
  */
 
 #include "../path_base.hpp"
-
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <combaseapi.h>
-#include <windows.h>
+#include "ntapi.hpp"
 
 namespace rod::_path
 {
@@ -68,11 +64,8 @@ namespace rod::_path
 	{
 		if (data.size() == sizeof(GUID))
 		{
-			GUID guid;
-			std::memcpy(&guid, data.data(), sizeof(GUID));
-
-			wchar_t buff[40];
-			const auto n = ::StringFromGUID2(guid, buff, 40);
+			wchar_t buff[39];
+			const auto n = ::StringFromGUID2(*reinterpret_cast<const GUID *>(data.data()), buff, 39);
 			return path(std::wstring_view(buff, n - 1), path::binary_format);
 		}
 

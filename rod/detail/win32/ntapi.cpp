@@ -5,7 +5,6 @@
 #include "ntapi.hpp"
 
 #include <vector>
-#include <memory>
 
 namespace rod::_win32
 {
@@ -135,10 +134,29 @@ namespace rod::_win32
 			return iosb->status;
 		}
 	}
-	ntstatus ntapi::wait_io(void *handle, io_status_block *iosb, const LARGE_INTEGER *timeout) const noexcept
+	ntstatus ntapi::wait_io(void *handle, io_status_block *iosb, const file_timeout &to) const noexcept
 	{
+		auto time_end = std::chrono::steady_clock::time_point();
+		auto timeout_ft = FILETIME();
+		auto timeout = &timeout_ft;
+
+		if (to.is_relative && to.relative != file_clock::duration::max())
+			time_end = std::chrono::steady_clock::now() + to.relative;
+		else if (!to.is_relative)
+			timeout_ft = tp_to_filetime(to.absolute);
+		else
+			timeout = nullptr;
+
 		while (iosb->status == 0x00000103 /* STATUS_PENDING */)
 		{
+			if (to.is_relative && timeout)
+			{
+				 if (auto time_left = time_end - std::chrono::steady_clock::now(); time_left.count() >= 0)
+					 timeout_ft = tp_to_filetime(time_left.count() / -100);
+				 else
+					 timeout_ft = FILETIME();
+			}
+
 			auto status = NtWaitForSingleObject(handle, true, timeout);
 			if (status == 0 /* STATUS_SUCCESS */)
 				iosb->status = 0;
@@ -151,6 +169,28 @@ namespace rod::_win32
 			}
 		}
 		return iosb->status;
+	}
+
+	result<heapalloc_ptr<wchar_t>> ntapi::path_to_nt_string(unicode_string &upath, path_view path, bool relative) const noexcept
+	{
+		auto rpath = path.render_null_terminated();
+		if (const auto sv = std::wstring_view(rpath.data(), rpath.size()); !relative && sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\"))
+		{
+			upath.max = (upath.size = static_cast<USHORT>(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
+			upath.buffer = const_cast<wchar_t *>(rpath.data());
+
+			if (sv.starts_with(L"\\!!\\"))
+			{
+				upath.size -= 3 * sizeof(wchar_t);
+				upath.max -= 3 * sizeof(wchar_t);
+				upath.buffer += 3;
+			}
+			return {};
+		}
+		if (!RtlDosPathNameToNtPathName_U(rpath.data(), &upath, nullptr, nullptr)) [[unlikely]]
+			return dos_error_code(ERROR_PATH_NOT_FOUND);
+		else
+			return heapalloc_ptr<wchar_t>(upath.buffer);
 	}
 
 	struct status_entry

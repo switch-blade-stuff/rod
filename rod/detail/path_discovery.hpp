@@ -186,7 +186,7 @@ namespace rod
 	/** Returns path of the current directory as if via `getcwd`. */
 	[[nodiscard]] ROD_API_PUBLIC result<path> current_path() noexcept;
 	/** Changes path of the current directory to \a path as if via `chdir`. */
-	[[nodiscard]] ROD_API_PUBLIC fs_result<> current_path(path_view path) noexcept;
+	[[nodiscard]] ROD_API_PUBLIC result<> current_path(path_view path) noexcept;
 
 	/** Returns a span of system-specific temporary directories, sorted by discovery source.
 	 * @param refresh If set to `true`, system temporary directory cache is refreshed.

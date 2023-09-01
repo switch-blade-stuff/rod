@@ -30,46 +30,46 @@ namespace rod
 			template<typename T>
 			static decltype(auto) get_base(T &&value) noexcept
 			{
-				if constexpr (!decays_to<Base, default_base>)
+				if constexpr (!decays_to_same<Base, default_base>)
 					return base_cast<type>(std::forward<T>(value));
 				else
 					return std::forward<T>(value);
 			}
 
-			static constexpr int get_env = 1;
+			static constexpr int do_get_env = 1;
 
 			template<typename T>
-			static constexpr bool has_get_env() noexcept { return !requires { requires bool(int(std::decay_t<T>::get_env)); }; }
+			static constexpr bool has_get_env() noexcept { return !requires { requires bool(int(std::decay_t<T>::do_get_env)); }; }
 			template<typename T>
-			constexpr static auto dispatch_get_env(T &&r) noexcept(noexcept(std::forward<T>(r).get_env())) -> decltype(std::forward<T>(r).get_env()) { return std::forward<T>(r).get_env(); }
+			constexpr static auto dispatch_get_env(T &&r) noexcept(noexcept(std::forward<T>(r).get_env())) -> decltype(std::forward<T>(r).do_get_env()) { return std::forward<T>(r).do_get_env(); }
 
-			static constexpr int set_value = 1;
-			static constexpr int set_error = 1;
-			static constexpr int set_stopped = 1;
+			static constexpr int do_set_value = 1;
+			static constexpr int do_set_error = 1;
+			static constexpr int do_set_stopped = 1;
 
 			template<typename T>
-			static constexpr bool has_set_value() noexcept { return !requires { requires bool(int(std::decay_t<T>::set_value)); }; }
+			static constexpr bool has_set_value() noexcept { return !requires { requires bool(int(std::decay_t<T>::do_set_value)); }; }
 			template<typename T>
-			static constexpr bool has_set_error() noexcept { return !requires { requires bool(int(std::decay_t<T>::set_error)); }; }
+			static constexpr bool has_set_error() noexcept { return !requires { requires bool(int(std::decay_t<T>::do_set_error)); }; }
 			template<typename T>
-			static constexpr bool has_set_stopped() noexcept { return !requires { requires bool(int(std::decay_t<T>::set_stopped)); }; }
+			static constexpr bool has_set_stopped() noexcept { return !requires { requires bool(int(std::decay_t<T>::do_set_stopped)); }; }
 
 			template<typename... Args>
             constexpr static decltype(auto) dispatch_set_value(Child &&r, Args &&...args) noexcept
 			{
-              static_assert(noexcept(std::forward<Child>(r).set_value(std::forward<Args>(args)...)));
-              return std::forward<Child>(r).set_value(std::forward<Args>(args)...);
+				static_assert(noexcept(std::forward<Child>(r).do_set_value(std::forward<Args>(args)...)));
+				return std::forward<Child>(r).do_set_value(std::forward<Args>(args)...);
             }
 			template<typename Err>
 			constexpr static decltype(auto) dispatch_set_error(Child &&r, Err &&err) noexcept
 			{
-				static_assert(noexcept(std::forward<Child>(r).set_error(std::forward<Err>(err))));
-				return std::forward<Child>(r).set_error(std::forward<Err>(err));
+				static_assert(noexcept(std::forward<Child>(r).do_set_error(std::forward<Err>(err))));
+				return std::forward<Child>(r).do_set_error(std::forward<Err>(err));
 			}
 			constexpr static decltype(auto) dispatch_set_stopped(Child &&r) noexcept
 			{
-				static_assert(noexcept(std::forward<Child>(r).set_stopped()));
-				return std::forward<Child>(r).set_stopped();
+				static_assert(noexcept(std::forward<Child>(r).do_set_stopped()));
+				return std::forward<Child>(r).do_set_stopped();
 			}
 
 		public:
@@ -77,24 +77,24 @@ namespace rod
 
 			using empty_base<Base>::empty_base;
 
-			template<std::same_as<get_env_t> Q> requires(has_get_env<Child>())
-			friend decltype(auto) tag_invoke(Q, Child &&r) noexcept { return dispatch_get_env(std::forward<Child>(r)); }
-			template<std::same_as<get_env_t> Q, typename T = Child> requires(!has_get_env<T>())
+			template<std::same_as<get_env_t> Q, decays_to_same_or_derived<Child> T = Child> requires(has_get_env<T>())
+			friend decltype(auto) tag_invoke(Q, T &&r) noexcept { return dispatch_get_env(std::forward<T>(r)); }
+			template<std::same_as<get_env_t> Q, decays_to_same_or_derived<Child> T = Child> requires(!has_get_env<T>())
 			friend decltype(auto) tag_invoke(Q, T &&r) noexcept { return rod::get_env(get_base(std::forward<T>(r)).base()); }
 
-			template<std::same_as<set_value_t> C, typename... Args> requires(has_set_value<Child>())
-			friend void tag_invoke(C, Child &&r, Args &&...args) noexcept { dispatch_set_value(std::forward<Child>(r), std::forward<Args>(args)...); }
-			template<std::same_as<set_value_t> C, typename T = Child, typename... Args> requires(!has_set_value<T>())
+			template<std::same_as<set_value_t> C, is_same_or_derived<Child> T = Child, typename... Args> requires(has_set_value<T>())
+			friend void tag_invoke(C, T &&r, Args &&...args) noexcept { dispatch_set_value(std::forward<T>(r), std::forward<Args>(args)...); }
+			template<std::same_as<set_value_t> C, is_same_or_derived<Child> T = Child, typename... Args> requires(!has_set_value<T>())
 			friend void tag_invoke(C, T &&r, Args &&...args) noexcept { rod::set_value(get_base(std::forward<T>(r)).base(), std::forward<Args>(args)...); }
 
-			template<std::same_as<set_error_t> C, typename Err> requires(has_set_error<Child>())
-			friend void tag_invoke(C, Child &&r, Err &&err) noexcept { dispatch_set_error(std::forward<Child>(r), std::forward<Err>(err)); }
-			template<std::same_as<set_error_t> C, typename Err, typename T = Child> requires(!has_set_error<T>())
+			template<std::same_as<set_error_t> C, typename Err, is_same_or_derived<Child> T = Child> requires(has_set_error<T>())
+			friend void tag_invoke(C, T &&r, Err &&err) noexcept { dispatch_set_error(std::forward<T>(r), std::forward<Err>(err)); }
+			template<std::same_as<set_error_t> C, typename Err, is_same_or_derived<Child> T = Child> requires(!has_set_error<T>())
 			friend void tag_invoke(C, T &&r, Err &&err) noexcept { rod::set_error(get_base(std::forward<T>(r)).base(), std::forward<Err>(err)); }
 
-			template<std::same_as<set_stopped_t> C> requires(has_set_stopped<Child>())
-			friend void tag_invoke(C, Child &&r) noexcept { dispatch_set_stopped(std::forward<Child>(r)); }
-			template<std::same_as<set_stopped_t> C, typename T = Child> requires(!has_set_stopped<T>())
+			template<std::same_as<set_stopped_t> C, is_same_or_derived<Child> T = Child> requires(has_set_stopped<T>())
+			friend void tag_invoke(C, T &&r) noexcept { dispatch_set_stopped(std::forward<T>(r)); }
+			template<std::same_as<set_stopped_t> C, is_same_or_derived<Child> T = Child> requires(!has_set_stopped<T>())
 			friend void tag_invoke(C, T &&r) noexcept { rod::set_stopped(get_base(std::forward<T>(r)).base()); }
 
 		protected:

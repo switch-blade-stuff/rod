@@ -164,7 +164,7 @@ namespace rod
 				base.visit([&]<typename V>(V base_view) noexcept
 				{
 					using view_value = std::ranges::range_value_t<V>;
-					if constexpr (decays_to<view_value, std::byte>)
+					if constexpr (decays_to_same<view_value, std::byte>)
 						operator=(path_view_component(pos = base_view.data() + base_view.size(), 0, base.is_null_terminated()));
 					else
 					{
@@ -186,7 +186,7 @@ namespace rod
 				base.visit([&]<typename V>(V base_view) noexcept
 				{
 					using view_value = std::ranges::range_value_t<V>;
-					if constexpr (decays_to<view_value, std::byte>)
+					if constexpr (decays_to_same<view_value, std::byte>)
 						operator=(path_view_component(pos = base_view.data(), base_view.size(), base.is_null_terminated()));
 					else
 					{
@@ -223,7 +223,7 @@ namespace rod
 			{
 				return visit([&]<typename Str>(Str str) noexcept -> path_view_component
 				{
-					if constexpr (!decays_to<std::ranges::range_value_t<Str>, std::byte>)
+					if constexpr (!decays_to_same<std::ranges::range_value_t<Str>, std::byte>)
 					{
 						const auto result = file_stem_substr(file_name_substr(str, format()));
 						return {result, str.ends_with(result) && is_null_terminated(), format()};
@@ -236,7 +236,7 @@ namespace rod
 			{
 				return visit([&]<typename Str>(Str str) noexcept -> path_view_component
 				{
-					if constexpr (!decays_to<std::ranges::range_value_t<Str>, std::byte>)
+					if constexpr (!decays_to_same<std::ranges::range_value_t<Str>, std::byte>)
 					{
 						const auto result = file_ext_substr(file_name_substr(str, format()));
 						return {result, str.ends_with(result) && is_null_terminated(), format()};
@@ -315,7 +315,7 @@ namespace rod
 		};
 
 		template<bool Term, typename T, typename Alloc, typename path_view_component::size_type BuffSize>
-		class path_view_component::rendered_path : empty_base<Alloc>, rendered_path_data<T, BuffSize>, public alloc_alias<Alloc>
+		class path_view_component::rendered_path : public alloc_alias<Alloc>, empty_base<Alloc>, rendered_path_data<T, BuffSize>
 		{
 			using data_base = rendered_path_data<T, BuffSize>;
 			using alloc_base = empty_base<Alloc>;
@@ -370,7 +370,7 @@ namespace rod
 					data_base::data = std::exchange(other.data_base::data, {});
 				}
 				else if (other.references_source())
-					data_base::data = other.data;
+					data_base::data = other.data_base::data;
 				else if constexpr (BuffSize)
 				{
 					data_base::data = std::span(buff_data(), other.size());
@@ -386,7 +386,7 @@ namespace rod
 					return;
 				p.visit([&]<typename V>(V view)
 				{
-					if constexpr (decays_to<std::ranges::range_value_t<V>, T>)
+					if constexpr (decays_to_same<std::ranges::range_value_t<V>, T>)
 						init_direct(view, p.is_null_terminated());
 					else if constexpr (std::same_as<V, std::span<const std::byte>>)
 						init_direct(p.view<T>(), p.is_null_terminated());
@@ -403,7 +403,7 @@ namespace rod
 					return;
 				p.visit([&]<typename V>(V view)
 				{
-					if constexpr (decays_to<std::ranges::range_value_t<V>, T>)
+					if constexpr (decays_to_same<std::ranges::range_value_t<V>, T>)
 						init_direct(view, p.is_null_terminated());
 					else if constexpr (std::same_as<V, std::span<const std::byte>>)
 						init_direct(p.view<T>(), p.is_null_terminated());
@@ -667,7 +667,7 @@ namespace rod
 			constexpr path_view(const C *data, format_type fmt = auto_format) noexcept : path_view_component(data, fmt) {}
 			/** Initializes a path view from a null-terminated character string or byte array \a data of length \a len, null-termination flag \a term and format \a fmt. */
 			template<typename C> requires one_of<std::decay_t<C>, std::byte, char, wchar_t, char8_t, char16_t, char32_t>
-			constexpr path_view(const char *data, size_type len, bool term, format_type fmt = auto_format) noexcept : path_view_component(data, len, term, fmt) {}
+			constexpr path_view(const C *data, size_type len, bool term, format_type fmt = auto_format) noexcept : path_view_component(data, len, term, fmt) {}
 
 			/** Initializes path view from path \a p. */
 			constexpr path_view(const path &p) noexcept : path_view_component(p) {}
@@ -684,7 +684,7 @@ namespace rod
 			{
 				return path_view_component::visit([&]<typename V>(V base_view) noexcept
 				{
-					if constexpr (decays_to<V, std::span<const std::byte>>)
+					if constexpr (decays_to_same<V, std::span<const std::byte>>)
 						return iterator(*this, this, static_cast<const std::byte *>(_data));
 					else
 					{
@@ -741,6 +741,36 @@ namespace rod
 			 * @note Byte-backed path views are always considered to be absolute. */
 			[[nodiscard]] constexpr bool is_relative() const noexcept { return !is_absolute(); }
 
+			/** Returns a path containing the root namespace component of this path. Namespaces are only supported on
+			 * Windows and follow the Win32 path format specification with the addition of a special `\!!\` namespace
+			 * used to identify native NT paths. */
+			[[nodiscard]] constexpr path_view root_namespace() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				             {
+					             if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					             {
+						             const auto comp = root_namespace_substr(view, format());
+						             const auto term = is_null_terminated() && ends_with(view, comp);
+						             return path_view(comp, term, format());
+					             }
+					             return {};
+				             });
+			}
+			/** Returns a view of the root directory component of this path view. */
+			[[nodiscard]] constexpr path_view root_directory() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				             {
+					             if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					             {
+						             const auto comp = root_directory_substr(view, format());
+						             const auto term = is_null_terminated() && ends_with(view, comp);
+						             return path_view(comp, term, format());
+					             }
+					             return {};
+				             });
+			}
 			/** Returns a view of the root path component of this path view. */
 			[[nodiscard]] constexpr path_view root_path() const noexcept
 			{
@@ -769,27 +799,15 @@ namespace rod
 					return {};
 				});
 			}
-			/** Returns a view of the root directory component of this path view. */
-			[[nodiscard]] constexpr path_view root_directory() const noexcept
-			{
-				return visit([&]<typename V>(V view) -> path_view
-				{
-					if constexpr (!std::same_as<V, std::span<const std::byte>>)
-					{
-						const auto comp = root_dir_substr(view, format());
-						const auto term = is_null_terminated() && ends_with(view, comp);
-						return path_view(comp, term, format());
-					}
-					return {};
-				});
-			}
 
+			/** Checks if the path has a non-empty root namespace. */
+			[[nodiscard]] constexpr bool has_root_namespace() const noexcept { return !root_namespace().empty(); }
+			/** Checks if the path view has a non-empty root directory. */
+			[[nodiscard]] constexpr bool has_root_directory() const noexcept { return !root_directory().empty(); }
 			/** Checks if the path view has a non-empty root path. */
 			[[nodiscard]] constexpr bool has_root_path() const noexcept { return !root_path().empty(); }
 			/** Checks if the path view has a non-empty root name. */
 			[[nodiscard]] constexpr bool has_root_name() const noexcept { return !root_name().empty(); }
-			/** Checks if the path view has a non-empty root directory. */
-			[[nodiscard]] constexpr bool has_root_directory() const noexcept { return !root_directory().empty(); }
 
 			/** Returns a view of the relative path component of this path view. */
 			[[nodiscard]] constexpr path_view relative_path() const noexcept

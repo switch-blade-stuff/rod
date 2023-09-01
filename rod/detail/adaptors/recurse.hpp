@@ -33,9 +33,9 @@ namespace rod
 
 			friend env_of_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return r.get_env(); }
 
-			template<_detail::completion_channel C, typename... Args> requires decays_to<C, set_value_t> && _detail::callable<Pred, Args...>
+			template<_detail::completion_channel C, typename... Args> requires decays_to_same<C, set_value_t> && _detail::callable<Pred, Args...>
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_value(std::forward<Args>(args)...); }
-			template<_detail::completion_channel C, typename... Args> requires(!decays_to<C, set_value_t> && _detail::callable<C, Rcv, Args...>)
+			template<_detail::completion_channel C, typename... Args> requires(!decays_to_same<C, set_value_t> && _detail::callable<C, Rcv, Args...>)
 			friend void tag_invoke(C, type &&r, Args &&...args) noexcept { r.complete_forward(C{}, std::forward<Args>(args)...); }
 
 		private:
@@ -136,10 +136,10 @@ namespace rod
 			constexpr explicit type(Snd2 &&snd, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2>) : pred_base(std::forward<Pred2>(pred)), snd_base(std::forward<Snd2>(snd)) {}
 
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s.snd_base::value()); }
-			template<decays_to<type> T, typename Env>
+			template<decays_to_same<type> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
-			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>> && receiver_of<Rcv, signs_t>
+			template<decays_to_same<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>> && receiver_of<Rcv, signs_t>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Pred>>)
 			{
 				return operation_t<Rcv>{std::forward<T>(s).snd_base::value(), std::move(rcv), std::forward<T>(s).pred_base::value()};

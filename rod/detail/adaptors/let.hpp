@@ -80,7 +80,7 @@ namespace rod
 
 			template<_detail::completion_channel T, typename... Args> requires(!std::same_as<T, C> && _detail::callable<T, Rcv, Args...>)
 			friend void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_forward(T{}, std::forward<Args>(args)...); }
-			template<_detail::completion_channel T, typename... Args> requires decays_to<T, C> && std::invocable<Fn, Args...>
+			template<_detail::completion_channel T, typename... Args> requires decays_to_same<T, C> && std::invocable<Fn, Args...>
 			friend void tag_invoke(T, type &&r, Args &&...args) noexcept { r.complete_selected(std::forward<Args>(args)...); }
 
 		private:
@@ -155,10 +155,10 @@ namespace rod
 			constexpr explicit type(Snd2 &&snd, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Snd, Fn2>) : snd_base(std::forward<Snd2>(snd)), func_base(std::forward<Fn2>(fn)) {}
 
 			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &>) { return get_env(s.snd_base::value()); }
-			template <decays_to<type> T, typename Env>
+			template <decays_to_same<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<T, Rcv>>
+			template<decays_to_same<type> T, rod::receiver Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<T, Rcv>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Fn>>)
 			{
 				return operation_t<T, Rcv>{std::forward<T>(s).snd_base::value(), std::move(rcv), std::forward<T>(s).func_base::value()};

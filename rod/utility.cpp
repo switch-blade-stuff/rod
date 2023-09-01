@@ -33,7 +33,7 @@ namespace rod
 				return max;
 		}
 #elif defined(ROD_POSIX)
-		static auto random = []() -> fs_result<file_handle>
+		static auto random = []() -> result<file_handle>
 		{
 			/* Fall back to /dev/random if urandom is not available. */
 			if (auto random = open_file("/dev/urandom", open_mode::in); random.has_error()) [[unlikely]]

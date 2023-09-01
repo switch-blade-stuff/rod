@@ -44,10 +44,10 @@ namespace rod
 		public:
 			constexpr explicit type(in_place_stop_token tok, Env *env) noexcept : _tok(tok), _env(env) {}
 
-			template<decays_to<type> E>
+			template<decays_to_same<type> E>
 			friend constexpr auto tag_invoke(get_stop_token_t, const E &&e) noexcept { return e._tok; }
 
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			template<is_forwarding_query Q, decays_to_same<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(*e._env, std::forward<Args>(args)...);
@@ -226,9 +226,9 @@ namespace rod
 		public:
 			constexpr explicit type(Snd &&snd) : _state(new shared_state_t{std::forward<Snd>(snd)}) {}
 
-			template<decays_to<type> T, typename E>
+			template<decays_to_same<type> T, typename E>
 			friend constexpr signs_t<T> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
-			template<decays_to<type> T, receiver_of<signs_t<T>> Rcv>
+			template<decays_to_same<type> T, receiver_of<signs_t<T>> Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, Rcv, _detail::shared_handle<shared_state_t>>) { return operation_t<Rcv>{std::move(rcv), s._state}; }
 
 		private:

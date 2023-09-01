@@ -527,7 +527,7 @@ namespace rod
 
 			/** Returns the contained value or the result of invocation of \a func.
 			 * @note `std::invoke_result_t&ltF;&gt;` must decay to either `Val` or `rod::result&ltVal, Err&gt;` */
-			template<typename F> requires decays_to<std::invoke_result_t<F>, result> || decays_to<std::invoke_result_t<F>, Val>
+			template<typename F> requires decays_to_same<std::invoke_result_t<F>, result> || decays_to_same<std::invoke_result_t<F>, Val>
 			constexpr result or_else(F &&func) const & noexcept(std::is_nothrow_invocable_v<F>)
 			{
 				if constexpr (!std::is_void_v<Val>)
@@ -541,7 +541,7 @@ namespace rod
 					std::invoke(std::forward<F>(func));
 			}
 			/** @copydoc transform */
-			template<typename F> requires decays_to<std::invoke_result_t<F>, result> || decays_to<std::invoke_result_t<F>, Val>
+			template<typename F> requires decays_to_same<std::invoke_result_t<F>, result> || decays_to_same<std::invoke_result_t<F>, Val>
 			constexpr result or_else(F &&func) && noexcept(std::is_nothrow_invocable_v<F>)
 			{
 				if constexpr (!std::is_void_v<Val>)

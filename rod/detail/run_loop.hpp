@@ -98,10 +98,10 @@ namespace rod
 
 		public:
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._loop}; }
-			template<decays_to<sender> T, typename Env>
+			template<decays_to_same<sender> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
-			template<decays_to<sender> T, rod::receiver Rcv>
+			template<decays_to_same<sender> T, rod::receiver Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && (_detail::nothrow_decay_copyable<Args>::value && ...)) { return s.connect(std::forward<Rcv>(rcv)); }
 
 		private:
@@ -132,18 +132,18 @@ namespace rod
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
 
-			template<decays_to<scheduler> T>
+			template<decays_to_same<scheduler> T>
 			friend constexpr sender_t tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
-			template<decays_to<scheduler> T, typename Tp>
+			template<decays_to_same<scheduler> T, typename Tp>
 			friend constexpr timer_sender_t tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return s.schedule_at(std::forward<Tp>(tp)); }
-			template<decays_to<scheduler> T, typename Dur>
+			template<decays_to_same<scheduler> T, typename Dur>
 			friend constexpr timer_sender_t tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return s.schedule_at(s.now() + dur); }
 
 		private:
 			auto schedule() noexcept { return sender_t{_loop}; }
-			template<typename Tp> requires decays_to<Tp, time_point>
+			template<typename Tp> requires decays_to_same<Tp, time_point>
 			auto schedule_at(Tp &&tp) noexcept { return timer_sender_t{_loop, std::forward<Tp>(tp)}; }
-			template<typename Tp> requires(!decays_to<Tp, time_point>)
+			template<typename Tp> requires(!decays_to_same<Tp, time_point>)
 			auto schedule_at(Tp &&tp) noexcept { return timer_sender_t{_loop, clock::now() + tp.time_since_epoch()}; }
 
 			run_loop *_loop;

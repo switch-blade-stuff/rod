@@ -96,9 +96,9 @@ namespace rod
 			template<typename Env2>
 			constexpr explicit type(Env2 &&env, in_place_stop_token tok) noexcept(std::is_nothrow_constructible_v<Env, Env2>) : env_base(std::forward<Env2>(env)), _tok(tok) {}
 
-			template<decays_to<type> E>
+			template<decays_to_same<type> E>
 			friend constexpr in_place_stop_token tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			template<is_forwarding_query Q, decays_to_same<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(std::forward<E>(e).env_base::value(), std::forward<Args>(args)...);
@@ -317,10 +317,10 @@ namespace rod
 			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Snds...>, Args...>) : std::tuple<Snds...>(std::forward<Args>(args)...) {}
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
-			template<decays_to<type> T, typename E>
+			template<decays_to_same<type> T, typename E>
 			friend constexpr signs_t<T, E> tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
 
-			template<decays_to<type> T, rod::receiver Rcv> requires(sender_to<copy_cvref_t<T, Snds>, receiver_t<Is, T, Rcv>> && ...)
+			template<decays_to_same<type> T, rod::receiver Rcv> requires(sender_to<copy_cvref_t<T, Snds>, receiver_t<Is, T, Rcv>> && ...)
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, copy_cvref_t<T, std::tuple<Snds...>>, Rcv>)
 			{
 				return operation_t<T, Rcv>{static_cast<copy_cvref_t<T, std::tuple<Snds...>>>(s), std::move(rcv)};

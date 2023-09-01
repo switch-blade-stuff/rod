@@ -541,7 +541,7 @@ namespace rod
 		public:
 			using sender_base::sender_base;
 
-			template<decays_to<basic_sender> T, rod::receiver Rcv> requires receiver_of<Rcv, completion_signatures_of_t<basic_sender, env_of_t<Rcv>>>
+			template<decays_to_same<basic_sender> T, rod::receiver Rcv> requires receiver_of<Rcv, completion_signatures_of_t<basic_sender, env_of_t<Rcv>>>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				return operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv)};
@@ -555,7 +555,7 @@ namespace rod
 		public:
 			constexpr explicit timer_sender(context *ctx, time_point _tp) noexcept : sender_base(ctx), _tp(_tp) {}
 
-			template<decays_to<timer_sender> T, rod::receiver Rcv> requires receiver_of<Rcv, completion_signatures_of_t<timer_sender, env_of_t<Rcv>>>
+			template<decays_to_same<timer_sender> T, rod::receiver Rcv> requires receiver_of<Rcv, completion_signatures_of_t<timer_sender, env_of_t<Rcv>>>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				return operation_t<Rcv>{s._ctx, s._tp, std::forward<Rcv>(rcv)};
@@ -575,7 +575,7 @@ namespace rod
 			template<typename... Args>
 			constexpr explicit type(context *ctx, Args &&...args) noexcept : sender_base(ctx), _cmd(std::forward<Args>(args)...) {}
 
-			template<decays_to<type> T, rod::receiver Rcv> requires receiver_of<Rcv, completion_signatures_of_t<type, env_of_t<Rcv>>>
+			template<decays_to_same<type> T, rod::receiver Rcv> requires receiver_of<Rcv, completion_signatures_of_t<type, env_of_t<Rcv>>>
 			friend operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<std::decay_t<Rcv>, Rcv>)
 			{
 				return operation_t<Rcv>{s._ctx, std::forward<Rcv>(rcv), std::forward<T>(s)._cmd};
@@ -610,20 +610,20 @@ namespace rod
 			friend constexpr void swap(file_handle &a, file_handle &b) noexcept { a.swap(b); }
 
 		public:
-			template<reference_to<file_handle> Hnd, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
+			template<reference_to_same<file_handle> Hnd, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
 			friend io_sender_t<async_read_some_at_t, Buff> tag_invoke(async_read_some_at_t, Hnd &&hnd, Pos pos, Buff &&buff) noexcept(std::is_nothrow_move_constructible_v<Buff>)
 			{
 				return io_sender_t<async_read_some_at_t, Buff>{hnd._ctx, hnd.native_handle(), std::forward<Buff>(buff), static_cast<std::size_t>(pos)};
 			}
-			template<reference_to<file_handle> Hnd, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
+			template<reference_to_same<file_handle> Hnd, std::convertible_to<std::size_t> Pos, byte_buffer Buff>
 			friend io_sender_t<async_write_some_at_t, Buff> tag_invoke(async_write_some_at_t, Hnd &&hnd, Pos pos, Buff &&buff) noexcept(std::is_nothrow_move_constructible_v<Buff>)
 			{
 				return io_sender_t<async_write_some_at_t, Buff>{hnd._ctx, hnd.native_handle(), std::forward<Buff>(buff), static_cast<std::size_t>(pos)};
 			}
 
-			template<reference_to<file_handle> Hnd, byte_buffer Buff>
+			template<reference_to_same<file_handle> Hnd, byte_buffer Buff>
 			friend auto tag_invoke(async_read_some_t, Hnd &&hnd, Buff &&buff) { return async_read_some_at(std::forward<Hnd>(hnd), hnd.tell().value(), std::forward<Buff>(buff)); }
-			template<reference_to<file_handle> Hnd, byte_buffer Buff>
+			template<reference_to_same<file_handle> Hnd, byte_buffer Buff>
 			friend auto tag_invoke(async_write_some_t, Hnd &&hnd, Buff &&buff) { return async_write_some_at(std::forward<Hnd>(hnd), hnd.tell().value(), std::forward<Buff>(buff)); }
 
 		private:
@@ -643,14 +643,14 @@ namespace rod
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::weakly_parallel; }
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return true; }
 
-			template<decays_to<scheduler> T>
+			template<decays_to_same<scheduler> T>
 			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return basic_sender{s._ctx}; }
-			template<decays_to<scheduler> T, decays_to<time_point> Tp>
+			template<decays_to_same<scheduler> T, decays_to_same<time_point> Tp>
 			friend constexpr auto tag_invoke(schedule_at_t, T &&s, Tp &&tp) noexcept { return timer_sender{s._ctx, std::forward<Tp>(tp)}; }
-			template<decays_to<scheduler> T, typename Dur>
+			template<decays_to_same<scheduler> T, typename Dur>
 			friend constexpr auto tag_invoke(schedule_after_t, T &&s, Dur &&dur) noexcept { return schedule_at(std::forward<T>(s), s.now() + dur); }
 
-			template<decays_to<scheduler> T>
+			template<decays_to_same<scheduler> T>
 			friend result<_file::basic_file<file_handle>, std::error_code> tag_invoke(open_file_t, T &&sch, auto &&path, int mode, int prot) noexcept
 			{
 				auto file = _file::basic_file<file_handle>{sch._ctx};

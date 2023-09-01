@@ -47,7 +47,7 @@ namespace rod
 		struct is_accepted_source<T> : std::bool_constant<accepted_char<source_string_t<T>>> {};
 
 		template<typename T>
-		concept accepted_source = !decays_to<T, path> && is_accepted_source<std::decay_t<T>>::value;
+		concept accepted_source = !decays_to_same<T, path> && is_accepted_source<std::decay_t<T>>::value;
 
 		template<typename F, typename T>
 		concept resize_func =  std::invocable<F, T *, std::size_t> && std::assignable_from<T *&, std::invoke_result_t<F, T *, std::size_t>>;
@@ -323,7 +323,7 @@ namespace rod
 		template<typename C = value_type, typename Traits = std::char_traits<C>, typename Alloc = std::allocator<C>, typename Src>
 		inline static std::basic_string<C, Traits, Alloc> to_native_string(Src &&src, const std::locale &loc, const Alloc &alloc = Alloc())
 		{
-			if constexpr (decays_to<Src, std::basic_string<C, Traits, Alloc>> || decays_to<Src, std::basic_string_view<C, Traits>>)
+			if constexpr (decays_to_same<Src, std::basic_string<C, Traits, Alloc>> || decays_to_same<Src, std::basic_string_view<C, Traits>>)
 				return std::basic_string<C, Traits, Alloc>(std::forward<Src>(src));
 			else
 			{
@@ -346,7 +346,7 @@ namespace rod
 		template<typename C = value_type, typename Traits = std::char_traits<C>, typename Alloc = std::allocator<C>, typename Src>
 		inline static std::basic_string<C, Traits, Alloc> to_native_string(Src &&src, const Alloc &alloc = Alloc())
 		{
-			if constexpr (decays_to<Src, std::basic_string<C, Traits, Alloc>> || decays_to<Src, std::basic_string_view<C, Traits>>)
+			if constexpr (decays_to_same<Src, std::basic_string<C, Traits, Alloc>> || decays_to_same<Src, std::basic_string_view<C, Traits>>)
 				return std::basic_string<C, Traits, Alloc>(std::forward<Src>(src));
 			else
 			{
@@ -535,11 +535,9 @@ namespace rod
 		}
 #else
 		template<typename C = value_type>
-		inline constexpr size_type root_name_size(std::basic_string_view<C>, format) noexcept
-		{
-			/* Non-windows paths do not supportdrive letters or UNC syntax. */
-			return 0;
-		}
+		inline constexpr std::size_t namespace_prefix_size(std::basic_string_view<C>, format_type) noexcept { return 0; }
+		template<typename C = value_type>
+		inline constexpr std::size_t root_name_size(std::basic_string_view<C>, format_type) noexcept { return 0; }
 #endif
 
 		template<typename Value, typename BaseIter, typename NextFunc, typename PrevFunc>
@@ -832,6 +830,19 @@ namespace rod
 		}
 
 		template<typename C = value_type>
+		inline constexpr std::basic_string_view<C> root_namespace_substr(std::basic_string_view<C> path, format_type fmt) noexcept
+		{
+			return path.substr(0, namespace_prefix_size(path, fmt));
+		}
+		template<typename C = value_type>
+		inline constexpr std::basic_string_view<C> root_directory_substr(std::basic_string_view<C> path, format_type fmt) noexcept
+		{
+			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
+			const auto root_name_end = path.begin() + root_name_size(path, fmt);
+			const auto root_path_end = std::find_if_not(root_name_end, path.end(), pred);
+			return std::basic_string_view<C>(root_name_end, root_path_end);
+		}
+		template<typename C = value_type>
 		inline constexpr std::basic_string_view<C> root_path_substr(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
 			return path.substr(0, find_relative_path(path, fmt));
@@ -840,14 +851,6 @@ namespace rod
 		inline constexpr std::basic_string_view<C> root_name_substr(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
 			return path.substr(0, root_name_size(path, fmt));
-		}
-		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> root_dir_substr(std::basic_string_view<C> path, format_type fmt) noexcept
-		{
-			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-			const auto root_name_end = path.begin() + root_name_size(path, fmt);
-			const auto root_path_end = std::find_if_not(root_name_end, path.end(), pred);
-			return std::basic_string_view<C>(root_name_end, root_path_end);
 		}
 
 		template<typename C = value_type>
@@ -994,7 +997,7 @@ namespace rod
 			template<typename Src>
 			constexpr path &assign_native(Src &&src)
 			{
-				if constexpr (!decays_to<source_string_t<std::decay_t<Src>>, value_type>)
+				if constexpr (!decays_to_same<source_string_t<std::decay_t<Src>>, value_type>)
 					_string.assign(to_native_string(std::forward<Src>(src)));
 				else
 					_string.assign(to_string_buffer(std::forward<Src>(src)));
@@ -1003,7 +1006,7 @@ namespace rod
 			template<typename Src>
 			constexpr path &assign_native(Src &&src, const std::locale &loc)
 			{
-				if constexpr (!decays_to<source_string_t<std::decay_t<Src>>, value_type>)
+				if constexpr (!decays_to_same<source_string_t<std::decay_t<Src>>, value_type>)
 					_string.assign(to_native_string(std::forward<Src>(src), loc));
 				else
 					_string.assign(to_string_buffer(std::forward<Src>(src)));
@@ -1045,7 +1048,7 @@ namespace rod
 			template<typename Src>
 			path &concat_native(Src &&src)
 			{
-				if constexpr (!decays_to<source_string_t<std::decay_t<Src>>, value_type>)
+				if constexpr (!decays_to_same<source_string_t<std::decay_t<Src>>, value_type>)
 					_string.append(to_native_string(std::forward<Src>(src)));
 				else
 					_string.append(to_string_buffer(std::forward<Src>(src)));
@@ -1054,7 +1057,7 @@ namespace rod
 			template<typename Src>
 			path &concat_native(Src &&src, const std::locale &loc)
 			{
-				if constexpr (!decays_to<source_string_t<std::decay_t<Src>>, value_type>)
+				if constexpr (!decays_to_same<source_string_t<std::decay_t<Src>>, value_type>)
 					_string.append(to_native_string(std::forward<Src>(src), loc));
 				else
 					_string.append(to_string_buffer(std::forward<Src>(src)));
@@ -1119,7 +1122,7 @@ namespace rod
 			template<typename Src>
 			path &append_native(Src &&src)
 			{
-				if constexpr (!decays_to<source_string_t<std::decay_t<Src>>, value_type>)
+				if constexpr (!decays_to_same<source_string_t<std::decay_t<Src>>, value_type>)
 					return append_string(to_native_string(std::forward<Src>(src)));
 				else
 					return append_string(to_string_buffer(std::forward<Src>(src)));
@@ -1127,7 +1130,7 @@ namespace rod
 			template<typename Src>
 			path &append_native(Src &&src, const std::locale &loc)
 			{
-				if constexpr (!decays_to<source_string_t<std::decay_t<Src>>, value_type>)
+				if constexpr (!decays_to_same<source_string_t<std::decay_t<Src>>, value_type>)
 					return append_string(to_native_string(std::forward<Src>(src), loc));
 				else
 					return append_string(to_string_buffer(std::forward<Src>(src)));
@@ -1271,6 +1274,18 @@ namespace rod
 			/** Checks if the path is relative (not absolute). */
 			[[nodiscard]] constexpr bool is_relative() const noexcept { return !is_absolute(); }
 
+			/** Returns a path containing the root namespace component of this path. Namespaces are only supported on
+			 * Windows and follow the Win32 path format specification with the addition of a special `\!!\` namespace
+			 * used to identify native NT paths. */
+			[[nodiscard]] path root_namespace() const { return {root_namespace_substr<value_type>(_string, format()), format()}; }
+			/** Checks if the path has a non-empty root namespace. */
+			[[nodiscard]] constexpr bool has_root_namespace() const noexcept { return !root_namespace_substr<value_type>(_string, format()).empty(); }
+
+			/** Returns a path containing the root directory component of this path. */
+			[[nodiscard]] path root_directory() const { return {root_directory_substr<value_type>(_string, format()), format()}; }
+			/** Checks if the path has a non-empty root directory. */
+			[[nodiscard]] constexpr bool has_root_directory() const noexcept { return !root_directory_substr<value_type>(_string, format()).empty(); }
+
 			/** Returns a path containing the root path component of this path. */
 			[[nodiscard]] path root_path() const { return {root_path_substr<value_type>(_string, format()), format()}; }
 			/** Checks if the path has a non-empty root path. */
@@ -1280,11 +1295,6 @@ namespace rod
 			[[nodiscard]] path root_name() const { return {root_name_substr<value_type>(_string, format()), format()}; }
 			/** Checks if the path has a non-empty root name. */
 			[[nodiscard]] constexpr bool has_root_name() const noexcept { return !root_name_substr<value_type>(_string, format()).empty(); }
-
-			/** Returns a path containing the root directory component of this path. */
-			[[nodiscard]] path root_directory() const { return {root_dir_substr<value_type>(_string, format()), format()}; }
-			/** Checks if the path has a non-empty root directory. */
-			[[nodiscard]] constexpr bool has_root_directory() const noexcept { return !root_dir_substr<value_type>(_string, format()).empty(); }
 
 			/** Returns a path containing the parent path component of this path. */
 			[[nodiscard]] path parent_path() const { return {parent_path_substr<value_type>(_string, format()), format()}; }
@@ -1409,9 +1419,9 @@ namespace rod
 
 		private:
 			template<typename Src, typename C = source_string_t<std::decay_t<Src>>>
-			[[nodiscard]] constexpr int compare_native(const Src &src, format_type fmt) const noexcept(decays_to<C, value_type> && noexcept(to_string_buffer(src)))
+			[[nodiscard]] constexpr int compare_native(const Src &src, format_type fmt) const noexcept(decays_to_same<C, value_type> && noexcept(to_string_buffer(src)))
 			{
-				if constexpr (!decays_to<C, value_type>)
+				if constexpr (!decays_to_same<C, value_type>)
 					return _path::compare<value_type>(_string, format(), to_native_string(src), fmt);
 				else
 					return _path::compare<value_type>(_string, format(), to_string_buffer(src), fmt);

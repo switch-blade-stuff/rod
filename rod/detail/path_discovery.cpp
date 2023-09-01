@@ -144,7 +144,7 @@ namespace rod
 	const directory_handle &starting_runtime_directory() noexcept { return _detail::discovery_cache::cached_dir_handle<&_detail::discovery_cache::runtime_dir>(); }
 
 	result<path> current_path() noexcept { return _detail::find_working_dir(); }
-	fs_result<> current_path(path_view path) noexcept
+	result<> current_path(path_view path) noexcept
 	{
 		const auto rpath = path.render_null_terminated();
 #if defined(ROD_WIN32)
@@ -153,7 +153,7 @@ namespace rod
 		const auto res = chdir(rpath.c_str());
 #endif
 		if (res) [[unlikely]]
-			return fs_status_code(std::error_code(errno, std::generic_category()), rpath.as_span());
+			return std::error_code(errno, std::generic_category());
 		else
 			return {};
 	}

@@ -18,12 +18,11 @@ namespace rod::_handle
 	constexpr auto standard_info_mask = stat::query::size | stat::query::alloc | stat::query::blocks | stat::query::nlink;
 	constexpr auto internal_info_mask = stat::query::ino;
 
-	constexpr auto buff_align = std::align_val_t(8);
 	constexpr auto buff_size = std::size_t(32769);
 
 	inline static result<std::unique_ptr<wchar_t[]>> make_buffer(std::size_t size) noexcept
 	{
-		try { return std::unique_ptr<wchar_t[]>(new(buff_align) wchar_t[size]); }
+		try { return std::unique_ptr<wchar_t[]>(new(std::align_val_t(8)) wchar_t[size]); }
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
@@ -394,7 +393,7 @@ namespace rod::_handle
 			return q;
 	}
 
-	fs_result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept
+	result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept
 	{
 		auto done = stat::query::none;
 		if (q == done) return done;
@@ -407,11 +406,11 @@ namespace rod::_handle
 			if (!::GetFileAttributesExW(rpath.c_str(), GetFileExInfoStandard, &data))
 			{
 				if (const auto err = ::GetLastError(); err != ERROR_SHARING_VIOLATION)
-					return fs_status_code(dos_error_code(err), rpath.c_str());
+					return dos_error_code(err);
 
 				WIN32_FIND_DATAW find_data;
 				if (const auto hnd = ::FindFirstFileW(rpath.c_str(), &find_data); hnd == INVALID_HANDLE_VALUE) [[unlikely]]
-					return fs_status_code(dos_error_code(::GetLastError()), rpath.c_str());
+					return dos_error_code(::GetLastError());
 				else
 					::FindClose(hnd);
 
@@ -468,10 +467,10 @@ namespace rod::_handle
 		const auto share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
 		const auto flags = FILE_FLAG_BACKUP_SEMANTICS | (nofollow ? FILE_FLAG_OPEN_REPARSE_POINT : 0);
 		if (const auto handle = basic_handle(::CreateFileW(rpath.c_str(), FILE_READ_ATTRIBUTES, share, nullptr, OPEN_EXISTING, flags, nullptr)); !handle.is_open()) [[unlikely]]
-			return fs_status_code(dos_error_code(::GetLastError()), rpath.c_str());
-		else if (auto res = do_get_stat(st, handle, q); res.has_error()) [[unlikely]]
-			return fs_status_code(res.error(), rpath.c_str());
-		else
+			return dos_error_code(::GetLastError());
+		else if (auto res = do_get_stat(st, handle, q); res.has_value()) [[likely]]
 			return *res | done;
+		else
+			return res;
 	}
 }

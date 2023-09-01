@@ -40,9 +40,9 @@ namespace rod
 		public:
 			constexpr explicit type(in_place_stop_token tok, Env *env) noexcept : _tok(tok), _env(env) {}
 
-			template<decays_to<type> E>
+			template<decays_to_same<type> E>
 			friend constexpr auto tag_invoke(get_stop_token_t, E &&e) noexcept { return e._tok; }
-			template<is_forwarding_query Q, decays_to<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			template<is_forwarding_query Q, decays_to_same<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
 				return Q{}(*std::forward<E>(e)._env, std::forward<Args>(args)...);
@@ -195,13 +195,13 @@ namespace rod
 
 			~type() { if (_state) _state->detach(); }
 
-			template<decays_to<type> T>
+			template<decays_to_same<type> T>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, auto) noexcept { return {}; }
-			template<decays_to<type> T, receiver_of<signs_t> Rcv>
+			template<decays_to_same<type> T, receiver_of<signs_t> Rcv>
 			friend operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv>) { return operation_t<Rcv>{std::move(rcv), s._state}; }
 
 			/* Since we already have a reference counted state, there is no need to split it further. */
-			template<decays_to<type> T>
+			template<decays_to_same<type> T>
 			friend constexpr type tag_invoke(split_t, T &&s) noexcept { return type{std::forward(s)._state}; }
 
 		private:

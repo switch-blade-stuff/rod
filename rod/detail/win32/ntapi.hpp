@@ -6,6 +6,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#include <combaseapi.h>
 #include <winioctl.h>
 #include <Windows.h>
 
@@ -23,6 +24,7 @@
 
 #include "../handle_stat.hpp"
 #include "../handle_base.hpp"
+#include "../timeout.hpp"
 
 namespace rod::_win32
 {
@@ -34,6 +36,37 @@ namespace rod::_win32
 	inline constexpr ntstatus success_status_max = 0x3fff'ffff;
 
 	[[nodiscard]] inline constexpr bool is_status_failure(ntstatus st) noexcept { return st > message_status_max; }
+
+	inline constexpr file_type attr_to_type(ULONG file_attr, ULONG reparse_tag = 0) noexcept
+	{
+		constexpr auto attr_regular = FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | FILE_ATTRIBUTE_SPARSE_FILE | FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED | FILE_ATTRIBUTE_TEMPORARY |
+		                              FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_SYSTEM;
+
+		if (file_attr & FILE_ATTRIBUTE_REPARSE_POINT)
+		{
+			if (reparse_tag == IO_REPARSE_TAG_SYMLINK)
+				return file_type::symlink;
+			if (reparse_tag == IO_REPARSE_TAG_MOUNT_POINT)
+				return file_type::mount_point;
+		}
+		if (file_attr & FILE_ATTRIBUTE_DIRECTORY)
+			return file_type::directory;
+		else if (file_attr & attr_regular)
+			return file_type::regular;
+		else
+			return file_type::unknown;
+	}
+
+	inline static FILETIME tp_to_filetime(typename file_clock::time_point tp) noexcept
+	{
+		union { FILETIME _ft; std::int64_t _tp; };
+		return (_tp = tp.time_since_epoch().count(), _ft);
+	}
+	inline static typename file_clock::time_point filetime_to_tp(FILETIME ft) noexcept
+	{
+		union { FILETIME _ft; std::int64_t _tp; };
+		return (_ft = ft, file_clock::time_point(_tp));
+	}
 
 	struct unicode_string
 	{
@@ -276,6 +309,9 @@ namespace rod::_win32
 		UCHAR file_id[16];
 	};
 
+	struct file_disposition_information_ex { ULONG flags; };
+	struct file_disposition_information { BOOLEAN del; };
+
 	struct file_standard_information
 	{
 		LARGE_INTEGER allocation;
@@ -284,10 +320,31 @@ namespace rod::_win32
 		BOOLEAN delete_pending;
 		BOOLEAN directory;
 	};
+	struct file_rename_information
+	{
+		ULONG flags;
+		HANDLE root_dir;
+		ULONG name_len;
+		WCHAR name[1];
+	};
+	struct file_names_information
+	{
+		ULONG next_off;
+		ULONG file_idx;
+		ULONG name_len;
+		WCHAR name[1];
+	};
 	struct file_name_information
 	{
 		ULONG FileNameLength;
 		WCHAR FileName[1];
+	};
+	struct file_link_information
+	{
+		ULONG flags;
+		HANDLE root_dir;
+		ULONG name_len;
+		WCHAR name[1];
 	};
 	union file_ea_information
 	{
@@ -315,7 +372,7 @@ namespace rod::_win32
 	{
 		ULONG attributes;
 		LONG max_component_size;
-		ULONG name_size;
+		ULONG name_len;
 		WCHAR name[1];
 	};
 	struct file_directory_information
@@ -329,14 +386,7 @@ namespace rod::_win32
 		LARGE_INTEGER endpos;
 		LARGE_INTEGER allocation;
 		ULONG attributes;
-		ULONG name_size;
-		WCHAR name[1];
-	};
-	struct file_names_information
-	{
-		ULONG next_off;
-		ULONG file_idx;
-		ULONG name_size;
+		ULONG name_len;
 		WCHAR name[1];
 	};
 	struct file_stat_information
@@ -372,7 +422,7 @@ namespace rod::_win32
 	using NtQueryVolumeInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ fs_info_type type);
 	using NtQueryInformationByName_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 
-	using NtWaitForSingleObject_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ const LARGE_INTEGER *timeout);
+	using NtWaitForSingleObject_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ const FILETIME *timeout);
 	using NtCancelIoFileEx_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *req, _Out_ io_status_block *iosb);
 	using NtSetIoCompletion_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ ULONG key_ctx, _In_ ULONG_PTR apc_ctx, _In_ long status, _In_ ULONG info);
 	using NtRemoveIoCompletionEx_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ULONG count, _Out_ ULONG *removed, _In_opt_ LARGE_INTEGER *timeout, _In_ bool alert);
@@ -383,6 +433,10 @@ namespace rod::_win32
 	using BCryptOpenAlgorithmProvider_t = ntstatus (ROD_NTAPI *)(_Out_ void **hnd, _In_ const wchar_t *algo, _In_opt_ const wchar_t *impl, _In_ ULONG flags);
 	using BCryptGenRandom_t = ntstatus (ROD_NTAPI *)(_In_opt_ void *hnd, _Out_writes_bytes_(n) void *buff, _In_ ULONG size, _In_ ULONG flags);
 	using BCryptCloseAlgorithmProvider_t = ntstatus (ROD_NTAPI *)(_Inout_ void *hnd, _In_ ULONG flags);
+
+	inline constexpr auto heapalloc_free = [](auto *p) { ::HeapFree(::GetProcessHeap(), 0, p); };
+	template<typename T>
+	using heapalloc_ptr = std::unique_ptr<T, decltype(heapalloc_free)>;
 
 	struct ntapi
 	{
@@ -395,7 +449,9 @@ namespace rod::_win32
 		}
 
 		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
-		ntstatus wait_io(void *handle, io_status_block *iosb, const LARGE_INTEGER *timeout = nullptr) const noexcept;
+		ntstatus wait_io(void *handle, io_status_block *iosb, const file_timeout &to = file_timeout()) const noexcept;
+
+		result<heapalloc_ptr<wchar_t>> path_to_nt_string(unicode_string &upath, path_view path, bool relative) const noexcept;
 
 		void *ntdll;
 		void *bcrypt;
@@ -437,35 +493,4 @@ namespace rod::_win32
 	static const std::error_category &status_category() noexcept;
 	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
 	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
-
-	inline constexpr file_type attr_to_type(ULONG file_attr, ULONG reparse_tag = 0) noexcept
-	{
-		constexpr auto attr_regular = FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | FILE_ATTRIBUTE_SPARSE_FILE | FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED | FILE_ATTRIBUTE_TEMPORARY |
-		                              FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_SYSTEM;
-
-		if (file_attr & FILE_ATTRIBUTE_REPARSE_POINT)
-		{
-			if (reparse_tag == IO_REPARSE_TAG_SYMLINK)
-				return file_type::symlink;
-			if (reparse_tag == IO_REPARSE_TAG_MOUNT_POINT)
-				return file_type::mount;
-		}
-		if (file_attr & FILE_ATTRIBUTE_DIRECTORY)
-			return file_type::directory;
-		else if (file_attr & attr_regular)
-			return file_type::regular;
-		else
-			return file_type::unknown;
-	}
-
-	inline static FILETIME tp_to_filetime(typename file_clock::time_point tp) noexcept
-	{
-		union { FILETIME _ft; std::int64_t _tp; };
-		return (_tp = tp.time_since_epoch().count(), _ft);
-	}
-	inline static typename file_clock::time_point filetime_to_tp(FILETIME ft) noexcept
-	{
-		union { FILETIME _ft; std::int64_t _tp; };
-		return (_ft = ft, file_clock::time_point(_tp));
-	}
 }

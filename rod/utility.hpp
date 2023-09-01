@@ -22,17 +22,24 @@ namespace rod
 
 	/** Concept used to check if type \a T is a reference to a type derived from \a U. */
 	template<typename T, typename U>
-	concept derived_reference = std::derived_from<std::remove_reference_t<T>, U>;
+	concept reference_to_derived = std::derived_from<std::remove_reference_t<T>, U>;
 	/** Concept used to check if type \a T decays to a type derived from \a U. */
 	template<typename T, typename U>
 	concept decays_to_derived = std::derived_from<std::decay_t<T>, U>;
 
 	/** Concept used to check if type \a T is a reference of type \a U. */
 	template<typename T, typename U>
-	concept reference_to = std::same_as<std::remove_reference_t<T>, U>;
+	concept reference_to_same = std::same_as<std::remove_reference_t<T>, U>;
 	/** Concept used to check if type \a From decays into type \a To. */
 	template<typename From, typename To>
-	concept decays_to = std::same_as<std::decay_t<From>, To>;
+	concept decays_to_same = std::same_as<std::decay_t<From>, To>;
+
+	/** Concept used to check if type \a T decays to type \a U or is derived from \a U. */
+	template<typename T, typename U>
+	concept decays_to_same_or_derived = decays_to_same<T, U> || decays_to_derived<T, U>;
+	/** Concept used to check if type \a T is same as \a U or is derived from \a U. */
+	template<typename T, typename U>
+	concept is_same_or_derived = std::same_as<T, U> || std::derived_from<T, U>;
 
 	/** Concept used to check if type \a T matches one of the types in \a Ts. */
 	template<typename T, typename... Ts>
@@ -55,7 +62,7 @@ namespace rod
 		template<typename... Ts>
 		using all_nothrow_decay_copyable = std::conjunction<nothrow_decay_copyable<Ts>...>;
 		template<typename T>
-		concept class_type = decays_to<T, T> && std::is_class_v<T>;
+		concept class_type = decays_to_same<T, T> && std::is_class_v<T>;
 
 		template<typename, typename>
 		struct matching_sig : std::false_type {};
@@ -205,53 +212,43 @@ namespace rod
 	namespace _detail
 	{
 		template<typename T0, typename T1>
-		struct adl_swappable : std::false_type {};
-		template<typename T0, typename T1>
-		struct nothrow_adl_swappable : std::false_type {};
-
-		template<typename T0, typename T1>
-		inline constexpr bool test_member_swappable(T0 &&a, T1 &&b) noexcept
+		inline constexpr bool test_member_swappable() noexcept
 		{
-			return requires { std::forward<T0>(a).swap(std::forward<T1>(b)); };
+			return requires(T0 &a, T1 &b) { a.swap(b); };
 		}
 		template<typename T0, typename T1>
-		inline constexpr bool test_static_swappable(T0 &&a, T1 &&b) noexcept
+		inline constexpr bool test_static_swappable() noexcept
 		{
 			using std::swap;
-			return requires { swap(std::forward<T0>(a), std::forward<T1>(b)); };
+			return requires(T0 &a, T1 &b) { swap(a, b); };
 		}
 
 		template<typename T0, typename T1>
-		using member_swappable = std::bool_constant<test_member_swappable(std::declval<T0>(), std::declval<T1>())>;
+		using member_swappable = std::bool_constant<test_member_swappable<T0, T1>()>;
 		template<typename T0, typename T1>
-		using static_swappable = std::bool_constant<test_static_swappable(std::declval<T0>(), std::declval<T1>())>;
-
-		template<typename T0, typename T1> requires member_swappable<T0, T1>::value
-		struct adl_swappable<T0, T1> : std::true_type {};
-		template<typename T0, typename T1> requires static_swappable<T0, T1>::value
-		struct adl_swappable<T0, T1> : std::true_type {};
+		using static_swappable = std::bool_constant<test_static_swappable<T0, T1>()>;
 
 		template<typename T0, typename T1>
-		inline constexpr bool test_nothrow_member_swappable(T0 &&a, T1 &&b) noexcept
+		inline constexpr bool test_nothrow_member_swappable() noexcept
 		{
-			return noexcept(std::forward<T0>(a).swap(std::forward<T1>(b)));
+			return requires(T0 &a, T1 &b) { noexcept(a.swap(b)); };
 		}
 		template<typename T0, typename T1>
-		inline constexpr bool test_nothrow_static_swappable(T0 &&a, T1 &&b) noexcept
+		inline constexpr bool test_nothrow_static_swappable() noexcept
 		{
 			using std::swap;
-			return noexcept(swap(std::forward<T0>(a), std::forward<T1>(b)));
+			return requires(T0 &a, T1 &b) { noexcept(swap(a, b)); };
 		}
 
 		template<typename T0, typename T1>
-		using nothrow_member_swappable = std::bool_constant<test_nothrow_member_swappable(std::declval<T0>(), std::declval<T1>())>;
+		using nothrow_member_swappable = std::bool_constant<test_nothrow_member_swappable<T0, T1>()>;
 		template<typename T0, typename T1>
-		using nothrow_static_swappable = std::bool_constant<test_nothrow_static_swappable(std::declval<T0>(), std::declval<T1>())>;
+		using nothrow_static_swappable = std::bool_constant<test_nothrow_static_swappable<T0, T1>()>;
 
-		template<typename T0, typename T1> requires member_swappable<T0, T1>::value
-		struct nothrow_adl_swappable<T0, T1> : nothrow_member_swappable<T0, T1> {};
-		template<typename T0, typename T1> requires static_swappable<T0, T1>::value
-		struct nothrow_adl_swappable<T0, T1> : nothrow_static_swappable<T0, T1> {};
+		template<typename T0, typename T1>
+		struct adl_swappable : std::disjunction<member_swappable<std::remove_reference_t<T0>, std::remove_reference_t<T1>>, static_swappable<std::remove_reference_t<T0>, std::remove_reference_t<T1>>> {};
+		template<typename T0, typename T1>
+		struct nothrow_adl_swappable : std::disjunction<nothrow_member_swappable<std::remove_reference_t<T0>, std::remove_reference_t<T1>>, nothrow_static_swappable<std::remove_reference_t<T0>, std::remove_reference_t<T1>>> {};
 	}
 
 	/** Utility function used to select either a member overload of `swap` or an ADL overload with associated `std::swap`. */
@@ -274,7 +271,7 @@ namespace rod
 			constexpr empty_base() noexcept(std::is_nothrow_default_constructible_v<T>) requires std::constructible_from<T> = default;
 			template<typename... Args> requires std::constructible_from<T, Args...>
 			constexpr explicit empty_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : _value(std::forward<Args>(args)...) {}
-			template<typename U = T> requires(!decays_to<U, empty_base> && std::assignable_from<T, U>)
+			template<typename U = T> requires(!decays_to_same<U, empty_base> && std::assignable_from<T, U>)
 			constexpr empty_base &operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T, U>) { return (_value = std::forward<U>(value), *this); }
 
 			/** Returns reference to the underlying value. */
@@ -303,7 +300,7 @@ namespace rod
 			constexpr empty_base() noexcept(std::is_nothrow_default_constructible_v<T>) = default;
 			template<typename... Args> requires std::constructible_from<T, Args...>
 			constexpr explicit empty_base(Args &&...args) noexcept(std::is_nothrow_constructible_v<T, Args...>) : T(std::forward<Args>(args)...) {}
-			template<typename U = T> requires(!decays_to<U, empty_base> && std::assignable_from<T, U>)
+			template<typename U = T> requires(!decays_to_same<U, empty_base> && std::assignable_from<T, U>)
 			constexpr empty_base &operator=(U &&value) noexcept(std::is_nothrow_assignable_v<T, U>) { return (*get() = std::forward<U>(value), *this); }
 
 			/** Returns reference to the underlying value. */
@@ -377,12 +374,12 @@ namespace rod
 			error.throw_exception();
 		}
 		template<typename Err>
-		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to<Err, std::exception_ptr>)
+		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to_same<Err, std::exception_ptr>)
 		{
 			std::rethrow_exception(std::forward<Err>(error));
 		}
 		template<typename Err>
-		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to<Err, std::error_code>)
+		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to_same<Err, std::error_code>)
 		{
 			throw_error_code(error);
 		}
@@ -390,11 +387,11 @@ namespace rod
 		template<typename Err>
 		[[nodiscard]] inline static std::exception_ptr to_except_ptr(Err &&error) noexcept
 		{
-			if constexpr (decays_to<Err, std::exception_ptr>)
+			if constexpr (decays_to_same<Err, std::exception_ptr>)
 				return std::forward<Err>(error);
 			else if constexpr (std::derived_from<std::decay_t<Err>, std::exception>)
 				return std::make_exception_ptr(std::forward<Err>(error));
-			else if constexpr (decays_to<Err, std::error_code> || std::constructible_from<std::error_code, Err>)
+			else if constexpr (decays_to_same<Err, std::error_code> || std::constructible_from<std::error_code, Err>)
 				return std::make_exception_ptr(std::system_error(std::error_code(error)));
 			else if constexpr (requires { throw_exception(std::forward<Err>(error)); })
 				try { throw_exception(std::forward<Err>(error)); } catch (...) { return std::current_exception(); }

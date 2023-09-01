@@ -87,11 +87,7 @@ namespace rod::_handle
 					return dos_error_code(::GetLastError());
 
 				result.resize(87);
-				const auto guid_str = L"{%08x-%04hx-%04hx-%02x%02x-%02x%02x%02x%02x%02x%02x}";
-				const auto guid_pos = result.data() + 49;
-				const auto guid_len = 64;
-
-				swprintf_s(guid_pos, guid_len, guid_str, id->Data1, id->Data2, id->Data3, id->Data4[0], id->Data4[1], id->Data4[2], id->Data4[3], id->Data4[4], id->Data4[5], id->Data4[6], id->Data4[7]);
+				::StringFromGUID2(*id, result.data() + 49, 39);
 				return std::move(result);
 			}
 			if (fmt == native_path_format::system)

@@ -30,13 +30,13 @@ namespace rod
 
 		private:
 			template<typename... Args> requires(!_detail::all_nothrow_decay_copyable<Args...>::value && std::constructible_from<V, std::tuple<Args &&...>>)
-			constexpr void set_value(Args &&...args) noexcept
+			constexpr void do_set_value(Args &&...args) noexcept
 			{
 				try { set_value(std::move(receiver_adaptor<type, Rcv>::base()), V{std::tuple<Args &&...>{std::forward<Args>(args)...}}); }
 				catch (...) { set_error(std::move(receiver_adaptor<type, Rcv>::base()), std::current_exception()); }
 			}
 			template<typename... Args> requires _detail::all_nothrow_decay_copyable<Args...>::value && std::constructible_from<V, std::tuple<Args &&...>>
-			constexpr void set_value(Args &&...args) noexcept
+			constexpr void do_set_value(Args &&...args) noexcept
 			{
 				set_value(std::move(receiver_adaptor<type, Rcv>::base()), V{std::tuple<Args &&...>{std::forward<Args>(args)...}});
 			}
@@ -69,7 +69,7 @@ namespace rod
 			template<typename E>
 			friend constexpr signs_t<std::decay_t<E>> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
 
-			template<decays_to<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>>
+			template<decays_to_same<type> T, rod::receiver Rcv> requires sender_to<Snd, receiver_t<Rcv>>
 			friend constexpr decltype(auto) tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_callable<connect_t, Snd, receiver_t<Rcv>> && std::is_nothrow_move_constructible_v<Rcv>)
 			{
 				return connect(std::move(s.snd_base::value()), receiver_t<Rcv>{std::move(rcv)});

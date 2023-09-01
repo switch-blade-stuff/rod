@@ -312,10 +312,10 @@ namespace rod
 			constexpr explicit sender(thread_pool *pool) noexcept : _pool(pool) {}
 
 			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._pool}; }
-			template<decays_to<sender> T, typename E>
+			template<decays_to_same<sender> T, typename E>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
-			template<decays_to<sender> T, receiver_of<signs_t> Rcv>
+			template<decays_to_same<sender> T, receiver_of<signs_t> Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_decay_copyable<Rcv>::value) { return operation_t<Rcv>{s._pool, std::move(rcv)}; }
 
 		private:
@@ -354,10 +354,10 @@ namespace rod
 					: snd_base(std::forward<Snd2>(snd)), func_base(std::forward<Fn2>(fn)), _pool(pool), _shape(shape) {}
 
 			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept { return get_env(s.snd_base::value()); }
-			template<decays_to<type> T, typename Env>
+			template<decays_to_same<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env &&) noexcept { return {}; }
 
-			template<decays_to<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
+			template<decays_to_same<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, thread_pool *, copy_cvref_t<T, Snd>, Rcv, Shape, copy_cvref_t<T, Fn>>)
 			{
 				return operation_t<T, Rcv>{s._pool,  std::forward<T>(s).snd_base::value(), std::move(rcv), s._shape, std::forward<T>(s).func_base::value()};
@@ -381,9 +381,9 @@ namespace rod
 			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
 			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
 
-			template<decays_to<scheduler> T>
+			template<decays_to_same<scheduler> T>
 			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
-			template<decays_to<scheduler> T, typename Snd, typename Shape, typename Fn>
+			template<decays_to_same<scheduler> T, typename Snd, typename Shape, typename Fn>
 			friend constexpr auto tag_invoke(bulk_t, T &&s, Snd &&snd, Shape shape, Fn &&fn) noexcept { return s.schedule_bulk(std::forward<Snd>(snd), shape, std::forward<Fn>(fn)); }
 
 		private:

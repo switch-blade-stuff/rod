@@ -54,10 +54,10 @@ namespace rod
 			constexpr explicit type(std::in_place_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<std::tuple<Ts...>, Args...>) : std::tuple<Ts...>(std::forward<Args>(args)...) {}
 
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
-			template<decays_to<type> T, typename Env>
+			template<decays_to_same<type> T, typename Env>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, Env) { return {}; }
 
-			template<decays_to<type> T, receiver_of<signs_t> Rcv>
+			template<decays_to_same<type> T, receiver_of<signs_t> Rcv>
 			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, copy_cvref_t<T, std::tuple<Ts...>>, Rcv>)
 			{
 				return operation_t<Rcv>{static_cast<copy_cvref_t<T, std::tuple<Ts...>>>(s), std::move(rcv)};

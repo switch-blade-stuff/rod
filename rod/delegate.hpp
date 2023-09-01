@@ -231,13 +231,13 @@ namespace rod
 		delegate(R (*func)(Args...)) : delegate() { init_obj<R(*)(Args...)>(args_t{}, func); }
 
 		/** Initializes the delegate with a pointer to an external functor. */
-		template<typename T> requires(!decays_to<T, delegate>&& !std::is_function_v<T>)
+		template<typename T> requires(!decays_to_same<T, delegate>&& !std::is_function_v<T>)
 		delegate(T *data) noexcept : delegate() { init_ptr(args_t{}, data); }
 		/** Initializes the delegate with a by-value stored functor. */
-		template<typename T> requires(!decays_to<T, delegate> && !std::is_function_v<std::decay_t<T>>)
+		template<typename T> requires(!decays_to_same<T, delegate> && !std::is_function_v<std::decay_t<T>>)
 		delegate(T &&func) : delegate() { init_obj<std::decay_t<T>>(args_t{}, std::forward<T>(func)); }
 		/** Initializes the delegate with an in-place constructed functor of type \a T using arguments \a args. */
-		template<typename T, typename... Args> requires decays_to<T, T> && std::constructible_from<T, Args...>
+		template<typename T, typename... Args> requires decays_to_same<T, T> && std::constructible_from<T, Args...>
 		delegate(std::in_place_type_t<T>, Args &&...args) : delegate() { init_obj<T>(args_t{}, std::forward<Args>(args)...); }
 
 		/** Initializes the delegate from a pointer to member or member function and external instance pointer. */
@@ -247,7 +247,7 @@ namespace rod
 		template<auto Mem, typename T>
 		delegate(bind_member_t<Mem>, T &&value) : delegate() { init_mem<Mem, std::decay_t<T>>(args_t{}, std::forward<T>(value)); }
 		/** Initializes the delegate from a pointer to member or member function and an in-place constructed instance of type \a T using arguments \a args. */
-		template<auto Mem, typename T, typename... Args> requires decays_to<T, T> && std::constructible_from<T, Args...>
+		template<auto Mem, typename T, typename... Args> requires decays_to_same<T, T> && std::constructible_from<T, Args...>
 		delegate(bind_member_t<Mem>, std::in_place_type_t<T>, Args &&...args) : delegate() { init_mem<Mem, std::decay_t<T>>(args_t{}, std::forward<Args>(args)...); }
 
 		/** Initializes the delegate from an invoker callback and a user data pointer. */

@@ -63,6 +63,8 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
 
         # Utilities
         rod/detail/shared_ref.hpp
+        rod/detail/file_clock.hpp
+        rod/detail/timeout.hpp
         rod/packed_pair.hpp
         rod/array_list.hpp
         rod/delegate.hpp
@@ -120,30 +122,37 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/generator.hpp
         rod/task.hpp
 
-        # Filesystem
-        rod/detail/path_base.hpp
-        rod/detail/path_view.hpp
-        rod/detail/file_clock.hpp
-        rod/detail/handle_base.hpp
+        # Basic handles
         rod/detail/handle_stat.hpp
-        rod/detail/fs_status_code.hpp
-        rod/detail/fs_handle_base.hpp
-        rod/detail/path_handle.hpp
-        rod/detail/path_discovery.hpp
-        rod/path.hpp
-        rod/file.hpp
-
-        # General IO
+        rod/detail/handle_base.hpp
         rod/detail/io_status_code.hpp
         rod/detail/io_handle_base.hpp
-        rod/io.hpp
+        rod/detail/fs_handle_base.hpp
+
+        # Filesystem base
+        rod/detail/path_base.hpp
+        rod/detail/path_view.hpp
+        rod/detail/path_handle.hpp
+        rod/detail/path_discovery.hpp
+        # rod/detail/directory_handle.hpp
+
+        # Filesystem IO
+        # rod/detail/file_handle.hpp
+        # rod/detail/mapping_source.hpp
+        # rod/detail/mapping_handle.hpp
+        # rod/detail/file_mapping.hpp
 
         # Linux headers
         rod/linux/io_uring_context.hpp
         rod/linux/epoll_context.hpp
 
         # Win32 headers
-        rod/win32/iocp_context.hpp)
+        rod/win32/iocp_context.hpp
+
+        # Common headers
+        rod/path.hpp
+        rod/file.hpp
+        rod/io.hpp)
 
 # Platform-independent sources
 target_sources(${PROJECT_NAME} PRIVATE

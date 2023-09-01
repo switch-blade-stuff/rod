@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "fs_status_code.hpp"
-#include "file_clock.hpp"
+#include "path_view.hpp"
+#include "timeout.hpp"
 #include "../tag.hpp"
 
 namespace rod
@@ -34,8 +34,8 @@ namespace rod
 			symlink,
 			/** Handle or path references a regular directory. */
 			directory,
-			/** Handle or path references a device mount point. */
-			mount,
+			/** Handle or path references an NTFS junction/mount point. */
+			mount_point,
 			/** Handle or path references a block device. */
 			block,
 			/** Handle or path references a character device. */
@@ -213,8 +213,8 @@ namespace rod
 		constexpr stat::query &operator^=(stat::query &a, stat::query b) noexcept { return a = a ^ b; }
 
 		/* Default implementation for path types. */
-		ROD_API_PUBLIC fs_result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept;
-		fs_result<stat::query> do_get_stat(stat &st, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, path_view(path), q, nofollow); }
+		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept;
+		result<stat::query> do_get_stat(stat &st, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, path_view(path), q, nofollow); }
 
 		/* Default implementation for basic_handle. */
 		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const basic_handle &hnd, stat::query q) noexcept;
@@ -226,7 +226,7 @@ namespace rod
 		struct get_stat_t
 		{
 			template<typename Path> requires one_of<std::decay_t<Path>, path, path_view>
-			fs_result<stat::query> operator()(stat &st, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(*this, st, std::forward<Path>(path), q, nofollow); }
+			result<stat::query> operator()(stat &st, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(*this, st, std::forward<Path>(path), q, nofollow); }
 
 			template<typename Hnd> requires tag_invocable<get_stat_t, stat &, const Hnd &, stat::query>
 			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
