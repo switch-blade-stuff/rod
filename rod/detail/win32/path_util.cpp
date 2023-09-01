@@ -41,7 +41,7 @@ namespace rod
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
-		if (!::SetCurrentDirectoryW(upath.buff));
+		if (!::SetCurrentDirectoryW(upath.buff))
 			return dos_error_code(::GetLastError());
 		else
 			return {};
