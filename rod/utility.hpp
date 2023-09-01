@@ -355,7 +355,7 @@ namespace rod
 		template<typename... Ts>
 		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
 
-		[[noreturn]] inline constexpr void throw_error_code(const std::error_code &err, const std::string &msg = {})
+		[[noreturn]] inline void throw_error_code(const std::error_code &err, const std::string &msg = {})
 		{
 			if (err.category() != std::generic_category() || err.value() != int(std::errc::not_enough_memory))
 				ROD_THROW(std::system_error(err, msg));

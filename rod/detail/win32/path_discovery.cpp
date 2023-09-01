@@ -41,23 +41,6 @@ namespace rod::_detail
 		/* TODO: Implement */
 	}
 
-	result<path> find_working_dir() noexcept
-	{
-		try
-		{
-			std::wstring path;
-			if (const auto n = ::GetCurrentDirectoryW(0, nullptr); !n) [[unlikely]]
-				return _win32::dos_error_code(::GetLastError());
-			else
-				path.resize(n);
-			if (!::GetCurrentDirectoryW(path.size() + 1, path.data())) [[unlikely]]
-				return _win32::dos_error_code(::GetLastError());
-			else
-				return std::move(path);
-		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
-	}
 	result<path> find_install_dir() noexcept
 	{
 		try

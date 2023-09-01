@@ -15,12 +15,16 @@ namespace rod
 		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
-		auto &ntapi = ntapi::instance();
+		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
+		auto rpath = path.render_null_terminated();
 		auto upath = unicode_string();
-		auto guard = ntapi->path_to_nt_string(upath, path, !base.is_open());
+		upath.max = (upath.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath.buff = const_cast<wchar_t *>(rpath.data());
+
+		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 

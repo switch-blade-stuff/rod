@@ -74,7 +74,6 @@ namespace rod
 		static result<> find_state_dirs(typename path::string_type &, std::vector<discovered_path> &) noexcept;
 		static result<> find_config_dirs(typename path::string_type &, std::vector<discovered_path> &) noexcept;
 
-		static result<path> find_working_dir() noexcept;
 		static result<path> find_install_dir() noexcept;
 		static result<path> find_runtime_dir() noexcept;
 		static result<path> find_temp_file_dir() noexcept;
@@ -182,11 +181,6 @@ namespace rod
 	[[nodiscard]] ROD_API_PUBLIC const directory_handle &temporary_file_directory() noexcept;
 	/** Returns handle to a directory used for creation of temporary named pipes. */
 	[[nodiscard]] ROD_API_PUBLIC const directory_handle &temporary_pipe_directory() noexcept;
-
-	/** Returns path of the current directory as if via `getcwd`. */
-	[[nodiscard]] ROD_API_PUBLIC result<path> current_path() noexcept;
-	/** Changes path of the current directory to \a path as if via `chdir`. */
-	[[nodiscard]] ROD_API_PUBLIC result<> current_path(path_view path) noexcept;
 
 	/** Returns a span of system-specific temporary directories, sorted by discovery source.
 	 * @param refresh If set to `true`, system temporary directory cache is refreshed.

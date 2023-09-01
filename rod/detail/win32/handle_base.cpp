@@ -97,6 +97,7 @@ namespace rod::_handle
 					return std::make_error_code(std::errc::no_such_file_or_directory);
 				else
 					result.replace(1, 8, std::wstring_view(L"\\.\\"));
+				return std::move(result);
 			}
 
 			/* Make sure the resulting DOS path references the same file as `hnd`. */

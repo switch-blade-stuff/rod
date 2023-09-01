@@ -3,12 +3,8 @@
  */
 
 #include "path_discovery.hpp"
+#include "path_util.hpp"
 
-#if defined(ROD_WIN32)
-#include <direct.h>
-#endif
-
-#include <cerrno>
 #include <mutex>
 
 namespace rod
@@ -105,7 +101,7 @@ namespace rod
 		}
 		discovery_cache::discovery_cache()
 		{
-			working_dir = find_working_dir().value();
+			working_dir = current_path().value();
 			install_dir = find_install_dir().value();
 			runtime_dir = find_runtime_dir().value();
 
@@ -142,21 +138,6 @@ namespace rod
 	const directory_handle &starting_working_directory() noexcept { return _detail::discovery_cache::cached_dir_handle<&_detail::discovery_cache::working_dir>(); }
 	const directory_handle &starting_install_directory() noexcept { return _detail::discovery_cache::cached_dir_handle<&_detail::discovery_cache::install_dir>(); }
 	const directory_handle &starting_runtime_directory() noexcept { return _detail::discovery_cache::cached_dir_handle<&_detail::discovery_cache::runtime_dir>(); }
-
-	result<path> current_path() noexcept { return _detail::find_working_dir(); }
-	result<> current_path(path_view path) noexcept
-	{
-		const auto rpath = path.render_null_terminated();
-#if defined(ROD_WIN32)
-		const auto res = _wchdir(rpath.c_str());
-#else
-		const auto res = chdir(rpath.c_str());
-#endif
-		if (res) [[unlikely]]
-			return std::error_code(errno, std::generic_category());
-		else
-			return {};
-	}
 
 	std::span<const discovered_path> temporary_directory_paths(bool refresh) noexcept
 	{
