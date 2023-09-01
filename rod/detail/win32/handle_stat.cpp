@@ -257,7 +257,7 @@ namespace rod::_handle
 		auto done = stat::query::none;
 		if (q == done) return done;
 
-		auto &ntapi = ntapi::instance();
+		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
@@ -356,7 +356,7 @@ namespace rod::_handle
 		if ((q &= (stat::query::atime | stat::query::mtime | stat::query::btime)) == stat::query::none)
 			return q;
 
-		auto &ntapi = ntapi::instance();
+		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
@@ -390,28 +390,32 @@ namespace rod::_handle
 		auto done = stat::query::none;
 		if (q == done) return done;
 
-		auto &ntapi = ntapi::instance();
+		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
 		auto basic_info = file_basic_information();
 		auto obj_attrib = object_attributes();
-		auto upath = unicode_string();
 		auto iosb = io_status_block();
 		bool is_dir = false;
 
-		auto guard = ntapi->path_to_nt_string(upath, path, false);
+		auto upath_src = unicode_string(), upath_dst = unicode_string();
+		const auto rpath = path.render_null_terminated();
+		upath_src.max = (upath_src.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath_src.buff = const_cast<wchar_t *>(rpath.data());
+
+		auto guard = ntapi->dos_path_to_nt_path(upath_src, upath_dst, false);
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
 		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = &upath;
+		obj_attrib.name = &upath_dst;
 
 		/* If possible, try to get all requested data using `NtQueryAttributesFile` to avoid opening a handle altogether. */
 		if (auto status = ntapi->NtQueryAttributesFile(&obj_attrib, &basic_info); is_status_failure(status)) [[unlikely]]
 		{
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
-			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath))
+			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath_dst))
 				return status_error_code(status);
 		}
 

@@ -5,7 +5,7 @@
 #include "file.hpp"
 
 #ifdef ROD_WIN32
-#include "rod/detail/sysdep/win32/ntapi.hpp"
+#include "detail/win32/ntapi.hpp"
 #endif
 
 namespace rod
@@ -13,7 +13,7 @@ namespace rod
 	std::size_t system_random(void *buff, std::size_t max) noexcept
 	{
 #if defined(ROD_WIN32)
-		if (auto &ntapi = _win32::ntapi::instance(); ntapi.has_value()) [[likely]]
+		if (const auto &ntapi = _win32::ntapi::instance(); ntapi.has_value()) [[likely]]
 		{
 			const auto bcrypt_close = [&](void *p) { ntapi.value().BCryptCloseAlgorithmProvider(p, 0); };
 			static auto algo = [&]() -> result<std::unique_ptr<void, decltype(bcrypt_close)>>

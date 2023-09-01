@@ -15,6 +15,7 @@
 #include <sal.h>
 #else
 #define _In_
+#define _Inout_
 #define _In_opt_
 #define _Out_
 #define _Out_writes_to_(A, B)
@@ -64,11 +65,26 @@ namespace rod::_win32
 		return (_ft = ft, file_clock::time_point(_tp));
 	}
 
+	struct rtl_buffer
+	{
+		PUCHAR buff;
+		PUCHAR static_buff;
+		SIZE_T size;
+		SIZE_T static_size;
+		SIZE_T _reserved0;
+		PVOID _reserved1;
+	};
 	struct unicode_string
 	{
 		USHORT size;
 		USHORT max;
-		wchar_t *buffer;
+		PWCHAR buff;
+	};
+	struct unicode_string_buffer
+	{
+		unicode_string string;
+		rtl_buffer buffer;
+		UCHAR min_static_buff[sizeof(WCHAR)];
 	};
 
 	struct rtlp_curdir_ref
@@ -85,6 +101,7 @@ namespace rod::_win32
 
 	using RtlNtStatusToDosError_t = ULONG (ROD_NTAPI *)(_In_ ntstatus status);
 	using RtlIsDosDeviceName_Ustr_t = ULONG (ROD_NTAPI *)(_In_ const unicode_string *ustr);
+	using RtlNtPathNameToDosPathName_t = ULONG (ROD_NTAPI *)(_In_ ULONG flags, _Inout_ unicode_string_buffer *path, _Out_ ULONG *type, PULONG);
 	using RtlDosPathNameToNtPathName_U_t = bool (ROD_NTAPI *)(_In_ const wchar_t *dos_name, _Out_ unicode_string *nt_name, _Out_ const wchar_t **part, _Out_ rtl_relative_name_u *relative);
 
 	struct io_status_block
@@ -416,7 +433,7 @@ namespace rod::_win32
 
 	inline static result<std::unique_ptr<wchar_t[]>> make_info_buffer(std::size_t size) noexcept
 	{
-		try { return std::unique_ptr<wchar_t[]>(new(std::align_val_t(8)) wchar_t[size]); }
+		try { return std::unique_ptr<wchar_t[]>(new wchar_t[size]); }
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
@@ -456,13 +473,15 @@ namespace rod::_win32
 		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
 		ntstatus wait_io(void *handle, io_status_block *iosb, const file_timeout &to = file_timeout()) const noexcept;
 
-		result<heapalloc_ptr<wchar_t>> path_to_nt_string(unicode_string &upath, path_view path, bool relative) const noexcept;
+		result<heapalloc_ptr<wchar_t>> dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept;
+		result<heapalloc_ptr<wchar_t>> nt_path_to_dos_path(unicode_string &upath, bool passthrough) const noexcept;
 
 		void *ntdll;
 		void *bcrypt;
 
 		RtlNtStatusToDosError_t RtlNtStatusToDosError;
 		RtlIsDosDeviceName_Ustr_t RtlIsDosDeviceName_Ustr;
+		RtlNtPathNameToDosPathName_t RtlNtPathNameToDosPathName;
 		RtlDosPathNameToNtPathName_U_t RtlDosPathNameToNtPathName_U;
 
 		NtReadFile_t NtReadFile;

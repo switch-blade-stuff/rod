@@ -11,7 +11,7 @@ namespace rod::_handle
 {
 	using namespace _win32;
 
-	constexpr auto buff_size = std::size_t(65536);
+	constexpr std::size_t buff_size = 65537;
 
 	inline static result<> do_link(const ntapi &ntapi, basic_handle &hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
@@ -19,18 +19,22 @@ namespace rod::_handle
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto upath = unicode_string();
-		auto guard = ntapi.path_to_nt_string(upath, path, base.is_open());
+		auto upath_src = unicode_string(), upath_dst = unicode_string();
+		const auto rpath = path.render_null_terminated();
+		upath_src.max = (upath_src.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath_src.buff = const_cast<wchar_t *>(rpath.data());
+
+		auto guard = ntapi.dos_path_to_nt_path(upath_src, upath_dst, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
 		auto link_info = reinterpret_cast<file_link_information *>(buff->get());
 		auto iosb = io_status_block();
 
-		std::memcpy(link_info->name, upath.buffer, upath.size);
+		std::memcpy(link_info->name, upath_dst.buff, upath_dst.size);
 		link_info->flags = replace ? 0x1 | 0x2 /*FILE_LINK_REPLACE_IF_EXISTS | FILE_LINK_POSIX_SEMANTICS*/ : 0;
 		link_info->root_dir = base.is_open() ? base.native_handle() : nullptr;
-		link_info->name_len = upath.size;
+		link_info->name_len = upath_dst.size;
 
 		/* Try FileLinkInformationEx first, which will fail before Win10 RS5, in which case fall back to FileRenameInformation. */
 		auto status = ntapi.NtSetInformationFile(hnd.native_handle(), &iosb, link_info, sizeof(file_rename_information) + upath.size, FileLinkInformationEx);
@@ -49,23 +53,27 @@ namespace rod::_handle
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto upath = unicode_string();
-		auto guard = ntapi.path_to_nt_string(upath, path, base.is_open());
+		auto upath_src = unicode_string(), upath_dst = unicode_string();
+		const auto rpath = path.render_null_terminated();
+		upath_src.max = (upath_src.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath_src.buff = const_cast<wchar_t *>(rpath.data());
+
+		auto guard = ntapi.dos_path_to_nt_path(upath_src, upath_dst, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
 		auto rename_info = reinterpret_cast<file_rename_information *>(buff->get());
 		auto iosb = io_status_block();
 
-		std::memcpy(rename_info->name, upath.buffer, upath.size);
+		std::memcpy(rename_info->name, upath_dst.buff, upath_dst.size);
 		rename_info->flags = replace ? 0x1 | 0x2 /*FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS*/ : 0;
 		rename_info->root_dir = base.is_open() ? base.native_handle() : nullptr;
-		rename_info->name_len = upath.size;
+		rename_info->name_len = upath_dst.size;
 
 		/* Try FileRenameInformationEx first, which will fail before Win10 RS1, in which case fall back to FileRenameInformation. */
-		auto status = ntapi.NtSetInformationFile(hnd.native_handle(), &iosb, rename_info, sizeof(file_rename_information) + upath.size, FileRenameInformationEx);
+		auto status = ntapi.NtSetInformationFile(hnd.native_handle(), &iosb, rename_info, sizeof(file_rename_information) + upath_dst.size, FileRenameInformationEx);
 		if (is_status_failure(status))
-			status = ntapi.NtSetInformationFile(hnd.native_handle(), &iosb, rename_info, sizeof(file_rename_information) + upath.size, FileRenameInformation);
+			status = ntapi.NtSetInformationFile(hnd.native_handle(), &iosb, rename_info, sizeof(file_rename_information) + upath_dst.size, FileRenameInformation);
 		if (status == STATUS_PENDING)
 			status = ntapi.wait_io(hnd.native_handle(), &iosb, to);
 		if (is_status_failure(status))

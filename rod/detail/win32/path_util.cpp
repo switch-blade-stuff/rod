@@ -9,24 +9,66 @@ namespace rod
 {
 	using namespace _win32;
 
+	auto current_path() noexcept -> result<path>
+	{
+		try
+		{
+			std::wstring path;
+			if (const auto n = ::GetCurrentDirectoryW(0, nullptr); !n) [[unlikely]]
+				return _win32::dos_error_code(::GetLastError());
+			else
+				path.resize(n);
+			if (!::GetCurrentDirectoryW(path.size() + 1, path.data())) [[unlikely]]
+				return _win32::dos_error_code(::GetLastError());
+			else
+				return std::move(path);
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (const std::system_error &e) { return e.code(); }
+	}
+	auto current_path(path_view path) noexcept -> result<>
+	{
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto upath_src = unicode_string(), upath_dst = unicode_string();
+		const auto rpath = path.render_unterminated();
+		upath_src.max = (upath_src.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath_src.buff = const_cast<wchar_t *>(rpath.data());
+
+		/* FIXME: Implement an NTAPI version. */
+		auto guard = ntapi->nt_path_to_dos_path(upath_src, upath_dst, false);
+		if (guard.has_error()) [[unlikely]]
+			return guard.error();
+
+		if (!::SetCurrentDirectoryW(upath_dst.buff));
+			return dos_error_code(::GetLastError());
+		else
+			return {};
+	}
+
 	result<bool> exists(path_view path) noexcept
 	{
-		auto &ntapi = ntapi::instance();
+		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return result(in_place_error, ntapi.error());
 
-		auto basic_info = file_basic_information();
-		auto obj_attrib = object_attributes();
-		auto upath = unicode_string();
+		auto upath_src = unicode_string(), upath_dst = unicode_string();
+		const auto rpath = path.render_null_terminated();
+		upath_src.max = (upath_src.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath_src.buff = const_cast<wchar_t *>(rpath.data());
 
-		auto guard = ntapi->path_to_nt_string(upath, path, false);
+		auto guard = ntapi->dos_path_to_nt_path(upath_src, upath_dst, false);
 		if (auto err = guard.error_or({}); err && err.value() != ERROR_PATH_NOT_FOUND) [[unlikely]]
 			return result(in_place_error, guard.error());
 		else if (err.value() == ERROR_PATH_NOT_FOUND)
 			return false;
 
+		auto basic_info = file_basic_information();
+		auto obj_attrib = object_attributes();
 		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = &upath;
+		obj_attrib.name = &upath_dst;
 
 		/* If possible, try to get all requested data using `NtQueryAttributesFile` to avoid opening a handle altogether. */
 		if (auto status = ntapi->NtQueryAttributesFile(&obj_attrib, &basic_info); is_status_failure(status)) [[unlikely]]
@@ -35,7 +77,7 @@ namespace rod
 				return false;
 
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
-			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath)) [[unlikely]]
+			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath_dst)) [[unlikely]]
 				return result(in_place_error, status_error_code(status));
 			else
 				return false;

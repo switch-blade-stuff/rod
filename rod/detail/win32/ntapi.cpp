@@ -180,26 +180,67 @@ namespace rod::_win32
 		return iosb->status;
 	}
 
-	result<heapalloc_ptr<wchar_t>> ntapi::path_to_nt_string(unicode_string &upath, path_view path, bool relative) const noexcept
+	result<heapalloc_ptr<wchar_t>> ntapi::dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept
 	{
-		auto rpath = path.render_null_terminated();
-		if (const auto sv = std::wstring_view(rpath.data(), rpath.size()); relative && sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\"))
+		/* Ignore paths that already start with an NT prefix or are relative to a base directory. */
+		const auto sv = std::wstring_view(upath.buff, upath.size / sizeof(wchar_t));
+		if (passthrough || (sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\")))
 		{
-			upath.max = (upath.size = static_cast<USHORT>(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-			upath.buffer = const_cast<wchar_t *>(rpath.data());
-
 			if (sv.starts_with(L"\\!!\\"))
 			{
 				upath.size -= 3 * sizeof(wchar_t);
 				upath.max -= 3 * sizeof(wchar_t);
-				upath.buffer += 3;
+				upath.buff += 3;
 			}
 			return {};
 		}
-		if (!RtlDosPathNameToNtPathName_U(rpath.data(), &upath, nullptr, nullptr)) [[unlikely]]
-			return dos_error_code(ERROR_PATH_NOT_FOUND);
+
+		if (RtlDosPathNameToNtPathName_U(upath.buff, &upath, nullptr, nullptr)) [[likely]]
+			return heapalloc_ptr<wchar_t>(upath.buff);
 		else
-			return heapalloc_ptr<wchar_t>(upath.buffer);
+			return dos_error_code(ERROR_PATH_NOT_FOUND);
+	}
+	result<heapalloc_ptr<wchar_t>> ntapi::nt_path_to_dos_path(unicode_string &upath, bool passthrough) const noexcept
+	{
+		/* Ignore paths that don't start with an NT prefix or are relative to a base directory. */
+		const auto sv = std::wstring_view(upath.buff, upath.size / sizeof(wchar_t));
+		if (passthrough || !(sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\")))
+			return {};
+		if (sv.starts_with(L"\\!!\\"))
+		{
+			upath.size -= 3 * sizeof(wchar_t);
+			upath.max -= 3 * sizeof(wchar_t);
+			upath.buff += 3;
+		}
+
+		const auto buff_size = upath.max + MAX_PATH * sizeof(wchar_t);
+		const auto buff_mem = static_cast<wchar_t *>(alloca(buff_size));
+		std::memcpy(buff_mem, upath.buff, upath.size);
+
+		auto conv_buff = unicode_string_buffer();
+		conv_buff.string = upath;
+		conv_buff.string.max = buff_size;
+		conv_buff.string.buff = buff_mem;
+		conv_buff.buffer.size = buff_size;
+
+		if (!RtlNtPathNameToDosPathName(0, &conv_buff, nullptr, nullptr)) [[unlikely]]
+			return dos_error_code(ERROR_PATH_NOT_FOUND);
+
+		upath.buff = static_cast<wchar_t *>(::HeapAlloc(::GetProcessHeap(), 0, conv_buff.string.size + sizeof(wchar_t)));
+		if (upath.buff == nullptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
+
+		std::memcpy(upath.buff, conv_buff.string.buff, conv_buff.string.size);
+		upath.max = (upath.size = conv_buff.string.size) + sizeof(wchar_t);
+		upath.buff[upath.size / sizeof(wchar_t)] = L'\0';
+
+		/* RtlNtPathNameToDosPathName does not handle NT device names so replace "\Device\" with "\\.\" ourselves. */
+		if (upath.size >= 16 && !std::memcmp(upath.buff, L"\\Device\\", 16))
+		{
+			std::memmove(upath.buff + 3, upath.buff + 7, upath.max - 14);
+			std::memcpy(upath.buff, L"\\\\.", 6);
+		}
+		return heapalloc_ptr<wchar_t>(upath.buff);
 	}
 
 	struct status_entry
@@ -218,7 +259,7 @@ namespace rod::_win32
 			constexpr std::pair<ULONG, ULONG> err_ranges[] = {{0x0000'0000, 0x0000'ffff}, {0x4000'0000, 0x4000'ffff}, {0x8000'0001, 0x8000'ffff}, {0xc000'0001, 0xc000'ffff}};
 			constexpr int buff_size = 32768;
 
-			auto &ntapi = ntapi::instance().value();
+			const auto &ntapi = ntapi::instance().value();
 			auto tmp_buffer = std::make_unique<wchar_t[]>(buff_size);
 			auto msg_buffer = std::make_unique<char[]>(buff_size);
 			std::vector<status_entry> result;
