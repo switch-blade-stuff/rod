@@ -224,7 +224,7 @@ namespace rod
 		struct get_stat_t
 		{
 			template<typename Path> requires one_of<std::decay_t<Path>, path, path_view>
-			result<stat::query> operator()(stat &st, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(*this, st, std::forward<Path>(path), q, nofollow); }
+			result<stat::query> operator()(stat &st, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(st, std::forward<Path>(path), q, nofollow); }
 
 			template<typename Hnd> requires tag_invocable<get_stat_t, stat &, const Hnd &, stat::query>
 			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }

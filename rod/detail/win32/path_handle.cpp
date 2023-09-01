@@ -14,7 +14,6 @@ namespace rod
 	{
 		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-		constexpr auto access = SYNCHRONIZE;
 
 		auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -25,20 +24,20 @@ namespace rod
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
-		object_attributes attrib = {};
-		LARGE_INTEGER alloc_size = {};
-		io_status_block iosb = {};
+		auto obj_attrib = object_attributes();
+		auto iosb = io_status_block();
 
-		attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
-		attrib.length = sizeof(object_attributes);
-		attrib.name = &upath;
+		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
+		obj_attrib.length = sizeof(object_attributes);
+		obj_attrib.name = &upath;
 
-		/* Wait for completion if NtCreateFile returns STATUS_PENDING. */
 		auto handle = INVALID_HANDLE_VALUE;
-		auto status = ntapi->NtCreateFile(&handle, access, &attrib, &iosb, &alloc_size, 0, share, file_create, flags, nullptr, 0);
+		auto status = ntapi->NtCreateFile(&handle, SYNCHRONIZE, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
 		if (status == STATUS_PENDING) [[unlikely]]
 			status = ntapi->wait_io(handle, &iosb);
-		if (is_status_failure(status)) [[unlikely]]
+		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+		else if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return path_handle(handle);

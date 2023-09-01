@@ -20,7 +20,7 @@ namespace rod::_handle
 			return buff.error();
 
 		auto upath = unicode_string();
-		auto guard = ntapi.path_to_nt_string(upath, path, !base.is_open());
+		auto guard = ntapi.path_to_nt_string(upath, path, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
@@ -50,7 +50,7 @@ namespace rod::_handle
 			return buff.error();
 
 		auto upath = unicode_string();
-		auto guard = ntapi.path_to_nt_string(upath, path, !base.is_open());
+		auto guard = ntapi.path_to_nt_string(upath, path, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 

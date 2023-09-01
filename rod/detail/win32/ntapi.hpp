@@ -419,10 +419,12 @@ namespace rod::_win32
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
+	using NtQueryAttributesFile_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ file_basic_information *info);
+	using NtQueryInformationByName_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
+
 	using NtSetInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _In_ void *info, _In_ ULONG len, _In_ file_info_type type);
 	using NtQueryInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 	using NtQueryVolumeInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ fs_info_type type);
-	using NtQueryInformationByName_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 
 	using NtWaitForSingleObject_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ const FILETIME *timeout);
 	using NtCancelIoFileEx_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *req, _Out_ io_status_block *iosb);
@@ -465,9 +467,11 @@ namespace rod::_win32
 		NtWriteFile_t NtWriteFile;
 		NtCreateFile_t NtCreateFile;
 
+		NtQueryAttributesFile_t NtQueryAttributesFile;
+		NtQueryInformationByName_t NtQueryInformationByName;
+
 		NtSetInformationFile_t NtSetInformationFile;
 		NtQueryInformationFile_t NtQueryInformationFile;
-		NtQueryInformationByName_t NtQueryInformationByName;
 		NtQueryVolumeInformationFile_t NtQueryVolumeInformationFile;
 
 		NtCancelIoFileEx_t NtCancelIoFileEx;

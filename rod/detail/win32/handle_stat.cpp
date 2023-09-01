@@ -390,79 +390,85 @@ namespace rod::_handle
 		auto done = stat::query::none;
 		if (q == done) return done;
 
-		const auto rpath = path.render_null_terminated();
-		/* If possible, try to get relevant data using `GetFileAttributesExW` or `FindFirstFileW` to avoid opening the file altogether. */
-		if (bool(q & (stat::query::perm | stat::query::atime | stat::query::mtime | stat::query::btime | stat::query::size | stat::query::reparse_point)) && (nofollow || bool(q & stat::query::reparse_point)))
+		auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto basic_info = file_basic_information();
+		auto obj_attrib = object_attributes();
+		auto upath = unicode_string();
+		auto iosb = io_status_block();
+		bool is_dir = false;
+
+		auto guard = ntapi->path_to_nt_string(upath, path, false);
+		if (guard.has_error()) [[unlikely]]
+			return guard.error();
+
+		obj_attrib.length = sizeof(object_attributes);
+		obj_attrib.name = &upath;
+
+		/* If possible, try to get all requested data using `NtQueryAttributesFile` to avoid opening a handle altogether. */
+		if (auto status = ntapi->NtQueryAttributesFile(&obj_attrib, &basic_info); is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+
+		/* Data is only useful if the target is not a symlink or we don't want to follow symlinks. */
+		is_dir = basic_info.attributes & FILE_ATTRIBUTE_DIRECTORY;
+		if (nofollow || !(basic_info.attributes & FILE_ATTRIBUTE_REPARSE_POINT))
 		{
-			WIN32_FILE_ATTRIBUTE_DATA data;
-			if (!::GetFileAttributesExW(rpath.c_str(), GetFileExInfoStandard, &data))
+			if (bool(q & stat::query::atime))
 			{
-				if (const auto err = ::GetLastError(); err != ERROR_SHARING_VIOLATION)
-					return dos_error_code(err);
-
-				WIN32_FIND_DATAW find_data;
-				if (const auto hnd = ::FindFirstFileW(rpath.c_str(), &find_data); hnd == INVALID_HANDLE_VALUE) [[unlikely]]
-					return dos_error_code(::GetLastError());
-				else
-					::FindClose(hnd);
-
-				data.dwFileAttributes = find_data.dwFileAttributes;
-				data.ftLastWriteTime = find_data.ftLastAccessTime;
-				data.ftLastWriteTime = find_data.ftLastWriteTime;
-				data.ftLastWriteTime = find_data.ftCreationTime;
-				data.nFileSizeHigh = find_data.nFileSizeHigh;
-				data.nFileSizeLow = find_data.nFileSizeLow;
+				st.atime = filetime_to_tp(basic_info.atime);
+				done |= stat::query::atime;
+			}
+			if (bool(q & stat::query::mtime))
+			{
+				st.mtime = filetime_to_tp(basic_info.mtime);
+				done |= stat::query::mtime;
+			}
+			if (bool(q & stat::query::ctime))
+			{
+				st.ctime = filetime_to_tp(basic_info.ctime);
+				done |= stat::query::ctime;
+			}
+			if (bool(q & stat::query::btime))
+			{
+				st.btime = filetime_to_tp(basic_info.btime);
+				done |= stat::query::btime;
+			}
+			if (bool(q & stat::query::reparse_point))
+			{
+				st.reparse_point = basic_info.attributes & FILE_ATTRIBUTE_REPARSE_POINT;
+				done |= stat::query::reparse_point;
+			}
+			if (bool(q & stat::query::type) && is_dir)
+			{
+				st.type = file_type::directory;
+				done |= stat::query::type;
+			}
+			if (bool(q & stat::query::perm))
+			{
+				st.perm = (basic_info.attributes & FILE_ATTRIBUTE_READONLY) ? (file_perm::all & ~file_perm::write) : file_perm::all;
+				done |= stat::query::perm;
 			}
 
-			/* Data is only useful if the target is not a symlink or we don't want to follow symlinks. */
-			if (nofollow || !(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
-			{
-				if (bool(q & stat::query::perm))
-				{
-					st.perm = (data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) ? (file_perm::all & ~file_perm::write) : file_perm::all;
-					done |= stat::query::perm;
-				}
-				if (bool(q & stat::query::atime))
-				{
-					st.atime = filetime_to_tp(data.ftLastAccessTime);
-					done |= stat::query::atime;
-				}
-				if (bool(q & stat::query::mtime))
-				{
-					st.mtime = filetime_to_tp(data.ftLastWriteTime);
-					done |= stat::query::mtime;
-				}
-				if (bool(q & stat::query::btime))
-				{
-					st.mtime = filetime_to_tp(data.ftCreationTime);
-					done |= stat::query::btime;
-				}
-				if (bool(q & stat::query::size))
-				{
-					union { struct { DWORD _hw; DWORD _lw; }; std::uint64_t _size; };
-					_hw = data.nFileSizeHigh;
-					_lw = data.nFileSizeLow;
-					st.size = _size;
-					done |= stat::query::atime;
-				}
-				if (bool(q & stat::query::reparse_point))
-				{
-					st.reparse_point = data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT;
-					done |= stat::query::reparse_point;
-				}
-			}
 			if ((q ^= done) == stat::query::none)
 				return done;
 		}
 
 		/* If we still need more data then do the slow thing and open the handle. */
+		const auto flags = 0x20 | 0x4000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT*/ | (is_dir ? 1 /*FILE_DIRECTORY_FILE*/ : 0) | (nofollow ? 0x20'0000/*FILE_OPEN_REPARSE_POINT*/ : 0);
 		const auto share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
-		const auto flags = FILE_FLAG_BACKUP_SEMANTICS | (nofollow ? FILE_FLAG_OPEN_REPARSE_POINT : 0);
 
-		/* FIXME: replace with a NtCreateFile with proper support for NT paths. */
-		if (const auto handle = basic_handle(::CreateFileW(rpath.c_str(), FILE_READ_ATTRIBUTES, share, nullptr, OPEN_EXISTING, flags, nullptr)); !handle.is_open()) [[unlikely]]
-			return dos_error_code(::GetLastError());
-		else if (auto res = do_get_stat(st, handle, q); res.has_value()) [[likely]]
+		auto handle = INVALID_HANDLE_VALUE;
+		auto status = ntapi->NtCreateFile(&handle, SYNCHRONIZE | FILE_READ_ATTRIBUTES, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
+		if (status == STATUS_PENDING) [[unlikely]]
+			status = ntapi->wait_io(handle, &iosb);
+		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+		else if (is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+
+		if (auto res = do_get_stat(st, basic_handle(handle), q); res.has_value()) [[likely]]
 			return *res | done;
 		else
 			return res;

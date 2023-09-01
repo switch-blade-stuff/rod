@@ -63,16 +63,21 @@ namespace rod::_win32
 			else
 				return sym.error();
 
+			if (auto sym = load_sym<NtQueryAttributesFile_t>(result.ntdll, "NtQueryAttributesFile"); sym.has_value()) [[likely]]
+				result.NtQueryAttributesFile = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtQueryInformationByName_t>(result.ntdll, "NtQueryInformationByName", true); sym.has_value()) [[likely]]
+				result.NtQueryInformationByName = *sym;
+			else
+				return sym.error();
+
 			if (auto sym = load_sym<NtSetInformationFile_t>(result.ntdll, "NtSetInformationFile"); sym.has_value()) [[likely]]
 				result.NtSetInformationFile = *sym;
 			else
 				return sym.error();
 			if (auto sym = load_sym<NtQueryInformationFile_t>(result.ntdll, "NtQueryInformationFile"); sym.has_value()) [[likely]]
 				result.NtQueryInformationFile = *sym;
-			else
-				return sym.error();
-			if (auto sym = load_sym<NtQueryInformationByName_t>(result.ntdll, "NtQueryInformationByName", true); sym.has_value()) [[likely]]
-				result.NtQueryInformationByName = *sym;
 			else
 				return sym.error();
 			if (auto sym = load_sym<NtQueryVolumeInformationFile_t>(result.ntdll, "NtQueryVolumeInformationFile"); sym.has_value()) [[likely]]
@@ -174,7 +179,7 @@ namespace rod::_win32
 	result<heapalloc_ptr<wchar_t>> ntapi::path_to_nt_string(unicode_string &upath, path_view path, bool relative) const noexcept
 	{
 		auto rpath = path.render_null_terminated();
-		if (const auto sv = std::wstring_view(rpath.data(), rpath.size()); !relative && sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\"))
+		if (const auto sv = std::wstring_view(rpath.data(), rpath.size()); relative && sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\"))
 		{
 			upath.max = (upath.size = static_cast<USHORT>(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
 			upath.buffer = const_cast<wchar_t *>(rpath.data());
