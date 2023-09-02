@@ -212,11 +212,7 @@ namespace rod
 
 		/* Default implementation for path types. */
 		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept;
-		result<stat::query> do_get_stat(stat &st, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, path_view(path), q, nofollow); }
-
-		/* Default implementation for basic_handle. */
-		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const basic_handle &hnd, stat::query q) noexcept;
-		ROD_API_PUBLIC result<stat::query> do_set_stat(const stat &st, basic_handle &hnd, stat::query q) noexcept;
+		inline static result<stat::query> do_get_stat(stat &st, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, path_view(path), q, nofollow); }
 
 		template<typename Res>
 		concept stat_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<stat::query>, Res>;
@@ -225,18 +221,13 @@ namespace rod
 		{
 			template<typename Path> requires one_of<std::decay_t<Path>, path, path_view>
 			result<stat::query> operator()(stat &st, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(st, std::forward<Path>(path), q, nofollow); }
-
 			template<typename Hnd> requires tag_invocable<get_stat_t, stat &, const Hnd &, stat::query>
 			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
-			template<typename Hnd> requires(!tag_invocable<get_stat_t, stat &, const Hnd &, stat::query> && std::convertible_to<const Hnd &, const basic_handle &>)
-			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return do_get_stat(st, hnd, q); }
 		};
 		struct set_stat_t
 		{
 			template<typename Hnd> requires tag_invocable<set_stat_t, const stat &, Hnd &, stat::query>
 			stat_result auto operator()(const stat &st, Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
-			template<typename Hnd> requires(!tag_invocable<set_stat_t, const stat &, Hnd &, stat::query> && std::convertible_to<Hnd &, basic_handle &>)
-			stat_result auto operator()(const stat &st, Hnd &hnd, stat::query q = stat::query::all) const noexcept { return do_set_stat(st, hnd, q); }
 		};
 	}
 
@@ -255,13 +246,13 @@ namespace rod
 	 * @overload Queries stats of a handle.
 	 * @param hnd Handle to query stats from.
 	 * @param q Query flags used to select requested stats.
-	 * @return Result containing mask of the obtained stats, or a status code on failure to obtain the stats.
+	 * @return Mask of the obtained stats, or a status code on failure.
 	 *
 	 * @overload Queries stats of a path.
 	 * @param path Path to query stats for.
 	 * @param q Query flags used to select requested stats.
 	 * @param nofollow If set to `true`, will not follow symlinks. `false` by default.
-	 * @return Mask of the obtained stats, or a status code on failure to obtain the stats. */
+	 * @return Mask of the obtained stats, or a status code on failure. */
 	inline constexpr auto get_stat = get_stat_t{};
 	/** Customization point object used to modify selected stats for the specified filesystem object.
 	 * Only the following fields can be modified:
@@ -276,6 +267,6 @@ namespace rod
 	 *
 	 * @param hnd Handle who's stats to modify.
 	 * @param q Query flags used to select modified stats.
-	 * @return Result containing mask of the modified stats, or a status code on failure to modify the stats. */
+	 * @return Mask of the modified stats, or a status code on failure. */
 	inline constexpr auto set_stat = set_stat_t{};
 }

@@ -15,11 +15,11 @@ namespace rod
 		{
 			std::wstring path;
 			if (const auto n = ::GetCurrentDirectoryW(0, nullptr); !n) [[unlikely]]
-				return _win32::dos_error_code(::GetLastError());
+				return dos_error_code(::GetLastError());
 			else
 				path.resize(n);
-			if (!::GetCurrentDirectoryW(path.size() + 1, path.data())) [[unlikely]]
-				return _win32::dos_error_code(::GetLastError());
+			if (!::GetCurrentDirectoryW(DWORD(path.size() + 1), path.data())) [[unlikely]]
+				return dos_error_code(::GetLastError());
 			else
 				return std::move(path);
 		}
@@ -34,10 +34,10 @@ namespace rod
 
 		auto rpath = path.render_unterminated();
 		auto upath = unicode_string();
-		upath.max = (upath.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
 		upath.buff = const_cast<wchar_t *>(rpath.data());
 
-		auto guard = ntapi->nt_path_to_dos_path(upath, false);
+		auto guard = ntapi->canonize_win32_path(upath, false);
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
@@ -55,7 +55,7 @@ namespace rod
 
 		auto rpath = path.render_null_terminated();
 		auto upath = unicode_string();
-		upath.max = (upath.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
 		upath.buff = const_cast<wchar_t *>(rpath.data());
 
 		auto guard = ntapi->dos_path_to_nt_path(upath, false);

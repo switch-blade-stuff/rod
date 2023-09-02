@@ -80,42 +80,28 @@ namespace rod
 			return match_masks(name, {tmpfs_mask, ramfs_mask});
 		}
 
-		static constinit std::atomic<int> cache_init;
-		static discovery_cache cache_data;
-
-		discovery_cache &discovery_cache::instance()
+		result<discovery_cache> &discovery_cache::instance()
 		{
-			for (;;)
+			static auto value = []() -> result<discovery_cache>
 			{
-				/* Try to prematurely initialize the cache if required. This is technically UB but should be ok. */
-				const auto flag = cache_init.load(std::memory_order_acquire);
-				if (flag == 2)
-					break;
-				if (flag == 0)
-				{
-					new (&cache_data) discovery_cache();
-					return cache_data;
-				}
-				cache_init.wait(flag);
-			}
-		}
-		discovery_cache::discovery_cache()
-		{
-			working_dir = current_path().value();
-			install_dir = find_install_dir().value();
-			runtime_dir = find_runtime_dir().value();
-
-			cache_init.store(2, std::memory_order_release);
-			cache_init.notify_all();
+				discovery_cache result;
+				if (auto path = current_path(); path.has_value()) [[likely]]
+					result.working_dir = std::move(*path);
+				else
+					return path.error();
+				if (auto path = find_install_dir(); path.has_value()) [[likely]]
+					result.install_dir = std::move(*path);
+				else
+					return path.error();
+				if (auto path = find_runtime_dir(); path.has_value()) [[likely]]
+					result.runtime_dir = std::move(*path);
+				else
+					return path.error();
+				return std::move(result);
+			}();
+			return value;
 		}
 
-		std::vector<discovered_path> discovery_cache::filter_paths(discovery_mode mode, std::span<const discovered_path> cache, std::span<const path_view> override, std::span<const path_view> fallback) noexcept
-		{
-			std::vector<discovered_path> result;
-			result.reserve(cache.size() + override.size() + fallback.size());
-
-			/* TODO: Go through each path, get it's file & volume stats and apply mode filter. */
-		}
 		template<typename F>
 		result<> discovery_cache::refresh_dirs(F &&find, typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
 		{
@@ -130,7 +116,13 @@ namespace rod
 		template<auto discovery_cache::*Path>
 		const directory_handle &discovery_cache::cached_dir_handle() noexcept
 		{
-			static const auto handle = open_directory(instance().*Path).value_or({});
+			static const auto handle = []() -> directory_handle
+			{
+				if (const auto &cache = instance(); cache.has_value() && !((*cache).*Path).empty()) [[likely]]
+					return directory_handle::open((*cache).*Path).value_or({});
+				else
+					return {};
+			}();
 			return handle;
 		}
 	}
@@ -139,25 +131,33 @@ namespace rod
 	const directory_handle &starting_install_directory() noexcept { return _detail::discovery_cache::cached_dir_handle<&_detail::discovery_cache::install_dir>(); }
 	const directory_handle &starting_runtime_directory() noexcept { return _detail::discovery_cache::cached_dir_handle<&_detail::discovery_cache::runtime_dir>(); }
 
-	std::span<const discovered_path> temporary_directory_paths(bool refresh) noexcept
+	result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode, std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
 	{
 		auto &cache = _detail::discovery_cache::instance();
-		auto g = std::lock_guard(cache);
+		if (cache.has_error()) [[unlikely]]
+			return cache.error();
 
-		if (refresh || cache.temp_dirs.empty()) [[unlikely]]
-			(void) cache.refresh_temp_dirs();
-		return cache.temp_dirs;
+		auto guard = std::lock_guard(*cache);
+		if (result<> res; (refresh || cache->temp_dirs.empty()) && (res = cache->refresh_temp_dirs()).has_error()) [[unlikely]]
+			return res.error();
+
+		try
+		{
+			/* TODO: Go through cache, override & fallback dirs and apply the filter. */
+			return cache->temp_dirs;
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (const std::system_error &e) { return e.code(); }
 	}
-	std::vector<discovered_path> temporary_directory_paths(discovery_mode mode, bool refresh)
+
+	const directory_handle &temporary_file_directory() noexcept
 	{
-		return temporary_directory_paths(mode, {}, {}, refresh);
+		static const directory_handle value;
+		return value;
 	}
-	std::vector<discovered_path> temporary_directory_paths(std::span<const path_view> override, std::span<const path_view> fallback, bool refresh)
+	const directory_handle &temporary_path_directory() noexcept
 	{
-		return temporary_directory_paths(discovery_mode::all, override, fallback, refresh);
-	}
-	std::vector<discovered_path> temporary_directory_paths(discovery_mode mode, std::span<const path_view> override, std::span<const path_view> fallback, bool refresh)
-	{
-		return _detail::discovery_cache::filter_paths(mode, temporary_directory_paths(refresh), override, fallback);
+		static const directory_handle value;
+		return value;
 	}
 }

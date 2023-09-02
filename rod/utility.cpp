@@ -29,8 +29,8 @@ namespace rod
 				else
 					return _win32::status_error_code(status);
 			}();
-			if (algo.has_value() && !ntapi->BCryptGenRandom(algo->get(), buff, max, 0)) [[unlikely]]
-				return max;
+			if (algo.has_value() && !ntapi->BCryptGenRandom(algo->get(), buff, DWORD(max), 0)) [[unlikely]]
+				return DWORD(max);
 		}
 #elif defined(ROD_POSIX)
 		static auto random = []() -> result<file_handle>

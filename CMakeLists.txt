@@ -135,7 +135,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/path_util.hpp
         rod/detail/path_handle.hpp
         rod/detail/path_discovery.hpp
-        # rod/detail/directory_handle.hpp
+        rod/detail/directory_handle.hpp
 
         # Filesystem IO
         # rod/detail/file_handle.hpp
@@ -144,16 +144,16 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         # rod/detail/file_mapping.hpp
 
         # Linux headers
-        rod/linux/io_uring_context.hpp
-        rod/linux/epoll_context.hpp
+        # rod/linux/io_uring_context.hpp
+        # rod/linux/epoll_context.hpp
 
         # Win32 headers
-        rod/win32/iocp_context.hpp
+        # rod/win32/iocp_context.hpp
 
         # Common headers
         rod/path.hpp
         rod/file.hpp
-        rod/io.hpp)
+        #[[rod/io.hpp]])
 
 # Platform-independent sources
 target_sources(${PROJECT_NAME} PRIVATE
@@ -171,8 +171,8 @@ target_sources(${PROJECT_NAME} PRIVATE
 # Linux implementation
 if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
     target_sources(${PROJECT_NAME} PRIVATE
-            rod/linux/io_uring_context.cpp
-            rod/linux/epoll_context.cpp)
+            #[[rod/linux/io_uring_context.cpp]]
+            #[[rod/linux/epoll_context.cpp]])
 endif ()
 
 # Win32 implementation
@@ -189,7 +189,7 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/path_discovery.cpp
             rod/detail/win32/fs_handle_base.cpp
             rod/detail/win32/directory_handle.cpp
-            rod/win32/iocp_context.cpp)
+            #[[rod/win32/iocp_context.cpp]])
 endif ()
 
 # Unit tests

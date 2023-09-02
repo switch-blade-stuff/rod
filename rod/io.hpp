@@ -5,7 +5,8 @@
 #pragma once
 
 #include "detail/system_handle.hpp"
-#include "fs.hpp"
+#include "path.hpp"
+#include "file.hpp"
 
 #ifdef ROD_WIN32
 #include "win32/iocp_context.hpp"

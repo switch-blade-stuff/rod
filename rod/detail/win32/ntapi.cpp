@@ -62,6 +62,11 @@ namespace rod::_win32
 				result.NtWriteFile = *sym;
 			else
 				return sym.error();
+
+			if (auto sym = load_sym<NtOpenFile_t>(result.ntdll, "NtOpenFile"); sym.has_value()) [[likely]]
+				result.NtOpenFile = *sym;
+			else
+				return sym.error();
 			if (auto sym = load_sym<NtCreateFile_t>(result.ntdll, "NtCreateFile"); sym.has_value()) [[likely]]
 				result.NtCreateFile = *sym;
 			else
@@ -142,6 +147,7 @@ namespace rod::_win32
 			iosb->status = 0xc0000120 /* STATUS_CANCELLED */;
 			return iosb->status;
 		}
+		return iosb->status;
 	}
 	ntstatus ntapi::wait_io(void *handle, io_status_block *iosb, const file_timeout &to) const noexcept
 	{
@@ -200,47 +206,86 @@ namespace rod::_win32
 		else
 			return dos_error_code(ERROR_PATH_NOT_FOUND);
 	}
-	result<heapalloc_ptr<wchar_t>> ntapi::nt_path_to_dos_path(unicode_string &upath, bool passthrough) const noexcept
+	result<heapalloc_ptr<wchar_t>> ntapi::canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept
 	{
-		/* Ignore paths that don't start with an NT prefix or are relative to a base directory. */
+		/* Ignore paths that don't need canonization. */
 		const auto sv = std::wstring_view(upath.buff, upath.size / sizeof(wchar_t));
-		if (passthrough || !(sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\")))
+		if (passthrough || !(sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\") || sv.starts_with(L"\\\\?\\")))
 			return {};
-		if (sv.starts_with(L"\\!!\\"))
-		{
-			upath.size -= 3 * sizeof(wchar_t);
-			upath.max -= 3 * sizeof(wchar_t);
-			upath.buff += 3;
-		}
 
-		const auto buff_size = upath.max + MAX_PATH * sizeof(wchar_t);
-		const auto buff_mem = static_cast<wchar_t *>(alloca(buff_size));
-		std::memcpy(buff_mem, upath.buff, upath.size);
+		unicode_string src_path = upath;
+		heapalloc_ptr<wchar_t> guard;
 
-		auto conv_buff = unicode_string_buffer();
-		conv_buff.string = upath;
-		conv_buff.string.max = buff_size;
-		conv_buff.string.buff = buff_mem;
-		conv_buff.buffer.size = buff_size;
-
-		if (!RtlNtPathNameToDosPathName(0, &conv_buff, nullptr, nullptr)) [[unlikely]]
-			return dos_error_code(ERROR_PATH_NOT_FOUND);
-
-		upath.buff = static_cast<wchar_t *>(::HeapAlloc(::GetProcessHeap(), 0, conv_buff.string.size + sizeof(wchar_t)));
+		/* Duplicate the source string. Make sure to allocate enough space for potential GLOBALROOT\, any other slack and null terminator. */
+		upath.max = (upath.size = src_path.size) + (MAX_PATH + 1) * sizeof(wchar_t);
+		upath.buff = (PWCHAR) ::HeapAlloc(::GetProcessHeap(), 0, upath.max);
 		if (upath.buff == nullptr) [[unlikely]]
 			return std::make_error_code(std::errc::not_enough_memory);
+		else
+			guard.reset(upath.buff);
 
-		std::memcpy(upath.buff, conv_buff.string.buff, conv_buff.string.size);
-		upath.max = (upath.size = conv_buff.string.size) + sizeof(wchar_t);
+		std::memcpy(upath.buff, src_path.buff, src_path.size);
 		upath.buff[upath.size / sizeof(wchar_t)] = L'\0';
 
-		/* RtlNtPathNameToDosPathName does not handle NT device names so replace "\Device\" with "\\.\" ourselves. */
-		if (upath.size >= 16 && !std::memcmp(upath.buff, L"\\Device\\", 16))
+		/* Use RtlNtPathNameToDosPathName for \??\ namespace paths. */
+		if (upath.size >= 8 && std::memcmp(upath.buff, L"\\??\\", 8) == 0)
 		{
-			std::memmove(upath.buff + 3, upath.buff + 7, upath.max - 14);
-			std::memcpy(upath.buff, L"\\\\.", 6);
+			auto conv_buff = unicode_string_buffer();
+			conv_buff.buffer.buff = (PUCHAR) upath.buff;
+			conv_buff.buffer.size = (SIZE_T) upath.size;
+			conv_buff.string = upath;
+
+			if (!RtlNtPathNameToDosPathName(0, &conv_buff, nullptr, nullptr)) [[unlikely]]
+				return dos_error_code(ERROR_PATH_NOT_FOUND);
+			else
+				upath = conv_buff.string;
 		}
-		return heapalloc_ptr<wchar_t>(upath.buff);
+
+		/* Replace \!!\Gobal??\ with \\?\ */
+		if (upath.size >= 24 && std::memcmp(upath.buff, L"\\!!\\Global??\\", 24) == 0)
+		{
+			std::memcpy(upath.buff += 8, L"\\\\?", 6);
+			upath.size -= 16;
+			upath.max -= 16;
+		}
+		/* Replace \!!\Device\ with \\.\ */
+		if (upath.size >= 22 && std::memcmp(upath.buff, L"\\!!\\Device\\", 22) == 0)
+		{
+			std::memcpy(upath.buff += 7, L"\\\\.", 6);
+			upath.size -= 14;
+			upath.max -= 14;
+		}
+		/* Replace \!!\ with \\?\GLOBALROOT\ */
+		if (upath.size >= 8 && std::memcmp(upath.buff, L"\\!!\\", 8) == 0)
+		{
+			std::move_backward(upath.buff + 3, upath.buff + upath.size / sizeof(wchar_t) + 1, upath.buff + 14);
+			std::memcpy(upath.buff, L"\\\\?\\GLOBALROOT", 28);
+			upath.size += 22;
+		}
+
+		/* Replace \\?\UNC\ with \\, only if there are no illegal sequences. */
+		if (upath.size >= 16 && std::memcmp(upath.buff, L"\\\\?\\UNC\\", 16) == 0 && !_path::has_illegal_path_sequences({upath.buff, upath.size / sizeof(wchar_t)}))
+		{
+			std::memcpy(upath.buff += 6, L"\\\\", 4);
+			upath.size -= 12;
+			upath.max -= 12;
+		}
+		/* Replace \\?\X: with X:, only if there are no illegal sequences. */
+		if (upath.size >= 12 && std::memcmp(upath.buff, L"\\\\?\\", 8) == 0 && _path::is_drive_letter(upath.buff[4]) && upath.buff[5] == L':' && !_path::has_illegal_path_sequences({upath.buff + 12, upath.size / sizeof(wchar_t) - 12}))
+		{
+			upath.buff += 4;
+			upath.size -= 8;
+			upath.max -= 8;
+		}
+		/* If the path does not start with \\?\ but there are illegal sequences, add \\?\. */
+		if (upath.size >= 8 && std::memcmp(upath.buff, L"\\\\?\\", 8) != 0 && _path::has_illegal_path_sequences({upath.buff - 8, upath.size / sizeof(wchar_t) - 8}))
+		{
+			std::move_backward(upath.buff, upath.buff + upath.size / sizeof(wchar_t) + 1, upath.buff + 4);
+			std::memcpy(upath.buff, L"\\\\?\\", 8);
+			upath.size += 6;
+		}
+
+		return std::move(guard);
 	}
 
 	struct status_entry

@@ -9,7 +9,6 @@ namespace rod
 {
 	using namespace _win32;
 
-	result<path_handle> path_handle::open(path_view path) noexcept { return open({}, path); }
 	result<path_handle> path_handle::open(const path_handle &base, path_view path) noexcept
 	{
 		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
@@ -21,7 +20,7 @@ namespace rod
 
 		auto rpath = path.render_null_terminated();
 		auto upath = unicode_string();
-		upath.max = (upath.size = rpath.size() * sizeof(wchar_t)) + sizeof(wchar_t);
+		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
 		upath.buff = const_cast<wchar_t *>(rpath.data());
 
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
@@ -46,25 +45,4 @@ namespace rod
 		else
 			return path_handle(handle);
 	}
-
-#if 0
-	result<directory_handle> directory_handle::open(path_view path) noexcept { return open({}, path); }
-	result<directory_handle> directory_handle::open(const path_handle &base, path_view path) noexcept
-	{
-	}
-
-	result<directory_handle> directory_handle::open_unique(const path_handle &base) noexcept
-	{
-		try { return open(base, generate_unique_name()); }
-		catch (const std::system_error &e) { return e.code(); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-	result<directory_handle> directory_handle::open_temporary(path_view path) noexcept
-	{
-		if (path.empty())
-			return open_unique(temporary_file_directory());
-		else
-			return open(temporary_file_directory(), path);
-	}
-#endif
 }

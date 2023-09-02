@@ -146,6 +146,8 @@ namespace rod::_win32
 	                                            _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
 	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff,
 	                                             _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
+
+	using NtOpenFile_t = ntstatus (ROD_NTAPI *)(_Out_ void **file, _In_ ULONG access, _In_ const object_attributes *obj, _Out_ io_status_block *iosb, _In_ ULONG share, _In_ ULONG opts);
 	using NtCreateFile_t = ntstatus (ROD_NTAPI *)(_Out_ void **file, _In_ ULONG access, _In_ const object_attributes *obj, _Out_ io_status_block *iosb, _In_opt_ const LARGE_INTEGER *size,
 	                                              _In_ ULONG file_attr, _In_ ULONG share, _In_ disposition disp, _In_ ULONG opts, _In_opt_ void *buff, _In_ ULONG len);
 
@@ -323,6 +325,7 @@ namespace rod::_win32
 		UCHAR file_id[16];
 	};
 
+	struct file_case_sensitive_information { ULONG flags; };
 	struct file_disposition_information_ex { ULONG flags; };
 	struct file_disposition_information { BOOLEAN del; };
 
@@ -474,7 +477,7 @@ namespace rod::_win32
 		ntstatus wait_io(void *handle, io_status_block *iosb, const file_timeout &to = file_timeout()) const noexcept;
 
 		result<heapalloc_ptr<wchar_t>> dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept;
-		result<heapalloc_ptr<wchar_t>> nt_path_to_dos_path(unicode_string &upath, bool passthrough) const noexcept;
+		result<heapalloc_ptr<wchar_t>> canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept;
 
 		void *ntdll;
 		void *bcrypt;
@@ -486,6 +489,8 @@ namespace rod::_win32
 
 		NtReadFile_t NtReadFile;
 		NtWriteFile_t NtWriteFile;
+
+		NtOpenFile_t NtOpenFile;
 		NtCreateFile_t NtCreateFile;
 
 		NtQueryAttributesFile_t NtQueryAttributesFile;
@@ -517,7 +522,7 @@ namespace rod::_win32
 		bool equivalent(int value, const std::error_condition &cnd) const noexcept override;
 	};
 
-	static const std::error_category &status_category() noexcept;
+	const std::error_category &status_category() noexcept;
 	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
 	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
 }

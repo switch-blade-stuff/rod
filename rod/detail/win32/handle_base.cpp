@@ -9,30 +9,30 @@ namespace rod::_handle
 {
 	using namespace _win32;
 
-	auto do_close(basic_handle &hnd) noexcept -> result<>
+	auto basic_handle::do_close() noexcept -> result<>
 	{
-		if (hnd.is_open() && !::CloseHandle(hnd.release())) [[unlikely]]
+		if (is_open() && !::CloseHandle(release())) [[unlikely]]
 			return dos_error_code(::GetLastError());
 		else
 			return {};
 	}
-	auto do_clone(const basic_handle &hnd) noexcept -> result<basic_handle>
+	auto basic_handle::do_clone() const noexcept -> result<basic_handle>
 	{
-		typename basic_handle::native_handle_type result = INVALID_HANDLE_VALUE;
-		if (::DuplicateHandle(::GetCurrentProcess(), hnd.native_handle(), ::GetCurrentProcess(), &result, 0, 0, DUPLICATE_SAME_ACCESS) == 0)
+		basic_handle::native_handle_type result = INVALID_HANDLE_VALUE;
+		if (::DuplicateHandle(::GetCurrentProcess(), _hnd, ::GetCurrentProcess(), &result.value, 0, 0, DUPLICATE_SAME_ACCESS) == 0)
 			return dos_error_code(::GetLastError());
 		else
-			return basic_handle(result);
+			return result;
 	}
 
-	result<path> do_to_object_path(const basic_handle &hnd) noexcept
+	result<path> basic_handle::do_to_object_path() const noexcept
 	{
 		try
 		{
 			auto result = std::wstring(32768, '\0');
 			std::copy_n(L"\\!!", 3, result.data());
 
-			if (const auto len = ::GetFinalPathNameByHandleW(hnd.native_handle(), result.data() + 3, result.size() - 2, VOLUME_NAME_NT); !len) [[unlikely]]
+			if (const auto len = ::GetFinalPathNameByHandleW(_hnd, result.data() + 3, USHORT(result.size() - 2), VOLUME_NAME_NT); !len) [[unlikely]]
 				return _win32::dos_error_code(::GetLastError());
 			else
 				result.resize(len + 3);
@@ -46,7 +46,7 @@ namespace rod::_handle
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
-	result<path> do_to_native_path(const basic_handle &hnd, native_path_format fmt, dev_t dev, ino_t ino) noexcept
+	result<path> basic_handle::do_to_native_path(native_path_format fmt, dev_t dev, ino_t ino) const noexcept
 	{
 		try
 		{
@@ -70,7 +70,7 @@ namespace rod::_handle
 				return std::make_error_code(std::errc::invalid_argument);
 			}
 
-			if (const auto len = ::GetFinalPathNameByHandleW(hnd.native_handle(), result.data(), result.size(), flags); !len) [[unlikely]]
+			if (const auto len = ::GetFinalPathNameByHandleW(_hnd, result.data(), USHORT(result.size()), flags); !len) [[unlikely]]
 				return _win32::dos_error_code(::GetLastError());
 			else
 				result.resize(len + 3);
@@ -83,7 +83,7 @@ namespace rod::_handle
 				auto *id = (GUID *) buffer.ObjectId;
 				DWORD bytes;
 
-				if(!::DeviceIoControl(hnd.native_handle(), FSCTL_CREATE_OR_GET_OBJECT_ID, nullptr, 0, &buffer, sizeof(buffer), &bytes, nullptr)) [[unlikely]]
+				if(!::DeviceIoControl(_hnd, FSCTL_CREATE_OR_GET_OBJECT_ID, nullptr, 0, &buffer, sizeof(buffer), &bytes, nullptr)) [[unlikely]]
 					return dos_error_code(::GetLastError());
 
 				result.resize(87);
@@ -92,11 +92,13 @@ namespace rod::_handle
 			}
 			if (fmt == native_path_format::system)
 			{
-				/* Cannot map a non-device WinNT path to a Win32 path. */
-				if (result.compare(0, 8, L"\\Device\\")) [[unlikely]]
-					return std::make_error_code(std::errc::no_such_file_or_directory);
-				else
+				/* Map \Device\ device paths to \\.\, \Global??\ to \\?\ and the rest to \\?\GLOBALROOT */
+				if (result.compare(0, 9, L"\\Global??\\") == 0)
+					result.replace(1, 9, std::wstring_view(L"\\?\\"));
+				else if (result.compare(0, 8, L"\\Device\\") == 0)
 					result.replace(1, 8, std::wstring_view(L"\\.\\"));
+				else if (result.starts_with(L'\\'))
+					result.insert(0, std::wstring_view(L"\\\\?\\GLOBALROOT"));
 				return std::move(result);
 			}
 
@@ -112,47 +114,8 @@ namespace rod::_handle
 				return res.error();
 			else if (*res == (stat::query::dev | stat::query::ino) && dev == st.dev && ino == st.ino)
 			{
-				constexpr wchar_t reserved_chars[] = L"\"*/:<>?|";
-				constexpr std::wstring_view reserved_names[] =
-				{
-						L"\\CON\\", L"\\PRN\\", L"\\AUX\\", L"\\NUL\\",
-						L"\\COM1\\", L"\\COM2\\", L"\\COM3\\", L"\\COM4\\",
-						L"\\COM5\\", L"\\COM6\\", L"\\COM7\\", L"\\COM8\\",
-						L"\\COM9\\", L"\\LPT1\\", L"\\LPT2\\", L"\\LPT3\\",
-						L"\\LPT4\\", L"\\LPT5\\", L"\\LPT6\\", L"\\LPT7\\",
-						L"\\LPT8\\", L"\\LPT9\\"
-				};
-
-				bool remove_prefix = result.size() <= 260;
-				auto buff = std::wstring_view(result);
-
-				/* Make sure path is in a legal DOS path format. */
-				for (std::size_t i = 7; remove_prefix && i < result.size(); ++i)
-				{
-					/* Test for control characters. */
-					if (buff[i] >= 1 && buff[i] <= 31)
-					{
-						remove_prefix = false;
-						break;
-					}
-					/* Test for reserved characters. */
-					for (std::size_t j = 0; j < sizeof(reserved_chars); ++j)
-						if (buff[i] == reserved_chars[j])
-						{
-							remove_prefix = false;
-							break;
-						}
-				}
-				if (remove_prefix)
-				{
-					for (auto name : reserved_names)
-						if (buff.find(name) != std::wstring_view::npos || buff.ends_with(name.substr(0, name.size() - 1)))
-						{
-							remove_prefix = false;
-							break;
-						}
-				}
-				if (remove_prefix) [[likely]]
+				/* Remove \\?\ prefix if there are no potentially illegal sequences. */
+				if (!_path::has_illegal_path_sequences(result)) [[likely]]
 					result.erase(0, 4);
 				return std::move(result);
 			}

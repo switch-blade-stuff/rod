@@ -485,6 +485,40 @@ namespace rod
 			return path.size() >= 6 && is_separator(path[0], fmt) && is_separator(path[1], fmt) && path[2] == '?' && is_separator(path[3], fmt) && path[5] == ':' && is_drive_letter(path[4]);
 		}
 
+		[[nodiscard]] inline static bool has_illegal_path_sequences(std::wstring_view sv) noexcept
+		{
+			constexpr std::wstring_view reserved_names[] = {L"CON", L"PRN", L"AUX", L"NUL"};
+			constexpr std::wstring_view reserved_chars = L"\"*/:<>?|";
+
+			if (sv.size() > 260)
+				return true;
+			for (std::size_t i = 7; i < sv.size(); ++i)
+			{
+				/* Test for control characters. */
+				if (sv[i] >= 1 && sv[i] <= 31)
+					return true;
+				/* Test for reserved characters. */
+				for (std::size_t j = 0; j < sizeof(reserved_chars); ++j)
+					if (sv[i] == reserved_chars[j]) return true;
+			}
+
+			/* Special case for COM# */
+			if (sv.find(L"COM") != std::wstring_view::npos)
+				return true;
+			/* Special case for LPT# */
+			if (sv.find(L"LPT") != std::wstring_view::npos)
+				return true;
+			/* Test for other reserved names. */
+			return std::ranges::any_of(reserved_names, [&](const auto &name)
+			{
+				if (sv.find(name) != std::wstring_view::npos)
+					return true;
+				if (sv.ends_with(name.substr(0, name.size() - 1)))
+					return true;
+				return false;
+			});
+		}
+
 		template<typename C = value_type>
 		inline constexpr std::size_t namespace_prefix_size(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
@@ -1099,7 +1133,7 @@ namespace rod
 				if (!other_root_name.empty() && this_root_name != other_root_name)
 					return operator=(std::forward<Str>(str));
 
-				if (other_root_name.size() && other_root_name.size() != str.size() && is_separator(other_root_name.back(), fmt))
+				if (other_root_name.size() && other_root_name.size() != str.size() && is_separator(str[other_root_name.size()], fmt))
 					_string.erase(this_root_name.size());
 				else if (this_root_name.size() == _string.size())
 				{
