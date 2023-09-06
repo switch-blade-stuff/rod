@@ -2,18 +2,13 @@
  * Created by switch_blade on 2023-08-20.
  */
 
-#include <utility>
+#include "fs_handle_base.hpp"
 
-#include "../fs_handle_base.hpp"
-#include "ntapi.hpp"
-
-namespace rod::_handle
+namespace rod::_win32
 {
-	using namespace _win32;
-
 	constexpr std::size_t buff_size = 65537;
 
-	inline static result<> do_link(const ntapi &ntapi, basic_handle::native_handle_type hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	inline static result<> do_link(const ntapi &ntapi, void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		auto buff = make_info_buffer(sizeof(file_link_information) + buff_size);
 		if (buff.has_error()) [[unlikely]]
@@ -47,7 +42,7 @@ namespace rod::_handle
 		else
 			return {};
 	}
-	inline static result<> do_relink(const ntapi &ntapi, basic_handle::native_handle_type hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	inline static result<> do_relink(const ntapi &ntapi, void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		auto buff = make_info_buffer(sizeof(file_rename_information) + buff_size);
 		if (buff.has_error()) [[unlikely]]
@@ -82,21 +77,21 @@ namespace rod::_handle
 			return {};
 	}
 
-	result<> do_link(basic_handle::native_handle_type hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	result<> do_link(void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		if (const auto &ntapi = ntapi::instance(); ntapi.has_value()) [[likely]]
 			return do_link(*ntapi, hnd, base, path, replace, to);
 		else
 			return ntapi.error();
 	}
-	result<> do_relink(basic_handle::native_handle_type hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	result<> do_relink(void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		if (const auto &ntapi = ntapi::instance(); ntapi.has_value()) [[likely]]
 			return do_relink(*ntapi, hnd, base, path, replace, to);
 		else
 			return ntapi.error();
 	}
-	result<> do_unlink(basic_handle::native_handle_type hnd, const file_timeout &to, file_flags flags) noexcept
+	result<> do_unlink(void *hnd, const file_timeout &to, file_flags flags) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]

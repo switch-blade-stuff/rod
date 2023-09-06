@@ -633,7 +633,7 @@ namespace rod
 			using size_type = typename path_view_component::size_type;
 
 		public:
-			using iterator = component_iterator<path_view_component, const std::byte *, iter_func < &path_view::iter_next>, iter_func<&path_view::iter_prev>>;
+			using iterator = component_iterator<path_view_component, const std::byte *, iter_func<&path_view::iter_next>, iter_func<&path_view::iter_prev>>;
 			using const_iterator = iterator;
 			using reverse_iterator = std::reverse_iterator<iterator>;
 			using const_reverse_iterator = reverse_iterator;
@@ -1020,11 +1020,16 @@ namespace rod
 		auto operator<=>(std::span<const std::byte>, path_view_component) = delete;
 	}
 
-	using _path::path_view;
 	using _path::path_view_component;
+	using _path::path_view;
 
 	using _path::visit;
 	using _path::operator<;
 	using _path::operator==;
 	using _path::operator<=>;
 }
+
+template<>
+inline constexpr bool std::ranges::enable_borrowed_range<rod::path_view> = true;
+template<>
+inline constexpr bool std::ranges::enable_view<rod::path_view> = true;

@@ -86,7 +86,7 @@ namespace rod
 
 		/** Utility type used to return a value or error result.
 		 *
-		 * For the purposes of ABI compatibility and interop, result types are equivalent to the following struct:
+		 * For the purposes of ABI compatibility and interop, result types are layout-compatible with the following struct:
 		 * @code{cpp}
 		 * struct result
 		 * {
@@ -162,7 +162,7 @@ namespace rod
 			using is_nothrow_value_invocable = std::conjunction<is_value_invocable<T, F>, std::conditional_t<std::is_void_v<Val>, std::is_nothrow_invocable<F>, std::is_nothrow_invocable<F, copy_cvref_t<T, Val>>>>;
 
 			template<typename T, typename F>
-			using transform_return_type = std::conditional_t<std::is_void_v<Val>, std::invoke_result_t<F>, std::invoke_result_t<F, copy_cvref_t<T, Val>>>;
+			using transform_return_type = typename std::conditional_t<std::is_void_v<Val>, std::invoke_result<F>, std::invoke_result<F, copy_cvref_t<T, Val>>>::type;
 			template<typename T, typename F>
 			using transform_result = result<transform_return_type<T, F>, Err>;
 
@@ -337,7 +337,7 @@ namespace rod
 			 * @param args Arguments passed to the error.
 			 * @return Reference to the contained error object. */
 			template<typename... Args> requires std::constructible_from<Err, Args...>
-			constexpr Err &emplace_error(Args &&...args) noexcept(is_nothrow_destructible::value && std::is_nothrow_constructible_v<Err, Args...>)
+			constexpr auto emplace_error(Args &&...args) noexcept(is_nothrow_destructible::value && std::is_nothrow_constructible_v<Err, Args...>) -> std::add_lvalue_reference_t<Err>
 			{
 				destroy();
 				std::construct_at(&_storage.error, std::forward<Args>(args)...);
@@ -348,7 +348,7 @@ namespace rod
 			 * @param args Arguments passed to the value.
 			 * @return Reference to the contained value object. */
 			template<typename... Args, typename T = Val> requires std::constructible_from<Val, Args...>
-			constexpr std::enable_if_t<!std::is_void_v<T>, T &> emplace_value(Args &&...args) noexcept(is_nothrow_destructible::value && std::is_nothrow_constructible_v<Val, Args...>)
+			constexpr auto emplace_value(Args &&...args) noexcept(is_nothrow_destructible::value && std::is_nothrow_constructible_v<Val, Args...>) -> std::enable_if_t<!std::is_void_v<T>, std::add_lvalue_reference_t<T>>
 			{
 				destroy();
 				std::construct_at(&_storage.value, std::forward<Args>(args)...);
@@ -366,63 +366,63 @@ namespace rod
 			/** Returns pointer to the value of the result.
 			 * @note If the result does not contain a value results in undefined behavior. */
 			template<typename U = Val>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> operator->() noexcept;
+			[[nodiscard]] constexpr auto operator->() noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, U *>;
 			/** @copydoc value */
 			template<typename U = std::add_const_t<Val>>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> operator->() const noexcept;
+			[[nodiscard]] constexpr auto operator->() const noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, U *>;
 
 			/** Returns reference to the value of the result.
 			 * @note If the result does not contain a value results in undefined behavior. */
 			template<typename U = Val>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &> operator*() & noexcept;
+			[[nodiscard]] constexpr auto operator*() & noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_lvalue_reference_t<U>>;
 			/** @copydoc value */
 			template<typename U = Val>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &&> operator*() && noexcept;
+			[[nodiscard]] constexpr auto operator*() && noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_rvalue_reference_t<U>>;
 			/** @copydoc value */
 			template<typename U = std::add_const_t<Val>>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &> operator*() const & noexcept;
+			[[nodiscard]] constexpr auto operator*() const & noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_lvalue_reference_t<U>>;
 			/** @copydoc value */
 			template<typename U = std::add_const_t<Val>>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &&> operator*() const && noexcept;
+			[[nodiscard]] constexpr auto operator*() const && noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_rvalue_reference_t<U>>;
 
 			/** Returns reference to the contained value of the result.
 			 * @throw `rod::throw_exception(error())` if the result does not contain a value and  is ill-formed.
 			 * @throw bad_result_access If the result does not contain a value and `rod::throw_exception(error())` is ill-formed. */
-			constexpr decltype(auto) value() &
+			constexpr auto value() & -> std::conditional_t<std::is_void_v<Val>, std::add_lvalue_reference_t<Val>, Val>
 			{
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return static_cast<Val &>(_storage.value);
+					return _storage.value;
 			}
 			/** @copydoc value */
-			constexpr decltype(auto) value() &&
+			constexpr auto value() && -> std::conditional_t<std::is_void_v<Val>, std::add_rvalue_reference_t<Val>, Val>
 			{
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return static_cast<Val &&>(_storage.value);
+					return std::move(_storage.value);
 			}
 			/** @copydoc value */
-			constexpr decltype(auto) value() const &
+			constexpr auto value() const & -> std::conditional_t<std::is_void_v<Val>, std::add_lvalue_reference_t<std::add_const_t<Val>>, Val>
 			{
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return static_cast<std::add_const_t<Val> &>(_storage.value);
+					return _storage.value;
 			}
 			/** @copydoc value */
-			constexpr decltype(auto) value() const &&
+			constexpr auto value() const && -> std::conditional_t<std::is_void_v<Val>, std::add_rvalue_reference_t<std::add_const_t<Val>>, Val>
 			{
 				if (!has_value())
 					throw_missing_value();
 				else if constexpr (!std::is_void_v<Val>)
-					return static_cast<std::add_const_t<Val> &&>(_storage.value);
+					return std::move(_storage.value);
 			}
 
 			/** Returns the contained value or \a val if result does not contain a value. */
-			template<typename Val2 = Val> requires(!std::is_void_v<Val> && std::copy_constructible<Val> && std::constructible_from<Val, Val2>)
-			[[nodiscard]] constexpr Val value_or(Val2 &&val) const & noexcept(std::is_nothrow_copy_constructible_v<Val> && std::is_nothrow_constructible_v<Val, Val2>)
+			template<typename Val2 = Val> requires std::move_constructible<Val> && std::constructible_from<Val, Val2>
+			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
 					return Val2(std::forward<Val2>(val));
@@ -430,8 +430,26 @@ namespace rod
 					return _storage.value;
 			}
 			/** @copydoc value_or */
-			template<typename Val2 = Val> requires(!std::is_void_v<Val> && std::move_constructible<Val> && std::constructible_from<Val, Val2>)
-			[[nodiscard]] constexpr Val value_or(Val2 &&val) && noexcept(std::is_nothrow_move_constructible_v<Val> && std::is_nothrow_constructible_v<Val, Val2>)
+			template<typename Val2 = Val> requires std::move_constructible<Val> && std::constructible_from<Val, Val2>
+			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
+			{
+				if (!has_value()) [[unlikely]]
+					return Val2(std::forward<Val2>(val));
+				else
+					return std::move(_storage.value);
+			}
+			/** @copydoc value_or */
+			template<typename Val2 = Val> requires std::copy_constructible<Val> && std::constructible_from<Val, Val2>
+			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) const & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
+			{
+				if (!has_value()) [[unlikely]]
+					return Val2(std::forward<Val2>(val));
+				else
+					return _storage.value;
+			}
+			/** @copydoc value_or */
+			template<typename Val2 = Val> requires std::copy_constructible<Val> && std::constructible_from<Val, Val2>
+			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) const && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
 					return Val2(std::forward<Val2>(val));
@@ -441,41 +459,41 @@ namespace rod
 
 			/** Returns reference to the error of the result.
 			 * @throw bad_result_access if the result does not contain an error. */
-			constexpr decltype(auto) error() &
+			constexpr auto error() & -> std::add_lvalue_reference_t<Err>
 			{
-				if (!has_error())
-					throw_missing_error();
+				if (has_error())
+					return _storage.error;
 				else
-					return static_cast<Err &>(_storage.error);
+					throw_missing_error();
 			}
 			/** @copydoc error */
-			constexpr decltype(auto) error() &&
+			constexpr auto error() && -> std::add_rvalue_reference_t<Err>
 			{
-				if (!has_error())
-					throw_missing_error();
+				if (has_error())
+					return std::move(_storage.error);
 				else
-					return static_cast<Err &&>(_storage.error);
+					throw_missing_error();
 			}
 			/** @copydoc error */
-			constexpr decltype(auto) error() const &
+			constexpr auto error() const & -> std::add_lvalue_reference_t<std::add_const_t<Err>>
 			{
-				if (!has_error())
-					throw_missing_error();
+				if (has_error())
+					return _storage.error;
 				else
-					return static_cast<std::add_const_t<Err> &>(_storage.error);
+					throw_missing_error();
 			}
 			/** @copydoc error */
-			constexpr decltype(auto) error() const &&
+			constexpr auto error() const && -> std::add_rvalue_reference_t<std::add_const_t<Err>>
 			{
-				if (!has_error())
-					throw_missing_error();
+				if (has_error())
+					return std::move(_storage.error);
 				else
-					return static_cast<std::add_const_t<Err> &&>(_storage.error);
+					throw_missing_error();
 			}
 
 			/** Returns the error state or \a err if result does not contain a value. */
-			template<typename Err2 = Err> requires std::copy_constructible<Err> && std::constructible_from<Err, Err2>
-			[[nodiscard]] constexpr Err error_or(Err2 &&err) const & noexcept(std::is_nothrow_copy_constructible_v<Err> && std::is_nothrow_constructible_v<Err, Err2>)
+			template<typename Err2 = Err> requires std::move_constructible<Err> && std::constructible_from<Err, Err2>
+			[[nodiscard]] constexpr Err error_or(Err2 &&err) & noexcept(std::is_nothrow_constructible_v<Err, std::add_lvalue_reference_t<Err>> && std::is_nothrow_constructible_v<Err, Err2>)
 			{
 				if (!has_error()) [[unlikely]]
 					return Err(std::forward<Err2>(err));
@@ -484,7 +502,25 @@ namespace rod
 			}
 			/** @copydoc error_or */
 			template<typename Err2 = Err> requires std::move_constructible<Err> && std::constructible_from<Err, Err2>
-			[[nodiscard]] constexpr Err error_or(Err2 &&err) && noexcept(std::is_nothrow_move_constructible_v<Err> && std::is_nothrow_constructible_v<Err, Err2>)
+			[[nodiscard]] constexpr Err error_or(Err2 &&err) && noexcept(std::is_nothrow_constructible_v<Err, std::add_rvalue_reference_t<Err>> && std::is_nothrow_constructible_v<Err, Err2>)
+			{
+				if (!has_error()) [[unlikely]]
+					return Err(std::forward<Err2>(err));
+				else
+					return std::move(_storage.error);
+			}
+			/** @copydoc error_or */
+			template<typename Err2 = Err> requires std::copy_constructible<Err> && std::constructible_from<Err, Err2>
+			[[nodiscard]] constexpr Err error_or(Err2 &&err) const & noexcept(std::is_nothrow_constructible_v<Err, std::add_lvalue_reference_t<std::add_const_t<Err>>> && std::is_nothrow_constructible_v<Err, Err2>)
+			{
+				if (!has_error()) [[unlikely]]
+					return Err(std::forward<Err2>(err));
+				else
+					return _storage.error;
+			}
+			/** @copydoc error_or */
+			template<typename Err2 = Err> requires std::copy_constructible<Err> && std::constructible_from<Err, Err2>
+			[[nodiscard]] constexpr Err error_or(Err2 &&err) const && noexcept(std::is_nothrow_constructible_v<Err, std::add_rvalue_reference_t<std::add_const_t<Err>>> && std::is_nothrow_constructible_v<Err, Err2>)
 			{
 				if (!has_error()) [[unlikely]]
 					return Err(std::forward<Err2>(err));
@@ -493,8 +529,8 @@ namespace rod
 			}
 
 			/** If result contains a value, invokes \a func with the value, then returns result of the expression as `rod::result`. Otherwise, returns the contained error. */
-			template<typename F> requires is_value_invocable<const result &, F>::value
-			constexpr transform_result<const result &, F> transform(F &&func) const & noexcept(is_nothrow_value_invocable<const result &, F>::value)
+			template<typename F> requires is_value_invocable<result &, F>::value
+			constexpr auto transform(F &&func) & noexcept(is_nothrow_value_invocable<result &, F>::value) -> transform_result<result &, F>
 			{
 				if (has_value()) [[likely]]
 				{
@@ -510,7 +546,39 @@ namespace rod
 			}
 			/** @copydoc transform */
 			template<typename F> requires is_value_invocable<result &&, F>::value
-			constexpr transform_result<result &&, F> transform(F &&func) && noexcept(is_nothrow_value_invocable<result &&, F>::value)
+			constexpr auto transform(F &&func) && noexcept(is_nothrow_value_invocable<result &&, F>::value) -> transform_result<result &&, F>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return std::invoke(std::forward<F>(func), std::move(_storage.value));
+					else
+						return std::invoke(std::forward<F>(func));
+				}
+				else if (has_error())
+					return std::move(_storage.error);
+				else
+					return {};
+			}
+			/** @copydoc transform */
+			template<typename F> requires is_value_invocable<const result &, F>::value
+			constexpr auto transform(F &&func) const & noexcept(is_nothrow_value_invocable<const result &, F>::value) -> transform_result<const result &, F>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return std::invoke(std::forward<F>(func), _storage.value);
+					else
+						return std::invoke(std::forward<F>(func));
+				}
+				else if (has_error())
+					return _storage.error;
+				else
+					return {};
+			}
+			/** @copydoc transform */
+			template<typename F> requires is_value_invocable<const result &&, F>::value
+			constexpr auto transform(F &&func) const && noexcept(is_nothrow_value_invocable<const result &&, F>::value) -> transform_result<const result &&, F>
 			{
 				if (has_value()) [[likely]]
 				{
@@ -528,7 +596,7 @@ namespace rod
 			/** Returns the contained value or the result of invocation of \a func.
 			 * @note `std::invoke_result_t&ltF;&gt;` must decay to either `Val` or `rod::result&ltVal, Err&gt;` */
 			template<typename F> requires decays_to_same<std::invoke_result_t<F>, result> || decays_to_same<std::invoke_result_t<F>, Val>
-			constexpr result or_else(F &&func) const & noexcept(std::is_nothrow_invocable_v<F>)
+			constexpr result or_else(F &&func) & noexcept(std::is_nothrow_invocable_v<F> && std::is_nothrow_constructible_v<result, result &>)
 			{
 				if constexpr (!std::is_void_v<Val>)
 				{
@@ -540,9 +608,37 @@ namespace rod
 				else if (!has_value())
 					std::invoke(std::forward<F>(func));
 			}
-			/** @copydoc transform */
+			/** @copydoc or_else */
 			template<typename F> requires decays_to_same<std::invoke_result_t<F>, result> || decays_to_same<std::invoke_result_t<F>, Val>
-			constexpr result or_else(F &&func) && noexcept(std::is_nothrow_invocable_v<F>)
+			constexpr result or_else(F &&func) && noexcept(std::is_nothrow_invocable_v<F> && std::is_nothrow_constructible_v<result, result &&>)
+			{
+				if constexpr (!std::is_void_v<Val>)
+				{
+					if (!has_value())
+						return std::invoke(std::forward<F>(func));
+					else
+						return std::move(_storage.value);
+				}
+				else if (!has_value())
+					std::invoke(std::forward<F>(func));
+			}
+			/** @copydoc or_else */
+			template<typename F> requires decays_to_same<std::invoke_result_t<F>, result> || decays_to_same<std::invoke_result_t<F>, Val>
+			constexpr result or_else(F &&func) const & noexcept(std::is_nothrow_invocable_v<F> && std::is_nothrow_constructible_v<result, const result &>)
+			{
+				if constexpr (!std::is_void_v<Val>)
+				{
+					if (!has_value())
+						return std::invoke(std::forward<F>(func));
+					else
+						return _storage.value;
+				}
+				else if (!has_value())
+					std::invoke(std::forward<F>(func));
+			}
+			/** @copydoc or_else */
+			template<typename F> requires decays_to_same<std::invoke_result_t<F>, result> || decays_to_same<std::invoke_result_t<F>, Val>
+			constexpr result or_else(F &&func) const && noexcept(std::is_nothrow_invocable_v<F> && std::is_nothrow_constructible_v<result, const result &&>)
 			{
 				if constexpr (!std::is_void_v<Val>)
 				{
@@ -633,34 +729,37 @@ namespace rod
 			std::int8_t _state;
 		};
 
+		static_assert(std::is_standard_layout_v<result<void>>);
+		static_assert(std::is_standard_layout_v<result<long>>);
+
 #ifndef NDEBUG /* Extra check to return nullptr in debug mode to make debugging easier */
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> result<Val, Err>::operator->() noexcept { return has_value() ? &_storage.value : nullptr; }
+		constexpr auto result<Val, Err>::operator->() noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> { return has_value() ? &_storage.value : nullptr; }
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> result<Val, Err>::operator->() const noexcept { return has_value() ? &_storage.value : nullptr; }
+		constexpr auto result<Val, Err>::operator->() const noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> { return has_value() ? &_storage.value : nullptr; }
 #else
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> result<Val, Err>::operator->() noexcept { return &_storage.value; }
+		constexpr auto result<Val, Err>::operator->() noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> { return &_storage.value; }
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> result<Val, Err>::operator->() const noexcept { return &_storage.value; }
+		constexpr auto result<Val, Err>::operator->() const noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, U *> { return &_storage.value; }
 #endif
 
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &> result<Val, Err>::operator*() & noexcept { return *operator->(); }
+		constexpr auto result<Val, Err>::operator*() & noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_lvalue_reference_t<U>> { return *operator->(); }
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &> result<Val, Err>::operator*() const & noexcept { return *operator->(); }
+		constexpr auto result<Val, Err>::operator*() && noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_rvalue_reference_t<U>> { return std::move(*operator->()); }
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &&> result<Val, Err>::operator*() && noexcept { return std::move(*operator->()); }
+		constexpr auto result<Val, Err>::operator*() const & noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_lvalue_reference_t<U>> { return *operator->(); }
 		template<typename Val, typename Err>
 		template<typename U>
-		constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, U &&> result<Val, Err>::operator*() const && noexcept { return std::move(*operator->()); }
+		constexpr auto result<Val, Err>::operator*() const && noexcept -> std::enable_if_t<std::negation_v<std::is_void<Val>>, std::add_rvalue_reference_t<U>> { return std::move(*operator->()); }
 	}
 
 	/** Utility used to check if \a T is an instance of `rod::result`. */

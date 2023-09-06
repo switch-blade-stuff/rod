@@ -2,107 +2,95 @@
  * Created by switch_blade on 2023-08-20.
  */
 
-#include "../path_discovery.hpp"
-#include "ntapi.hpp"
+#include "path_discovery.hpp"
 
 namespace rod::_detail
 {
 	using namespace _win32;
 
-	template<typename F>
-	inline static result<std::invoke_result_t<F, std::wstring_view>> with_env_var(const wchar_t *env, F f) noexcept
+	inline static auto find_shell_dirs(std::span<const GUID> ids, std::vector<discovered_path> &dirs) noexcept
 	{
-		try
-		{
-			std::wstring path;
-			if (const auto n = ::GetEnvironmentVariableW(env, nullptr, 0); !n) [[unlikely]]
-				return dos_error_code(::GetLastError());
-			else
-				path.resize(n - 1);
-
-			if (!::GetEnvironmentVariableW(env, path.data(), DWORD(path.size()))) [[unlikely]]
-				return dos_error_code(::GetLastError());
-			else
-				return f(std::wstring_view(path));
-		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
-	}
-	template<typename F>
-	inline static result<std::invoke_result_t<F, std::wstring_view>> with_shell_path(GUID id, F f) noexcept
-	{
-		try
-		{
-			if (wchar_t *path; ::SHGetKnownFolderPath(id, 0, nullptr, &path) == S_OK) [[likely]]
+		dirs.clear();
+		for (auto id : ids)
+			with_shell_path(id, [&](auto dir)
 			{
-				if constexpr (std::is_void_v<std::invoke_result_t<F, std::wstring_view>>)
+				auto entry = discovered_path{.path = path(dir, path::native_format), .source = discovery_source::system};
+				if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+					dirs.emplace_back(std::move(entry));
+			});
+		return result<>();
+	}
+	inline static auto find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto sv) { return path(sv); }); }
+
+	result<> find_temp_dirs(std::vector<discovered_path> &dirs) noexcept
+	{
+		try
+		{
+			dirs.clear();
+
+			/* TODO: Check if not SUID. */
+			/* Find %TMP%, %TEMP%, %LOCALAPPDATA%\Temp */
+			for (auto env: {L"TMP", L"TEMP", L"LOCALAPPDATA"})
+				with_env_var(env, [&](auto dir)
 				{
-					f(std::wstring_view(path));
-					::CoTaskMemFree(path);
-					return {};
-				}
-				else
+					auto entry = discovered_path{.path = path(dir, path::native_format), .source = discovery_source::environment};
+					if (env[0] == L'L') entry.path += L"\\Temp";
+					if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+						dirs.emplace_back(std::move(entry));
+				});
+
+			/* Find %LOCALAPPDATA%\Temp */
+			with_shell_path(FOLDERID_LocalAppData, [&](auto dir)
+			{
+				auto entry = discovered_path{.path = path(dir, path::native_format), .source = discovery_source::system};
+				entry.path += L"\\Temp";
+				if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+					dirs.emplace_back(std::move(entry));
+			});
+
+			{ /* Find GetWindowsDirectoryW()\Temp */
+				auto buffer = std::wstring(32768, L'\0');
+				auto len = ::GetWindowsDirectoryW(buffer.data(), DWORD(buffer.size()));
+				if (len && len < buffer.size())
 				{
-					auto result = f(std::wstring_view(path));
-					::CoTaskMemFree(path);
-					return result;
+					buffer.resize(len);
+					buffer.append(L"\\Temp");
+					auto entry = discovered_path{.path = path(std::move(buffer), path::native_format), .source = discovery_source::fallback};
+					if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+						dirs.emplace_back(std::move(entry));
 				}
 			}
-			return _win32::dos_error_code(::GetLastError());
+			{ /* Find %SYSTEMDRIVE%\Temp */
+				auto buffer = std::wstring(32768, L'\0');
+				auto len = ::GetSystemWindowsDirectoryW(buffer.data(), DWORD(buffer.size()));
+				if (len && len < buffer.size())
+				{
+					buffer.resize(buffer.find_last_of(L'\\', len));
+					buffer.append(L"\\Temp");
+					auto entry = discovered_path{.path = path(std::move(buffer), path::native_format), .source = discovery_source::fallback};
+					if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+						dirs.emplace_back(std::move(entry));
+				}
+			}
+			return {};
 		}
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
-
-	inline static result<> init_candidates(std::span<std::tuple<GUID, int, int>> candidates, typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
+	result<> find_data_dirs(std::vector<discovered_path> &dirs) noexcept
 	{
-		buff.clear();
-		dirs.clear();
-		for (auto &[id, pos, len] : candidates)
-		{
-			const auto add_dir = [&](auto path)
-			{
-				len = int(path.size());
-				pos = int(buff.size());
-				buff.insert(pos, path);
-			};
-			if (auto res = with_shell_path(id, add_dir); res.has_error()) [[unlikely]]
-				return res;
-		}
-
-		dirs.reserve(candidates.size());
-		for (auto &[_, pos, len] : candidates)
-		{
-			discovered_path path;
-			path.path = path_view(buff.data() + pos, len, buff[pos + len] == '\0', path_view::native_format);
-			path.source = discovery_source::system;
-
-			/* TODO: Init directory flags. */
-			dirs.push_back(path);
-		}
-
-		return {};
+		const auto ids = std::array{FOLDERID_LocalAppData, FOLDERID_RoamingAppData, FOLDERID_AppDataProgramData, FOLDERID_ProgramData};
+		return find_shell_dirs(ids, dirs);
 	}
-
-	result<> find_temp_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
+	result<> find_state_dirs(std::vector<discovered_path> &dirs) noexcept
 	{
-		/* TODO: Implement */
-		return {};
+		const auto ids = std::array{FOLDERID_LocalAppData};
+		return find_shell_dirs(ids, dirs);
 	}
-	result<> find_data_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
+	result<> find_config_dirs(std::vector<discovered_path> &dirs) noexcept
 	{
-		auto candidates = std::array{std::tuple{FOLDERID_LocalAppData, 0, 0}, std::tuple{FOLDERID_RoamingAppData, 0, 0}, std::tuple{FOLDERID_AppDataProgramData, 0, 0}, std::tuple{FOLDERID_ProgramData, 0, 0}};
-		return init_candidates(candidates, buff, dirs);
-	}
-	result<> find_state_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
-	{
-		auto candidates = std::array{std::tuple{FOLDERID_LocalAppData, 0, 0}};
-		return init_candidates(candidates, buff, dirs);
-	}
-	result<> find_config_dirs(typename path::string_type &buff, std::vector<discovered_path> &dirs) noexcept
-	{
-		auto candidates = std::array{std::tuple{FOLDERID_LocalAppData, 0, 0}, std::tuple{FOLDERID_RoamingAppData, 0, 0}, std::tuple{FOLDERID_AppDataProgramData, 0, 0}, std::tuple{FOLDERID_ProgramData, 0, 0}};
-		return init_candidates(candidates, buff, dirs);
+		const auto ids = std::array{FOLDERID_LocalAppData, FOLDERID_RoamingAppData, FOLDERID_AppDataProgramData, FOLDERID_ProgramData};
+		return find_shell_dirs(ids, dirs);
 	}
 
 	result<path> find_install_dir() noexcept
@@ -127,20 +115,15 @@ namespace rod::_detail
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
+	/* Windows does not have a user-specific temporary runtime directory. */
 	result<path> find_runtime_dir() noexcept { return {}; }
 
-	result<path> find_temp_file_dir() noexcept
-	{
-		/* TODO: Implement */
-		return {};
-	}
 	result<path> find_temp_pipe_dir() noexcept
 	{
-		/* TODO: Implement */
-		return {};
+		try { return path(L"\\!!\\Device\\NamedPipe\\"); }
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (const std::system_error &e) { return e.code(); }
 	}
-
-	inline static result<path> find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto sv) { return path(sv); }); }
 
 	result<path> find_user_home_dir() noexcept { return with_env_var(L"USERPROFILE", [](auto sv) { return path(sv); }); }
 	result<path> find_data_home_dir() noexcept { return find_localappdata(); }

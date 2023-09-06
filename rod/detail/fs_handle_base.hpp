@@ -84,12 +84,12 @@ namespace rod
 		constexpr file_caching &operator|=(file_caching &a, file_caching b) noexcept { return a = a | b; }
 		constexpr file_caching &operator^=(file_caching &a, file_caching b) noexcept { return a = a ^ b; }
 
-		[[nodiscard]] inline static std::wstring generate_unique_name()
+		[[nodiscard]] inline static typename path::string_type generate_unique_name()
 		{
-			constexpr wchar_t alphabet[] = L"0123456789abcdef";
+			constexpr typename path::value_type alphabet[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
-			auto str = std::wstring(64, '\0');
-			auto gen = system_random(str.data(), str.size() * sizeof(wchar_t));
+			auto str = typename path::string_type(64, '\0');
+			auto gen = system_random(str.data(), str.size() * sizeof(typename path::value_type));
 			for (std::size_t i = 0; i < str.size(); ++i)
 			{
 				/* std::rand fallback is fine since it's not used it for cryptography. */
@@ -127,11 +127,6 @@ namespace rod
 			template<typename Hnd> requires tag_invocable<unlink_t, Hnd, const file_timeout &>
 			link_result auto operator()(Hnd &&hnd, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), to); }
 		};
-
-		/* Default implementations for use by filesystem handles. */
-		ROD_API_PUBLIC result<> do_link(basic_handle::native_handle_type, const path_handle &, path_view, bool replace, const file_timeout &) noexcept;
-		ROD_API_PUBLIC result<> do_relink(basic_handle::native_handle_type, const path_handle &, path_view, bool replace, const file_timeout &) noexcept;
-		ROD_API_PUBLIC result<> do_unlink(basic_handle::native_handle_type, const file_timeout &, file_flags) noexcept;
 
 		template<typename Res, typename Hnd>
 		concept reopen_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
@@ -231,21 +226,16 @@ namespace rod
 
 			static constexpr int do_reopen = 1;
 			static constexpr int do_get_stat = 1;
-			static constexpr int do_set_stat = 1;
 
 			template<typename Hnd>
 			static constexpr bool has_reopen() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_reopen)); }; }
 			template<typename Hnd>
 			static constexpr bool has_get_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_get_stat)); }; }
-			template<typename Hnd>
-			static constexpr bool has_set_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_set_stat)); }; }
 
 			template<typename Hnd>
 			constexpr static auto dispatch_reopen(Hnd &&hnd) noexcept -> decltype(std::forward<Hnd>(hnd).reopen()) { return std::forward<Hnd>(hnd).do_reopen(); }
 			template<typename Hnd>
 			constexpr static auto dispatch_get_stat(stat &st, const Hnd &hnd, stat::query q) noexcept -> decltype(hnd.get_stat(st, hnd, q)) { return hnd.do_get_stat(st, hnd, q); }
-			template<typename Hnd>
-			constexpr static auto dispatch_set_stat(const stat &st, Hnd &hnd, stat::query q) noexcept -> decltype(hnd.set_stat(st, hnd, q)) { return hnd.do_set_stat(st, hnd, q); }
 
 		public:
 			template<std::same_as<reopen_t> T, decays_to_same_or_derived<Child> Hnd = Child, typename... Args> requires(has_reopen<Hnd>())
@@ -257,11 +247,6 @@ namespace rod
 			friend auto tag_invoke(T, stat &st, Hnd &&hnd, stat::query q) noexcept { return get_adaptor(std::forward<Hnd>(hnd)).cache_stat(st, std::forward<Hnd>(hnd), q, dispatch_get_stat<Hnd>); }
 			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_get_stat<Hnd>())
 			friend auto tag_invoke(T, stat &st, Hnd &&hnd, stat::query q) noexcept { return get_adaptor(std::forward<Hnd>(hnd)).cache_stat(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q, get_stat_t{}); }
-
-			template<std::same_as<set_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_set_stat<Hnd>())
-			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return dispatch_set_stat(st, std::forward<Hnd>(hnd), q); }
-			template<std::same_as<set_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_set_stat<Hnd>())
-			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return set_stat_t{}(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q); }
 
 		private:
 			template<typename Hnd, typename F>

@@ -2,7 +2,7 @@
  * Created by switch_blade on 2023-08-31.
  */
 
-#include "../path_util.hpp"
+#include "../path_algo.hpp"
 #include "ntapi.hpp"
 
 namespace rod
@@ -51,7 +51,7 @@ namespace rod
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
-			return result(in_place_error, ntapi.error());
+			return {in_place_error, ntapi.error()};
 
 		auto rpath = path.render_null_terminated();
 		auto upath = unicode_string();
@@ -60,7 +60,7 @@ namespace rod
 
 		auto guard = ntapi->dos_path_to_nt_path(upath, false);
 		if (auto err = guard.error_or({}); err && err.value() != ERROR_PATH_NOT_FOUND) [[unlikely]]
-			return result(in_place_error, guard.error());
+			return {in_place_error, guard.error()};
 		else if (err.value() == ERROR_PATH_NOT_FOUND)
 			return false;
 
@@ -77,7 +77,7 @@ namespace rod
 
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
 			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath)) [[unlikely]]
-				return result(in_place_error, status_error_code(status));
+				return {in_place_error, status_error_code(status)};
 			else
 				return false;
 		}
@@ -90,12 +90,12 @@ namespace rod
 		stat st;
 
 		if (auto res = get_stat(st, a, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
-			return result(in_place_error, res.error());
+			return {in_place_error, res.error()};
 		dev_a = st.dev;
 		ino_a = st.ino;
 
 		if (auto res = get_stat(st, b, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
-			return result(in_place_error, res.error());
+			return {in_place_error, res.error()};
 		dev_b = st.dev;
 		ino_b = st.ino;
 

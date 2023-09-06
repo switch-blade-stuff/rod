@@ -57,6 +57,11 @@ namespace rod
 		template<typename T, typename... Args>
 		concept nothrow_callable = callable<T, Args...> && requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } noexcept; };
 
+		template<typename R, typename T, typename... Args>
+		concept callable_r = requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } -> std::convertible_to<R>; };
+		template<typename R, typename T, typename... Args>
+		concept nothrow_callable_r = callable_r<R, T, Args...> && requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } noexcept; };
+
 		template<typename T>
 		using nothrow_decay_copyable = std::is_nothrow_constructible<std::decay_t<T>, T>;
 		template<typename... Ts>
@@ -483,7 +488,6 @@ namespace rod
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
 	inline constexpr Out const_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = const_cast<To>(*first)))
 	{
-		using to_type = std::iter_value_t<Out>;
 		for (; first != last; ++first, ++out)
 			*out = const_cast<To>(*first);
 		return out;
@@ -492,7 +496,6 @@ namespace rod
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
 	inline constexpr Out static_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = static_cast<To>(*first)))
 	{
-		using to_type = std::iter_value_t<Out>;
 		for (; first != last; ++first, ++out)
 			*out = static_cast<To>(*first);
 		return out;
@@ -501,7 +504,6 @@ namespace rod
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
 	inline static Out reinterpret_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = reinterpret_cast<To>(*first)))
 	{
-		using to_type = std::iter_value_t<Out>;
 		for (; first != last; ++first, ++out)
 			*out = reinterpret_cast<To>(*first);
 		return out;

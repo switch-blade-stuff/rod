@@ -2,42 +2,28 @@
  * Created by switch_blade on 2023-08-27.
  */
 
-#include "../directory_handle.hpp"
-#include "../path_discovery.hpp"
-#include "ntapi.hpp"
+#include "directory_handle.hpp"
+#include "path_discovery.hpp"
 
-namespace rod::_path
+namespace rod::_directory
 {
 	using namespace _win32;
 
-	result<basic_handle> directory_handle::reopen_as_deletable() const noexcept
+	result<directory_handle> directory_handle::open_unique(const path_handle &base, file_flags flags) noexcept
 	{
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
-		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
-		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-		constexpr auto access = GENERIC_READ | SYNCHRONIZE | DELETE;
-
-		auto obj_attrib = object_attributes();
-		auto upath = unicode_string();
-		auto iosb = io_status_block();
-
-		obj_attrib.root_dir = adaptor_base::native_handle();
-		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = &upath;
-
-		auto handle = INVALID_HANDLE_VALUE;
-		auto status = ntapi->NtOpenFile(&handle, access, &obj_attrib, &iosb, share, flags);
-		if (status == STATUS_PENDING)
-			status = ntapi->wait_io(handle, &iosb);
-		if (is_status_failure(status))
-			return status_error_code(status);
-		else
-			return basic_handle(handle);
+		try { return open(base, _handle::generate_unique_name()); }
+		catch (const std::system_error &e) { return e.code(); }
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
-
+	result<directory_handle> directory_handle::open_temporary(path_view path, file_flags flags, open_mode mode) noexcept
+	{
+		if (!path.empty())
+			return open(temporary_file_directory(), path, flags, mode);
+		else if (mode != open_mode::existing)
+			return open_unique(temporary_file_directory(), flags);
+		else
+			return std::make_error_code(std::errc::invalid_argument);
+	}
 	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -127,19 +113,25 @@ namespace rod::_path
 		return directory_handle(handle);
 	}
 
-	result<directory_handle> directory_handle::open_unique(const path_handle &base, file_flags flags) noexcept
+	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		try { return open(base, _handle::generate_unique_name()); }
-		catch (const std::system_error &e) { return e.code(); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-	result<directory_handle> directory_handle::open_temporary(path_view path, file_flags flags, open_mode mode) noexcept
-	{
-		if (!path.empty())
-			return open(temporary_file_directory(), path, flags, mode);
-		else if (mode != open_mode::existing)
-			return open_unique(temporary_file_directory(), flags);
+		if (auto hnd = reopen_as_deletable(*this); hnd.has_value()) [[likely]]
+			return _win32::do_link(hnd->native_handle(), base, path, replace, to);
 		else
-			return std::make_error_code(std::errc::invalid_argument);
+			return hnd.error();
+	}
+	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	{
+		if (auto hnd = reopen_as_deletable(*this); hnd.has_value()) [[likely]]
+			return _win32::do_relink(hnd->native_handle(), base, path, replace, to);
+		else
+			return hnd.error();
+	}
+	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
+	{
+		if (auto hnd = reopen_as_deletable(*this); hnd.has_value()) [[likely]]
+			return _win32::do_unlink(hnd->native_handle(), to, flags());
+		else
+			return hnd.error();
 	}
 }

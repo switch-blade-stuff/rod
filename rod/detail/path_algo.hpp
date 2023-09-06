@@ -19,19 +19,19 @@ namespace rod
 	/** Checks if path views \a a and \a b reference the same filesystem object. */
 	[[nodiscard]] ROD_API_PUBLIC result<bool> equivalent(path_view a, path_view b) noexcept;
 
-	/** Creates all directories specified by \a path.
-	 * @return Amount of directories created or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> create_all(path_view path) noexcept;
 	/** Creates all directories specified by \a path relative to parent location \a base.
 	 * @return Amount of directories created or a status code on failure. */
 	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> create_all(const path_handle &base, path_view path) noexcept;
+	/** Creates all directories specified by \a path.
+	 * @return Amount of directories created or a status code on failure. */
+	[[nodiscard]] inline static result<std::size_t> create_all(path_view path) noexcept { return create_all({}, path); }
 
-	/** Removes all directories, files and symlinks specified by \a path.
-	 * @return Amount of elements removed or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove_all(path_view path) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base.
 	 * @return Amount of elements removed or a status code on failure. */
 	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path) noexcept;
+	/** Removes all directories, files and symlinks specified by \a path.
+	 * @return Amount of elements removed or a status code on failure. */
+	[[nodiscard]] inline static result<std::size_t> remove_all(path_view path) noexcept { return remove_all({}, path); }
 
 	/** Flags used to control behavior of the `copy_all` function. */
 	enum class copy_mode : int
@@ -66,10 +66,10 @@ namespace rod
 	constexpr copy_mode &operator|=(copy_mode &a, copy_mode b) noexcept { return a = a | b; }
 	constexpr copy_mode &operator^=(copy_mode &a, copy_mode b) noexcept { return a = a ^ b; }
 
-	/** Duplicates all directories, files and symlinks located at \a from path \a to using mode flags \a mode.
-	 * @return Amount of elements copied or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(path_view path, copy_mode mode) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base using mode flags \a mode.
 	 * @return Amount of elements copied or a status code on failure. */
 	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &base, path_view path, copy_mode mode) noexcept;
+	/** Duplicates all directories, files and symlinks located at \a from path \a to using mode flags \a mode.
+	 * @return Amount of elements copied or a status code on failure. */
+	[[nodiscard]] inline static result<std::size_t> copy_all(path_view path, copy_mode mode) noexcept { return copy_all({}, path, mode); }
 }

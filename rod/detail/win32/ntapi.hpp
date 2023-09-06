@@ -392,6 +392,20 @@ namespace rod::_win32
 		ULONG name_len;
 		WCHAR name[1];
 	};
+	struct file_fs_full_size_information
+	{
+		LARGE_INTEGER blk_count;
+		LARGE_INTEGER blk_avail;
+		LARGE_INTEGER blk_free;
+		ULONG blk_sectors;
+		ULONG sector_size;
+	};
+	struct file_fs_objectid_information
+	{
+		UCHAR obj_id[16];
+		UCHAR ext_info[48];
+	};
+
 	struct file_directory_information
 	{
 		ULONG next_off;

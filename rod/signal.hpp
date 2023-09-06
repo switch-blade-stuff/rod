@@ -196,7 +196,7 @@ namespace rod
 	 * Iterators pointing to listener objects are guaranteed to always remain valid until the listener is
 	 * erased from the signal queue. Stability of pointers and references to listeners is unspecified.
 	 *
-	 * For ABI compatibility purposes, all sink types are equivalent to the following (exposition-only) struct:
+	 * For ABI compatibility purposes, all sink types are layout-compatible with the following struct:
 	 * @code{cpp}
 	 * struct sink { void *internal; };
 	 * @endcode

@@ -962,10 +962,10 @@ namespace rod
 			using const_reverse_iterator = reverse_iterator;
 
 		public:
-			constexpr path(const path &) = default;
-			constexpr path &operator=(const path &) = default;
-			constexpr path(path &&) noexcept = default;
-			constexpr path &operator=(path &&) noexcept = default;
+			constexpr path(const path &other) : _string(other._string), _format(other._format) {}
+			constexpr path &operator=(const path &other) { return (_string = other._string, _format = other._format, *this); }
+			constexpr path(path &&other) : _string(std::move(other._string)), _format(std::exchange(other._format, auto_format)) {}
+			constexpr path &operator=(path &&other) { return (_string = std::move(other._string), _format = std::exchange(other._format, auto_format), *this); }
 
 			/** Initializes an empty path. */
 			constexpr path() noexcept : path(auto_format) {}

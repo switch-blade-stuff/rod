@@ -125,7 +125,7 @@ namespace rod
 	 * can be directly constructed from a member function pointer and object instance,
 	 * and can be used to invoke C-style APIs taking a callback and data pointer.
 	 *
-	 * For ABI compatibility and interop purposes, delegate types are equivalent to the following struct:
+	 * For ABI compatibility and interop purposes, delegate types are layout-compatible with the following struct:
 	 * @code{cpp}
 	 * struct delegate
 	 * {
@@ -392,4 +392,5 @@ namespace rod
 
 	static_assert(alignof(delegate<void()>) == alignof(void *[5]));
 	static_assert(sizeof(delegate<void()>) == sizeof(void *[5]));
+	static_assert(std::is_standard_layout_v<delegate<void()>>);
 }

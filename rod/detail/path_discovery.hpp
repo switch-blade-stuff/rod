@@ -29,7 +29,8 @@ namespace rod
 	/** Flags used to control path discovery behavior. */
 	enum class discovery_mode : int
 	{
-		/** Storage-backed directories will be considered for discovery. */
+		/** Storage-backed directories will be considered for discovery.
+		 * @note Networked storage-backed directories will not be included unless `network_backed` flag is set. */
 		storage_backed = 1,
 		/** Network-backed directories will be considered for discovery. */
 		network_backed = 2,
@@ -50,10 +51,16 @@ namespace rod
 	/** Structure representing metadata of a discovered path. */
 	struct discovered_path
 	{
-		/** Value of the discovered path. */
-		path_view path;
-		/** Source type of the discovered path. */
+		/** Path to the discovered directory. */
+		rod::path path;
+		/** Source type of the discovered directory. */
 		discovery_source source = {};
+
+		/** Device ID of the discovered directory. */
+		dev_t dev = 0;
+		/** Inode ID of the discovered directory. */
+		ino_t ino = 0;
+
 		/** Flag indicating whether the target directory is backed by storage. */
 		bool storage_backed : 1 = false;
 		/** Flag indicating whether the target directory is backed by network. */
@@ -64,14 +71,9 @@ namespace rod
 
 	namespace _detail
 	{
-		bool match_storage_backed(typename path::string_view_type) noexcept;
-		bool match_memory_backed(typename path::string_view_type) noexcept;
-
-		/* Platform-specific discovery hooks. */
-		result<> find_temp_dirs(typename path::string_type &, std::vector<discovered_path> &) noexcept;
-		result<> find_data_dirs(typename path::string_type &, std::vector<discovered_path> &) noexcept;
-		result<> find_state_dirs(typename path::string_type &, std::vector<discovered_path> &) noexcept;
-		result<> find_config_dirs(typename path::string_type &, std::vector<discovered_path> &) noexcept;
+		bool match_memory_backed(std::string_view) noexcept;
+		bool match_storage_backed(std::string_view) noexcept;
+		bool match_network_backed(std::string_view) noexcept;
 
 		result<path> find_install_dir() noexcept;
 		result<path> find_runtime_dir() noexcept;
@@ -87,30 +89,25 @@ namespace rod
 
 		struct discovery_cache
 		{
-			template<typename F>
-			[[nodiscard]] static result<> refresh_dirs(F &&, typename path::string_type &, std::vector<discovered_path> &) noexcept;
-			template<auto discovery_cache::*Path>
-			[[nodiscard]] static const directory_handle &cached_dir_handle() noexcept;
-
 			static result<discovery_cache> &instance();
 
 			void unlock() noexcept
 			{
-				std::atomic_ref(guard).store(false, std::memory_order_release);
-				std::atomic_ref(guard).notify_one();
+				std::atomic_ref(busy).store(false, std::memory_order_release);
+				std::atomic_ref(busy).notify_one();
 			}
 			void lock() noexcept
 			{
-				while (std::atomic_ref(guard).exchange(true, std::memory_order_acq_rel))
-					std::atomic_ref(guard).wait(true);
+				while (std::atomic_ref(busy).exchange(true, std::memory_order_acq_rel))
+					std::atomic_ref(busy).wait(true);
 			}
 
-			[[nodiscard]] result<> refresh_temp_dirs() noexcept { return refresh_dirs(find_temp_dirs, temp_dirs_buff, temp_dirs); }
-			[[nodiscard]] result<> refresh_data_dirs() noexcept { return refresh_dirs(find_data_dirs, data_dirs_buff, data_dirs); }
-			[[nodiscard]] result<> refresh_state_dirs() noexcept { return refresh_dirs(find_state_dirs, state_dirs_buff, state_dirs); }
-			[[nodiscard]] result<> refresh_config_dirs() noexcept { return refresh_dirs(find_config_dirs, config_dirs_buff, config_dirs); }
+			template<auto discovery_cache::*Path>
+			[[nodiscard]] auto open_cached_dir() const noexcept -> directory_handle;
+			template<auto discovery_cache::*Dirs, typename F>
+			[[nodiscard]] auto refresh_dirs(F &&) noexcept -> result<>;
 
-			bool guard;
+			bool busy;
 
 			typename path::string_type working_dir;
 			typename path::string_type install_dir;
@@ -121,16 +118,19 @@ namespace rod
 			typename path::string_type state_home_dir;
 			typename path::string_type config_home_dir;
 
-			typename path::string_type temp_dirs_buff;
-			typename path::string_type data_dirs_buff;
-			typename path::string_type state_dirs_buff;
-			typename path::string_type config_dirs_buff;
-
 			std::vector<discovered_path> temp_dirs;
 			std::vector<discovered_path> data_dirs;
 			std::vector<discovered_path> state_dirs;
 			std::vector<discovered_path> config_dirs;
 		};
+
+		result<bool> query_discovered_dir(discovery_mode, discovered_path &) noexcept;
+
+		/* Platform-specific discovery hooks. */
+		result<> find_temp_dirs(std::vector<discovered_path> &) noexcept;
+		result<> find_data_dirs(std::vector<discovered_path> &) noexcept;
+		result<> find_state_dirs(std::vector<discovered_path> &) noexcept;
+		result<> find_config_dirs(std::vector<discovered_path> &) noexcept;
 	}
 
 	/** Regular expression used to match temporary directories that are backed by physical storage. */
