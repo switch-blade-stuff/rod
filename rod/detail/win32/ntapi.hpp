@@ -293,7 +293,7 @@ namespace rod::_win32
 	{
 		void *base_addr;
 		ULONG attributes;
-		LARGE_INTEGER max_size;
+		LONGLONG max_size;
 	};
 	struct file_basic_information
 	{
@@ -331,8 +331,8 @@ namespace rod::_win32
 
 	struct file_standard_information
 	{
-		LARGE_INTEGER allocation;
-		LARGE_INTEGER endpos;
+		LONGLONG allocation;
+		LONGLONG endpos;
 		ULONG nlink;
 		BOOLEAN delete_pending;
 		BOOLEAN directory;
@@ -341,13 +341,6 @@ namespace rod::_win32
 	{
 		ULONG flags;
 		HANDLE root_dir;
-		ULONG name_len;
-		WCHAR name[1];
-	};
-	struct file_names_information
-	{
-		ULONG next_off;
-		ULONG file_idx;
 		ULONG name_len;
 		WCHAR name[1];
 	};
@@ -369,8 +362,8 @@ namespace rod::_win32
 		ULONG ea_size;
 	};
 
-	struct file_internal_information { LARGE_INTEGER file_id; };
-	using file_position_information = LARGE_INTEGER;
+	struct file_internal_information { LONGLONG file_id; };
+	using file_position_information = LONGLONG;
 	using file_access_information = ACCESS_MASK;
 	using file_alignment_information = ULONG;
 	using file_mode_information = ULONG;
@@ -394,9 +387,9 @@ namespace rod::_win32
 	};
 	struct file_fs_full_size_information
 	{
-		LARGE_INTEGER blk_count;
-		LARGE_INTEGER blk_avail;
-		LARGE_INTEGER blk_free;
+		LONGLONG blk_count;
+		LONGLONG blk_avail;
+		LONGLONG blk_free;
 		ULONG blk_sectors;
 		ULONG sector_size;
 	};
@@ -406,6 +399,26 @@ namespace rod::_win32
 		UCHAR ext_info[48];
 	};
 
+	struct file_id_full_dir_information
+	{
+		ULONG next_off;
+		ULONG file_idx;
+		FILETIME btime;
+		FILETIME atime;
+		FILETIME mtime;
+		FILETIME ctime;
+		LONGLONG eof;
+		LONGLONG alloc_size;
+		ULONG attributes;
+		ULONG name_len;
+		union
+		{
+			ULONG ea_size;
+			ULONG reparse_tag;
+		};
+		LONGLONG file_id;
+		WCHAR name[1];
+	};
 	struct file_directory_information
 	{
 		ULONG next_off;
@@ -414,27 +427,34 @@ namespace rod::_win32
 		FILETIME atime;
 		FILETIME mtime;
 		FILETIME ctime;
-		LARGE_INTEGER endpos;
-		LARGE_INTEGER allocation;
+		LONGLONG endpos;
+		LONGLONG allocation;
 		ULONG attributes;
 		ULONG name_len;
 		WCHAR name[1];
 	};
+	struct file_names_information
+	{
+		ULONG next_off;
+		ULONG file_idx;
+		ULONG name_len;
+		WCHAR name[1];
+	};
+
 	struct file_stat_information
 	{
-		LARGE_INTEGER file_id;
+		LONGLONG file_id;
 		FILETIME btime;
 		FILETIME atime;
 		FILETIME mtime;
 		FILETIME ctime;
-		LARGE_INTEGER allocation;
-		LARGE_INTEGER endpos;
+		LONGLONG allocation;
+		LONGLONG endpos;
 		ULONG attributes;
 		ULONG reparse_tag;
 		ULONG nlink;
 		ACCESS_MASK access;
 	};
-
 	struct file_all_information
 	{
 		file_basic_information basic_info;
@@ -458,6 +478,7 @@ namespace rod::_win32
 	using NtQueryInformationByName_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 
 	using NtSetInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _In_ void *info, _In_ ULONG len, _In_ file_info_type type);
+	using NtQueryDirectoryFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *event, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ BOOLEAN single, _In_opt_ unicode_string *name, _In_ BOOLEAN restart);
 	using NtQueryInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 	using NtQueryVolumeInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ fs_info_type type);
 
@@ -511,6 +532,7 @@ namespace rod::_win32
 		NtQueryInformationByName_t NtQueryInformationByName;
 
 		NtSetInformationFile_t NtSetInformationFile;
+		NtQueryDirectoryFile_t NtQueryDirectoryFile;
 		NtQueryInformationFile_t NtQueryInformationFile;
 		NtQueryVolumeInformationFile_t NtQueryVolumeInformationFile;
 

@@ -3,27 +3,15 @@
  */
 
 #include "directory_handle.hpp"
-#include "path_discovery.hpp"
+#include "detail/directory_handle.hpp"
 
 namespace rod::_directory
 {
 	using namespace _win32;
 
-	result<directory_handle> directory_handle::open_unique(const path_handle &base, file_flags flags) noexcept
-	{
-		try { return open(base, _handle::generate_unique_name()); }
-		catch (const std::system_error &e) { return e.code(); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-	result<directory_handle> directory_handle::open_temporary(path_view path, file_flags flags, open_mode mode) noexcept
-	{
-		if (!path.empty())
-			return open(temporary_file_directory(), path, flags, mode);
-		else if (mode != open_mode::existing)
-			return open_unique(temporary_file_directory(), flags);
-		else
-			return std::make_error_code(std::errc::invalid_argument);
-	}
+	inline constexpr auto stats_mask = stat::query::ino | stat::query::type | stat::query::atime | stat::query::mtime | stat::query::ctime | stat::query::btime | stat::query::size | stat::query::alloc | stat::query::is_sparse | stat::query::is_compressed | stat::query::is_reparse_point;
+	inline constexpr std::size_t buff_size = 65536;
+
 	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -133,5 +121,136 @@ namespace rod::_directory
 			return _win32::do_unlink(hnd->native_handle(), to, flags());
 		else
 			return hnd.error();
+	}
+
+	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) const noexcept
+	{
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto buff = make_info_buffer(buff_size);
+		if (buff.has_error()) [[unlikely]]
+			return buff.error();
+
+		auto rfilter = req.filter.render_null_terminated();
+		auto ufilter = unicode_string();
+		auto g = std::lock_guard(*this);
+
+		ufilter.max = (ufilter.size = USHORT(rfilter.size() * sizeof(wchar_t))) + sizeof(wchar_t);
+		ufilter.buff = const_cast<wchar_t *>(rfilter.data());
+
+		wchar_t *result_buff = req.buffs._buff.release();
+		std::size_t buffer_size = 0, result_size = 0;
+		bool reset_pos = !req.resume, eof = false;
+
+		while (result_size < req.buffs.size() && !eof)
+		{
+			auto iosb = io_status_block();
+			auto status = ntapi->NtQueryDirectoryFile(native_handle(), nullptr, nullptr, 0, &iosb, buff->get(), buff_size * sizeof(wchar_t), FileIdFullDirectoryInformation, false, req.filter.empty() ? nullptr : &ufilter, reset_pos);
+			if (status == STATUS_PENDING)
+				status = ntapi->wait_io(native_handle(), &iosb, to);
+			if (is_status_failure(status))
+			{
+				eof = status == 0x80000006 /*STATUS_NO_MORE_FILES*/;
+				goto finish;
+			}
+
+			reset_pos = eof = false;
+			for (auto pos = reinterpret_cast<std::byte *>(buff->get()); !eof && result_size < req.buffs.size(); ++result_size)
+			{
+				auto full_info = reinterpret_cast<file_id_full_dir_information *>(pos);
+				auto &entry = req.buffs[result_size];
+
+				/* Copy or reserve entry path. */
+				if (entry._buff.size() >= full_info->name_len)
+				{
+					/* Try to terminate path for efficiency. */
+					if ((entry._has_null_terminator = entry._buff.size() > full_info->name_len))
+						entry._buff[entry._buff.size()] = '\0';
+
+					/* If the provided space is big enough, directly copy to the user buffer. */
+					std::memcpy(entry._buff.data(), full_info->name, full_info->name_len * sizeof(wchar_t));
+					entry._buff = entry._buff.subspan(0, full_info->name_len);
+				}
+				else
+				{
+					auto old_size = buffer_size, new_size = buffer_size + full_info->name_len + 1;
+					auto old_buff = result_buff, new_buff = result_buff;
+
+					if (new_size > req.buffs._buff_max)
+					{
+						if (old_buff)
+							new_buff = static_cast<wchar_t *>(std::realloc(old_buff, new_size * sizeof(wchar_t)));
+						else
+							new_buff = static_cast<wchar_t *>(std::malloc(new_size * sizeof(wchar_t)));
+						if (new_buff == nullptr) [[unlikely]]
+							goto finish;
+					}
+
+					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
+					std::memcpy(result_buff + old_size, full_info->name, full_info->name_len * sizeof(wchar_t));
+					auto off = reinterpret_cast<wchar_t *>(old_size);
+					auto len = ULONG(-LONG(full_info->name_len));
+					entry._buff = std::span(off, len);
+
+					result_buff = new_buff;
+					buffer_size = new_size;
+				}
+
+				/* Fill requested entry metadata. */
+				entry._metadata = stat(nullptr);
+				if (bool(entry._mask &= stats_mask))
+				{
+					if (bool(entry._mask & stat::query::ino))
+						entry._metadata.ino = full_info->file_id;
+					if (bool(entry._mask & stat::query::type))
+						entry._metadata.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
+					if (bool(entry._mask & stat::query::atime))
+						entry._metadata.atime = filetime_to_tp(full_info->atime);
+					if (bool(entry._mask & stat::query::mtime))
+						entry._metadata.mtime = filetime_to_tp(full_info->mtime);
+					if (bool(entry._mask & stat::query::ctime))
+						entry._metadata.ctime = filetime_to_tp(full_info->ctime);
+					if (bool(entry._mask & stat::query::btime))
+						entry._metadata.btime = filetime_to_tp(full_info->btime);
+					if (bool(entry._mask & stat::query::size))
+						entry._metadata.size = full_info->eof;
+					if (bool(entry._mask & stat::query::alloc))
+						entry._metadata.alloc = full_info->alloc_size;
+					if (bool(entry._mask & stat::query::is_sparse))
+						entry._metadata.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
+					if (bool(entry._mask & stat::query::is_compressed))
+						entry._metadata.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
+					if (bool(entry._mask & stat::query::is_reparse_point))
+						entry._metadata.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
+				}
+
+				/* Advance to next entry. */
+				eof = (full_info->next_off == 0);
+				pos += full_info->next_off;
+			}
+		}
+
+	finish:
+		/* Restore placeholder offsets. */
+		for (std::size_t i = 0; i < result_size; ++i)
+		{
+			auto &entry = req.buffs[result_size];
+			if (LONG(entry._buff.size()) >= 0)
+				continue;
+
+			const auto off = reinterpret_cast<std::size_t>(entry._buff.data());
+			const auto len = LONG(-LONG(entry._buff.size()));
+			entry._buff = std::span(result_buff + off, len);
+		}
+
+		/* Save the buffer max size for later re-use. */
+		req.buffs._buff_max = std::max(req.buffs._buff_max, buffer_size);
+		req.buffs._buff.reset(result_buff);
+
+		/* Always truncate to result_size to avoid empty-entry checks. */
+		req.buffs._data = req.buffs._data.subspan(0, result_size);
+		return std::move(req.buffs);
 	}
 }

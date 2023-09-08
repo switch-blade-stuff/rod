@@ -18,7 +18,7 @@ namespace rod::_handle
 	constexpr auto standard_info_mask = stat::query::size | stat::query::alloc | stat::query::blocks | stat::query::nlink;
 	constexpr auto internal_info_mask = stat::query::ino;
 
-	constexpr std::size_t buff_size = 32769;
+	constexpr std::size_t buff_size = 32768;
 
 	inline static auto query_file_type(const ntapi &ntapi, void *hnd, ULONG file_attr, ULONG reparse_tag) noexcept -> result<file_type>
 	{
@@ -32,7 +32,7 @@ namespace rod::_handle
 			std::memset(reparse_data, 0, sizeof(reparse_data_buffer));
 			DWORD written = 0;
 
-			if (!::DeviceIoControl(hnd, FSCTL_GET_REPARSE_POINT, nullptr, 0, reparse_data, sizeof(reparse_data_buffer) + buff_size, &written, nullptr)) [[unlikely]]
+			if (!::DeviceIoControl(hnd, FSCTL_GET_REPARSE_POINT, nullptr, 0, reparse_data, sizeof(reparse_data_buffer) + buff_size * sizeof(wchar_t), &written, nullptr)) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
 				reparse_tag = reparse_data->reparse_tag;
@@ -55,7 +55,7 @@ namespace rod::_handle
 
 		if (bool(q & stat::query::ino))
 		{
-			st.ino = stat_info->file_id.QuadPart;
+			st.ino = stat_info->file_id;
 			done |= stat::query::ino;
 		}
 		if (bool(q & stat::query::type))
@@ -93,17 +93,17 @@ namespace rod::_handle
 		}
 		if (bool(q & stat::query::size))
 		{
-			st.size = stat_info->endpos.QuadPart;
+			st.size = stat_info->endpos;
 			done |= stat::query::size;
 		}
 		if (bool(q & stat::query::alloc))
 		{
-			st.alloc = stat_info->allocation.QuadPart;
+			st.alloc = stat_info->allocation;
 			done |= stat::query::alloc;
 		}
 		if (bool(q & stat::query::blocks))
 		{
-			st.blocks = stat_info->allocation.QuadPart / sector_info.physical_bytes_perf;
+			st.blocks = stat_info->allocation / sector_info.physical_bytes_perf;
 			done |= stat::query::blocks;
 		}
 		if (bool(q & stat::query::blksize))
@@ -179,7 +179,7 @@ namespace rod::_handle
 	query_success:
 		if (bool(q & stat::query::ino))
 		{
-			st.ino = all_info->internal_info.file_id.QuadPart;
+			st.ino = all_info->internal_info.file_id;
 			done |= stat::query::ino;
 		}
 		if (bool(q & stat::query::type))
@@ -217,17 +217,17 @@ namespace rod::_handle
 		}
 		if (bool(q & stat::query::size))
 		{
-			st.size = all_info->standard_info.endpos.QuadPart;
+			st.size = all_info->standard_info.endpos;
 			done |= stat::query::size;
 		}
 		if (bool(q & stat::query::alloc))
 		{
-			st.alloc = all_info->standard_info.allocation.QuadPart;
+			st.alloc = all_info->standard_info.allocation;
 			done |= stat::query::alloc;
 		}
 		if (bool(q & stat::query::blocks))
 		{
-			st.blocks = all_info->standard_info.allocation.QuadPart / sector_info.physical_bytes_perf;
+			st.blocks = all_info->standard_info.allocation / sector_info.physical_bytes_perf;
 			done |= stat::query::blocks;
 		}
 		if (bool(q & stat::query::blksize))
@@ -386,9 +386,8 @@ namespace rod::_handle
 		else
 			return res;
 
-		/* Try to get device & file IDs from the filesystem with better uniqueness than FileStatInformation or FileAllInformation.
-		 * This is only possible if FileIdInformation or FileObjectIdInformation is available. */
-		if (bool(q & (stat::query::dev | stat::query::ino)))
+		/* Try to get device ID using Win10 FileIdInformation. */
+		if (bool(q & (stat::query::dev/* | stat::query::ino*/)))
 		{
 			auto id_info = reinterpret_cast<file_id_information *>(buff->get());
 			std::memset(id_info, 0, sizeof(file_id_information));
@@ -398,15 +397,15 @@ namespace rod::_handle
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(_hnd, &iosb);
 
-			/* Failure might mean we do not have the FileIdInformation which is Win10 and above. */
+			/* May fail on older windows. */
 			if (!is_status_failure(status))
 			{
-				union { std::uint8_t bytes[8]; std::uint64_t ino = 0; };
 				st.dev = id_info->volume_id;
 				done |= stat::query::dev;
 				q &= ~stat::query::dev;
 
-				/* XOR upper & lower words of 128 bit file_id. This should provide sufficient uniqueness. */
+#if 0 /* Don't use the 128bit ID to stay consistent with other inode sources (ex. NtQueryDirectoryFile). */
+				union { std::uint8_t bytes[8]; std::uint64_t ino = 0; };
 				for (std::size_t n = 0; n < 16; n++)
 					if (id_info->file_id[n] != 0)
 					{
@@ -416,8 +415,10 @@ namespace rod::_handle
 					}
 				if (!bool(q & stat::query::ino))
 					st.ino = ino;
+#endif
 			}
 		}
+		/* Re-try to get device ID from volume name. */
 		if (bool(q & stat::query::dev))
 		{
 			if (const auto len = ::GetFinalPathNameByHandleW(_hnd, buff->get(), buff_size, VOLUME_NAME_NT); !len || len >= buff_size) [[unlikely]]
@@ -435,6 +436,7 @@ namespace rod::_handle
 				done |= stat::query::dev;
 			}
 		}
+#if 0 /* Don't use the object or file reference IDs to stay consistent with other inode sources (ex. NtQueryDirectoryFile). */
 		if (bool(q & stat::query::ino))
 		{
 			auto objid_info = reinterpret_cast<file_objectid_information *>(buff->get());
@@ -449,6 +451,7 @@ namespace rod::_handle
 				done |= stat::query::ino;
 			}
 		}
+#endif
 
 		return done;
 	}
@@ -662,17 +665,17 @@ namespace rod::_handle
 			}
 			if (bool(q & fs_stat::query::blk_count))
 			{
-				st.blk_size = size_info->blk_count.QuadPart;
+				st.blk_size = size_info->blk_count;
 				done |= fs_stat::query::blk_count;
 			}
 			if (bool(q & fs_stat::query::blk_avail))
 			{
-				st.blk_size = size_info->blk_avail.QuadPart;
+				st.blk_size = size_info->blk_avail;
 				done |= fs_stat::query::blk_avail;
 			}
 			if (bool(q & fs_stat::query::blk_free))
 			{
-				st.blk_size = size_info->blk_free.QuadPart;
+				st.blk_size = size_info->blk_free;
 				done |= fs_stat::query::blk_free;
 			}
 		}

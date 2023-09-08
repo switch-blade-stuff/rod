@@ -13,11 +13,11 @@ namespace rod
 		/** Lightweight handle to a unique directory within the filesystem. */
 		class path_handle : public handle_adaptor<path_handle>
 		{
-			using adaptor_base = handle_adaptor<path_handle>;
-			friend adaptor_base;
+			using adp_base = handle_adaptor<path_handle>;
+			friend adp_base;
 
 		public:
-			using native_handle_type = typename adaptor_base::native_handle_type;
+			using native_handle_type = typename adp_base::native_handle_type;
 
 			/** Opens a path handle for an existing directory specified by \a path. */
 			[[nodiscard]] static result<path_handle> open(path_view path) noexcept { return open(path_handle(), path); }
@@ -34,11 +34,11 @@ namespace rod
 			path_handle &operator=(path_handle &&) noexcept = default;
 
 			/** Initializes path handle from a native handle. */
-			explicit path_handle(native_handle_type hnd) noexcept : adaptor_base(hnd) {}
+			explicit path_handle(native_handle_type hnd) noexcept : adp_base(hnd) {}
 			/** Initializes path handle from a basic handle. */
-			explicit path_handle(basic_handle &&other) noexcept : adaptor_base(std::forward<basic_handle>(other)) {}
+			explicit path_handle(basic_handle &&other) noexcept : adp_base(std::forward<basic_handle>(other)) {}
 
-			constexpr void swap(path_handle &other) noexcept { adaptor_base::swap(other); }
+			constexpr void swap(path_handle &other) noexcept { adp_base::swap(other); }
 			friend constexpr void swap(path_handle &a, path_handle &b) noexcept { a.swap(b); }
 
 			friend constexpr bool operator==(const path_handle &, const path_handle &) noexcept = default;

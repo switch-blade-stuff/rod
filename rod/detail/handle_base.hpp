@@ -31,7 +31,7 @@ namespace rod
 		template<typename Res>
 		concept close_result = is_result_with_value_v<Res, void>;
 		template<typename Res, typename Hnd>
-		concept clone_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
+		concept clone_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
 
 		struct close_t
 		{
@@ -62,7 +62,7 @@ namespace rod
 		};
 
 		template<typename Res>
-		concept path_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<path>, result<path>>;
+		concept path_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<path>, result<path>>;
 
 		struct to_object_path_t
 		{
@@ -273,22 +273,22 @@ namespace rod
 			template<std::same_as<close_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_close<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return dispatch_close(std::forward<Hnd>(hnd)); }
 			template<std::same_as<close_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_close<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return close_t{}(get_adaptor(std::forward<Hnd>(hnd)).base()); }
+			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base()); }
 
 			template<std::same_as<clone_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_clone<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return dispatch_clone(hnd); }
 			template<std::same_as<clone_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_clone<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return clone_result<Hnd>(clone_t{}(get_adaptor(hnd).base())); }
+			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return clone_result<Hnd>(T{}(get_adaptor(hnd).base())); }
 
 			template<std::same_as<to_object_path_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_to_object_path<Hnd>())
 			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return dispatch_to_object_path(hnd); }
 			template<std::same_as<to_object_path_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_to_object_path<Hnd>())
-			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return to_object_path_t{}(get_adaptor(hnd).base()); }
+			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return T{}(get_adaptor(hnd).base()); }
 
 			template<std::same_as<to_native_path_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_to_native_path<Hnd>())
 			friend auto tag_invoke(T, const Hnd &hnd, native_path_format fmt) noexcept { return dispatch_to_native_path(hnd, fmt); }
 			template<std::same_as<to_native_path_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_to_native_path<Hnd>())
-			friend auto tag_invoke(T, const Hnd &hnd, native_path_format fmt) noexcept { return to_native_path_t{}(get_adaptor(hnd).base(), fmt); }
+			friend auto tag_invoke(T, const Hnd &hnd, native_path_format fmt) noexcept { return T{}(get_adaptor(hnd).base(), fmt); }
 
 		private:
 			static constexpr int do_get_stat = 1;
@@ -313,17 +313,17 @@ namespace rod
 			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_get_stat<Hnd>())
 			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return dispatch_get_stat(st, hnd, q); }
 			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_get_stat<Hnd>())
-			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return get_stat_t{}(st, get_adaptor(hnd).base(), q); }
+			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
 
 			template<std::same_as<set_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_set_stat<Hnd>())
 			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return dispatch_set_stat(st, std::forward<Hnd>(hnd), q); }
 			template<std::same_as<set_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_set_stat<Hnd>())
-			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return set_stat_t{}(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q); }
+			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return T{}(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q); }
 
 			template<std::same_as<get_fs_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_get_fs_stat<Hnd>())
 			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return dispatch_get_fs_stat(st, hnd, q); }
 			template<std::same_as<get_fs_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_get_fs_stat<Hnd>())
-			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return get_fs_stat_t{}(st, get_adaptor(hnd).base(), q); }
+			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
 
 		protected:
 			[[nodiscard]] constexpr Base &base() & noexcept { return _base; }
@@ -369,8 +369,8 @@ namespace rod
 	{
 		struct dummy_handle : rod::handle_adaptor<dummy_handle, basic_handle>
 		{
-			using adaptor_base = rod::handle_adaptor<dummy_handle, basic_handle>;
-			using adaptor_base::adaptor_base;
+			using adp_base = rod::handle_adaptor<dummy_handle, basic_handle>;
+			using adp_base::adp_base;
 		};
 
 		static_assert(handle<dummy_handle>, "Child of `hande_adaptor` must satisfy `handle`");

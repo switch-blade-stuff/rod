@@ -100,7 +100,7 @@ namespace rod
 			}
 		};
 
-		class detach_local_t
+		class start_inline_t
 		{
 			template<typename Snd>
 			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
@@ -108,12 +108,12 @@ namespace rod
 			using state_t = typename detached_state<local_deleter, std::decay_t<Snd>>::type;
 
 		public:
-			template<rod::sender Snd> requires _detail::tag_invocable_with_completion_scheduler<detach_local_t, set_value_t, Snd, Snd>
-			constexpr std::destructible auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<detach_local_t, value_scheduler<Snd>, Snd>) { return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd)); }
-			template<rod::sender Snd> requires(!_detail::tag_invocable_with_completion_scheduler<detach_local_t, set_value_t, Snd, Snd> && tag_invocable<detach_local_t, Snd>)
-			constexpr std::destructible auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<detach_local_t, Snd>) { return tag_invoke(*this, std::forward<Snd>(snd)); }
+			template<rod::sender Snd> requires _detail::tag_invocable_with_completion_scheduler<start_inline_t, set_value_t, Snd, Snd>
+			constexpr std::destructible auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<start_inline_t, value_scheduler<Snd>, Snd>) { return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd)); }
+			template<rod::sender Snd> requires(!_detail::tag_invocable_with_completion_scheduler<start_inline_t, set_value_t, Snd, Snd> && tag_invocable<start_inline_t, Snd>)
+			constexpr std::destructible auto operator()(Snd &&snd) const noexcept(nothrow_tag_invocable<start_inline_t, Snd>) { return tag_invoke(*this, std::forward<Snd>(snd)); }
 
-			template<rod::sender Snd> requires(!_detail::tag_invocable_with_completion_scheduler<detach_local_t, set_value_t, Snd> && !tag_invocable<detach_local_t, Snd>)
+			template<rod::sender Snd> requires(!_detail::tag_invocable_with_completion_scheduler<start_inline_t, set_value_t, Snd> && !tag_invocable<start_inline_t, Snd>)
 			constexpr auto operator()(Snd &&snd) const noexcept(std::is_nothrow_constructible_v<state_t<Snd>, Snd>) { return state_t<Snd>{std::forward<Snd>(snd)}; }
 		};
 		class start_detached_t
@@ -134,18 +134,18 @@ namespace rod
 		};
 	}
 
-	using _start_detached::detach_local_t;
+	using _start_detached::start_inline_t;
 
 	/** Synchronously starts the passed sender and returns it's state.
 	 * @param snd Sender to start & detach.
 	 * @return State of the started operation.
 	 * @note Destructor of the returned state blocks until the started operation completes.
 	 * @note If the operation completes via the error channel, `std::terminate` is called. */
-	inline constexpr auto detach_local = detach_local_t{};
+	inline constexpr auto start_inline = start_inline_t{};
 
-	/** Type alias for a state object obtained from a call to `rod::detach_local(snd)`. */
+	/** Type alias for a state object obtained from a call to `rod::start_inline(snd)`. */
 	template<sender Snd>
-	using detached_state_t = tag_invoke_result_t<detach_local_t, Snd>;
+	using detached_state_t = tag_invoke_result_t<start_inline_t, Snd>;
 
 	using _start_detached::start_detached_t;
 

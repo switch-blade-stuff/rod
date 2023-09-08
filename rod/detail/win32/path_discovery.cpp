@@ -49,7 +49,7 @@ namespace rod::_detail
 			});
 
 			{ /* Find GetWindowsDirectoryW()\Temp */
-				auto buffer = std::wstring(32768, L'\0');
+				auto buffer = std::wstring(32767, L'\0');
 				auto len = ::GetWindowsDirectoryW(buffer.data(), DWORD(buffer.size()));
 				if (len && len < buffer.size())
 				{
@@ -61,7 +61,7 @@ namespace rod::_detail
 				}
 			}
 			{ /* Find %SYSTEMDRIVE%\Temp */
-				auto buffer = std::wstring(32768, L'\0');
+				auto buffer = std::wstring(32767, L'\0');
 				auto len = ::GetSystemWindowsDirectoryW(buffer.data(), DWORD(buffer.size()));
 				if (len && len < buffer.size())
 				{

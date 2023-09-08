@@ -200,4 +200,14 @@ namespace rod
 	 * @param refresh If set to `true`, system temporary directory cache is refreshed.
 	 * @return Vector of `discovered_path` structures describing discovered temporary directories or a status code on failure. */
 	[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode = discovery_mode::all, std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh = false) noexcept;
+
+	result<directory_handle> directory_handle::open_temporary(path_view path, file_flags flags, open_mode mode) noexcept
+	{
+		if (!path.empty())
+			return open(temporary_file_directory(), path, flags, mode);
+		else if (mode != open_mode::existing)
+			return open_unique(temporary_file_directory(), flags);
+		else
+			return std::make_error_code(std::errc::invalid_argument);
+	}
 }

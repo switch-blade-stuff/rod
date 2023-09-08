@@ -138,7 +138,7 @@ namespace rod
 		auto discovery_cache::open_cached_dir() const noexcept -> directory_handle
 		{
 			if (!(this->*Path).empty()) [[likely]]
-				return directory_handle::open(this->*Path).value_or({});
+				return directory_handle::open({}, this->*Path).value_or({});
 			else
 				return {};
 		}
@@ -186,7 +186,7 @@ namespace rod
 		else
 		{
 			fs_stat st;
-			if (hnd = directory_handle::open(dir.path, file_flags::attr_read); hnd.has_error()) [[unlikely]]
+			if (hnd = directory_handle::open({}, dir.path, file_flags::attr_read); hnd.has_error()) [[unlikely]]
 				return {in_place_error, hnd.error()};
 			if (auto res = get_fs_stat(st, *hnd, fs_stat::query::fs_type | fs_stat::query::flags); res.has_error()) [[unlikely]]
 				return {in_place_error, res.error()};

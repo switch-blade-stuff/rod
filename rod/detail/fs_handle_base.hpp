@@ -11,6 +11,21 @@ namespace rod
 {
 	namespace _handle
 	{
+		template<typename Hnd>
+		struct handle_timeout_impl;
+		template<typename Hnd> requires(requires { typename Hnd::timeout_type; })
+		struct handle_timeout_impl<Hnd> { using type = typename Hnd::timeout_type; };
+	}
+
+	/** Type trait used to obtain the timeout type of handle \a Hnd. */
+	template<typename Hnd>
+	struct handle_timeout : _handle::handle_timeout_impl<Hnd> {};
+	/** Alias for `typename handle_timeout&lt;Hnd&gt;::type` */
+	template<typename Hnd>
+	using handle_timeout_t = typename handle_timeout<Hnd>::type;
+
+	namespace _handle
+	{
 		/** Flags used to control behavior of filesystem handles. */
 		enum class file_flags : std::uint16_t
 		{
@@ -102,58 +117,68 @@ namespace rod
 		}
 
 		template<typename Res>
-		concept link_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<void>, Res>;
+		concept link_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<void>, Res>;
 
-		struct link_t
+		class link_t
 		{
-			template<typename Hnd> requires tag_invocable<link_t, Hnd, const path_handle &, path_view, bool, const file_timeout &>
-			link_result auto operator()(Hnd &&hnd, const path_handle &base, path_view path, bool replace = false, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, to); }
-			template<typename Hnd> requires(tag_invocable<link_t, Hnd, const path_handle &, path_view, bool, const file_timeout &> && !tag_invocable<link_t, Hnd, path_view, bool, const file_timeout &>)
-			link_result auto operator()(Hnd &&hnd, path_view path, bool replace = false, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), path_handle(), path, replace, to); }
-			template<typename Hnd> requires tag_invocable<link_t, Hnd, path_view, bool, const file_timeout &>
-			link_result auto operator()(Hnd &&hnd, path_view path, bool replace = false, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), path, replace, to); }
+			template<typename Hnd>
+			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
+
+		public:
+			template<typename Hnd, std::convertible_to<const path_handle &> Base = const path_handle &, path_like Path = path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<link_t, Hnd, Base, Path, bool, To>
+			link_result auto operator()(Hnd &&hnd, Base &&base, Path &&path, bool replace = false, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, std::forward<To>(to)); }
 		};
-		struct relink_t
+		class relink_t
 		{
-			template<typename Hnd> requires tag_invocable<relink_t, Hnd, const path_handle &, path_view, bool, const file_timeout &>
-			link_result auto operator()(Hnd &&hnd, const path_handle &base, path_view path, bool replace = false, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, to); }
-			template<typename Hnd> requires(tag_invocable<relink_t, Hnd, const path_handle &, path_view, bool, const file_timeout &> && !tag_invocable<relink_t, Hnd, path_view, bool, const file_timeout &>)
-			link_result auto operator()(Hnd &&hnd, path_view path, bool replace = false, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), path_handle(), path, replace, to); }
-			template<typename Hnd> requires tag_invocable<relink_t, Hnd, path_view, bool, const file_timeout &>
-			link_result auto operator()(Hnd &&hnd, path_view path, bool replace = false, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), path, replace, to); }
+			template<typename Hnd>
+			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
+
+		public:
+			template<typename Hnd, std::convertible_to<const path_handle &> Base = const path_handle &, path_like Path = path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<relink_t, Hnd, Base, Path, bool, To>
+			link_result auto operator()(Hnd &&hnd, Base &&base, Path path, bool replace = false, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, std::forward<To>(to)); }
 		};
-		struct unlink_t
+		class unlink_t
 		{
-			template<typename Hnd> requires tag_invocable<unlink_t, Hnd, const file_timeout &>
-			link_result auto operator()(Hnd &&hnd, const file_timeout &to = file_timeout()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), to); }
+			template<typename Hnd>
+			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
+
+		public:
+			template<typename Hnd, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<unlink_t, Hnd, To>
+			link_result auto operator()(Hnd &&hnd, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<To>(to)); }
 		};
 
-		template<typename Res, typename Hnd>
-		concept reopen_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
+		template<typename T>
+		struct select_timeout_type { using type = file_timeout; };
+		template<typename T>
+		struct select_extent_type { using type = extent_type; };
+		template<typename T>
+		struct select_size_type { using type = size_type; };
 
-		struct reopen_t
-		{
-			template<typename Hnd, typename... Args> requires tag_invocable<reopen_t, const Hnd &, Args...>
-			reopen_result<Hnd> auto operator()(const Hnd &hnd, Args &&...args) const noexcept { return tag_invoke(*this, hnd, std::forward<Args>(args)...); }
-		};
+		template<typename T> requires(requires { typename T::timeout_type; })
+		struct select_timeout_type<T> { using type = typename T::timeout_type; };
+		template<typename T> requires(requires { typename T::extent_type; })
+		struct select_extent_type<T> { using type = typename T::extent_type; };
+		template<typename T> requires(requires { typename T::size_type; })
+		struct select_size_type<T> { using type = typename T::size_type; };
 
 		template<typename Child, typename Base>
 		struct fs_handle_adaptor { class type; };
 		template<typename Child, typename Base>
 		class fs_handle_adaptor<Child, Base>::type : public handle_adaptor<Child, Base>::type
 		{
-			using adaptor_base = typename handle_adaptor<Child, Base>::type;
+			using adp_base = typename handle_adaptor<Child, Base>::type;
 
-			friend adaptor_base;
+			friend adp_base;
 			friend Child;
 
 		public:
-			using native_handle_type = typename adaptor_base::native_handle_type;
-
+			using native_handle_type = typename adp_base::native_handle_type;
+			/** Timeout type used for handle operations. */
+			using timeout_type = typename select_timeout_type<Base>::type;
 			/** Integer type used for handle offsets. */
-			using extent_type = _handle::extent_type;
+			using extent_type = typename select_extent_type<Base>::type;
 			/** Integer type used for handle buffers. */
-			using size_type = _handle::size_type;
+			using size_type = typename select_size_type<Base>::type;
 
 		private:
 			template<typename T>
@@ -164,22 +189,22 @@ namespace rod
 			type &operator=(const type &) = delete;
 
 			type() noexcept = default;
-			type(type &&other) noexcept : adaptor_base(std::forward<adaptor_base>(other)), _dev(std::exchange(other._dev, 0)), _ino(std::exchange(other._ino, 0)) {}
-			type &operator=(type &&other) noexcept { return (adaptor_base::operator=(std::forward<adaptor_base>(other)), std::swap(_dev, other._dev), std::swap(_ino, other._ino), *this); }
+			type(type &&other) noexcept : adp_base(std::forward<adp_base>(other)), _dev(std::exchange(other._dev, 0)), _ino(std::exchange(other._ino, 0)) {}
+			type &operator=(type &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), std::swap(_dev, other._dev), std::swap(_ino, other._ino), *this); }
 
-			explicit type(native_handle_type hnd) noexcept : adaptor_base(hnd) {}
-			explicit type(native_handle_type hnd, dev_t dev, ino_t ino) noexcept : adaptor_base(hnd), _dev(dev), _ino(ino) {}
+			explicit type(native_handle_type hnd) noexcept : adp_base(hnd) {}
+			explicit type(native_handle_type hnd, dev_t dev, ino_t ino) noexcept : adp_base(hnd), _dev(dev), _ino(ino) {}
 
-			explicit type(Base &&other) noexcept : adaptor_base(std::forward<Base>(other)) {}
-			explicit type(Base &&other, dev_t dev, ino_t ino) noexcept : adaptor_base(std::forward<Base>(other)), _dev(dev), _ino(ino) {}
+			explicit type(Base &&other) noexcept : adp_base(std::forward<Base>(other)) {}
+			explicit type(Base &&other, dev_t dev, ino_t ino) noexcept : adp_base(std::forward<Base>(other)), _dev(dev), _ino(ino) {}
 
-			using adaptor_base::release;
-			using adaptor_base::is_open;
-			using adaptor_base::native_handle;
+			using adp_base::release;
+			using adp_base::is_open;
+			using adp_base::native_handle;
 
 			constexpr void swap(type &other) noexcept
 			{
-				adl_swap(adaptor_base::base(), other.base());
+				adl_swap(adp_base::base(), other.base());
 				std::swap(_dev, other._dev);
 				std::swap(_ino, other._ino);
 			}
@@ -198,51 +223,40 @@ namespace rod
 			static constexpr bool has_unlink() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_unlink)); }; }
 
 			template<typename Hnd>
-			constexpr static auto dispatch_link(Hnd &&hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept -> decltype(std::forward<Hnd>(hnd).do_link(base, path, replace, to)) { return std::forward<Hnd>(hnd).do_link(base, path, replace, to); }
+			constexpr static auto dispatch_link(Hnd &&hnd, const path_handle &base, path_view path, bool replace, const timeout_type &to) noexcept -> decltype(std::forward<Hnd>(hnd).do_link(base, path, replace, to)) { return std::forward<Hnd>(hnd).do_link(base, path, replace, to); }
 			template<typename Hnd>
-			constexpr static auto dispatch_relink(Hnd &&hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept -> decltype(std::forward<Hnd>(hnd).do_relink(base, path, replace, to)) { return std::forward<Hnd>(hnd).do_relink(base, path, replace, to); }
+			constexpr static auto dispatch_relink(Hnd &&hnd, const path_handle &base, path_view path, bool replace, const timeout_type &to) noexcept -> decltype(std::forward<Hnd>(hnd).do_relink(base, path, replace, to)) { return std::forward<Hnd>(hnd).do_relink(base, path, replace, to); }
 			template<typename Hnd>
-			constexpr static auto dispatch_unlink(Hnd &&hnd, const file_timeout &to) noexcept -> decltype(std::forward<Hnd>(hnd).do_unlink(to)) { return std::forward<Hnd>(hnd).do_unlink(to); }
+			constexpr static auto dispatch_unlink(Hnd &&hnd, const timeout_type &to) noexcept -> decltype(std::forward<Hnd>(hnd).do_unlink(to)) { return std::forward<Hnd>(hnd).do_unlink(to); }
 
 		public:
 			template<std::same_as<link_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_link<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept { return dispatch_link(std::forward<Hnd>(hnd), base, path, replace, to); }
+			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const timeout_type &to) noexcept { return dispatch_link(std::forward<Hnd>(hnd), base, path, replace, to); }
 			template<std::same_as<link_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_link<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept { return link_t{}(get_adaptor(std::forward<Hnd>(hnd)).base(), base, path, replace, to); }
+			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), base, path, replace, to); }
 
 			template<std::same_as<relink_t> T, decays_to_same_or_derived<Child> Hnd> requires(has_relink<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept { return dispatch_relink(std::forward<Hnd>(hnd), base, path, replace, to); }
+			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const timeout_type &to) noexcept { return dispatch_relink(std::forward<Hnd>(hnd), base, path, replace, to); }
 			template<std::same_as<relink_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_relink<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept { return relink_t{}(get_adaptor(std::forward<Hnd>(hnd)).base(), base, path, replace, to); }
+			friend auto tag_invoke(T, Hnd &&hnd, const path_handle &base, path_view path, bool replace, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), base, path, replace, to); }
 
 			template<std::same_as<unlink_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_unlink<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, const file_timeout &to) noexcept { return dispatch_unlink(std::forward<Hnd>(hnd), to); }
+			friend auto tag_invoke(T, Hnd &&hnd, const timeout_type &to) noexcept { return dispatch_unlink(std::forward<Hnd>(hnd), to); }
 			template<std::same_as<unlink_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_unlink<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, const file_timeout &to) noexcept { return unlink_t{}(get_adaptor(std::forward<Hnd>(hnd)).base(), to); }
+			friend auto tag_invoke(T, Hnd &&hnd, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), to); }
 
 		private:
 			template<typename Res, typename Ret = typename std::decay_t<Res>::template rebind_value<Child>>
 			constexpr static auto convert_handle_result(Res &&res) noexcept(std::is_nothrow_constructible_v<Ret, Res>) { return Ret(std::forward<Res>(res)); }
 
-			static constexpr int do_reopen = 1;
 			static constexpr int do_get_stat = 1;
 
 			template<typename Hnd>
-			static constexpr bool has_reopen() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_reopen)); }; }
-			template<typename Hnd>
 			static constexpr bool has_get_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_get_stat)); }; }
-
-			template<typename Hnd>
-			constexpr static auto dispatch_reopen(Hnd &&hnd) noexcept -> decltype(std::forward<Hnd>(hnd).reopen()) { return std::forward<Hnd>(hnd).do_reopen(); }
 			template<typename Hnd>
 			constexpr static auto dispatch_get_stat(stat &st, const Hnd &hnd, stat::query q) noexcept -> decltype(hnd.get_stat(st, hnd, q)) { return hnd.do_get_stat(st, hnd, q); }
 
 		public:
-			template<std::same_as<reopen_t> T, decays_to_same_or_derived<Child> Hnd = Child, typename... Args> requires(has_reopen<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, Args &&...args) noexcept { return dispatch_reopen(std::forward<Hnd>(hnd), std::forward<Args>(args)...); }
-			template<std::same_as<reopen_t> T, decays_to_same_or_derived<Child> Hnd = Child, typename... Args> requires(!has_reopen<Hnd>())
-			friend auto tag_invoke(T, Hnd &&hnd, Args &&...args) noexcept { return convert_handle_result(reopen_t{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Args>(args)...)); }
-
 			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_get_stat<Hnd>())
 			friend auto tag_invoke(T, stat &st, Hnd &&hnd, stat::query q) noexcept { return get_adaptor(std::forward<Hnd>(hnd)).cache_stat(st, std::forward<Hnd>(hnd), q, dispatch_get_stat<Hnd>); }
 			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_get_stat<Hnd>())
@@ -285,12 +299,13 @@ namespace rod
 	template<typename Hnd>
 	concept fs_handle = handle<Hnd> && requires (const Hnd &hnd, Hnd &mut_hnd)
 	{
+		typename Hnd::timeout_type;
 		typename Hnd::extent_type;
 		typename Hnd::size_type;
 
-		_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const file_timeout &>;
-		_detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const file_timeout &>;
-		_detail::callable<_handle::unlink_t, Hnd &, const file_timeout &>;
+		_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &>;
+		_detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &>;
+		_detail::callable<_handle::unlink_t, Hnd &, const typename Hnd::timeout_type &>;
 	};
 
 	/** Handle adaptor used to implement filesystem object handles. */
@@ -304,12 +319,12 @@ namespace rod
 	{
 		struct dummy_fs_handle : rod::fs_handle_adaptor<dummy_fs_handle, basic_handle>
 		{
-			using adaptor_base = rod::fs_handle_adaptor<dummy_fs_handle, basic_handle>;
-			using adaptor_base::adaptor_base;
+			using adp_base = rod::fs_handle_adaptor<dummy_fs_handle, basic_handle>;
+			using adp_base::adp_base;
 
-			result<> do_link(const path_handle &, path_view, bool replace, const file_timeout &) noexcept { return {}; };
-			result<> do_relink(const path_handle &, path_view, bool replace, const file_timeout &) noexcept { return {}; };
-			result<> do_unlink(const file_timeout &) noexcept { return {}; };
+			result<> do_link(const path_handle &, path_view, bool replace, const typename adp_base::timeout_type &) noexcept { return {}; };
+			result<> do_relink(const path_handle &, path_view, bool replace, const typename adp_base::timeout_type &) noexcept { return {}; };
+			result<> do_unlink(const typename adp_base::timeout_type &) noexcept { return {}; };
 		};
 
 		static_assert(fs_handle<dummy_fs_handle>, "Child of `fs_hande_adaptor` must satisfy `fs_handle`");
@@ -325,9 +340,4 @@ namespace rod
 	inline constexpr auto relink = relink_t{};
 	/* TODO: Document usage */
 	inline constexpr auto unlink = unlink_t{};
-
-	using _handle::reopen_t;
-
-	/* TODO: Document usage */
-	inline constexpr auto reopen = reopen_t{};
 }

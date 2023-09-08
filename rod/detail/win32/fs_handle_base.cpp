@@ -97,8 +97,8 @@ namespace rod::_win32
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		const auto abs_timeout = to.is_relative ? file_clock::now() + to.relative : to.absolute;
 		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
+		auto abs_timeout = to.absolute();
 		auto iosb = io_status_block();
 
 		/* Try to unlink with POSIX semantics via the Win10 API. */

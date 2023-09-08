@@ -12,97 +12,106 @@ namespace rod
 	/** Structure used to describe either an absolute or relative timeout point.
 	 * @tparam Clock Clock used for the timeout's time measurments. */
 	template<typename Clock>
-	struct basic_timeout
+	class basic_timeout
 	{
+	public:
 		using absolute_type = typename Clock::time_point;
 		using relative_type = typename Clock::duration;
 
+	public:
 		/** Initializes a maximum relative timeout. */
-		constexpr basic_timeout() noexcept(std::is_nothrow_default_constructible_v<relative_type>) : relative(relative_type::max()), is_relative(true) {}
+		constexpr basic_timeout() noexcept(std::is_nothrow_default_constructible_v<relative_type>) : _relative(relative_type::max()), _is_relative(true) {}
 		/** Initializes an absolute timeout. */
-		constexpr basic_timeout(const absolute_type &tp) noexcept(std::is_nothrow_copy_constructible_v<absolute_type>) : absolute(tp), is_relative(false) {}
+		constexpr basic_timeout(const absolute_type &tp) noexcept(std::is_nothrow_copy_constructible_v<absolute_type>) : _absolute(tp), _is_relative(false) {}
 		/** Initializes a relative timeout. */
-		constexpr basic_timeout(const relative_type &dur) noexcept(std::is_nothrow_copy_constructible_v<relative_type>) : absolute(dur), is_relative(true) {}
+		constexpr basic_timeout(const relative_type &dur) noexcept(std::is_nothrow_copy_constructible_v<relative_type>) : _absolute(dur), _is_relative(true) {}
 
 		/** Initializes an absolute timeout from a system clock time point. */
 		template<typename D = typename std::chrono::system_clock::duration> requires(!std::same_as<absolute_type, std::chrono::sys_time<D>> && std::constructible_from<absolute_type, std::chrono::sys_time<D> >)
-		constexpr basic_timeout(std::chrono::sys_time<D> tp) noexcept(std::is_nothrow_constructible_v<absolute_type, std::chrono::sys_time<D>>) : absolute(tp), is_relative(false) {}
+		constexpr basic_timeout(std::chrono::sys_time<D> tp) noexcept(std::is_nothrow_constructible_v<absolute_type, std::chrono::sys_time<D>>) : _absolute(tp), _is_relative(false) {}
 		/** Initializes a relative timeout from a generic duration. */
 		template<typename R = typename std::chrono::system_clock::rep, typename P = typename std::chrono::system_clock::period> requires(!std::same_as<absolute_type, std::chrono::duration<R, P>> && std::constructible_from<relative_type, std::chrono::duration<R, P>>)
-		constexpr basic_timeout(std::chrono::duration<R, P> dur) noexcept(std::is_nothrow_constructible_v<relative_type, std::chrono::duration<R, P>>) : absolute(dur), is_relative(true) {}
+		constexpr basic_timeout(std::chrono::duration<R, P> dur) noexcept(std::is_nothrow_constructible_v<relative_type, std::chrono::duration<R, P>>) : _absolute(dur), _is_relative(true) {}
 
 		constexpr basic_timeout(const basic_timeout &other) noexcept(std::is_nothrow_copy_constructible_v<absolute_type> && std::is_nothrow_copy_constructible_v<relative_type>)
 		{
-			if (other.is_relative)
-				new (&relative) relative_type(other.relative);
+			if (other._is_relative)
+				new (&_relative) relative_type(other._relative);
 			else
-				new (&absolute) absolute_type(other.absolute);
+				new (&_absolute) absolute_type(other._absolute);
 		}
 		constexpr basic_timeout(basic_timeout &&other) noexcept(std::is_nothrow_move_constructible_v<absolute_type> && std::is_nothrow_move_constructible_v<relative_type>)
 		{
-			if (other.is_relative)
-				new (&relative) relative_type(std::move(other.relative));
+			if (other._is_relative)
+				new (&_relative) relative_type(std::move(other._relative));
 			else
-				new (&absolute) absolute_type(std::move(other.absolute));
+				new (&_absolute) absolute_type(std::move(other._absolute));
 		}
 		constexpr basic_timeout &operator=(const basic_timeout &other) noexcept(std::is_nothrow_copy_assignable_v<absolute_type> && std::is_nothrow_copy_assignable_v<relative_type>)
 		{
-			if (is_relative != other.is_relative)
+			if (_is_relative != other._is_relative)
 			{
 				this->~basic_timeout();
 				new (this) basic_timeout(other);
 			}
-			else if (other.is_relative)
-				relative = other.relative;
+			else if (other._is_relative)
+				_relative = other._relative;
 			else
-				absolute = other.absolute;
+				_absolute = other._absolute;
 			return *this;
 		}
 		constexpr basic_timeout &operator=(basic_timeout &&other) noexcept(std::is_nothrow_move_assignable_v<absolute_type> && std::is_nothrow_move_assignable_v<relative_type>)
 		{
-			if (is_relative != other.is_relative)
+			if (_is_relative != other._is_relative)
 			{
 				this->~basic_timeout();
 				new (this) basic_timeout(std::move(other));
 			}
-			else if (other.is_relative)
-				relative = std::move(other.relative);
+			else if (other._is_relative)
+				_relative = std::move(other._relative);
 			else
-				absolute = std::move(other.absolute);
+				_absolute = std::move(other._absolute);
 			return *this;
 		}
 		constexpr ~basic_timeout() noexcept(std::is_nothrow_destructible_v<absolute_type> && std::is_nothrow_destructible_v<relative_type>)
 		{
-			if (is_relative)
-				relative.~relative_type();
+			if (_is_relative)
+				_relative.~relative_type();
 			else
-				absolute.~absolute_type();
+				_absolute.~absolute_type();
 		}
 
-		constexpr void swap(basic_timeout &other) noexcept(std::is_nothrow_swappable_v<absolute_type> && std::is_nothrow_swappable_v<relative_type>) { swap(*this, other); }
-		friend constexpr void swap(basic_timeout &a, basic_timeout &b) noexcept(std::is_nothrow_swappable_v<absolute_type> && std::is_nothrow_swappable_v<relative_type>)
+		/** Checks if the timeout is relative. */
+		[[nodiscard]] constexpr bool is_relative() const noexcept { return _is_relative; }
+		/** If the timeout is relative, converts it to absolute time point using base time point \a tp, otherwise returns the absolute time point value. */
+		[[nodiscard]] constexpr absolute_type absolute(absolute_type base = Clock::now()) const noexcept(noexcept(base + _relative)) { return absolute_type(_is_relative ? base + _relative : _absolute); }
+		/** If the timeout is absolute, converts it to relative difference using base time point \a tp, otherwise returns the relative difference value. */
+		[[nodiscard]] constexpr relative_type relative(absolute_type base = Clock::now()) const noexcept(noexcept(_absolute - base)) { return relative_type(_is_relative ? _relative : _absolute - base); }
+
+		constexpr void swap(basic_timeout &other) noexcept(std::is_nothrow_swappable_v<absolute_type> && std::is_nothrow_swappable_v<relative_type>)
 		{
-			if (a.is_relative != b.is_relative)
+			if (_is_relative != other._is_relative)
 			{
-				auto tmp_a = std::move(a);
-				auto tmp_b = std::move(b);
-				a.~basic_tiomeout();
-				new (&a) basic_timeout(std::move(tmp_b));
-				b.~basic_tiomeout();
-				new (&b) basic_timeout(std::move(tmp_a));
+				auto tmp_this = std::move(*this), tmp_other = std::move(other);
+				this->~basic_tiomeout();
+				new (this) basic_timeout(std::move(tmp_other));
+				other.~basic_tiomeout();
+				new (&other) basic_timeout(std::move(tmp_this));
 			}
-			else if (a.is_relative)
-				adl_swap(a.relative, b.relative);
+			else if (_is_relative)
+				adl_swap(_relative, other._relative);
 			else
-				adl_swap(a.absolute, b.absolute);
+				adl_swap(_absolute, other._absolute);
 		}
+		friend constexpr void swap(basic_timeout &a, basic_timeout &b) noexcept(std::is_nothrow_swappable_v<absolute_type> && std::is_nothrow_swappable_v<relative_type>) { a.swap(b); }
 
+	private:
 		union
 		{
-			absolute_type absolute;
-			relative_type relative;
+			absolute_type _absolute;
+			relative_type _relative;
 		};
-		bool is_relative;
+		bool _is_relative;
 	};
 
 	/** Timeout type using `std::chrono::system_clock`. */

@@ -214,7 +214,7 @@ namespace rod
 		inline static result<stat::query> do_get_stat(stat &st, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, path_view(path), q, nofollow); }
 
 		template<typename Res>
-		concept stat_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<stat::query>, Res>;
+		concept stat_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<stat::query>, Res>;
 
 		struct get_stat_t
 		{
@@ -350,7 +350,7 @@ namespace rod
 		constexpr fs_stat::query &operator^=(fs_stat::query &a, fs_stat::query b) noexcept { return a = a ^ b; }
 
 		template<typename Res>
-		concept fs_stat_result = is_result_v<Res> && std::constructible_from<typename Res::template rebind_value<fs_stat::query>, Res>;
+		concept fs_stat_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<fs_stat::query>, Res>;
 
 		struct get_fs_stat_t
 		{

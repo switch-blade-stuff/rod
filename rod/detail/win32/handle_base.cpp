@@ -29,7 +29,7 @@ namespace rod::_handle
 	{
 		try
 		{
-			auto result = std::wstring(32768, '\0');
+			auto result = std::wstring(32767, '\0');
 			std::copy_n(L"\\!!", 3, result.data());
 
 			if (const auto len = ::GetFinalPathNameByHandleW(_hnd, result.data() + 3, USHORT(result.size() - 2), VOLUME_NAME_NT); !len) [[unlikely]]
@@ -50,7 +50,7 @@ namespace rod::_handle
 	{
 		try
 		{
-			auto result = std::wstring(32768, '\0');
+			auto result = std::wstring(32767, '\0');
 			auto flags = FILE_NAME_OPENED;
 			switch (fmt)
 			{

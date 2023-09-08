@@ -85,6 +85,10 @@ namespace rod::_win32
 				result.NtSetInformationFile = *sym;
 			else
 				return sym.error();
+			if (auto sym = load_sym<NtQueryDirectoryFile_t>(result.ntdll, "NtQueryDirectoryFile"); sym.has_value()) [[likely]]
+				result.NtQueryDirectoryFile = *sym;
+			else
+				return sym.error();
 			if (auto sym = load_sym<NtQueryInformationFile_t>(result.ntdll, "NtQueryInformationFile"); sym.has_value()) [[likely]]
 				result.NtQueryInformationFile = *sym;
 			else
@@ -155,16 +159,16 @@ namespace rod::_win32
 		auto timeout_ft = FILETIME();
 		auto timeout = &timeout_ft;
 
-		if (to.is_relative && to.relative != file_clock::duration::max())
-			time_end = std::chrono::steady_clock::now() + to.relative;
-		else if (!to.is_relative)
-			timeout_ft = tp_to_filetime(to.absolute);
+		if (to.is_relative() && to.relative() != file_clock::duration::max())
+			time_end = std::chrono::steady_clock::now() + to.relative();
+		else if (!to.is_relative())
+			timeout_ft = tp_to_filetime(to.absolute());
 		else
 			timeout = nullptr;
 
 		while (iosb->status == 0x00000103 /* STATUS_PENDING */)
 		{
-			if (to.is_relative && timeout)
+			if (to.is_relative() && timeout)
 			{
 				 if (auto time_left = time_end - std::chrono::steady_clock::now(); time_left.count() >= 0)
 					 timeout_ft = tp_to_filetime(time_left.count() / -100);
@@ -302,7 +306,7 @@ namespace rod::_win32
 		static const auto table = []()
 		{
 			constexpr std::pair<ULONG, ULONG> err_ranges[] = {{0x0000'0000, 0x0000'ffff}, {0x4000'0000, 0x4000'ffff}, {0x8000'0001, 0x8000'ffff}, {0xc000'0001, 0xc000'ffff}};
-			constexpr int buff_size = 32768;
+			constexpr std::size_t buff_size = 32768;
 
 			const auto &ntapi = ntapi::instance().value();
 			auto tmp_buffer = std::make_unique<wchar_t[]>(buff_size);

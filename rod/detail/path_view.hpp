@@ -253,17 +253,17 @@ namespace rod
 		public:
 			/** Renders a null-terminated path component encoded into character type \a T with allocator \a alloc and buffer size \a BuffSize. */
 			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
-			constexpr rendered_path<true, T, Alloc, BuffSize> render_null_terminated(const Alloc &alloc = Alloc());
+			constexpr rendered_path<true, T, Alloc, BuffSize> render_null_terminated(const Alloc &alloc = Alloc()) const;
 			/** Renders a null-terminated path component encoded into character type \a T with allocator \a alloc and buffer size \a BuffSize, using locale \a loc for encoding conversion. */
 			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
-			constexpr rendered_path<true, T, Alloc, BuffSize> render_null_terminated(const std::locale &loc, const Alloc &alloc = Alloc());
+			constexpr rendered_path<true, T, Alloc, BuffSize> render_null_terminated(const std::locale &loc, const Alloc &alloc = Alloc()) const;
 
 			/** Renders an unterminated path component encoded into character type \a T with allocator \a alloc and buffer size \a BuffSize. */
 			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
-			constexpr rendered_path<false, T, Alloc, BuffSize> render_unterminated(const Alloc &alloc = Alloc());
+			constexpr rendered_path<false, T, Alloc, BuffSize> render_unterminated(const Alloc &alloc = Alloc()) const;
 			/** Renders an unterminated path component encoded into character type \a T with allocator \a alloc and buffer size \a BuffSize, using locale \a loc for encoding conversion. */
 			template<typename T = value_type, typename Alloc = default_rendered_path_allocator<T>, size_type BuffSize = default_buffer_size>
-			constexpr rendered_path<false, T, Alloc, BuffSize> render_unterminated(const std::locale &loc, const Alloc &alloc = Alloc());
+			constexpr rendered_path<false, T, Alloc, BuffSize> render_unterminated(const std::locale &loc, const Alloc &alloc = Alloc()) const;
 
 		public:
 			/** Lexicographically compares `this` with \a other. */
@@ -579,22 +579,22 @@ namespace rod
 		};
 
 		template<typename T, typename Alloc, size_type BuffSize>
-		constexpr path_view_component::rendered_path<true, T, Alloc, BuffSize> path_view_component::render_null_terminated(const Alloc &alloc)
+		constexpr path_view_component::rendered_path<true, T, Alloc, BuffSize> path_view_component::render_null_terminated(const Alloc &alloc) const
 		{
 			return rendered_path<true, T, Alloc, BuffSize>(*this, alloc);
 		}
 		template<typename T, typename Alloc, size_type BuffSize>
-		constexpr path_view_component::rendered_path<true, T, Alloc, BuffSize> path_view_component::render_null_terminated(const std::locale &loc, const Alloc &alloc)
+		constexpr path_view_component::rendered_path<true, T, Alloc, BuffSize> path_view_component::render_null_terminated(const std::locale &loc, const Alloc &alloc) const
 		{
 			return rendered_path<true, T, Alloc, BuffSize>(*this, loc, alloc);
 		}
 		template<typename T, typename Alloc, size_type BuffSize>
-		constexpr path_view_component::rendered_path<false, T, Alloc, BuffSize> path_view_component::render_unterminated(const Alloc &alloc)
+		constexpr path_view_component::rendered_path<false, T, Alloc, BuffSize> path_view_component::render_unterminated(const Alloc &alloc) const
 		{
 			return rendered_path<false, T, Alloc, BuffSize>(*this, alloc);
 		}
 		template<typename T, typename Alloc, size_type BuffSize>
-		constexpr path_view_component::rendered_path<false, T, Alloc, BuffSize> path_view_component::render_unterminated(const std::locale &loc, const Alloc &alloc)
+		constexpr path_view_component::rendered_path<false, T, Alloc, BuffSize> path_view_component::render_unterminated(const std::locale &loc, const Alloc &alloc) const
 		{
 			return rendered_path<false, T, Alloc, BuffSize>(*this, loc, alloc);
 		}
@@ -1027,6 +1027,10 @@ namespace rod
 	using _path::operator<;
 	using _path::operator==;
 	using _path::operator<=>;
+
+	/** Checks if type \a T is a path-like type, that is, `rod::path_view` can be constructed from it. */
+	template<typename T>
+	concept path_like = std::constructible_from<path_view, T>;
 }
 
 template<>
