@@ -166,7 +166,7 @@ namespace rod::_directory
 				if (entry._buff.size() >= full_info->name_len)
 				{
 					/* Try to terminate path for efficiency. */
-					if ((entry._has_null_terminator = entry._buff.size() > full_info->name_len))
+					if ((entry._is_terminated = entry._buff.size() > full_info->name_len))
 						entry._buff[entry._buff.size()] = '\0';
 
 					/* If the provided space is big enough, directly copy to the user buffer. */
@@ -199,31 +199,31 @@ namespace rod::_directory
 				}
 
 				/* Fill requested entry metadata. */
-				entry._metadata = stat(nullptr);
-				if (bool(entry._mask &= stats_mask))
+				entry._st = stat(nullptr);
+				if (bool(entry._fields &= stats_fields))
 				{
-					if (bool(entry._mask & stat::query::ino))
-						entry._metadata.ino = full_info->file_id;
-					if (bool(entry._mask & stat::query::type))
-						entry._metadata.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
-					if (bool(entry._mask & stat::query::atime))
-						entry._metadata.atime = filetime_to_tp(full_info->atime);
-					if (bool(entry._mask & stat::query::mtime))
-						entry._metadata.mtime = filetime_to_tp(full_info->mtime);
-					if (bool(entry._mask & stat::query::ctime))
-						entry._metadata.ctime = filetime_to_tp(full_info->ctime);
-					if (bool(entry._mask & stat::query::btime))
-						entry._metadata.btime = filetime_to_tp(full_info->btime);
-					if (bool(entry._mask & stat::query::size))
-						entry._metadata.size = full_info->eof;
-					if (bool(entry._mask & stat::query::alloc))
-						entry._metadata.alloc = full_info->alloc_size;
-					if (bool(entry._mask & stat::query::is_sparse))
-						entry._metadata.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
-					if (bool(entry._mask & stat::query::is_compressed))
-						entry._metadata.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
-					if (bool(entry._mask & stat::query::is_reparse_point))
-						entry._metadata.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
+					if (bool(entry._fields & stat::query::ino))
+						entry._st.ino = full_info->file_id;
+					if (bool(entry._fields & stat::query::type))
+						entry._st.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
+					if (bool(entry._fields & stat::query::atime))
+						entry._st.atime = filetime_to_tp(full_info->atime);
+					if (bool(entry._fields & stat::query::mtime))
+						entry._st.mtime = filetime_to_tp(full_info->mtime);
+					if (bool(entry._fields & stat::query::ctime))
+						entry._st.ctime = filetime_to_tp(full_info->ctime);
+					if (bool(entry._fields & stat::query::btime))
+						entry._st.btime = filetime_to_tp(full_info->btime);
+					if (bool(entry._fields & stat::query::size))
+						entry._st.size = full_info->eof;
+					if (bool(entry._fields & stat::query::alloc))
+						entry._st.alloc = full_info->alloc_size;
+					if (bool(entry._fields & stat::query::is_sparse))
+						entry._st.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
+					if (bool(entry._fields & stat::query::is_compressed))
+						entry._st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
+					if (bool(entry._fields & stat::query::is_reparse_point))
+						entry._st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
 				}
 
 				/* Advance to next entry. */

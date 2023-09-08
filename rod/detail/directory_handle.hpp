@@ -31,26 +31,26 @@ namespace rod
 			/** Initializes an empty directory entry buffer. */
 			constexpr io_buffer() noexcept = default;
 			/** Initializes the directory entry buffer with an explicit `stat` query \a q. */
-			constexpr io_buffer(stat::query q) noexcept : _mask(q) {}
+			constexpr io_buffer(stat::query q) noexcept : _fields(q) {}
 
 			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size. */
 			constexpr io_buffer(value_type *buff, size_type size) noexcept : _buff(buff, size) {}
 			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size with an explicit `stat` query \a q. */
-			constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _mask(q) {}
+			constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _fields(q) {}
 
 			/** Initializes the directory entry buffer from a range of characters defined by [\a first, \a last). */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
 			constexpr io_buffer(I first, S last) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last) {}
 			/** Initializes the directory entry buffer from a range of characters defined by [\a first, \a last) with an explicit `stat` query \a q. */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
-			constexpr io_buffer(I first, S last, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last), _mask(q) {}
+			constexpr io_buffer(I first, S last, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last), _fields(q) {}
 
 			/** Initializes the directory entry buffer from a contiguous range of characters. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
 			constexpr io_buffer(Buff &&buff) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)) {}
 			/** Initializes the directory entry buffer from a contiguous range of characters with an explicit `stat` query \a q. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
-			constexpr io_buffer(Buff &&buff, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)), _mask(q) {}
+			constexpr io_buffer(Buff &&buff, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)), _fields(q) {}
 
 			/** Checks if the directory entry buffer is empty. */
 			[[nodiscard]] constexpr bool empty() const noexcept { return _buff.empty(); }
@@ -62,28 +62,19 @@ namespace rod
 			/** Returns the data of the directory entry buffer as a `path_view`. */
 			[[nodiscard]] constexpr path_view path() const noexcept { return static_cast<path_view>(*this); }
 			/** Converts directory entry buffer to a `path_view`. Equivalent to `path()`. */
-			[[nodiscard]] constexpr explicit operator path_view() const noexcept { return {_buff.data(), _buff.size(), _has_null_terminator, path_view::native_format}; }
+			[[nodiscard]] constexpr explicit operator path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, path_view::native_format}; }
 
-			/** Returns the `stat` metadata of the directory entry. */
-			[[nodiscard]] constexpr const stat &metadata() const noexcept { return _metadata; }
-			/** Returns mask of the initialized fields of the `stat` structure returned by `metadata()`. */
-			[[nodiscard]] constexpr stat::query metadata_mask() const noexcept { return _mask; }
-
-			constexpr void swap(io_buffer &other) noexcept
-			{
-				std::swap(_buff, other._buff);
-				std::swap(_metadata, other._metadata);
-				std::swap(_mask, other._mask);
-				std::swap(_has_null_terminator, other._has_null_terminator);
-			}
-			friend constexpr void swap(io_buffer &a, io_buffer &b) noexcept { a.swap(b); }
+			/** Returns the a copy of the `stat` metadata of the directory entry. */
+			[[nodiscard]] constexpr stat st() const noexcept { return _st; }
+			/** Returns the mask of the initialized fields of the `stat` structure returned by `st()`. */
+			[[nodiscard]] constexpr auto st_fields() const noexcept { return _fields; }
 
 		private:
 			std::span<value_type> _buff;
-			stat _metadata;
+			stat _st;
 
-			stat::query _mask = stat::query::none;
-			bool _has_null_terminator = false;
+			stat::query _fields = {};
+			bool _is_terminated = {};
 		};
 		template<>
 		class io_buffer_sequence<read_some_t>
@@ -195,6 +186,26 @@ namespace rod
 			path_view filter;
 			/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
 			bool resume = {};
+		};
+
+		/** Structure describing an element of a directory used by directory iterators. */
+		class directory_entry
+		{
+			/* TODO: Implement.
+			 * Should a directory entry be a tuple of path + stat + stat::query? Or should it instead provide
+			 * the guaranteed fields of stat in a similar manner to std::filesystem::directory_entry? */
+		};
+		/** Iterator used to iterate over elements of a directory. */
+		class directory_iterator
+		{
+			/* TODO: Implement.
+			 * Should directory_iterator use read_some with an internal io_buffer_sequence?
+			 * This will allow the iterator to re-use read_some implementation, however will
+			 * prevent it from being copyable and will require memory duplication since entries
+			 * cannot return a view into a temporary iterator and as such need to copy the path.
+			 *
+			 * On the other hand, read_some could be refactored to share common implementation with
+			 * the iterator increment and allow iterator to directly store a by-value path. */
 		};
 
 		/** @brief Handle to a unique directory within the filesystem.
@@ -346,19 +357,14 @@ namespace rod
 			mutable bool _read_guard = false;
 		};
 
+		/* TODO: Implement begin & end for directory_handle. */
+
 		static_assert(std::convertible_to<const directory_handle &, const path_handle &>);
 		static_assert(io_handle<directory_handle, read_some_t>);
 		static_assert(fs_handle<directory_handle>);
-
-		/** Structure describing an element of a directory used by directory iterators. */
-		class directory_entry
-		{
-
-		};
 	}
 
 	using _directory::directory_handle;
-	using _directory::directory_entry;
 }
 
 template<typename Op>
