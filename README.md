@@ -15,9 +15,9 @@
  * [ ] Filesystem IO
    * [x] `path` & `path_view`
    * [x] Basic handle, adaptor & stats
-   * [ ] Filesystem handle adaptor
+   * [x] Filesystem handle adaptor
    * [ ] Extended attributes
-   * [ ] `path_handle`
+   * [x] `path_handle`
    * [ ] `directory_handle`
    * [ ] Directory iterators
    * [ ] Path discovery
