@@ -216,7 +216,7 @@ namespace rod
 		{
 			friend fs_handle_adaptor<directory_handle, path_handle>;
 			friend handle_adaptor<directory_handle, path_handle>;
-			friend std::lock_guard<const directory_handle>;
+			friend std::lock_guard<directory_handle>;
 
 			using adp_base = fs_handle_adaptor<directory_handle, path_handle>;
 
@@ -329,12 +329,12 @@ namespace rod
 			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, io_request<Op> req, const file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
 
 		private:
-			void unlock() const noexcept
+			void unlock() noexcept
 			{
 				std::atomic_ref(_read_guard).store(false, std::memory_order_release);
 				std::atomic_ref(_read_guard).notify_one();
 			}
-			void lock() const noexcept
+			void lock() noexcept
 			{
 				while (std::atomic_ref(_read_guard).exchange(true, std::memory_order_acq_rel))
 					std::atomic_ref(_read_guard).wait(true);
@@ -354,7 +354,7 @@ namespace rod
 
 			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const timeout_type &to) noexcept;
 
-			mutable bool _read_guard = false;
+			bool _read_guard = false;
 		};
 
 		/* TODO: Implement begin & end for directory_handle. */

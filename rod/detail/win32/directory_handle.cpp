@@ -152,7 +152,7 @@ namespace rod::_directory
 				status = ntapi->wait_io(native_handle(), &iosb, to);
 			if (is_status_failure(status))
 			{
-				eof = status == 0x80000006 /*STATUS_NO_MORE_FILES*/;
+//				eof = status == 0x80000006 /*STATUS_NO_MORE_FILES*/;
 				goto finish;
 			}
 
@@ -200,7 +200,7 @@ namespace rod::_directory
 
 				/* Fill requested entry metadata. */
 				entry._st = stat(nullptr);
-				if (bool(entry._fields &= stats_fields))
+				if (bool(entry._fields &= stats_mask))
 				{
 					if (bool(entry._fields & stat::query::ino))
 						entry._st.ino = full_info->file_id;
