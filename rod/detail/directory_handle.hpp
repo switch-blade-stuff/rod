@@ -341,7 +341,7 @@ namespace rod
 			ROD_API_PUBLIC result<> do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;
 			ROD_API_PUBLIC result<> do_unlink(const file_timeout &to) noexcept;
 
-			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const timeout_type &to) const noexcept;
+			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const timeout_type &to) noexcept;
 
 			mutable bool _read_guard = false;
 		};

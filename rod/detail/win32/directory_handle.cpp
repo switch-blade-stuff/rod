@@ -123,7 +123,7 @@ namespace rod::_directory
 			return hnd.error();
 	}
 
-	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) const noexcept
+	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
