@@ -56,20 +56,6 @@ namespace rod
 	template<typename Hnd>
 	using handle_size_t = typename handle_size<Hnd>::type;
 
-	/** Type trait used to obtain the IO request type of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_request : _handle::io_request_impl<Hnd, Op> {};
-	/** Alias for `typename io_request&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_request_t = typename io_request<Hnd, Op>::type;
-
-	/** Type trait used to obtain the IO result type of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_result : _handle::io_result_impl<Hnd, Op> {};
-	/** Alias for `typename io_result&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_result_t = typename io_result<Hnd, Op>::type;
-
 	/** Type trait used to obtain the IO buffer sequence type of handle \a Hnd for operation \a Op. */
 	template<typename Hnd, typename Op>
 	struct io_buffer_sequence : _handle::io_buffer_sequence_impl<Hnd, Op> {};
@@ -83,6 +69,20 @@ namespace rod
 	/** Alias for `typename io_buffer&lt;Hnd, Op&gt;::type` */
 	template<typename Hnd, typename Op>
 	using io_buffer_t = typename io_buffer<Hnd, Op>::type;
+
+	/** Type trait used to obtain the IO request type of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_request : _handle::io_request_impl<Hnd, Op> {};
+	/** Alias for `typename io_request&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_request_t = typename io_request<Hnd, Op>::type;
+
+	/** Type trait used to obtain the IO result type of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_result : _handle::io_result_impl<Hnd, Op> {};
+	/** Alias for `typename io_result&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_result_t = typename io_result<Hnd, Op>::type;
 
 	namespace _io_operation
 	{
@@ -217,6 +217,17 @@ namespace rod
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
 	inline constexpr auto read_some_at = read_some_at_t{};
+
+	template<typename Hnd>
+	using read_some_at_buffer_sequence_t = io_buffer_sequence_t<Hnd, read_some_at_t>;
+	template<typename Hnd>
+	using read_some_at_buffer_t = io_buffer_t<Hnd, read_some_at_t>;
+
+	template<typename Hnd>
+	using read_some_at_request_t = io_request_t<Hnd, read_some_at_t>;
+	template<typename Hnd>
+	using read_some_at_result_t = io_result_t<Hnd, read_some_at_t>;
+
 	/** Customization point object used to preform a synchronous stream input using an IO handle.
 	 *
 	 * @overload Preforms an input operation using an IO request.
@@ -244,6 +255,16 @@ namespace rod
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
 	inline constexpr auto read_some = read_some_t{};
+
+	template<typename Hnd>
+	using read_some_buffer_sequence_t = io_buffer_sequence_t<Hnd, read_some_t>;
+	template<typename Hnd>
+	using read_some_buffer_t = io_buffer_t<Hnd, read_some_t>;
+
+	template<typename Hnd>
+	using read_some_request_t = io_request_t<Hnd, read_some_t>;
+	template<typename Hnd>
+	using read_some_result_t = io_result_t<Hnd, read_some_t>;
 
 	/** Concept used to define an IO handle that supports synchronous sparse input. */
 	template<typename Hnd>
@@ -315,6 +336,26 @@ namespace rod
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
 	inline constexpr auto write_some = write_some_t{};
+
+	template<typename Hnd>
+	using write_some_at_buffer_sequence_t = io_buffer_sequence_t<Hnd, write_some_at_t>;
+	template<typename Hnd>
+	using write_some_at_buffer_t = io_buffer_t<Hnd, write_some_at_t>;
+
+	template<typename Hnd>
+	using write_some_at_request_t = io_request_t<Hnd, write_some_at_t>;
+	template<typename Hnd>
+	using write_some_at_result_t = io_result_t<Hnd, write_some_at_t>;
+
+	template<typename Hnd>
+	using write_some_buffer_sequence_t = io_buffer_sequence_t<Hnd, write_some_t>;
+	template<typename Hnd>
+	using write_some_buffer_t = io_buffer_t<Hnd, write_some_t>;
+
+	template<typename Hnd>
+	using write_some_request_t = io_request_t<Hnd, write_some_t>;
+	template<typename Hnd>
+	using write_some_result_t = io_result_t<Hnd, write_some_t>;
 
 	/** Concept used to define an IO handle that supports synchronous sparse output. */
 	template<typename Hnd>

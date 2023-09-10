@@ -123,16 +123,52 @@ namespace rod::_directory
 			return hnd.error();
 	}
 
+	template<typename F>
+	[[nodiscard]] static inline result<bool> query_directory(const ntapi &ntapi, void *hnd, std::span<std::byte> buff, unicode_string *filter, bool reset, const file_timeout &to, F &&f) noexcept
+	{
+		auto iosb = io_status_block();
+		auto status = ntapi.NtQueryDirectoryFile(hnd, nullptr, nullptr, 0, &iosb, buff.data(), buff.size(), FileIdFullDirectoryInformation, false, filter, reset);
+		if (status == STATUS_PENDING)
+			status = ntapi.wait_io(hnd, &iosb, to);
+		if (is_status_failure(status))
+			return {in_place_error, status_error_code(status)};
+
+		bool eof = false;
+		for (auto pos = buff.data(); !eof;)
+		{
+			auto full_info = reinterpret_cast<const file_id_full_dir_information *>(pos);
+			eof = (full_info->next_off == 0);
+			pos += full_info->next_off;
+
+			auto st = stat(nullptr);
+			st.ino = full_info->file_id;
+			st.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
+			st.atime = filetime_to_tp(full_info->atime);
+			st.mtime = filetime_to_tp(full_info->mtime);
+			st.ctime = filetime_to_tp(full_info->ctime);
+			st.btime = filetime_to_tp(full_info->btime);
+			st.size = full_info->eof;
+			st.alloc = full_info->alloc_size;
+			st.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
+			st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
+			st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
+
+			eof = f(*full_info, st);
+		}
+		return eof;
+	}
+
 	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto buff = make_info_buffer(buff_size);
+		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t));
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
+		const auto abs_timeout = to.absolute();
 		auto rfilter = req.filter.render_null_terminated();
 		auto ufilter = unicode_string();
 		auto g = std::lock_guard(*this);
@@ -146,36 +182,22 @@ namespace rod::_directory
 
 		while (result_size < req.buffs.size() && !eof)
 		{
-			auto iosb = io_status_block();
-			auto status = ntapi->NtQueryDirectoryFile(native_handle(), nullptr, nullptr, 0, &iosb, buff->get(), buff_size * sizeof(wchar_t), FileIdFullDirectoryInformation, false, req.filter.empty() ? nullptr : &ufilter, reset_pos);
-			if (status == STATUS_PENDING)
-				status = ntapi->wait_io(native_handle(), &iosb, to);
-			if (is_status_failure(status))
+			auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
+			eof = query_directory(*ntapi, native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto &info, auto &st)
 			{
-//				eof = status == 0x80000006 /*STATUS_NO_MORE_FILES*/;
-				goto finish;
-			}
-
-			reset_pos = eof = false;
-			for (auto pos = reinterpret_cast<std::byte *>(buff->get()); !eof && result_size < req.buffs.size(); ++result_size)
-			{
-				auto full_info = reinterpret_cast<file_id_full_dir_information *>(pos);
-				auto &entry = req.buffs[result_size];
-
-				/* Copy or reserve entry path. */
-				if (entry._buff.size() >= full_info->name_len)
+				auto &entry = req.buffs[result_size++];
+				if (entry._buff.size() >= info.name_len)
 				{
 					/* Try to terminate path for efficiency. */
-					if ((entry._is_terminated = entry._buff.size() > full_info->name_len))
+					if ((entry._is_terminated = entry._buff.size() > info.name_len))
 						entry._buff[entry._buff.size()] = '\0';
 
-					/* If the provided space is big enough, directly copy to the user buffer. */
-					std::memcpy(entry._buff.data(), full_info->name, full_info->name_len * sizeof(wchar_t));
-					entry._buff = entry._buff.subspan(0, full_info->name_len);
+					std::memcpy(entry._buff.data(), info.name, info.name_len * sizeof(wchar_t));
+					entry._buff = entry._buff.subspan(0, info.name_len);
 				}
 				else
 				{
-					auto old_size = buffer_size, new_size = buffer_size + full_info->name_len + 1;
+					auto old_size = buffer_size, new_size = buffer_size + info.name_len + 1;
 					auto old_buff = result_buff, new_buff = result_buff;
 
 					if (new_size > req.buffs._buff_max)
@@ -185,54 +207,25 @@ namespace rod::_directory
 						else
 							new_buff = static_cast<wchar_t *>(std::malloc(new_size * sizeof(wchar_t)));
 						if (new_buff == nullptr) [[unlikely]]
-							goto finish;
+							return false;
 					}
 
 					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
-					std::memcpy(result_buff + old_size, full_info->name, full_info->name_len * sizeof(wchar_t));
+					std::memcpy(result_buff + old_size, info.name, info.name_len * sizeof(wchar_t));
 					auto off = reinterpret_cast<wchar_t *>(old_size);
-					auto len = ULONG(-LONG(full_info->name_len));
+					auto len = ULONG(-LONG(info.name_len));
 					entry._buff = std::span(off, len);
 
 					result_buff = new_buff;
 					buffer_size = new_size;
 				}
 
-				/* Fill requested entry metadata. */
-				entry._st = stat(nullptr);
-				if (bool(entry._fields &= stats_mask))
-				{
-					if (bool(entry._fields & stat::query::ino))
-						entry._st.ino = full_info->file_id;
-					if (bool(entry._fields & stat::query::type))
-						entry._st.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
-					if (bool(entry._fields & stat::query::atime))
-						entry._st.atime = filetime_to_tp(full_info->atime);
-					if (bool(entry._fields & stat::query::mtime))
-						entry._st.mtime = filetime_to_tp(full_info->mtime);
-					if (bool(entry._fields & stat::query::ctime))
-						entry._st.ctime = filetime_to_tp(full_info->ctime);
-					if (bool(entry._fields & stat::query::btime))
-						entry._st.btime = filetime_to_tp(full_info->btime);
-					if (bool(entry._fields & stat::query::size))
-						entry._st.size = full_info->eof;
-					if (bool(entry._fields & stat::query::alloc))
-						entry._st.alloc = full_info->alloc_size;
-					if (bool(entry._fields & stat::query::is_sparse))
-						entry._st.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
-					if (bool(entry._fields & stat::query::is_compressed))
-						entry._st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
-					if (bool(entry._fields & stat::query::is_reparse_point))
-						entry._st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
-				}
-
-				/* Advance to next entry. */
-				eof = (full_info->next_off == 0);
-				pos += full_info->next_off;
-			}
+				entry._query = stats_mask;
+				entry._st = st;
+				return true;
+			}).value_or(false);
 		}
 
-	finish:
 		/* Restore placeholder offsets. */
 		for (std::size_t i = 0; i < result_size; ++i)
 		{
@@ -252,5 +245,34 @@ namespace rod::_directory
 		/* Always truncate to result_size to avoid empty-entry checks. */
 		req.buffs._data = req.buffs._data.subspan(0, result_size);
 		return std::move(req.buffs);
+	}
+	result<> directory_iterator::next(const file_timeout &to) noexcept
+	{
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t));
+		if (buff.has_error()) [[unlikely]]
+			return buff.error();
+
+		const auto abs_timeout = to.absolute();
+		auto &str = _entry.to_path_string();
+		auto res = result<>();
+
+		auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
+		auto err = query_directory(*ntapi, _dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto &info, auto &st)
+		{
+			_entry._query = stats_mask;
+			_entry._st = st;
+
+			try { str.assign(info.name, info.name_len); }
+			catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
+			return false;
+		});
+		if (err.has_error()) [[unlikely]]
+			return err;
+		else
+			return res;
 	}
 }

@@ -13,6 +13,9 @@ namespace rod
 {
 	namespace _directory
 	{
+		class directory_entry;
+		class directory_iterator;
+
 		template<typename>
 		class io_buffer;
 		template<typename>
@@ -31,26 +34,26 @@ namespace rod
 			/** Initializes an empty directory entry buffer. */
 			constexpr io_buffer() noexcept = default;
 			/** Initializes the directory entry buffer with an explicit `stat` query \a q. */
-			constexpr io_buffer(stat::query q) noexcept : _fields(q) {}
+			constexpr io_buffer(stat::query q) noexcept : _query(q) {}
 
 			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size. */
 			constexpr io_buffer(value_type *buff, size_type size) noexcept : _buff(buff, size) {}
 			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size with an explicit `stat` query \a q. */
-			constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _fields(q) {}
+			constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _query(q) {}
 
 			/** Initializes the directory entry buffer from a range of characters defined by [\a first, \a last). */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
 			constexpr io_buffer(I first, S last) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last) {}
 			/** Initializes the directory entry buffer from a range of characters defined by [\a first, \a last) with an explicit `stat` query \a q. */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
-			constexpr io_buffer(I first, S last, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last), _fields(q) {}
+			constexpr io_buffer(I first, S last, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last), _query(q) {}
 
 			/** Initializes the directory entry buffer from a contiguous range of characters. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
 			constexpr io_buffer(Buff &&buff) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)) {}
 			/** Initializes the directory entry buffer from a contiguous range of characters with an explicit `stat` query \a q. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
-			constexpr io_buffer(Buff &&buff, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)), _fields(q) {}
+			constexpr io_buffer(Buff &&buff, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)), _query(q) {}
 
 			/** Checks if the directory entry buffer is empty. */
 			[[nodiscard]] constexpr bool empty() const noexcept { return _buff.empty(); }
@@ -64,16 +67,14 @@ namespace rod
 			/** Converts directory entry buffer to a `path_view`. Equivalent to `path()`. */
 			[[nodiscard]] constexpr explicit operator path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, path_view::native_format}; }
 
-			/** Returns the a copy of the `stat` metadata of the directory entry. */
-			[[nodiscard]] constexpr stat st() const noexcept { return _st; }
-			/** Returns the mask of the initialized fields of the `stat` structure returned by `st()`. */
-			[[nodiscard]] constexpr auto st_fields() const noexcept { return _fields; }
+			/** Returns a pair of directory entry stats and a mask of initialized fields. */
+			[[nodiscard]] constexpr std::pair<stat, stat::query> st() const noexcept { return {_st, _query}; }
 
 		private:
 			std::span<value_type> _buff;
 			stat _st;
 
-			stat::query _fields = {};
+			stat::query _query = {};
 			bool _is_terminated = {};
 		};
 		template<>
@@ -181,31 +182,12 @@ namespace rod
 			 * This internal buffer can be re-used by passing the returned buffer sequence as \a buffs to the next call of `read_some`.
 			 * @note Supplied buffers will be modified with the size and/or pointers to the actual memory of the entry path. */
 			io_buffer_sequence<read_some_t> buffs;
-			/** Directory enumeration filter passed to the native platform API.
+			/** Directory enumeration filter passed to the native platform API. Alternatively, if \a filter refers to a single file within the
+			 * directory (does not contain wildcards), behaves like POSIX `fstatat`, using the stat query flags of the first \a buffs element.
 			 * @note If the platform does not provide directory filtering, it is preformed manually. */
 			path_view filter;
 			/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
 			bool resume = {};
-		};
-
-		/** Structure describing an element of a directory used by directory iterators. */
-		class directory_entry
-		{
-			/* TODO: Implement.
-			 * Should a directory entry be a tuple of path + stat + stat::query? Or should it instead provide
-			 * the guaranteed fields of stat in a similar manner to std::filesystem::directory_entry? */
-		};
-		/** Iterator used to iterate over elements of a directory. */
-		class directory_iterator
-		{
-			/* TODO: Implement.
-			 * Should directory_iterator use read_some with an internal io_buffer_sequence?
-			 * This will allow the iterator to re-use read_some implementation, however will
-			 * prevent it from being copyable and will require memory duplication since entries
-			 * cannot return a view into a temporary iterator and as such need to copy the path.
-			 *
-			 * On the other hand, read_some could be refactored to share common implementation with
-			 * the iterator increment and allow iterator to directly store a by-value path. */
 		};
 
 		/** @brief Handle to a unique directory within the filesystem.
@@ -357,15 +339,143 @@ namespace rod
 			bool _read_guard = false;
 		};
 
-		/* TODO: Implement begin & end for directory_handle. */
-
 		static_assert(std::convertible_to<const directory_handle &, const path_handle &>);
 		static_assert(io_handle<directory_handle, read_some_t>);
 		static_assert(fs_handle<directory_handle>);
+
+		/** Structure describing an element of a directory returned by directory iterators.
+		 * @note `directory_entry` is a "soft" description of an entry and does not behave like a handle. */
+		class directory_entry
+		{
+			friend class directory_iterator;
+
+		public:
+			/** Initializes an empty directory entry. */
+			constexpr directory_entry() noexcept = default;
+
+			/** Returns a const reference to path of the directory entry. */
+			[[nodiscard]] constexpr const rod::path &path() const & noexcept { return _path; }
+			/** Returns an rvalue reference to path of the directory entry. */
+			[[nodiscard]] constexpr rod::path &&path() && noexcept { return std::move(_path); }
+
+			/** Returns a pair of directory entry stats and a mask of initialized fields. */
+			[[nodiscard]] constexpr std::pair<stat, stat::query> st() const noexcept { return {_st, _query}; }
+
+			constexpr void swap(directory_entry &other) noexcept
+			{
+				_path.swap(other._path);
+				std::swap(_st, other._st);
+				std::swap(_query, other._query);
+			}
+			friend constexpr void swap(directory_entry &a, directory_entry &b) noexcept { a.swap(b); }
+
+		private:
+			/** Hack to get a mutable reference to path's string. */
+			auto &to_path_string() noexcept { return (typename path::string_type &) std::move(_path).native(); }
+
+			rod::path _path;
+			stat _st = stat(nullptr);
+			stat::query _query = {};
+		};
+		/** Iterator used to enumerate entries of a directory. */
+		class directory_iterator
+		{
+		public:
+			using value_type = directory_entry;
+			using difference_type = std::ptrdiff_t;
+			using pointer = const value_type *;
+			using reference = const value_type &;
+			using iterator_category = std::input_iterator_tag;
+
+		public:
+			/** Initializes an empty (sentinel) iterator. */
+			directory_iterator() noexcept = default;
+			/** Move-constructs the iterator from \a other. */
+			directory_iterator(directory_iterator &&) noexcept = default;
+			/** Copy-constructs the iterator from \a other.
+			 * @note This will clone the internal handle and copy the path buffer.
+			 * @throw std::system_error On failure to clone the internal handle.
+			 * @throw std::bad_alloc On failure to copy the path buffer. */
+			directory_iterator(const directory_iterator &other) : _dir_hnd(clone(other._dir_hnd).value()), _entry(other._entry) {}
+
+			/** Move-assigns the iterator from \a other. */
+			directory_iterator &operator=(directory_iterator &&) noexcept = default;
+			/** Copy-assigns the iterator from \a other.
+			 * @note This will clone the internal handle and copy the path buffer.
+			 * @throw std::system_error On failure to clone the internal handle.
+			 * @throw std::bad_alloc On failure to copy the path buffer. */
+			directory_iterator &operator=(const directory_iterator &other)
+			{
+				if (this != &other)
+				{
+					_dir_hnd = clone(other._dir_hnd).value();
+					_entry = other._entry;
+				}
+				return *this;
+			}
+
+		public:
+			/** Returns a copy of `this`.
+			 * @throw std::system_error On failure to clone the internal handle.
+			 * @throw std::bad_alloc On failure to copy the path buffer. */
+			[[nodiscard]] directory_iterator begin() const { return *this; }
+			/** Returns an empty sentinel iterator. */
+			[[nodiscard]] directory_iterator end() const noexcept { return {}; }
+
+			/** Advances the iterator with max timeout.
+			 * @throw std::system_error On failure to clone or advance the internal handle.
+			 * @throw std::bad_alloc On failure to copy the path buffer. */
+			directory_iterator &operator++() { return (next().value(), *this); }
+			/** Advances the iterator using an optional timeout and returns errors as `result`. */
+			ROD_API_PUBLIC result<> next(const file_timeout & = file_timeout()) noexcept;
+
+			/** Advances the iterator with max timeout and returns a copy of the previous position.
+			 * @throw std::system_error On failure to clone or advance the internal handle.
+			 * @throw std::bad_alloc On failure to copy the path buffer. */
+			[[nodiscard]] directory_iterator operator++(int)
+			{
+				auto tmp = *this;
+				next().value();
+				return *this;
+			}
+
+			/** Returns reference to the internal directory entry. */
+			constexpr const directory_entry &operator*() const noexcept { return _entry; }
+			/** Returns pointer to the internal directory entry. */
+			constexpr const directory_entry *operator->() const noexcept { return &_entry; }
+
+			constexpr void swap(directory_iterator &other) noexcept
+			{
+				_dir_hnd.swap(other._dir_hnd);
+				_entry.swap(other._entry);
+			}
+			friend constexpr void swap(directory_iterator &a, directory_iterator &b) noexcept { a.swap(b); }
+
+			constexpr bool operator==(const directory_iterator &other) const noexcept { return _dir_hnd == other._dir_hnd; }
+			constexpr bool operator!=(const directory_iterator &other) const noexcept { return _dir_hnd != other._dir_hnd; }
+
+		private:
+			/* Duplicate of the original handle with read access only. */
+			basic_handle _dir_hnd;
+			directory_entry _entry;
+		};
+
+		/* TODO: Implement begin & end for directory_handle. */
 	}
 
 	using _directory::directory_handle;
+
+	using _directory::directory_iterator;
+	using _directory::directory_entry;
 }
 
 template<typename Op>
 inline constexpr bool std::ranges::enable_view<rod::directory_handle::io_buffer_sequence<Op>> = true;
+
+template<>
+inline constexpr bool std::ranges::enable_borrowed_range<rod::directory_iterator> = true;
+template<>
+inline constexpr bool std::ranges::enable_view<rod::directory_iterator> = true;
+
+static_assert(std::input_iterator<rod::directory_iterator>);
+static_assert(std::ranges::range<rod::directory_iterator>);

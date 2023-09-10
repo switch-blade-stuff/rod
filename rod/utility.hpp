@@ -351,15 +351,6 @@ namespace rod
 
 	namespace _detail
 	{
-		template<typename...>
-		struct empty_variant {};
-
-		inline auto deduce_variant_or_empty(type_list_t<>) -> empty_variant<>;
-		template<typename... Ts>
-		inline auto deduce_variant_or_empty(type_list_t<Ts...>) -> std::variant<Ts...>;
-		template<typename... Ts>
-		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
-
 		[[noreturn]] inline void throw_error_code(const std::error_code &err, const std::string &msg = {})
 		{
 			if (err.category() != std::generic_category() || err.value() != int(std::errc::not_enough_memory))
@@ -388,6 +379,25 @@ namespace rod
 		{
 			throw_error_code(error);
 		}
+	}
+
+	/** Throws an exception from \a error either using an ADL- or member-selected overload or an implementation-defined method. */
+	template<typename Err>
+	inline constexpr void throw_exception(Err &&error) requires(requires { _detail::throw_exception(std::forward<Err>(error)); })
+	{
+		_detail::throw_exception(std::forward<Err>(error));
+	}
+
+	namespace _detail
+	{
+		template<typename...>
+		struct empty_variant {};
+
+		inline auto deduce_variant_or_empty(type_list_t<>) -> empty_variant<>;
+		template<typename... Ts>
+		inline auto deduce_variant_or_empty(type_list_t<Ts...>) -> std::variant<Ts...>;
+		template<typename... Ts>
+		using variant_or_empty = decltype(deduce_variant_or_empty(unique_tuple_t<type_list_t<std::decay_t<Ts>...>>{}));
 
 		template<typename Err>
 		[[nodiscard]] inline static std::exception_ptr to_except_ptr(Err &&error) noexcept
@@ -482,7 +492,7 @@ namespace rod
 
 	/** Invokes functor \a func on destruction of the returned guard. */
 	template<typename Func>
-	[[nodiscard]] static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<std::decay_t<Func>, Func>) { return _detail::defer_guard<std::decay_t<Func>>(std::forward<Func>(func)); }
+	[[nodiscard]] inline static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<std::decay_t<Func>, Func>) { return _detail::defer_guard<std::decay_t<Func>>(std::forward<Func>(func)); }
 
 	/** Utility function used to preform a copy of an input range into an output range via `const_cast`. */
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>

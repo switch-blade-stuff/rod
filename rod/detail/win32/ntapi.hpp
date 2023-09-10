@@ -468,12 +468,6 @@ namespace rod::_win32
 		file_name_information name_info;
 	};
 
-	inline static result<std::unique_ptr<wchar_t[]>> make_info_buffer(std::size_t size) noexcept
-	{
-		try { return std::unique_ptr<wchar_t[]>(new wchar_t[size]); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-
 	using NtQueryAttributesFile_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ file_basic_information *info);
 	using NtQueryInformationByName_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 
@@ -562,3 +556,30 @@ namespace rod::_win32
 	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
 	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
 }
+
+#ifdef alloca
+namespace rod::_detail
+{
+	template<typename T>
+	struct alloca_handle
+	{
+		constexpr T *get() const noexcept { return ptr; }
+		constexpr T *operator->() const noexcept { return get(); }
+		constexpr T &operator*() const noexcept { return *get(); }
+
+		T *ptr;
+	};
+
+	template<typename T>
+	[[nodiscard]] inline constexpr result<alloca_handle<T>> make_alloca_handle(void *ptr) noexcept
+	{
+		if (!ptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
+		else
+			return alloca_handle<T>(static_cast<T *>(ptr));
+	}
+}
+#define ROD_MAKE_BUFFER(T, n) (rod::_detail::make_alloca_handle<T>(alloca(n)))
+#else
+#define ROD_MAKE_BUFFER(T, n) (std::make_unique<T[]>(n / sizeof(T)))
+#endif

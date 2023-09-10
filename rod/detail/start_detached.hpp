@@ -31,8 +31,8 @@ namespace rod
 			friend constexpr empty_env tag_invoke(get_env_t, const type &) noexcept { return {}; }
 
 			[[noreturn]] friend void tag_invoke(set_error_t, type &&, auto...) noexcept { std::terminate(); }
-			template<typename Err> requires requires (const Err &err) { _detail::throw_exception(err); }
-			[[noreturn]] friend void tag_invoke(set_error_t, type &&, const Err &err) noexcept { _detail::throw_exception(err); }
+			template<typename Err> requires requires (const Err &err) { throw_exception(err); }
+			[[noreturn]] friend void tag_invoke(set_error_t, type &&, const Err &err) noexcept { throw_exception(err); }
 
 			template<_detail::completion_channel C, typename... Args>
 			friend void tag_invoke(C, type &&r, Args &&...) noexcept { Del{}(r._state); }

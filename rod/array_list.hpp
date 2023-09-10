@@ -49,24 +49,13 @@ namespace rod
 		};
 
 		template<typename T, typename Alloc>
-		struct array_list_node : array_list_header
+		struct array_list_node : array_list_header, empty_base<T>
 		{
 			template<typename... Args>
-			constexpr explicit array_list_node(Args &&...args) : value(std::forward<Args>(args)...) {}
+			constexpr explicit array_list_node(Args &&...args) : empty_base<T>(std::forward<Args>(args)...) {}
 
-			[[nodiscard]] constexpr auto *get() noexcept { return &value; }
-			[[nodiscard]] constexpr auto *get() const noexcept { return &value; }
-
-			T value;
-		};
-		template<typename T, typename Alloc> requires(std::is_object_v<T> && !std::is_final_v<T>)
-		struct array_list_node<T, Alloc> : array_list_header, T
-		{
-			template<typename... Args>
-			constexpr explicit array_list_node(Args &&...args) : T(std::forward<Args>(args)...) {}
-
-			[[nodiscard]] constexpr auto *get() noexcept { return static_cast<T *>(this); }
-			[[nodiscard]] constexpr auto *get() const noexcept { return static_cast<const T *>(this); }
+			[[nodiscard]] constexpr auto *get() noexcept { return empty_base<T>::get(); }
+			[[nodiscard]] constexpr auto *get() const noexcept { return empty_base<T>::get(); }
 		};
 
 		template<typename T, typename Alloc>
@@ -129,9 +118,9 @@ namespace rod
 				return tmp;
 			}
 
-			[[nodiscard]] constexpr decltype(auto) get() noexcept { return _node->get(); }
-			[[nodiscard]] constexpr decltype(auto) operator->() noexcept { return get(); }
-			[[nodiscard]] constexpr decltype(auto) operator*() noexcept { return *get(); }
+			[[nodiscard]] constexpr decltype(auto) get() const noexcept { return _node->get(); }
+			[[nodiscard]] constexpr decltype(auto) operator->() const noexcept { return get(); }
+			[[nodiscard]] constexpr decltype(auto) operator*() const noexcept { return *get(); }
 
 			[[nodiscard]] friend constexpr bool operator==(const array_list_iterator &a, const array_list_iterator &b) noexcept = default;
 			[[nodiscard]] friend constexpr bool operator!=(const array_list_iterator &a, const array_list_iterator &b) noexcept = default;
@@ -667,4 +656,6 @@ namespace rod
 	array_list(std::initializer_list<T>) -> array_list<T>;
 	template<typename T, typename Alloc = std::allocator<T>>
 	array_list(std::initializer_list<T>, const Alloc &) -> array_list<T, Alloc>;
+
+	static_assert(std::ranges::bidirectional_range<array_list<int>>);
 }

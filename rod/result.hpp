@@ -687,10 +687,10 @@ namespace rod
 		private:
 			[[noreturn]] constexpr void throw_missing_value() const
 			{
-				if constexpr (!requires { _detail::throw_exception(_storage.error); })
+				if constexpr (!requires { throw_exception(_storage.error); })
 					ROD_THROW(bad_result_access("bad result access (value)"));
 				else
-					_detail::throw_exception(_storage.error);
+					throw_exception(_storage.error);
 			}
 			[[noreturn]] constexpr void throw_missing_error() const
 			{
