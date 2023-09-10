@@ -249,7 +249,7 @@ namespace rod
 			 * <li>`supersede`</li>
 			 * </ul>
 			 *
-			 * @param base Handle to the parent location, relative to the system's temporary file directory.
+			 * @param path Path to the target directory, relative to the system's temporary file directory.
 			 * @param flags Handle flags to open the handle with. `file_flags::read | file_flags::write` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::always` by default.
 			 * @return Handle to the directory or a status code on failure. */
@@ -266,8 +266,8 @@ namespace rod
 			 * <li>`supersede`</li>
 			 * </ul>
 			 *
-			 * @param base Handle to the parent location. If set to an invalid handle, \a path is treated as relative to current working directory or absolute.
-			 * @param path Path to the new directory relative to \a base if \a base is a valid handle, otherwise either relative to current working directory or absolute.
+			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+			 * @param path Path to the new directory relative to \a base if it is a valid handle, otherwise a fully-qualified path to the directory.
 			 * @param flags Handle flags to open the handle with. `file_flags::read` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::existing` by default.
 			 * @return Handle to the directory or a status code on failure. */
@@ -370,7 +370,7 @@ namespace rod
 			friend constexpr void swap(directory_entry &a, directory_entry &b) noexcept { a.swap(b); }
 
 		private:
-			/** Hack to get a mutable reference to path's string. */
+			/* Hack to get a mutable reference to path's string. */
 			auto &to_path_string() noexcept { return (typename path::string_type &) std::move(_path).native(); }
 
 			rod::path _path;
@@ -388,18 +388,32 @@ namespace rod
 			using iterator_category = std::input_iterator_tag;
 
 		public:
+			/** Creates a directory iterator from a clone of handle \a hnd.
+			 * @param hnd Handle to the target directory.
+			 * @return Iterator to the first entry in the directory (may be the end iterator), or a status code on failure to create the iterator. */
+			[[nodiscard]] ROD_API_PUBLIC result<directory_iterator> from_handle(const path_handle &hnd) noexcept;
+			/** Creates a directory iterator for directory specified by \a path relative to parent location \a base.
+			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path to the directory.
+			 * @return Iterator to the first entry in the directory (may be the end iterator), or a status code on failure to create the iterator. */
+			[[nodiscard]] ROD_API_PUBLIC result<directory_iterator> from_path(const path_handle &base, path_view dir) noexcept;
+
+		private:
+			explicit directory_iterator(typename basic_handle::native_handle_type &&hnd) noexcept : _dir_hnd(std::forward<decltype(hnd)>(hnd)) {}
+
+		public:
 			/** Initializes an empty (sentinel) iterator. */
 			directory_iterator() noexcept = default;
 			/** Move-constructs the iterator from \a other. */
 			directory_iterator(directory_iterator &&) noexcept = default;
+			/** Move-assigns the iterator from \a other. */
+			directory_iterator &operator=(directory_iterator &&) noexcept = default;
+
 			/** Copy-constructs the iterator from \a other.
 			 * @note This will clone the internal handle and copy the path buffer.
 			 * @throw std::system_error On failure to clone the internal handle.
 			 * @throw std::bad_alloc On failure to copy the path buffer. */
 			directory_iterator(const directory_iterator &other) : _dir_hnd(clone(other._dir_hnd).value()), _entry(other._entry) {}
-
-			/** Move-assigns the iterator from \a other. */
-			directory_iterator &operator=(directory_iterator &&) noexcept = default;
 			/** Copy-assigns the iterator from \a other.
 			 * @note This will clone the internal handle and copy the path buffer.
 			 * @throw std::system_error On failure to clone the internal handle.
@@ -459,8 +473,6 @@ namespace rod
 			basic_handle _dir_hnd;
 			directory_entry _entry;
 		};
-
-		/* TODO: Implement begin & end for directory_handle. */
 	}
 
 	using _directory::directory_handle;

@@ -10,7 +10,7 @@ namespace rod::_win32
 
 	inline static result<> do_link(const ntapi &ntapi, void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		auto buff = ROD_MAKE_BUFFER(wchar_t, buff_size * sizeof(wchar_t) + sizeof(file_link_information));
+		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t) + sizeof(file_link_information));
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
@@ -44,7 +44,7 @@ namespace rod::_win32
 	}
 	inline static result<> do_relink(const ntapi &ntapi, void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		auto buff = ROD_MAKE_BUFFER(wchar_t, buff_size * sizeof(wchar_t) + sizeof(file_rename_information));
+		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t) + sizeof(file_rename_information));
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 

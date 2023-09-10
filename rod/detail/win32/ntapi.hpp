@@ -65,6 +65,20 @@ namespace rod::_win32
 		return (_ft = ft, file_clock::time_point(_tp));
 	}
 
+	template<typename T>
+	struct malloca_deleter { void operator()(T *p) const noexcept { _freea(p); } };
+	template<typename T>
+	using malloca_handle = std::unique_ptr<T, malloca_deleter<T>>;
+
+	template<typename T>
+	inline constexpr result<malloca_handle<T>> make_malloca_handle(void *p, std::size_t n) noexcept
+	{
+		if (p == nullptr && n)
+			return std::make_error_code(std::errc::not_enough_memory);
+		else
+			return malloca_handle<T>(static_cast<T *>(p));
+	}
+
 	struct rtl_buffer
 	{
 		PUCHAR buff;
@@ -557,29 +571,4 @@ namespace rod::_win32
 	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
 }
 
-#ifdef alloca
-namespace rod::_detail
-{
-	template<typename T>
-	struct alloca_handle
-	{
-		constexpr T *get() const noexcept { return ptr; }
-		constexpr T *operator->() const noexcept { return get(); }
-		constexpr T &operator*() const noexcept { return *get(); }
-
-		T *ptr;
-	};
-
-	template<typename T>
-	[[nodiscard]] inline constexpr result<alloca_handle<T>> make_alloca_handle(void *ptr) noexcept
-	{
-		if (!ptr) [[unlikely]]
-			return std::make_error_code(std::errc::not_enough_memory);
-		else
-			return alloca_handle<T>(static_cast<T *>(ptr));
-	}
-}
-#define ROD_MAKE_BUFFER(T, n) (rod::_detail::make_alloca_handle<T>(alloca(n)))
-#else
-#define ROD_MAKE_BUFFER(T, n) (std::make_unique<T[]>(n / sizeof(T)))
-#endif
+#define ROD_MAKE_BUFFER(T, n) (rod::_win32::make_malloca_handle<T>(_malloca(n), n))

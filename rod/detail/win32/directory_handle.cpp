@@ -246,6 +246,53 @@ namespace rod::_directory
 		req.buffs._data = req.buffs._data.subspan(0, result_size);
 		return std::move(req.buffs);
 	}
+
+	result<directory_iterator> directory_iterator::from_handle(const path_handle &other) noexcept
+	{
+		typename basic_handle::native_handle_type result = INVALID_HANDLE_VALUE;
+		if (::DuplicateHandle(::GetCurrentProcess(), other.native_handle(), ::GetCurrentProcess(), &result.value, SYNCHRONIZE | FILE_LIST_DIRECTORY, 0, 0) != 0)
+			return directory_iterator(std::move(result));
+		else
+			return dos_error_code(::GetLastError());
+	}
+	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view dir) noexcept
+	{
+		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
+		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+		constexpr auto access = SYNCHRONIZE | FILE_LIST_DIRECTORY;
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto rpath = dir.render_null_terminated();
+		auto upath = unicode_string();
+		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
+		upath.buff = const_cast<wchar_t *>(rpath.data());
+
+		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
+		if (guard.has_error()) [[unlikely]]
+			return guard.error();
+
+		auto obj_attrib = object_attributes();
+		auto iosb = io_status_block();
+
+		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
+		obj_attrib.length = sizeof(object_attributes);
+		obj_attrib.name = &upath;
+
+		typename basic_handle::native_handle_type handle = INVALID_HANDLE_VALUE;
+		auto status = ntapi->NtCreateFile(&handle.value, access, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
+		if (status == STATUS_PENDING) [[unlikely]]
+			status = ntapi->wait_io(handle, &iosb);
+		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+		else if (is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+
+		return directory_iterator(std::move(handle));
+	}
+
 	result<> directory_iterator::next(const file_timeout &to) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
@@ -256,8 +303,8 @@ namespace rod::_directory
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
+		auto &&str = _entry.to_path_string();
 		const auto abs_timeout = to.absolute();
-		auto &str = _entry.to_path_string();
 		auto res = result<>();
 
 		auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
@@ -270,9 +317,18 @@ namespace rod::_directory
 			catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
 			return false;
 		});
-		if (err.has_error()) [[unlikely]]
+
+		/* Reset the iterator to sentinel on EOF so that end iterator comparisons are equal. */
+		if (auto code = err.error_or({}).value(); code == 0x80000006/*STATUS_NO_MORE_FILES*/)
+		{
+			_entry = directory_entry{};
+			_dir_hnd = basic_handle{};
+			return {};
+		}
+		else if (code != 0) [[unlikely]]
 			return err;
 		else
 			return res;
 	}
+
 }

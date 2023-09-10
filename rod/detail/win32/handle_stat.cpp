@@ -24,7 +24,7 @@ namespace rod::_handle
 	{
 		if ((file_attr & FILE_ATTRIBUTE_REPARSE_POINT) && !reparse_tag)
 		{
-			auto buff = ROD_MAKE_BUFFER(wchar_t, buff_size * sizeof(wchar_t) + sizeof(reparse_data_buffer));
+			auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t) + sizeof(reparse_data_buffer));
 			if (buff.has_error()) [[unlikely]]
 				return buff.error();
 
