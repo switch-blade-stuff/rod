@@ -342,7 +342,6 @@ namespace rod::_handle
 		else
 			return res;
 	}
-	result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, {}, path, q, nofollow); }
 
 	result<stat::query> basic_handle::do_get_stat(stat &st, stat::query q) const noexcept
 	{

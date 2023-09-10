@@ -17,6 +17,4 @@ namespace rod::_handle
 	constexpr auto internal_info_mask = stat::query::ino;
 
 	constexpr std::size_t buff_size = 32768;
-
-	result<stat::query> do_get_stat(stat &st, const path_handle &base, path_view path, stat::query q, bool nofollow) noexcept;
 }

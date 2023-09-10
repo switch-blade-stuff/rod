@@ -10,10 +10,11 @@
 
 namespace rod
 {
+	namespace _handle { class basic_handle; }
+	namespace _path { class path_handle; }
+
 	namespace _handle
 	{
-		class basic_handle;
-
 		using extent_type = std::uint64_t;
 		using size_type = std::size_t;
 
@@ -210,8 +211,8 @@ namespace rod
 		constexpr stat::query &operator^=(stat::query &a, stat::query b) noexcept { return a = a ^ b; }
 
 		/* Default implementation for path types. */
-		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept;
-		inline static result<stat::query> do_get_stat(stat &st, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, path_view(path), q, nofollow); }
+		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, path_view path, stat::query q, bool nofollow) noexcept;
+		inline static result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, base, path_view(path), q, nofollow); }
 
 		template<typename Res>
 		concept stat_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<stat::query>, Res>;
@@ -219,7 +220,7 @@ namespace rod
 		struct get_stat_t
 		{
 			template<typename Path> requires one_of<std::decay_t<Path>, path, path_view>
-			result<stat::query> operator()(stat &st, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(st, std::forward<Path>(path), q, nofollow); }
+			result<stat::query> operator()(stat &st, const _path::path_handle &base, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(st, base, std::forward<Path>(path), q, nofollow); }
 			template<typename Hnd> requires tag_invocable<get_stat_t, stat &, const Hnd &, stat::query>
 			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
 		};
@@ -371,13 +372,14 @@ namespace rod
 	/** Customization point object used to query selected stats for the specified filesystem object.
 	 * @note Some of the queried fields may not be supported by the platform or the filesystems, which will be indicated by a cleared bit in the returned mask.
 	 *
-	 * @overload Queries stats of a handle.
-	 * @param hnd Handle to query stats from.
+	 * @overload Queries stats of an object referenced by \a hnd.
+	 * @param hnd Handle to the target object.
 	 * @param q Query flags used to select requested stats.
 	 * @return Mask of the obtained stats, or a status code on failure.
 	 *
-	 * @overload Queries stats of a path.
-	 * @param path Path to query stats for.
+	 * @overload Queries stats of an object referenced by path \a path relative to \a base.
+	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 	 * @param q Query flags used to select requested stats.
 	 * @param nofollow If set to `true`, will not follow symlinks. `false` by default.
 	 * @return Mask of the obtained stats, or a status code on failure. */
@@ -393,7 +395,7 @@ namespace rod
 	 * <li>`btime`</li>
 	 * </ul>
 	 *
-	 * @param hnd Handle who's stats to modify.
+	 * @param hnd Handle to the target object.
 	 * @param q Query flags used to select modified stats.
 	 * @return Mask of the modified stats, or a status code on failure. */
 	inline constexpr auto set_stat = set_stat_t{};
