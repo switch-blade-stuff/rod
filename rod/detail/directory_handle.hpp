@@ -478,4 +478,4 @@ template<>
 inline constexpr bool std::ranges::enable_view<rod::directory_iterator> = true;
 
 static_assert(std::input_iterator<rod::directory_iterator>);
-static_assert(std::ranges::range<rod::directory_iterator>);
+static_assert(std::ranges::view<rod::directory_iterator>);
