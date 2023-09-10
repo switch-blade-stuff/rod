@@ -19,9 +19,10 @@ namespace rod
 		public:
 			using native_handle_type = typename adp_base::native_handle_type;
 
-			/** Opens a path handle for an existing directory specified by \a path. */
-			[[nodiscard]] static result<path_handle> open(path_view path) noexcept { return open(path_handle(), path); }
-			/** Opens a path handle for an existing directory specified by \a path relative to parent location \a base. */
+			/** Opens a path handle for an existing directory specified by \a path relative to parent location \a base.
+			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+			 * @return Handle to the directory or a status code on failure. */
 			[[nodiscard]] static ROD_API_PUBLIC result<path_handle> open(const path_handle &base, path_view path) noexcept;
 
 		public:

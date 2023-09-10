@@ -938,6 +938,17 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr std::basic_string_view<C> file_ext_substr(std::basic_string_view<C> path) noexcept { return path.substr(file_stem_size(path)); }
 
+		template<typename C = value_type>
+		inline constexpr std::size_t find_filter(std::basic_string_view<C> path, typename std::basic_string_view<C>::size_type pos = 0) noexcept
+		{
+#ifndef ROD_WIN32
+			constexpr auto chars = std::array{C('*'), C('?'), C('['), C(']')};
+#else
+			constexpr auto chars = std::array{C('*'), C('?')};
+#endif
+			return path.find_first_of(std::basic_string_view<C>(chars.data(), chars.size()), pos);
+		}
+
 		/** Container of a filesystem-specific path representation. */
 		class path : public constants
 		{

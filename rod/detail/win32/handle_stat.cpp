@@ -2,23 +2,11 @@
  * Created by switch_blade on 2023-08-29.
  */
 
-#include "../handle_stat.hpp"
-
-#include <cstring>
-#include <cwchar>
-
-#include "path_discovery.hpp"
-#include "ntapi.hpp"
+#include "handle_stat.hpp"
 
 namespace rod::_handle
 {
 	using namespace _win32;
-
-	constexpr auto basic_info_mask = stat::query::type | stat::query::atime | stat::query::mtime | stat::query::ctime | stat::query::btime | stat::query::is_sparse | stat::query::is_compressed | stat::query::is_reparse_point;
-	constexpr auto standard_info_mask = stat::query::size | stat::query::alloc | stat::query::blocks | stat::query::nlink;
-	constexpr auto internal_info_mask = stat::query::ino;
-
-	constexpr std::size_t buff_size = 32768;
 
 	inline static auto query_file_type(const ntapi &ntapi, void *hnd, ULONG file_attr, ULONG reparse_tag) noexcept -> result<file_type>
 	{
@@ -254,7 +242,7 @@ namespace rod::_handle
 		return done;
 	}
 
-	result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept
+	result<stat::query> do_get_stat(stat &st, const path_handle &base, path_view path, stat::query q, bool nofollow) noexcept
 	{
 		auto done = stat::query::none;
 		if (q == done) return done;
@@ -268,15 +256,16 @@ namespace rod::_handle
 		auto iosb = io_status_block();
 		bool is_dir = false;
 
-		auto rpath = path.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
-		auto guard = ntapi->dos_path_to_nt_path(upath, false);
+		auto &[upath, rpath] = *rend;
+		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
+		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
 		obj_attrib.length = sizeof(object_attributes);
 #if 0 /* FIXME: Should non-handle APIs use case-insensitive paths? */
 		obj_attrib.attr = 0x40; /*OBJ_CASE_INSENSITIVE*/
@@ -342,7 +331,7 @@ namespace rod::_handle
 		auto handle = INVALID_HANDLE_VALUE;
 		auto status = ntapi->NtCreateFile(&handle, SYNCHRONIZE | FILE_READ_ATTRIBUTES, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
 		if (status == STATUS_PENDING) [[unlikely]]
-			status = ntapi->wait_io(handle, &iosb);
+				                              status = ntapi->wait_io(handle, &iosb);
 		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 		else if (is_status_failure(status)) [[unlikely]]
@@ -353,6 +342,7 @@ namespace rod::_handle
 		else
 			return res;
 	}
+	result<stat::query> do_get_stat(stat &st, path_view path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, {}, path, q, nofollow); }
 
 	result<stat::query> basic_handle::do_get_stat(stat &st, stat::query q) const noexcept
 	{

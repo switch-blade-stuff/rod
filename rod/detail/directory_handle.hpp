@@ -182,8 +182,7 @@ namespace rod
 			 * This internal buffer can be re-used by passing the returned buffer sequence as \a buffs to the next call of `read_some`.
 			 * @note Supplied buffers will be modified with the size and/or pointers to the actual memory of the entry path. */
 			io_buffer_sequence<read_some_t> buffs;
-			/** Directory enumeration filter passed to the native platform API. Alternatively, if \a filter refers to a single file within the
-			 * directory (does not contain wildcards), behaves like POSIX `fstatat`, using the stat query flags of the first \a buffs element.
+			/** Directory enumeration filter passed to the native platform API.
 			 * @note If the platform does not provide directory filtering, it is preformed manually. */
 			path_view filter;
 			/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
@@ -267,7 +266,7 @@ namespace rod
 			 * </ul>
 			 *
 			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
-			 * @param path Path to the new directory relative to \a base if it is a valid handle, otherwise a fully-qualified path to the directory.
+			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 			 * @param flags Handle flags to open the handle with. `file_flags::read` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::existing` by default.
 			 * @return Handle to the directory or a status code on failure. */
@@ -391,12 +390,12 @@ namespace rod
 			/** Creates a directory iterator from a clone of handle \a hnd.
 			 * @param hnd Handle to the target directory.
 			 * @return Iterator to the first entry in the directory (may be the end iterator), or a status code on failure to create the iterator. */
-			[[nodiscard]] ROD_API_PUBLIC result<directory_iterator> from_handle(const path_handle &hnd) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_handle(const path_handle &hnd) noexcept;
 			/** Creates a directory iterator for directory specified by \a path relative to parent location \a base.
 			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
-			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path to the directory.
+			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 			 * @return Iterator to the first entry in the directory (may be the end iterator), or a status code on failure to create the iterator. */
-			[[nodiscard]] ROD_API_PUBLIC result<directory_iterator> from_path(const path_handle &base, path_view dir) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_path(const path_handle &base, path_view path) noexcept;
 
 		private:
 			explicit directory_iterator(typename basic_handle::native_handle_type &&hnd) noexcept : _dir_hnd(std::forward<decltype(hnd)>(hnd)) {}

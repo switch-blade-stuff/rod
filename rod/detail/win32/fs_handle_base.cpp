@@ -14,11 +14,11 @@ namespace rod::_win32
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto rpath = path.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return rend.error();
 
+		auto &[upath, rpath] = *rend;
 		auto guard = ntapi.dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
@@ -48,11 +48,11 @@ namespace rod::_win32
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto rpath = path.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
+		auto &[upath, rpath] = *rend;
 		auto guard = ntapi.dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
@@ -93,13 +93,13 @@ namespace rod::_win32
 	}
 	result<> do_unlink(void *hnd, const file_timeout &to, file_flags flags) noexcept
 	{
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
 		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
 		auto abs_timeout = to.absolute();
 		auto iosb = io_status_block();
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
 
 		/* Try to unlink with POSIX semantics via the Win10 API. */
 		auto status = ntapi->NtSetInformationFile(hnd, &iosb, &disp_info_ex, sizeof(disp_info_ex), FileDispositionInformationEx);

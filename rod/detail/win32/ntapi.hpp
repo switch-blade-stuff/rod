@@ -54,6 +54,29 @@ namespace rod::_win32
 			return file_type::unknown;
 	}
 
+	struct unicode_string
+	{
+		USHORT size;
+		USHORT max;
+		PWCHAR buff;
+	};
+
+	template<bool Term = true>
+	inline constexpr auto render_as_ustring(path_view_component path) noexcept -> result<std::pair<unicode_string, path_view_component::rendered_path<Term, wchar_t>>>
+	{
+		try
+		{
+			auto rpath = path_view_component::rendered_path<Term, wchar_t>(path);
+			auto upath = unicode_string();
+
+			upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
+			upath.buff = const_cast<wchar_t *>(rpath.data());
+
+			return std::make_pair(std::move(upath), std::move(rpath));
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+	}
+
 	inline static FILETIME tp_to_filetime(typename file_clock::time_point tp) noexcept
 	{
 		union { FILETIME _ft; std::int64_t _tp; };
@@ -87,12 +110,6 @@ namespace rod::_win32
 		SIZE_T static_size;
 		SIZE_T _reserved0;
 		PVOID _reserved1;
-	};
-	struct unicode_string
-	{
-		USHORT size;
-		USHORT max;
-		PWCHAR buff;
 	};
 	struct unicode_string_buffer
 	{

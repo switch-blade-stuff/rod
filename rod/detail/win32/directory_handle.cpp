@@ -3,7 +3,7 @@
  */
 
 #include "directory_handle.hpp"
-#include "detail/directory_handle.hpp"
+#include "handle_stat.hpp"
 
 namespace rod::_directory
 {
@@ -25,16 +25,16 @@ namespace rod::_directory
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = path.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
+		auto &[upath, rpath] = *rend;
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
-		DWORD access = 0;
+		DWORD access = SYNCHRONIZE;
 		if (bool(flags & file_flags::read))
 			access |= STANDARD_RIGHTS_READ;
 		if (bool(flags & file_flags::write))
@@ -52,10 +52,7 @@ namespace rod::_directory
 
 		DWORD ntflags = 1; /*FILE_DIRECTORY_FILE*/
 		if (!bool(flags & file_flags::non_blocking))
-		{
 			ntflags |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
-			access |= SYNCHRONIZE;
-		}
 
 		auto disp = disposition();
 		switch (mode)
@@ -160,6 +157,12 @@ namespace rod::_directory
 
 	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
 	{
+		if (req.buffs.empty()) [[unlikely]]
+			return std::move(req.buffs);
+
+		const auto abs_timeout = to.absolute();
+		auto g = std::lock_guard(*this);
+
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -168,17 +171,14 @@ namespace rod::_directory
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		const auto abs_timeout = to.absolute();
-		auto rfilter = req.filter.render_null_terminated();
-		auto ufilter = unicode_string();
-		auto g = std::lock_guard(*this);
-
-		ufilter.max = (ufilter.size = USHORT(rfilter.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		ufilter.buff = const_cast<wchar_t *>(rfilter.data());
+		auto rend = render_as_ustring<true>(req.filter);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
 		wchar_t *result_buff = req.buffs._buff.release();
 		std::size_t buffer_size = 0, result_size = 0;
 		bool reset_pos = !req.resume, eof = false;
+		auto &ufilter = rend->first;
 
 		while (result_size < req.buffs.size() && !eof)
 		{
@@ -207,7 +207,7 @@ namespace rod::_directory
 						else
 							new_buff = static_cast<wchar_t *>(std::malloc(new_size * sizeof(wchar_t)));
 						if (new_buff == nullptr) [[unlikely]]
-							return false;
+							return true;
 					}
 
 					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
@@ -222,7 +222,7 @@ namespace rod::_directory
 
 				entry._query = stats_mask;
 				entry._st = st;
-				return true;
+				return false;
 			}).value_or(false);
 		}
 
@@ -255,7 +255,7 @@ namespace rod::_directory
 		else
 			return dos_error_code(::GetLastError());
 	}
-	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view dir) noexcept
+	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view path) noexcept
 	{
 		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -265,11 +265,11 @@ namespace rod::_directory
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = dir.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
+		auto &[upath, rpath] = *rend;
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
@@ -295,6 +295,10 @@ namespace rod::_directory
 
 	result<> directory_iterator::next(const file_timeout &to) noexcept
 	{
+		const auto abs_timeout = to.absolute();
+		auto &&str = _entry.to_path_string();
+		auto res = result<>();
+
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -302,10 +306,6 @@ namespace rod::_directory
 		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t));
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
-
-		auto &&str = _entry.to_path_string();
-		const auto abs_timeout = to.absolute();
-		auto res = result<>();
 
 		auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
 		auto err = query_directory(*ntapi, _dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto &info, auto &st)
@@ -330,5 +330,4 @@ namespace rod::_directory
 		else
 			return res;
 	}
-
 }

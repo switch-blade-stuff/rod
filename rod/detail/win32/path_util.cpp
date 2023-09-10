@@ -53,11 +53,11 @@ namespace rod
 		if (ntapi.has_error()) [[unlikely]]
 			return {in_place_error, ntapi.error()};
 
-		auto rpath = path.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
+		auto &[upath, rpath] = *rend;
 		auto guard = ntapi->dos_path_to_nt_path(upath, false);
 		if (auto err = guard.error_or({}); err && err.value() != ERROR_PATH_NOT_FOUND) [[unlikely]]
 			return {in_place_error, guard.error()};
@@ -100,5 +100,13 @@ namespace rod
 		ino_b = st.ino;
 
 		return dev_a == dev_b && ino_a == ino_b;
+	}
+
+	result<std::size_t> remove_all(const path_handle &base, path_view path) noexcept
+	{
+		std::size_t result = {};
+		auto st = stat(nullptr);
+
+
 	}
 }

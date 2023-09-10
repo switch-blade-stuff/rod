@@ -18,11 +18,11 @@ namespace rod
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = path.render_null_terminated();
-		auto upath = unicode_string();
-		upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-		upath.buff = const_cast<wchar_t *>(rpath.data());
+		auto rend = render_as_ustring<true>(path);
+		if (rend.has_error()) [[unlikely]]
+			return {in_place_error, rend.error()};
 
+		auto &[upath, rpath] = *rend;
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
