@@ -216,19 +216,20 @@ namespace rod
 				.buffs = std::move(seq),
 				.resume = true,
 			};
-			auto io_res = read_some(dir, req, to);
-			if (io_res.has_value() && io_res->empty())
+			if (auto res = read_some(dir, req, to); res.has_error()) [[unlikely]]
+				return res.error();
+			else if (!res->empty())
+				seq = std::move(*res);
+			else
 				break;
-			if (io_res.has_error()) [[unlikely]]
-				return io_res.error();
 
-			auto [st, mask] = io_res->front().st();
+			auto [st, mask] = seq.front().st();
 			if (!bool(mask & stat::query::type)) [[unlikely]]
 				continue; /* Should never happen. */
 
 			auto uleaf = unicode_string();
-			uleaf.size = uleaf.max = io_res->front().size() * sizeof(wchar_t);
-			uleaf.buff = io_res->front().data();
+			uleaf.size = uleaf.max = seq.front().size() * sizeof(wchar_t);
+			uleaf.buff = seq.front().data();
 
 			/* Recursively call remove on the subdirectory. */
 			result<std::size_t> res;
