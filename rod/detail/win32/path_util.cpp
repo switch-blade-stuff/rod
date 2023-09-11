@@ -195,9 +195,6 @@ namespace rod
 	}
 	inline static result<std::size_t> do_remove_all(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
-		/* Mirror MSVC STL behavior. */
-		constexpr std::size_t retry_max = 10;
-
 		auto hnd = open_readable(ntapi, iosb, base, upath, to);
 		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
 			return 0;
@@ -247,11 +244,13 @@ namespace rod
 		/* Finally, try to remove the directory itself. */
 		for (std::size_t i = 0;;)
 		{
+			constexpr std::size_t retry_max = 10;
+
 			auto res = do_remove(ntapi, iosb, base, upath, to);
 			if (res.has_value()) [[likely]]
 				return removed + *res;
 
-			/* Retry in the following cases:
+			/* Mirror MSVC STL behavior and retry in the following cases:
 			 * STATUS_DIRECTORY_NOT_EMPTY: 0xc0000101 - directory entries might not be deleted yet.
 			 * ERROR_ACCESS_DENIED: 0xc0000022 - directory might be marked for deletion. */
 			if (auto err = res.error(); i++ == retry_max || err.category() != status_category() || (err.value() != 0xc0000101 && err.value() != 0xc0000022))
