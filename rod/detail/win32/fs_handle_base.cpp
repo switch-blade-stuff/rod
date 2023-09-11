@@ -97,7 +97,7 @@ namespace rod::_win32
 			return ntapi.error();
 
 		/* Try to unlink with POSIX semantics via the Win10 API. */
-		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2 | 0x10}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
+		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
 		auto status = ntapi->set_file_info(hnd, &iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx);
 		if (!is_status_failure(status))
 			return {};
