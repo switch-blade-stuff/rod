@@ -50,9 +50,9 @@ namespace rod::_directory
 		if (bool(flags & file_flags::append))
 			access |= FILE_APPEND_DATA;
 
-		DWORD ntflags = 1; /*FILE_DIRECTORY_FILE*/
+		DWORD opts = 1; /*FILE_DIRECTORY_FILE*/
 		if (!bool(flags & file_flags::non_blocking))
-			ntflags |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
+			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
 
 		auto disp = disposition();
 		switch (mode)
@@ -69,53 +69,46 @@ namespace rod::_directory
 		}
 
 		auto obj_attrib = object_attributes();
-		auto handle = native_handle_type();
 		auto iosb = io_status_block();
 
 		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
 		obj_attrib.length = sizeof(object_attributes);
 		obj_attrib.name = &upath;
 
-		auto status = ntapi->NtCreateFile(&handle.value, access, &obj_attrib, &iosb, nullptr, 0, share, disp, ntflags, nullptr, 0);
-		if (status == STATUS_PENDING) [[unlikely]]
-			status = ntapi->wait_io(handle, &iosb);
-		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
-			return std::make_error_code(std::errc::no_such_file_or_directory);
-		else if (is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
+		auto hnd = ntapi->create_file(obj_attrib, &iosb, access, 0, share, disp, opts);
+		if (hnd.has_error()) [[unlikely]]
+			return hnd.error();
 
-		/* Set case-sensitive flag on newly created directories if requested. */
+		/* Optionally set case-sensitive flag on newly created directories if requested. */
 		if (bool(flags & file_flags::case_sensitive) && mode == open_mode::create || (mode == open_mode::always && iosb.info == 2/*FILE_CREATED*/))
 		{
 			auto case_info = file_case_sensitive_information{.flags = 1/*FILE_CS_FLAG_CASE_SENSITIVE_DIR*/};
-			iosb = io_status_block();
-			status = ntapi->NtSetInformationFile(handle.value, &iosb, &case_info, sizeof(case_info), FileCaseSensitiveInformation);
-			if (status == STATUS_PENDING) [[unlikely]]
-				status = ntapi->wait_io(handle, &iosb);
+			ntapi->set_file_info(*hnd, &iosb, &case_info, FileCaseSensitiveInformation);
 		}
-
-		handle.flags = std::uint32_t(flags);
-		return directory_handle(handle);
+		return directory_handle(native_handle_type(*hnd, std::uint32_t(flags)));
 	}
 
 	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (auto hnd = reopen_as_deletable(*this); hnd.has_value()) [[likely]]
-			return _win32::do_link(hnd->native_handle(), base, path, replace, to);
+		const auto abs_timeout = to.absolute();
+		if (auto hnd = reopen_as_deletable(*this, abs_timeout); hnd.has_value()) [[likely]]
+			return _win32::do_link(hnd->native_handle(), base, path, replace, abs_timeout);
 		else
 			return hnd.error();
 	}
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (auto hnd = reopen_as_deletable(*this); hnd.has_value()) [[likely]]
-			return _win32::do_relink(hnd->native_handle(), base, path, replace, to);
+		const auto abs_timeout = to.absolute();
+		if (auto hnd = reopen_as_deletable(*this, abs_timeout); hnd.has_value()) [[likely]]
+			return _win32::do_relink(hnd->native_handle(), base, path, replace, abs_timeout);
 		else
 			return hnd.error();
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		if (auto hnd = reopen_as_deletable(*this); hnd.has_value()) [[likely]]
-			return _win32::do_unlink(hnd->native_handle(), to, flags());
+		const auto abs_timeout = to.absolute();
+		if (auto hnd = reopen_as_deletable(*this, abs_timeout); hnd.has_value()) [[likely]]
+			return _win32::do_unlink(hnd->native_handle(), abs_timeout, flags());
 		else
 			return hnd.error();
 	}
@@ -136,6 +129,10 @@ namespace rod::_directory
 			auto full_info = reinterpret_cast<const file_id_full_dir_information *>(pos);
 			eof = (full_info->next_off == 0);
 			pos += full_info->next_off;
+
+			/* Skip directory wildcards. */
+			if (full_info->name_len >= 1 && full_info->name[0] == '.' && (full_info->name_len == 1 || (full_info->name_len == 2 && full_info->name[1] == '.')))
+				continue;
 
 			auto st = stat(nullptr);
 			st.ino = full_info->file_id;
@@ -175,8 +172,8 @@ namespace rod::_directory
 		if (rend.has_error()) [[unlikely]]
 			return {in_place_error, rend.error()};
 
+		std::size_t buffer_size = req.buffs._buff_max, result_size = 0;
 		wchar_t *result_buff = req.buffs._buff.release();
-		std::size_t buffer_size = 0, result_size = 0;
 		bool reset_pos = !req.resume, eof = false;
 		auto &ufilter = rend->first;
 
@@ -200,7 +197,7 @@ namespace rod::_directory
 					auto old_size = buffer_size, new_size = buffer_size + info.name_len + 1;
 					auto old_buff = result_buff, new_buff = result_buff;
 
-					if (new_size > req.buffs._buff_max)
+					if (new_size > old_size)
 					{
 						if (old_buff)
 							new_buff = static_cast<wchar_t *>(std::realloc(old_buff, new_size * sizeof(wchar_t)));
@@ -257,7 +254,7 @@ namespace rod::_directory
 	}
 	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view path) noexcept
 	{
-		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
+		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 		constexpr auto access = SYNCHRONIZE | FILE_LIST_DIRECTORY;
 
@@ -281,16 +278,11 @@ namespace rod::_directory
 		obj_attrib.length = sizeof(object_attributes);
 		obj_attrib.name = &upath;
 
-		typename basic_handle::native_handle_type handle = INVALID_HANDLE_VALUE;
-		auto status = ntapi->NtCreateFile(&handle.value, access, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
-		if (status == STATUS_PENDING) [[unlikely]]
-			status = ntapi->wait_io(handle, &iosb);
-		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
-			return std::make_error_code(std::errc::no_such_file_or_directory);
-		else if (is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
-
-		return directory_iterator(std::move(handle));
+		auto hnd = ntapi->create_file(obj_attrib, &iosb, access, 0, share, file_open, opts);
+		if (hnd.has_value()) [[likely]]
+			return directory_iterator(*hnd);
+		else
+			return hnd.error();
 	}
 
 	result<> directory_iterator::next(const file_timeout &to) noexcept

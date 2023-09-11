@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include "handle_stat.hpp"
-#include "path_handle.hpp"
+#include "directory_handle.hpp"
 
 namespace rod
 {
@@ -22,13 +21,23 @@ namespace rod
 	/** Creates all directories specified by \a path relative to parent location \a base.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param to Optional timeout to use when creating the filesystem object.
 	 * @return Amount of directories created or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> create_all(const path_handle &base, path_view path) noexcept;
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> create_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
+
+	/** Removes the directory, file, or symlink specified by \a path relative to parent location \a base.
+	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param to Optional timeout to use when removing the filesystem object.
+	 * @return `true` if any filesystem object was removed, `false` otherwise.
+	 * @note Equivalent to opening the target object handle (with sufficient permissions!) and calling `unlink`. */
+	[[nodiscard]] ROD_API_PUBLIC result<bool> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
-	 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param to Optional timeout to use when removing the filesystem objects.
 	 * @return Amount of elements removed or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path) noexcept;
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 
 	/** Flags used to control behavior of the `copy_all` function. */
 	enum class copy_mode : int
@@ -66,6 +75,7 @@ namespace rod
 	/** Duplicates all directories, files and symlinks specified by \a path relative to parent location \a base using mode flags \a mode.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target file or directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param to Optional timeout to use when copying the filesystem object.
 	 * @return Amount of elements copied or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &base, path_view path, copy_mode mode) noexcept;
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &base, path_view path, copy_mode mode, const file_timeout &to = file_timeout()) noexcept;
 }

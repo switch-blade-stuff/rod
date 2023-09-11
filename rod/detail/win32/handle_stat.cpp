@@ -35,9 +35,7 @@ namespace rod::_handle
 		auto iosb = io_status_block();
 		auto done = stat::query::none;
 
-		auto status = ntapi.NtQueryInformationFile(hnd, &iosb, stat_info, sizeof(wchar_t) * buff_size, FileStatInformation);
-		if (status == STATUS_PENDING)
-			status = ntapi.wait_io(hnd, &iosb);
+		auto status = ntapi.get_file_info(hnd, &iosb, stat_info, sizeof(wchar_t) * buff_size, FileStatInformation);
 		if (is_status_failure(status))
 			return status_error_code(status);
 
@@ -127,10 +125,7 @@ namespace rod::_handle
 
 		if (bool(q & basic_info_mask) + bool(q & standard_info_mask) + bool(q & internal_info_mask) >= 2)
 		{
-			auto status = ntapi.NtQueryInformationFile(hnd, &iosb, all_info, sizeof(wchar_t) * buff_size, FileAllInformation);
-			if (status == STATUS_PENDING)
-				status = ntapi.wait_io(hnd, &iosb);
-
+			auto status = ntapi.get_file_info(hnd, &iosb, all_info, sizeof(wchar_t) * buff_size, FileAllInformation);
 			if (!is_status_failure(status))
 				goto query_success;
 			if (status != STATUS_INVALID_PARAMETER) [[unlikely]]
@@ -138,28 +133,19 @@ namespace rod::_handle
 		}
 		if (bool(q & basic_info_mask))
 		{
-			iosb = io_status_block();
-			auto status = ntapi.NtQueryInformationFile(hnd, &iosb, &all_info->basic_info, sizeof(all_info->basic_info), FileBasicInformation);
-			if (status == STATUS_PENDING)
-				status = ntapi.wait_io(hnd, &iosb);
+			auto status = ntapi.get_file_info(hnd, &iosb, &all_info->basic_info, FileBasicInformation);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 		}
 		if (bool(q & standard_info_mask))
 		{
-			iosb = io_status_block();
-			auto status = ntapi.NtQueryInformationFile(hnd, &iosb, &all_info->standard_info, sizeof(all_info->standard_info), FileStandardInformation);
-			if (status == STATUS_PENDING)
-				status = ntapi.wait_io(hnd, &iosb);
+			auto status = ntapi.get_file_info(hnd, &iosb, &all_info->standard_info, FileStandardInformation);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 		}
 		if (bool(q & internal_info_mask))
 		{
-			iosb = io_status_block();
-			auto status = ntapi.NtQueryInformationFile(hnd, &iosb, &all_info->internal_info, sizeof(all_info->internal_info), FileInternalInformation);
-			if (status == STATUS_PENDING)
-				status = ntapi.wait_io(hnd, &iosb);
+			auto status = ntapi.get_file_info(hnd, &iosb, &all_info->internal_info, FileInternalInformation);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 		}
@@ -325,19 +311,14 @@ namespace rod::_handle
 		}
 
 		/* If we still need more data then do the slow thing and open the handle. */
-		const auto flags = 0x20 | 0x4000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT*/ | (is_dir ? 1 /*FILE_DIRECTORY_FILE*/ : 0) | (nofollow ? 0x20'0000 /*FILE_OPEN_REPARSE_POINT*/ : 0);
+		const auto opts = 0x20 | 0x4000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT*/ | (is_dir ? 1 /*FILE_DIRECTORY_FILE*/ : 0) | (nofollow ? 0x20'0000 /*FILE_OPEN_REPARSE_POINT*/ : 0);
 		const auto share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
 
-		auto handle = INVALID_HANDLE_VALUE;
-		auto status = ntapi->NtCreateFile(&handle, SYNCHRONIZE | FILE_READ_ATTRIBUTES, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
-		if (status == STATUS_PENDING) [[unlikely]]
-				                              status = ntapi->wait_io(handle, &iosb);
-		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
-			return std::make_error_code(std::errc::no_such_file_or_directory);
-		else if (is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
+		auto hnd = ntapi->create_file(obj_attrib, &iosb, SYNCHRONIZE | FILE_READ_ATTRIBUTES, 0, share, file_open, opts);
+		if (hnd.has_error()) [[unlikely]]
+			return hnd.error();
 
-		if (auto res = get_stat(st, basic_handle(handle), q); res.has_value()) [[likely]]
+		if (auto res = get_stat(st, basic_handle(*hnd), q); res.has_value()) [[likely]]
 			return *res | done;
 		else
 			return res;
@@ -382,12 +363,8 @@ namespace rod::_handle
 			std::memset(id_info, 0, sizeof(file_id_information));
 			auto iosb = io_status_block();
 
-			auto status = ntapi->NtQueryInformationFile(_hnd, &iosb, &id_info, sizeof(wchar_t) * buff_size, FileIdInformation);
-			if (status == STATUS_PENDING)
-				status = ntapi->wait_io(_hnd, &iosb);
-
-			/* May fail on older windows. */
-			if (!is_status_failure(status))
+			auto status = ntapi->get_file_info(_hnd, &iosb, &id_info, sizeof(wchar_t) * buff_size, FileIdInformation);
+			if (!is_status_failure(status)) /* May fail on older windows. */
 			{
 				st.dev = id_info->volume_id;
 				done |= stat::query::dev;
@@ -431,9 +408,7 @@ namespace rod::_handle
 			auto objid_info = reinterpret_cast<file_objectid_information *>(buff->get());
 			auto iosb = io_status_block();
 
-			auto status = ntapi->NtQueryInformationFile(_hnd, &iosb, &objid_info, buff_size * sizeof(wchar_t), FileObjectIdInformation);
-			if (status == STATUS_PENDING)
-				status = ntapi->wait_io(_hnd, &iosb);
+			auto status = ntapi->get_file_info(_hnd, &iosb, &objid_info, buff_size * sizeof(wchar_t), FileObjectIdInformation);
 			if (!is_status_failure(status))
 			{
 				st.ino = objid_info->file_ref;
@@ -454,25 +429,23 @@ namespace rod::_handle
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto info = file_basic_information();
+		auto basic_info = file_basic_information();
 		auto iosb = io_status_block();
 
-		auto status = ntapi->NtQueryInformationFile(_hnd, &iosb, &info, sizeof(info), FileBasicInformation);
+		auto status = ntapi->get_file_info(_hnd, &iosb, &basic_info, FileBasicInformation);
 		if (status == STATUS_PENDING) [[unlikely]]
 			status = ntapi->wait_io(_hnd, &iosb);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 
 		/* Set requested fields or keep them as change_time. */
-		info.btime = bool(q & stat::query::btime) ? tp_to_filetime(st.btime) : info.ctime;
-		info.atime = bool(q & stat::query::atime) ? tp_to_filetime(st.atime) : info.ctime;
-		info.mtime = bool(q & stat::query::mtime) ? tp_to_filetime(st.mtime) : info.ctime;
-		info.ctime = {};
+		basic_info.btime = bool(q & stat::query::btime) ? tp_to_filetime(st.btime) : basic_info.ctime;
+		basic_info.atime = bool(q & stat::query::atime) ? tp_to_filetime(st.atime) : basic_info.ctime;
+		basic_info.mtime = bool(q & stat::query::mtime) ? tp_to_filetime(st.mtime) : basic_info.ctime;
+		basic_info.ctime = {};
 		iosb.status = -1;
 
-		status = ntapi->NtSetInformationFile(_hnd, &iosb, &info, sizeof(info), FileBasicInformation);
-		if (status == STATUS_PENDING) [[unlikely]]
-			status = ntapi->wait_io(_hnd, &iosb);
+		status = ntapi->set_file_info(_hnd, &iosb, &basic_info, FileBasicInformation);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else

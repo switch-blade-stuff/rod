@@ -11,7 +11,7 @@
 namespace rod::_win32
 {
 	/* Win32 directory handles are not created with DELETE permission and need to be re-opened for link operations to work. */
-	inline static result<directory_handle> reopen_as_deletable(const directory_handle &dir) noexcept
+	inline static result<directory_handle> reopen_as_deletable(const directory_handle &dir, const file_timeout &to) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -29,13 +29,10 @@ namespace rod::_win32
 		obj_attrib.root_dir = dir.native_handle();
 		obj_attrib.name = &upath;
 
-		auto handle = INVALID_HANDLE_VALUE;
-		auto status = ntapi->NtOpenFile(&handle, access, &obj_attrib, &iosb, share, flags);
-		if (status == STATUS_PENDING)
-			status = ntapi->wait_io(handle, &iosb);
-		if (is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
+		auto hnd = ntapi->open_file(obj_attrib, &iosb, access, share, flags, to);
+		if (hnd.has_value()) [[likely]]
+			return directory_handle(*hnd);
 		else
-			return directory_handle(handle);
+			return hnd.error();
 	}
 }

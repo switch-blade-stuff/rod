@@ -11,7 +11,7 @@ namespace rod
 
 	result<path_handle> path_handle::open(const path_handle &base, path_view path) noexcept
 	{
-		constexpr auto flags = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
+		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
 		const auto &ntapi = ntapi::instance();
@@ -34,15 +34,10 @@ namespace rod
 		obj_attrib.length = sizeof(object_attributes);
 		obj_attrib.name = &upath;
 
-		auto handle = INVALID_HANDLE_VALUE;
-		auto status = ntapi->NtCreateFile(&handle, SYNCHRONIZE, &obj_attrib, &iosb, nullptr, 0, share, file_open, flags, nullptr, 0);
-		if (status == STATUS_PENDING) [[unlikely]]
-			status = ntapi->wait_io(handle, &iosb);
-		if (iosb.info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
-			return std::make_error_code(std::errc::no_such_file_or_directory);
-		else if (is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
+		auto hnd = ntapi->create_file(obj_attrib, &iosb, SYNCHRONIZE, 0, share, file_open, opts);
+		if (hnd.has_value()) [[likely]]
+			return path_handle(*hnd);
 		else
-			return path_handle(handle);
+			return hnd.error();
 	}
 }

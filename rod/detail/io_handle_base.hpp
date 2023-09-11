@@ -114,7 +114,7 @@ namespace rod
 			using extent_t = handle_extent_t<std::decay_t<Hnd>>;
 
 			template<typename Hnd, decays_to_same<request_t<Hnd>> Req = request_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
-			result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to = To()) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to = To()) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
 		};
 		template<typename Op>
 		class sparse_adaptor<Op>::type : adaptor<Op>::type

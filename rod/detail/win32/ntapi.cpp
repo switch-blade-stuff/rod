@@ -292,6 +292,50 @@ namespace rod::_win32
 		return std::move(guard);
 	}
 
+	result<void *> ntapi::open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to) const noexcept
+	{
+		auto handle = INVALID_HANDLE_VALUE;
+		auto status = NtOpenFile(&handle, access, &obj, iosb, share, opts);
+		if (status == STATUS_PENDING) [[unlikely]]
+			 status = wait_io(handle, iosb, to);
+		if (iosb->info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+		else if (is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+		else
+			return handle;
+	}
+	result<void *> ntapi::create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to) const noexcept
+	{
+		auto handle = INVALID_HANDLE_VALUE;
+		auto status = NtCreateFile(&handle, access, &obj, iosb, nullptr, attr, share, disp, opts, nullptr, 0);
+		if (status == STATUS_PENDING) [[unlikely]]
+			status = wait_io(handle, iosb, to);
+		if (iosb->info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+		else if (is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+		else
+			return handle;
+	}
+
+	ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
+	{
+		*iosb = io_status_block();
+		auto status = NtSetInformationFile(handle, iosb, data, size, type);
+		if (status == STATUS_PENDING)
+			status = wait_io(handle, iosb, to);
+		return status;
+	}
+	ntstatus ntapi::get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
+	{
+		*iosb = io_status_block();
+		auto status = NtQueryInformationFile(handle, iosb, data, size, type);
+		if (status == STATUS_PENDING)
+			status = wait_io(handle, iosb, to);
+		return status;
+	}
+
 	struct status_entry
 	{
 		ntstatus status = {};

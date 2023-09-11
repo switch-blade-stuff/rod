@@ -539,6 +539,23 @@ namespace rod::_win32
 		result<heapalloc_ptr<wchar_t>> dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept;
 		result<heapalloc_ptr<wchar_t>> canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept;
 
+		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
+		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
+
+		ntstatus set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
+		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
+
+		template<typename T>
+		ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
+		{
+			return set_file_info(handle, iosb, data, sizeof(T), type, to);
+		}
+		template<typename T>
+		ntstatus ntapi::get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
+		{
+			return get_file_info(handle, iosb, data, sizeof(T), type, to);
+		}
+
 		void *ntdll;
 		void *bcrypt;
 

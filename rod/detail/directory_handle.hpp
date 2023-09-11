@@ -306,8 +306,8 @@ namespace rod
 			friend constexpr void swap(directory_handle &a, directory_handle &b) noexcept { a.swap(b); }
 
 		public:
-			template<decays_to_same<read_some_t> Op, decays_to_same<directory_handle> Hnd>
-			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, io_request<Op> req, const file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
+			template<decays_to_same<read_some_t> Op, decays_to_same<directory_handle> Hnd, decays_to_same<io_request<Op>> Req>
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
 
 		private:
 			void unlock() noexcept

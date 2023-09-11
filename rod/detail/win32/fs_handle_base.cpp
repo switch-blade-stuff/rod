@@ -32,11 +32,9 @@ namespace rod::_win32
 		link_info->name_len = upath.size;
 
 		/* Try FileLinkInformationEx first, which will fail before Win10 RS5, in which case fall back to FileRenameInformation. */
-		auto status = ntapi.NtSetInformationFile(hnd, &iosb, link_info, sizeof(file_rename_information) + upath.size, FileLinkInformationEx);
+		auto status = ntapi.set_file_info(hnd, &iosb, link_info, sizeof(file_rename_information) + upath.size, FileLinkInformationEx, to);
 		if (is_status_failure(status))
-			status = ntapi.NtSetInformationFile(hnd, &iosb, link_info, sizeof(file_rename_information) + upath.size, FileLinkInformation);
-		if (status == STATUS_PENDING)
-			status = ntapi.wait_io(hnd, &iosb, to);
+			status = ntapi.set_file_info(hnd, &iosb, link_info, sizeof(file_rename_information) + upath.size, FileLinkInformation, to);
 		if (is_status_failure(status))
 			return status_error_code(status);
 		else
@@ -66,11 +64,9 @@ namespace rod::_win32
 		rename_info->name_len = upath.size;
 
 		/* Try FileRenameInformationEx first, which will fail before Win10 RS1, in which case fall back to FileRenameInformation. */
-		auto status = ntapi.NtSetInformationFile(hnd, &iosb, rename_info, sizeof(file_rename_information) + upath.size, FileRenameInformationEx);
+		auto status = ntapi.set_file_info(hnd, &iosb, rename_info, sizeof(file_rename_information) + upath.size, FileRenameInformationEx, to);
 		if (is_status_failure(status))
-			status = ntapi.NtSetInformationFile(hnd, &iosb, rename_info, sizeof(file_rename_information) + upath.size, FileRenameInformation);
-		if (status == STATUS_PENDING)
-			status = ntapi.wait_io(hnd, &iosb, to);
+			status = ntapi.set_file_info(hnd, &iosb, rename_info, sizeof(file_rename_information) + upath.size, FileRenameInformation, to);
 		if (is_status_failure(status))
 			return status_error_code(status);
 		else
@@ -80,21 +76,20 @@ namespace rod::_win32
 	result<> do_link(void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		if (const auto &ntapi = ntapi::instance(); ntapi.has_value()) [[likely]]
-			return do_link(*ntapi, hnd, base, path, replace, to);
+			return do_link(*ntapi, hnd, base, path, replace, to.absolute());
 		else
 			return ntapi.error();
 	}
 	result<> do_relink(void *hnd, const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		if (const auto &ntapi = ntapi::instance(); ntapi.has_value()) [[likely]]
-			return do_relink(*ntapi, hnd, base, path, replace, to);
+			return do_relink(*ntapi, hnd, base, path, replace, to.absolute());
 		else
 			return ntapi.error();
 	}
 	result<> do_unlink(void *hnd, const file_timeout &to, file_flags flags) noexcept
 	{
-		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
-		auto abs_timeout = to.absolute();
+		const auto abs_timeout = to.absolute();
 		auto iosb = io_status_block();
 
 		const auto &ntapi = ntapi::instance();
@@ -102,26 +97,21 @@ namespace rod::_win32
 			return ntapi.error();
 
 		/* Try to unlink with POSIX semantics via the Win10 API. */
-		auto status = ntapi->NtSetInformationFile(hnd, &iosb, &disp_info_ex, sizeof(disp_info_ex), FileDispositionInformationEx);
-		if (status == STATUS_PENDING)
-			ntapi->wait_io(hnd, &iosb, abs_timeout);
+		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2 | 0x10}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
+		auto status = ntapi->set_file_info(hnd, &iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx);
 		if (!is_status_failure(status))
 			return {};
 
-		auto basic_info = file_basic_information{.attributes = FILE_ATTRIBUTE_HIDDEN};
-		auto disp_info = file_disposition_information{.del = true};
-		iosb = io_status_block();
-
-		/* Hiding the object is not strictly necessary so discard the error on failure. */
-		if (ntapi->NtSetInformationFile(hnd, &iosb, &basic_info, sizeof(basic_info), FileBasicInformation) == STATUS_PENDING)
-			ntapi->wait_io(hnd, &iosb, abs_timeout);
-
+		{
+			/* Hiding the object is not strictly necessary so discard the error on failure. */
+			auto basic_info = file_basic_information{.attributes = FILE_ATTRIBUTE_HIDDEN};
+			ntapi->set_file_info(hnd, &iosb, &basic_info, FileBasicInformation, abs_timeout);
+		}
 		if (!bool(flags & file_flags::unlink_on_close))
 		{
-			iosb = io_status_block();
-			status = ntapi->NtSetInformationFile(hnd, &iosb, &disp_info, sizeof(disp_info), FileDispositionInformation);
-			if (status == STATUS_PENDING)
-				ntapi->wait_io(hnd, &iosb, abs_timeout);
+			/* Unlike `remove` and `remove_all`, `unlink` requires sufficient access rights, so do not re-try when returned STATUS_ACCESS_DENIED. */
+			auto disp_info = file_disposition_information{.del = true};
+			status = ntapi->set_file_info(hnd, &iosb, &disp_info, FileDispositionInformation, abs_timeout);
 			if (is_status_failure(status))
 				return status_error_code(status);
 		}
