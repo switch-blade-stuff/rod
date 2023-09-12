@@ -41,12 +41,12 @@ namespace rod
 			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size with an explicit `stat` query \a q. */
 			constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _query(q) {}
 
-			/** Initializes the directory entry buffer from a range of characters defined by [\a first, \a last). */
+			/** Initializes the directory entry buffer from a range of characters defined by [\a begin, \a end). */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
-			constexpr io_buffer(I first, S last) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last) {}
-			/** Initializes the directory entry buffer from a range of characters defined by [\a first, \a last) with an explicit `stat` query \a q. */
+			constexpr io_buffer(I begin, S end) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(begin, end) {}
+			/** Initializes the directory entry buffer from a range of characters defined by [\a begin, \a end) with an explicit `stat` query \a q. */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
-			constexpr io_buffer(I first, S last, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(first, last), _query(q) {}
+			constexpr io_buffer(I begin, S end, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(begin, end), _query(q) {}
 
 			/** Initializes the directory entry buffer from a contiguous range of characters. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
@@ -111,9 +111,9 @@ namespace rod
 			constexpr io_buffer_sequence() noexcept = default;
 			/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size. */
 			constexpr io_buffer_sequence(value_type *buff, size_type size) noexcept : _data(buff, size) {}
-			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a first, \a last). */
+			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end). */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-			constexpr io_buffer_sequence(I first, S last) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(first, last) {}
+			constexpr io_buffer_sequence(I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end) {}
 			/** Initializes the buffer sequence from a contiguous range of entry buffers. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
 			constexpr io_buffer_sequence(Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)) {}
@@ -123,9 +123,9 @@ namespace rod
 
 			/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size, using internal character buffer of \a other. */
 			io_buffer_sequence(io_buffer_sequence &&other, value_type *buff, size_type size) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a first, \a last), using internal character buffer of \a other. */
+			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end), using internal character buffer of \a other. */
 			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-			io_buffer_sequence(io_buffer_sequence &&other, I first, S last) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(first, last), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+			io_buffer_sequence(io_buffer_sequence &&other, I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
 			/** Initializes the buffer sequence from a contiguous range of entry buffers, using internal character buffer of \a other. */
 			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
 			io_buffer_sequence(io_buffer_sequence &&other, Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
@@ -137,7 +137,7 @@ namespace rod
 
 			/** Returns reverse iterator one past the first buffer of the buffer sequence. */
 			[[nodiscard]] constexpr reverse_iterator rbegin() const noexcept { return _data.rbegin(); }
-			/** Returns reverse iterator to the first buffer of the buffer sequence. */
+			/** Returns reverse iterator to the last buffer of the buffer sequence. */
 			[[nodiscard]] constexpr reverse_iterator rend() const noexcept { return _data.rend(); }
 
 			/** Checks if the buffer sequence is empty. */

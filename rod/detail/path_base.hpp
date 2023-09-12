@@ -995,12 +995,12 @@ namespace rod
 			template<accepted_source Src>
 			path(Src &&src, const std::locale &loc, format_type fmt = auto_format) : path(to_native_string(std::forward<Src>(src), loc), fmt) {}
 
-			/** Initializes a path from characters in range [\a first, \a last) and format \a fmt. */
+			/** Initializes a path from characters in range [\a begin, \a end) and format \a fmt. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			path(I first, S last, format_type fmt = auto_format) : path(to_native_string(std::ranges::subrange(first, last)), fmt) {}
-			/** Initializes a path from characters in range [\a first, \a last) using locale \a loc for encoding conversion, and format \a fmt. */
+			path(I begin, S end, format_type fmt = auto_format) : path(to_native_string(std::ranges::subrange(begin, end)), fmt) {}
+			/** Initializes a path from characters in range [\a begin, \a end) using locale \a loc for encoding conversion, and format \a fmt. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			path(I first, S last, const std::locale &loc, format_type fmt = auto_format) : path(to_native_string(std::ranges::subrange(first, last), loc), fmt) {}
+			path(I begin, S end, const std::locale &loc, format_type fmt = auto_format) : path(to_native_string(std::ranges::subrange(begin, end), loc), fmt) {}
 
 			/** Initializes a path from an exposition-only path-view-like object \a p and format \a fmt. */
 			inline explicit path(path_view_like p, format_type fmt = auto_format);
@@ -1028,12 +1028,12 @@ namespace rod
 			template<accepted_source Src>
 			constexpr path &assign(Src &&src, const std::locale &loc) { return assign_native(std::forward<Src>(src), loc); }
 
-			/** Assigns path contents from characters in range [\a first, \a last) \a src. */
+			/** Assigns path contents from characters in range [\a begin, \a end) \a src. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			constexpr path &assign(I first, S last) { return assign_native(std::ranges::subrange(first, last)); }
-			/** Assigns path contents from characters in range [\a first, \a last) \a src using locale \a loc for encoding conversion. */
+			constexpr path &assign(I begin, S end) { return assign_native(std::ranges::subrange(begin, end)); }
+			/** Assigns path contents from characters in range [\a begin, \a end) \a src using locale \a loc for encoding conversion. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			constexpr path &assign(I first, S last, const std::locale &loc) { return assign_native(std::ranges::subrange(first, last), loc); }
+			constexpr path &assign(I begin, S end, const std::locale &loc) { return assign_native(std::ranges::subrange(begin, end), loc); }
 
 			/** Clears contents of the path. */
 			constexpr void clear() noexcept { _string.clear(); }
@@ -1082,12 +1082,12 @@ namespace rod
 			template<accepted_source Src>
 			path &concat(Src &&src, const std::locale &loc) { return concat_native(std::forward<Src>(src), loc); }
 
-			/** Appends characters in range [\a first, \a last) to string representation of `this`. */
+			/** Appends characters in range [\a begin, \a end) to string representation of `this`. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			path &concat(I first, S last) { return concat_native(std::ranges::subrange(first, last)); }
-			/** Appends characters in range [\a first, \a last) to string representation of `this` using locale \a loc for encoding conversion. */
+			path &concat(I begin, S end) { return concat_native(std::ranges::subrange(begin, end)); }
+			/** Appends characters in range [\a begin, \a end) to string representation of `this` using locale \a loc for encoding conversion. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			path &concat(I first, S last, const std::locale &loc) { return concat_native(std::ranges::subrange(first, last), loc); }
+			path &concat(I begin, S end, const std::locale &loc) { return concat_native(std::ranges::subrange(begin, end), loc); }
 
 		private:
 			template<typename Src>
@@ -1125,12 +1125,12 @@ namespace rod
 			template<accepted_source Src>
 			path &append(Src &&src, const std::locale &loc) { return append_native(std::forward<Src>(src), loc); }
 
-			/** Appends characters in range [\a first, \a last) to `this`. */
+			/** Appends characters in range [\a begin, \a end) to `this`. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			path &append(I first, S last) { return append_native(std::ranges::subrange(first, last)); }
-			/** Appends characters in range [\a first, \a last) to `this` using locale \a loc for encoding conversion. */
+			path &append(I begin, S end) { return append_native(std::ranges::subrange(begin, end)); }
+			/** Appends characters in range [\a begin, \a end) to `this` using locale \a loc for encoding conversion. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
-			path &append(I first, S last, const std::locale &loc) { return append_native(std::ranges::subrange(first, last), loc); }
+			path &append(I begin, S end, const std::locale &loc) { return append_native(std::ranges::subrange(begin, end), loc); }
 
 		private:
 			template<typename Str>

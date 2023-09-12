@@ -415,27 +415,27 @@ namespace rod
 		}
 
 		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
-		[[nodiscard]] constexpr std::size_t generic_strlen(I first, S last) noexcept
+		[[nodiscard]] constexpr std::size_t generic_strlen(I begin, S end) noexcept
 		{
 			std::size_t i = 0;
-			while (first++ != last && *first != C{})
+			while (begin++ != end && *begin != C{})
 				i += 1;
 			return i;
 		}
 		template<typename I, typename S, typename C = std::decay_t<std::iter_value_t<I>>>
-		[[nodiscard]] constexpr std::size_t strlen(I first, S last) noexcept
+		[[nodiscard]] constexpr std::size_t strlen(I begin, S end) noexcept
 		{
 #if defined(ROD_WIN32) || defined(_GNU_SOURCE) || _POSIX_C_SOURCE >= 200809L
 			if constexpr (std::is_pointer_v<I>)
 				if (!std::is_constant_evaluated())
 				{
 					if constexpr (std::same_as<C, char>)
-						return strnlen(first, static_cast<std::size_t>(last - first));
+						return strnlen(first, static_cast<std::size_t>(end - begin));
 					if constexpr (std::same_as<C, wchar_t>)
-						return wcsnlen(first, static_cast<std::size_t>(last - first));
+						return wcsnlen(first, static_cast<std::size_t>(end - begin));
 				}
 #endif
-			return generic_strlen(first, last);
+			return generic_strlen(begin, end);
 		}
 
 		template<typename I, typename C = std::decay_t<std::iter_value_t<I>>>
