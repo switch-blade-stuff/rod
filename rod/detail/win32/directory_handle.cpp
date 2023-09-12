@@ -146,7 +146,7 @@ namespace rod::_directory
 		while (result_size < req.buffs.size() && !eof)
 		{
 			auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
-			eof = query_directory(*ntapi, native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
+			eof = ntapi->query_directory(native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
 			{
 				auto &entry = req.buffs[result_size++];
 				if (entry._buff.size() >= sv.size())
@@ -186,7 +186,7 @@ namespace rod::_directory
 				entry._query = stats_mask;
 				entry._st = st;
 				return false;
-			}).value_or(false);
+			});
 		}
 
 		/* Restore placeholder offsets. */
@@ -240,7 +240,7 @@ namespace rod::_directory
 			return buff.error();
 
 		auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
-		auto err = query_directory(*ntapi, _dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st)
+		auto status = ntapi->query_directory(_dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st)
 		{
 			_entry._query = stats_mask;
 			_entry._st = st;
@@ -251,14 +251,14 @@ namespace rod::_directory
 		});
 
 		/* Reset the iterator to sentinel on EOF so that end iterator comparisons are equal. */
-		if (auto code = err.error_or({}).value(); code == 0x80000006/*STATUS_NO_MORE_FILES*/)
+		if (status == 0x80000006/*STATUS_NO_MORE_FILES*/)
 		{
 			_entry = directory_entry{};
 			_dir_hnd = basic_handle{};
 			return {};
 		}
-		else if (code != 0) [[unlikely]]
-			return err;
+		if (status != 0) [[unlikely]]
+			return status_error_code(status);
 		else
 			return res;
 	}

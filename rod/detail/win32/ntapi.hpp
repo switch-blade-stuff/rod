@@ -563,6 +563,22 @@ namespace rod::_win32
 	template<typename T>
 	using heapalloc_ptr = std::unique_ptr<T, decltype(heapalloc_free)>;
 
+	struct status_category_type : std::error_category
+	{
+		status_category_type() noexcept = default;
+		~status_category_type() override = default;
+		const char *name() const noexcept override { return "ntapi::status_category"; }
+
+		std::string message(int value) const override;
+		std::error_condition default_error_condition(int value) const noexcept override;
+		bool equivalent(const std::error_code &code, int value) const noexcept override;
+		bool equivalent(int value, const std::error_condition &cnd) const noexcept override;
+	};
+
+	const std::error_category &status_category() noexcept;
+	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
+	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
+
 	struct ntapi
 	{
 		[[nodiscard]] static const result<ntapi> &instance() noexcept;
@@ -587,14 +603,57 @@ namespace rod::_win32
 		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
 
 		template<typename T>
-		ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
+		ntstatus set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
 		{
 			return set_file_info(handle, iosb, data, sizeof(T), type, to);
 		}
 		template<typename T>
-		ntstatus ntapi::get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
+		ntstatus get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
 		{
 			return get_file_info(handle, iosb, data, sizeof(T), type, to);
+		}
+
+		template<typename F>
+		ntstatus query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const file_timeout &to, F &&f) const noexcept
+		{
+			auto iosb = io_status_block();
+			auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), buff.size(), FileIdFullDirectoryInformation, false, filter, reset);
+			if (status == STATUS_PENDING)
+				status = wait_io(handle, &iosb, to);
+			if (is_status_failure(status))
+				return status;
+
+			bool eof = false;
+			for (auto pos = buff.data(); !eof;)
+			{
+				auto full_info = reinterpret_cast<const file_id_full_dir_information *>(pos);
+				eof = (full_info->next_off == 0);
+				pos += full_info->next_off;
+
+				/* Skip directory wildcards. */
+				const auto name = std::wstring_view(full_info->name, full_info->name_len);
+				if (name.size() >= 1 && name[0] == '.' && (name.size() == 1 || (name.size() == 2 && name[1] == '.')))
+					continue;
+
+				auto st = stat(nullptr);
+				st.ino = full_info->file_id;
+				st.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
+				st.atime = filetime_to_tp(full_info->atime);
+				st.mtime = filetime_to_tp(full_info->mtime);
+				st.ctime = filetime_to_tp(full_info->ctime);
+				st.btime = filetime_to_tp(full_info->btime);
+				st.size = full_info->eof;
+				st.alloc = full_info->alloc_size;
+				st.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
+				st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
+				st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
+
+				eof = f(name, st);
+			}
+			if (eof)
+				return 0x80000006 /*STATUS_NO_MORE_FILES*/;
+			else
+				return 0;
 		}
 
 		void *ntdll;
@@ -628,22 +687,6 @@ namespace rod::_win32
 		BCryptOpenAlgorithmProvider_t BCryptOpenAlgorithmProvider;
 		BCryptCloseAlgorithmProvider_t BCryptCloseAlgorithmProvider;
 	};
-
-	struct status_category_type : std::error_category
-	{
-		status_category_type() noexcept = default;
-		~status_category_type() override = default;
-		const char *name() const noexcept override { return "ntapi::status_category"; }
-
-		std::string message(int value) const override;
-		std::error_condition default_error_condition(int value) const noexcept override;
-		bool equivalent(const std::error_code &code, int value) const noexcept override;
-		bool equivalent(int value, const std::error_condition &cnd) const noexcept override;
-	};
-
-	const std::error_category &status_category() noexcept;
-	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
-	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
 }
 
 #define ROD_MAKE_BUFFER(T, n) (rod::_win32::make_malloca_handle<T>(_malloca(n), n))
