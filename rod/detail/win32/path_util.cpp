@@ -102,10 +102,10 @@ namespace rod
 		return dev_a == dev_b && ino_a == ino_b;
 	}
 
-	inline static result<void *> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
-		constexpr auto access = SYNCHRONIZE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY;
+		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | FILE_LIST_DIRECTORY;
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
 		auto obj_attrib = object_attributes();
@@ -118,9 +118,13 @@ namespace rod
 		/* Re-try without attribute permissions. */
 		if (auto err = hnd.error_or({}); err.category() == status_category() && err.value() == 0xc0000022 /*STATUS_ACCESS_DENIED*/) [[unlikely]]
 			hnd = ntapi.open_file(obj_attrib, iosb, DELETE | SYNCHRONIZE, share, opts, to);
-		return hnd;
+
+		if (hnd.has_value()) [[likely]]
+			return directory_handle(directory_handle::native_handle_type(*hnd, file_flags::attr_read | file_flags::write));
+		else
+			return hnd.error();
 	}
-	inline static result<void *> open_deletable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<directory_handle> open_deletable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 0x4000 | 0x200000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REPARSE_POINT*/;
 		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES;
@@ -136,36 +140,30 @@ namespace rod
 		/* Re-try without attribute permissions. */
 		if (auto err = hnd.error_or({}); err.category() == status_category() && err.value() == 0xc0000022 /*STATUS_ACCESS_DENIED*/) [[unlikely]]
 			hnd = ntapi.open_file(obj_attrib, iosb, DELETE | SYNCHRONIZE, share, opts, to);
-		return hnd;
+
+		if (hnd.has_value()) [[likely]]
+			return directory_handle(directory_handle::native_handle_type(*hnd, file_flags::attr_read | file_flags::attr_write));
+		else
+			return hnd.error();
 	}
 
- 	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const directory_handle &dir, const file_timeout &to) noexcept
 	{
-		auto res = open_deletable_dir(ntapi, iosb, base, upath, to);
-		auto hnd = basic_handle();
-
-		if (auto err = res.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
-			return 0;
-		else if (!err) [[likely]]
-			hnd.release(*res);
-		else
-			return err;
-
 		/* Try to unlink with POSIX semantics via the Win10 API. */
 		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2 | 0x10}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS | FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE*/
-		auto status = ntapi.set_file_info(hnd.native_handle(), iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx, to);
+		auto status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx, to);
 		if (!is_status_failure(status))
 			return 1;
 
 		/* Fallback to Win10 API. */
 		auto disp_info = file_disposition_information{.del = true};
-		status = ntapi.set_file_info(hnd.native_handle(), iosb, &disp_info, FileDispositionInformation, to);
+		status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info, FileDispositionInformation, to);
 		if (is_status_failure(status) && status != 0xc0000022 /*STATUS_ACCESS_DENIED*/)
 			return status_error_code(status);
 
 		/* If returned STATUS_ACCESS_DENIED, try to clear the readonly flag. */
 		auto basic_info = file_basic_information();
-		status = ntapi.get_file_info(hnd.native_handle(), iosb, &basic_info, FileBasicInformation, to);
+		status = ntapi.get_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 
@@ -174,24 +172,34 @@ namespace rod
 			return std::make_error_code(std::errc::permission_denied); /* EPERM, not STATUS_ACCESS_DENIED */
 
 		basic_info.attributes ^= FILE_ATTRIBUTE_READONLY;
-		status = ntapi.set_file_info(hnd.native_handle(), iosb, &basic_info, FileBasicInformation, to);
+		status = ntapi.set_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 
 		/* Re-try to set delete flag. If failed again, restore the readonly flag and report error. */
-		status = ntapi.set_file_info(hnd.native_handle(), iosb, &disp_info, FileDispositionInformation, to);
+		status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info, FileDispositionInformation, to);
 		if (is_status_failure(status)) [[unlikely]]
 		{
 			basic_info.attributes |= FILE_ATTRIBUTE_READONLY;
 			auto old_status = status;
 
-			status = ntapi.set_file_info(hnd.native_handle(), iosb, &basic_info, FileBasicInformation, to);
+			status = ntapi.set_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
 			if (!is_status_failure(status)) [[likely]]
 				return status_error_code(old_status);
 			else
 				return status_error_code(status);
 		}
 		return 1;
+	}
+ 	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	{
+		auto hnd = open_deletable_dir(ntapi, iosb, base, upath, to);
+		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
+			return 0;
+		else if (err) [[unlikely]]
+			return err;
+
+		return do_remove(ntapi, iosb, *hnd, to);
 	}
 	inline static result<std::size_t> do_remove_all(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
@@ -203,7 +211,6 @@ namespace rod
 
 		auto ent = std::array{read_some_buffer_t<directory_handle>()};
 		auto seq = read_some_buffer_sequence_t<directory_handle>(ent);
-		auto dir = directory_handle(*hnd);
 		std::size_t removed = 0;
 
 		for (;;)
@@ -213,7 +220,7 @@ namespace rod
 				.buffs = std::move(seq),
 				.resume = true,
 			};
-			if (auto res = read_some(dir, req, to); res.has_error()) [[unlikely]]
+			if (auto res = read_some(*hnd, req, to); res.has_error()) [[unlikely]]
 				return res.error();
 			else if (!res->empty())
 				seq = std::move(*res);
@@ -231,9 +238,9 @@ namespace rod
 			/* Recursively call remove on the subdirectory. */
 			result<std::size_t> res;
 			if (st.type == file_type::directory)
-				res = do_remove_all(ntapi, iosb, dir, &uleaf, to);
+				res = do_remove_all(ntapi, iosb, *hnd, &uleaf, to);
 			else
-				res = do_remove(ntapi, iosb, dir, &uleaf, to);
+				res = do_remove(ntapi, iosb, *hnd, &uleaf, to);
 
 			if (res.has_value()) [[likely]]
 				removed += *res;
@@ -246,7 +253,7 @@ namespace rod
 		{
 			constexpr std::size_t retry_max = 10;
 
-			auto res = do_remove(ntapi, iosb, base, upath, to);
+			auto res = do_remove(ntapi, iosb, *hnd, to);
 			if (res.has_value()) [[likely]]
 				return removed + *res;
 

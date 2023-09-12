@@ -19,7 +19,7 @@ namespace rod::_directory
 		if (flags == file_flags(other.native_handle().flags))
 		{
 			if (auto hnd = clone(other); hnd.has_value()) [[likely]]
-				return from_path_handle(std::move(*hnd), flags);
+				return directory_handle(std::move(*hnd), flags);
 			else
 				return hnd.error();
 		}

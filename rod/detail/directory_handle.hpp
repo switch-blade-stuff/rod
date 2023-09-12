@@ -220,14 +220,6 @@ namespace rod
 			template<typename Op>
 			using io_request = _directory::io_request<Op>;
 
-		private:
-			[[nodiscard]] static directory_handle from_path_handle(path_handle &&hnd, file_flags flags) noexcept
-			{
-				auto native = hnd.release();
-				native.flags = std::uint32_t(flags);
-				return directory_handle(native);
-			}
-
 		public:
 			/** Re-opens the directory handle references by \a other.
 			 * @note The following values of \a flags are not supported:
@@ -307,6 +299,11 @@ namespace rod
 			/** Initializes directory handle from a native handle and explicit device & inode IDs. */
 			explicit directory_handle(native_handle_type hnd, dev_t dev, ino_t ino) noexcept : adp_base(hnd, dev, ino) {}
 
+			/** Initializes directory handle from a path handle rvalue and file flags. */
+			explicit directory_handle(path_handle &&hnd, file_flags flags) noexcept : directory_handle(native_handle_type(hnd.release(), flags)) {}
+			/** Initializes directory handle from a path handle rvalue, file flags and explicit device & inode IDs. */
+			explicit directory_handle(path_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(native_handle_type(hnd.release(), flags), dev, ino) {}
+
 			/** Returns the flags of the directory handle. */
 			[[nodiscard]] file_flags flags() const noexcept { return static_cast<file_flags>(adp_base::native_handle().flags); }
 
@@ -335,7 +332,7 @@ namespace rod
 			result<directory_handle> do_clone() const noexcept
 			{
 				if (auto res = clone(base()); res.has_value())
-					return from_path_handle(std::move(*res), flags());
+					return directory_handle(std::move(*res), flags());
 				else
 					return res.error();
 			}
