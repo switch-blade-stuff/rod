@@ -3,7 +3,7 @@
  */
 
 #include "path_discovery.hpp"
-#include "path_algo.hpp"
+#include "path_util.hpp"
 
 #include <mutex>
 

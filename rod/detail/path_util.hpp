@@ -26,17 +26,17 @@ namespace rod
 	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> create_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 
 	/** Removes the directory, file, or symlink specified by \a path relative to parent location \a base.
+	 * Equivalent to opening the target object handle with sufficient permissions and calling `unlink`.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 	 * @param to Optional timeout to use when removing the filesystem object.
-	 * @return `true` if any filesystem object was removed, `false` otherwise.
-	 * @note Equivalent to opening the target object handle (with sufficient permissions!) and calling `unlink`. */
-	[[nodiscard]] ROD_API_PUBLIC result<bool> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
+	 * @return Amount of filesystem objects removed or a status code on failure. */
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 	 * @param to Optional timeout to use when removing the filesystem objects.
-	 * @return Amount of elements removed or a status code on failure. */
+	 * @return Amount of filesystem objects removed or a status code on failure. */
 	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 
 	/** Flags used to control behavior of the `copy_all` function. */

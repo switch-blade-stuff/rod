@@ -559,4 +559,10 @@ namespace rod
 	template<typename T>
 	using generator_task = _generator_task::generator_task<T>;
 }
+
+template<typename T>
+inline constexpr bool std::ranges::enable_view<rod::generator<T>> = true;
+
+static_assert(std::input_iterator<typename rod::generator<int>::iterator>);
+static_assert(std::ranges::view<rod::generator<int>>);
 #endif

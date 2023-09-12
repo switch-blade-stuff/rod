@@ -54,6 +54,15 @@ namespace rod::_win32
 			else
 				return sym.error();
 
+			if (auto sym = load_sym<NtOpenFile_t>(result.ntdll, "NtOpenFile"); sym.has_value()) [[likely]]
+				result.NtOpenFile = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtCreateFile_t>(result.ntdll, "NtCreateFile"); sym.has_value()) [[likely]]
+				result.NtCreateFile = *sym;
+			else
+				return sym.error();
+
 			if (auto sym = load_sym<NtReadFile_t>(result.ntdll, "NtReadFile"); sym.has_value()) [[likely]]
 				result.NtReadFile = *sym;
 			else
@@ -62,13 +71,8 @@ namespace rod::_win32
 				result.NtWriteFile = *sym;
 			else
 				return sym.error();
-
-			if (auto sym = load_sym<NtOpenFile_t>(result.ntdll, "NtOpenFile"); sym.has_value()) [[likely]]
-				result.NtOpenFile = *sym;
-			else
-				return sym.error();
-			if (auto sym = load_sym<NtCreateFile_t>(result.ntdll, "NtCreateFile"); sym.has_value()) [[likely]]
-				result.NtCreateFile = *sym;
+			if (auto sym = load_sym<NtQueryDirectoryFile_t>(result.ntdll, "NtQueryDirectoryFile"); sym.has_value()) [[likely]]
+				result.NtQueryDirectoryFile = *sym;
 			else
 				return sym.error();
 
@@ -83,10 +87,6 @@ namespace rod::_win32
 
 			if (auto sym = load_sym<NtSetInformationFile_t>(result.ntdll, "NtSetInformationFile"); sym.has_value()) [[likely]]
 				result.NtSetInformationFile = *sym;
-			else
-				return sym.error();
-			if (auto sym = load_sym<NtQueryDirectoryFile_t>(result.ntdll, "NtQueryDirectoryFile"); sym.has_value()) [[likely]]
-				result.NtQueryDirectoryFile = *sym;
 			else
 				return sym.error();
 			if (auto sym = load_sym<NtQueryInformationFile_t>(result.ntdll, "NtQueryInformationFile"); sym.has_value()) [[likely]]

@@ -132,7 +132,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         # Filesystem base
         rod/detail/path_base.hpp
         rod/detail/path_view.hpp
-        rod/detail/path_algo.hpp
+        rod/detail/path_util.hpp
         rod/detail/path_handle.hpp
         rod/detail/path_discovery.hpp
         rod/detail/directory_handle.hpp

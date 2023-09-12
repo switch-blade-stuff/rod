@@ -3,7 +3,6 @@
  */
 
 #include "directory_handle.hpp"
-#include "handle_stat.hpp"
 
 namespace rod::_directory
 {

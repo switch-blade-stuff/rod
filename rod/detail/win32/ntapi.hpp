@@ -201,6 +201,8 @@ namespace rod::_win32
 		io_status_block status;
 	};
 
+	using io_apc_routine = void (ROD_NTAPI *)(_In_ ULONG_PTR apc_ctx, _In_ io_status_block *iosb, _In_ ULONG);
+
 	struct object_attributes
 	{
 		ULONG length;
@@ -210,13 +212,6 @@ namespace rod::_win32
 		void *security_desc;
 		void *security_qos;
 	};
-
-	using io_apc_routine = void (ROD_NTAPI *)(_In_ ULONG_PTR apc_ctx, _In_ io_status_block *iosb, _In_ ULONG);
-
-	using NtReadFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff,
-	                                            _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
-	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff,
-	                                             _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
 
 	using NtOpenFile_t = ntstatus (ROD_NTAPI *)(_Out_ void **file, _In_ ULONG access, _In_ const object_attributes *obj, _Out_ io_status_block *iosb, _In_ ULONG share, _In_ ULONG opts);
 	using NtCreateFile_t = ntstatus (ROD_NTAPI *)(_Out_ void **file, _In_ ULONG access, _In_ const object_attributes *obj, _Out_ io_status_block *iosb, _In_opt_ const LARGE_INTEGER *size,
@@ -328,6 +323,13 @@ namespace rod::_win32
 		FileFsMetadataSizeInformation,
 		FileFsFullSizeInformationEx,
 	};
+
+	using NtReadFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff,
+	                                            _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
+	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff,
+	                                             _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
+	using NtQueryDirectoryFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *event, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb,
+												 _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ bool single, _In_opt_ unicode_string *name, _In_ bool restart);
 
 	struct reparse_data_buffer
 	{
@@ -543,7 +545,6 @@ namespace rod::_win32
 	using NtQueryInformationByName_t = ntstatus (ROD_NTAPI *)(_In_ const object_attributes *obj, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 
 	using NtSetInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _In_ void *info, _In_ ULONG len, _In_ file_info_type type);
-	using NtQueryDirectoryFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *event, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ BOOLEAN single, _In_opt_ unicode_string *name, _In_ BOOLEAN restart);
 	using NtQueryInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 	using NtQueryVolumeInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ fs_info_type type);
 
@@ -664,17 +665,17 @@ namespace rod::_win32
 		RtlNtPathNameToDosPathName_t RtlNtPathNameToDosPathName;
 		RtlDosPathNameToNtPathName_U_t RtlDosPathNameToNtPathName_U;
 
-		NtReadFile_t NtReadFile;
-		NtWriteFile_t NtWriteFile;
-
 		NtOpenFile_t NtOpenFile;
 		NtCreateFile_t NtCreateFile;
+
+		NtReadFile_t NtReadFile;
+		NtWriteFile_t NtWriteFile;
+		NtQueryDirectoryFile_t NtQueryDirectoryFile;
 
 		NtQueryAttributesFile_t NtQueryAttributesFile;
 		NtQueryInformationByName_t NtQueryInformationByName;
 
 		NtSetInformationFile_t NtSetInformationFile;
-		NtQueryDirectoryFile_t NtQueryDirectoryFile;
 		NtQueryInformationFile_t NtQueryInformationFile;
 		NtQueryVolumeInformationFile_t NtQueryVolumeInformationFile;
 

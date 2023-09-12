@@ -2,11 +2,18 @@
  * Created by switch_blade on 2023-08-29.
  */
 
-#include "handle_stat.hpp"
+#include "../handle_stat.hpp"
+#include "path_discovery.hpp"
 
 namespace rod::_handle
 {
 	using namespace _win32;
+
+	constexpr auto basic_info_mask = stat::query::type | stat::query::atime | stat::query::mtime | stat::query::ctime | stat::query::btime | stat::query::is_sparse | stat::query::is_compressed | stat::query::is_reparse_point;
+	constexpr auto standard_info_mask = stat::query::size | stat::query::alloc | stat::query::blocks | stat::query::nlink;
+	constexpr auto internal_info_mask = stat::query::ino;
+
+	constexpr std::size_t buff_size = 32768;
 
 	inline static auto query_file_type(const ntapi &ntapi, void *hnd, ULONG file_attr, ULONG reparse_tag) noexcept -> result<file_type>
 	{

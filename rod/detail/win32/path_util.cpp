@@ -2,7 +2,7 @@
  * Created by switch_blade on 2023-08-31.
  */
 
-#include "../path_algo.hpp"
+#include "../path_util.hpp"
 #include "ntapi.hpp"
 
 namespace rod
@@ -265,7 +265,7 @@ namespace rod
 		}
 	}
 
-	result<bool> remove(const path_handle &base, path_view path, const file_timeout &to) noexcept
+	result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();

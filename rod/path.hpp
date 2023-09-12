@@ -6,7 +6,9 @@
 
 #include "detail/path_base.hpp"
 #include "detail/path_view.hpp"
-#include "detail/path_algo.hpp"
 
 #include "detail/path_handle.hpp"
+#include "detail/directory_handle.hpp"
+
 #include "detail/path_discovery.hpp"
+#include "detail/path_util.hpp"
