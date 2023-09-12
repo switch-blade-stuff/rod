@@ -114,6 +114,8 @@ namespace rod
 
 				constexpr native_handle_type(value_type value) : value(value) {}
 				constexpr native_handle_type(value_type value, std::uint32_t flags) : value(value), flags(flags) {}
+				template<typename T> requires std::is_enum_v<T> && std::convertible_to<std::underlying_type_t<T>, std::uint32_t>
+				constexpr native_handle_type(value_type value, T flags) : value(value), flags(std::uint32_t(flags)) {}
 
 				[[nodiscard]] constexpr operator value_type &() & noexcept { return value; }
 				[[nodiscard]] constexpr operator value_type &&() && noexcept { return std::move(value); }

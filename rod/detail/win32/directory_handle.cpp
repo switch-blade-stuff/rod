@@ -10,6 +10,7 @@ namespace rod::_directory
 	using namespace _win32;
 
 	inline constexpr auto stats_mask = stat::query::ino | stat::query::type | stat::query::atime | stat::query::mtime | stat::query::ctime | stat::query::btime | stat::query::size | stat::query::alloc | stat::query::is_sparse | stat::query::is_compressed | stat::query::is_reparse_point;
+	inline constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 	inline constexpr std::size_t buff_size = 65536;
 
 	result<directory_handle> directory_handle::reopen(const path_handle &other, file_flags flags) noexcept
@@ -39,8 +40,6 @@ namespace rod::_directory
 	}
 	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
-		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-
 		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files))) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (mode == open_mode::truncate || mode == open_mode::supersede) [[unlikely]]
