@@ -84,6 +84,20 @@ namespace rod
 	template<typename Hnd, typename Op>
 	using io_result_t = typename io_result<Hnd, Op>::type;
 
+	/** Type trait used to obtain the value type of the IO result of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_value { using type = typename io_result_t<Hnd, Op>::value_type; };
+	/** Alias for `typename io_value&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_value_t = typename io_value<Hnd, Op>::type;
+
+	/** Type trait used to obtain the error type of the IO result of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_error { using type = typename io_result_t<Hnd, Op>::error_type; };
+	/** Alias for `typename io_value&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_error_t = typename io_error<Hnd, Op>::type;
+
 	namespace _io_operation
 	{
 		template<typename T, typename Hnd>
@@ -193,7 +207,7 @@ namespace rod
 	 * @overload Preforms a sparse input operation using an IO request.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param req Value of type `io_request_t&lt;decltype(hnd), read_some_at_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Value of type `io_result_t&lt;decltype(hnd), read_some_at_t&gt;` indicating either a success or a status code on failure.
 	 * @note It is recommended to use the value of the result, as it may own internal buffers or contain important information about the operation.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
@@ -203,7 +217,7 @@ namespace rod
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param dst Sized range of `io_buffer_t&lt;decltype(hnd), read_some_at_t&gt;` containing requested IO buffers.
 	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support buffer range IO operations.
@@ -212,7 +226,7 @@ namespace rod
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param dst Requested IO buffer of type `io_buffer_t&lt;decltype(hnd), read_some_at_t&gt;`.
 	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
@@ -233,7 +247,7 @@ namespace rod
 	 * @overload Preforms an input operation using an IO request.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param req Value of type `io_request_t&lt;decltype(hnd), read_some_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Value of type `io_result_t&lt;decltype(hnd), read_some_t&gt;` indicating either a success or a status code on failure.
 	 * @note It is recommended to use the value of the result, as it may own internal buffers or contain important information about the operation.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
@@ -242,7 +256,7 @@ namespace rod
 	 * @overload Preforms a stream input operation using a range of IO buffers.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param dst Sized range of `io_buffer_t&lt;decltype(hnd), read_some_t&gt;` containing requested IO buffers.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support buffer range IO operations.
@@ -250,7 +264,7 @@ namespace rod
 	 * @overload Preforms a stream input operation using a single IO buffer.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param dst Requested IO buffer of type `io_buffer_t&lt;decltype(hnd), read_some_t&gt;`.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
@@ -265,6 +279,11 @@ namespace rod
 	using read_some_request_t = io_request_t<Hnd, read_some_t>;
 	template<typename Hnd>
 	using read_some_result_t = io_result_t<Hnd, read_some_t>;
+
+	template<typename Hnd>
+	using read_some_value_t = io_value_t<Hnd, read_some_t>;
+	template<typename Hnd>
+	using read_some_error_t = io_error_t<Hnd, read_some_t>;
 
 	/** Concept used to define an IO handle that supports synchronous sparse input. */
 	template<typename Hnd>
@@ -287,7 +306,7 @@ namespace rod
 	 * @overload Preforms a sparse output operation using an IO request.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param req Value of type `io_request_t&lt;decltype(hnd), write_some_at_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Value of type `io_result_t&lt;decltype(hnd), write_some_at_t&gt;` indicating either a success or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note See definition of the individual handle type for further information about it's IO request and result types.
@@ -296,7 +315,7 @@ namespace rod
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Sized range of `io_buffer_t&lt;decltype(hnd), write_some_at_t&gt;` containing requested IO buffers.
 	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support buffer range IO operations.
@@ -305,7 +324,7 @@ namespace rod
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Requested IO buffer of type `io_buffer_t&lt;decltype(hnd), write_some_at_t&gt;`.
 	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
@@ -315,7 +334,7 @@ namespace rod
 	 * @overload Preforms a stream output operation using an IO request.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Value of type `io_request_t&lt;decltype(hnd), write_some_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Value of type `io_result_t&lt;decltype(hnd), write_some_t&gt;` indicating either a success or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note See definition of the individual handle type for further information about it's IO request and result types.
@@ -323,7 +342,7 @@ namespace rod
 	 * @overload Preforms a stream output operation using a range of IO buffers.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Sized range of `io_buffer_t&lt;decltype(hnd), write_some_t&gt;` containing requested IO buffers.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support buffer range IO operations.
@@ -331,7 +350,7 @@ namespace rod
 	 * @overload Preforms a stream output operation using a single IO buffer.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Requested IO buffer of type `io_buffer_t&lt;decltype(hnd), write_some_t&gt;`.
-	 * @param to Optional value of type `io_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
 	 * @note Not all handle types support single-buffer IO operations. */
@@ -356,6 +375,11 @@ namespace rod
 	using write_some_request_t = io_request_t<Hnd, write_some_t>;
 	template<typename Hnd>
 	using write_some_result_t = io_result_t<Hnd, write_some_t>;
+
+	template<typename Hnd>
+	using write_some_value_t = io_value_t<Hnd, read_some_t>;
+	template<typename Hnd>
+	using write_some_error_t = io_error_t<Hnd, read_some_t>;
 
 	/** Concept used to define an IO handle that supports synchronous sparse output. */
 	template<typename Hnd>

@@ -210,12 +210,12 @@ namespace rod
 		/** Initializes a list with \a n elements copy-constructed from \a val using allocator \a alloc. */
 		constexpr array_list(size_type n, const_reference val, const allocator_type &alloc) : allocator_base(alloc) { resize(n, val); }
 
-		/** Initializes a list with elements in range [\a first, \a last). */
+		/** Initializes a list with elements in range [\a begin, \a end). */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
-		constexpr array_list(I first, S last) requires std::constructible_from<value_type, std::iter_value_t<T>> { insert(first, last); }
-		/** Initializes a list with elements in range [\a first, \a last) using allocator \a alloc. */
+		constexpr array_list(I begin, S end) requires std::constructible_from<value_type, std::iter_value_t<T>> { insert(begin, end); }
+		/** Initializes a list with elements in range [\a begin, \a end) using allocator \a alloc. */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
-		constexpr array_list(I first, S last, const allocator_type &alloc) requires std::constructible_from<value_type, std::iter_value_t<T>> : allocator_base(alloc) { insert(first, last); }
+		constexpr array_list(I begin, S end, const allocator_type &alloc) requires std::constructible_from<value_type, std::iter_value_t<T>> : allocator_base(alloc) { insert(begin, end); }
 
 		/** Initializes a list with elements from initializer list \a il. */
 		template<typename U = T>
@@ -285,28 +285,28 @@ namespace rod
 			while (size() > n)
 				pop_back();
 		}
-		/** Replaces contents of the list with elements in range [\a first, \a last). */
+		/** Replaces contents of the list with elements in range [\a begin, \a end). */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
-		constexpr void assign(I first, S last) requires std::assignable_from<value_type, std::iter_value_t<T>> || std::constructible_from<value_type, std::iter_value_t<T>>
+		constexpr void assign(I begin, S end) requires std::assignable_from<value_type, std::iter_value_t<T>> || std::constructible_from<value_type, std::iter_value_t<T>>
 		{
-			auto dst = begin();
-			for (; dst != end() && first != last; ++dst, ++first)
+			auto dst = iterator(_header.next());
+			for (; dst != iterator(&_header) && begin != end; ++dst, ++begin)
 			{
-				if constexpr (std::is_assignable_v<value_type, decltype(*first)>)
-					*dst = *first;
+				if constexpr (std::is_assignable_v<value_type, decltype(*begin)>)
+					*dst = *begin;
 				else
 				{
 					std::destroy_at(std::to_address(dst));
-					std::construct_at(std::to_address(dst), *first);
+					std::construct_at(std::to_address(dst), *begin);
 				}
 			}
 
 			if constexpr (std::random_access_iterator<I>)				
-				reserve(static_cast<size_type>(last - first));
+				reserve(static_cast<size_type>(end - begin));
 
-			for (; first != last; ++first)
-				emplace_back(*first);
-			for (; dst != end();)
+			for (; begin != end; ++begin)
+				emplace_back(*begin);
+			for (; dst != iterator(&_header);)
 				dst = erase(dst);
 		}
 		/** Replaces contents of the list with elements from initializer list \a il. */
@@ -455,19 +455,19 @@ namespace rod
 		 * @return Iterator to the inserted element. */
 		iterator insert(const_iterator pos, value_type &&val) { return emplace(pos, std::forward<value_type>(val)); }
 
-		/** Inserts elements in range [\a first, \a last) at the specified position within the list.
+		/** Inserts elements in range [\a begin, \a end) at the specified position within the list.
 		 * @param pos Position within the list at which to insert the elements.
 		 * @param first Iterator to the first element to be inserted.
 		 * @param last Sentinel for the \a first iterator.
 		 * @return Iterator to the first inserted element. */
 		template<std::forward_iterator I, std::sentinel_for<I> S>
-		iterator insert(const_iterator pos, I first, S last) requires std::constructible_from<value_type, std::iter_value_t<T>>
+		iterator insert(const_iterator pos, I begin, S end) requires std::constructible_from<value_type, std::iter_value_t<T>>
 		{
 			if constexpr (std::random_access_iterator<I>)
-				reserve(static_cast<size_type>(last - first));
+				reserve(static_cast<size_type>(begin - end));
 
-			for (; first != last; ++first, ++pos)
-				pos = insert(pos, *first);
+			for (; begin != end; ++begin, ++pos)
+				pos = insert(pos, *end);
 			return pos;
 		}
 		/** Inserts elements from initializer list \a il at the specified position within the list.
@@ -509,15 +509,15 @@ namespace rod
 		 * @param pos Position within the list at which to erase the element.
 		 * @return Iterator to the element after the erased one, or `end()`. */
 		iterator erase(const_iterator pos) noexcept(std::is_nothrow_destructible_v<value_type>) { return destroy_at(const_cast<node_pointer>(pos._node)); }
-		/** Erases all elements in range [\a first, \a last).
+		/** Erases all elements in range [\a begin, \a end).
 		 * @param first Iterator to the first element to be erased.
 		 * @param last Iterator one past the last element to be erased.
 		 * @return Iterator to the element after the erased range, or `end()`. */
-		iterator erase(const_iterator first, const_iterator last) noexcept(std::is_nothrow_destructible_v<value_type>)
+		iterator erase(const_iterator begin, const_iterator end) noexcept(std::is_nothrow_destructible_v<value_type>)
 		{
-			auto next = end();
-			for (; first != last; first = next)
-				next = erase(first);
+			auto next = const_iterator(&_header);
+			for (; begin != end; begin = next)
+				next = erase(begin);
 			return next;
 		}
 

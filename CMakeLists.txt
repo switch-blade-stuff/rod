@@ -62,6 +62,9 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/config.hpp
 
         # Utilities
+        rod/detail/atomic_queue.hpp
+        rod/detail/basic_queue.hpp
+        rod/detail/byte_buffer.hpp
         rod/detail/shared_ref.hpp
         rod/detail/file_clock.hpp
         rod/detail/timeout.hpp
@@ -73,13 +76,11 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/hash.hpp
         rod/tag.hpp
 
-        # Scheduling algorithms & utilities
+        # Scheduling algorithms
         rod/detail/receiver_adaptor.hpp
         rod/detail/ensure_started.hpp
         rod/detail/start_detached.hpp
         rod/detail/priority_queue.hpp
-        rod/detail/atomic_queue.hpp
-        rod/detail/basic_queue.hpp
         rod/detail/async_base.hpp
         rod/detail/sync_wait.hpp
         rod/detail/execute.hpp

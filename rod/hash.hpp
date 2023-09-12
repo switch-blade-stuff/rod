@@ -176,30 +176,30 @@ namespace rod
 	/** Combines two hash values. */
 	[[nodiscard]] constexpr std::size_t hash_combine(std::size_t a, std::size_t b) noexcept { return a = b + 0x9e3779b9 + (a << 6) + (a >> 2); }
 
-	/** Hashes a range of elements defined by [\a first, \a last) starting at seed \a seed using hash function \a h. */
+	/** Hashes a range of elements defined by [\a begin, \a end) starting at seed \a seed using hash function \a h. */
 	template<std::forward_iterator I, std::sentinel_for<I> S, typename H> requires std::invocable<H, std::iter_reference_t<I>> && std::convertible_to<std::invoke_result_t<H, std::iter_reference_t<I>>, std::size_t>
-	[[nodiscard]] constexpr std::size_t hash_range(I first, S last, std::size_t seed, H &&h) noexcept(std::is_nothrow_invocable_v<H, std::iter_reference_t<I>>)
+	[[nodiscard]] constexpr std::size_t hash_range(I begin, S end, std::size_t seed, H &&h) noexcept(std::is_nothrow_invocable_v<H, std::iter_reference_t<I>>)
 	{
 		std::size_t result = seed;
-		std::for_each(first, last, [&](auto &v)
+		std::for_each(begin, end, [&](auto &v)
 		{
 			const auto hash = std::invoke(h, v);
 			result = hash_combine(result, hash);
 		});
 		return result;
 	}
-	/** Hashes a range of elements defined by [\a first, \a last) starting at seed \a seed using `std::hash`. */
+	/** Hashes a range of elements defined by [\a begin, \a end) starting at seed \a seed using `std::hash`. */
 	template<std::forward_iterator I, std::sentinel_for<I> S>
-	[[nodiscard]] constexpr std::size_t hash_range(I first, S last, std::size_t seed) noexcept(std::is_nothrow_invocable_v<std::hash<std::iter_value_t<I>>, std::iter_reference_t<I>>)
+	[[nodiscard]] constexpr std::size_t hash_range(I begin, S end, std::size_t seed) noexcept(std::is_nothrow_invocable_v<std::hash<std::iter_value_t<I>>, std::iter_reference_t<I>>)
 	{
-		return hash_range(first, last, seed, std::hash<std::iter_value_t<I>>{});
+		return hash_range(begin, end, seed, std::hash<std::iter_value_t<I>>{});
 	}
 
-	/** Hashes a range of elements defined by [\a first, \a last) using hash builder \a b. */
+	/** Hashes a range of elements defined by [\a begin, \a end) using hash builder \a b. */
 	template<std::forward_iterator I, std::sentinel_for<I> S, hash_builder_for<std::iter_value_t<I>> B>
-	[[nodiscard]] constexpr std::size_t hash_range(I first, S last, B &&b) noexcept(noexcept(b.write(*first)) && noexcept(b.finish()))
+	[[nodiscard]] constexpr std::size_t hash_range(I begin, S end, B &&b) noexcept(noexcept(b.write(*first)) && noexcept(b.finish()))
 	{
-		std::for_each(first, last, [&](auto &v) { b.write(v); });
+		std::for_each(begin, end, [&](auto &v) { b.write(v); });
 		return static_cast<std::size_t>(b.finish());
 	}
 }
