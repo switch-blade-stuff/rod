@@ -10,7 +10,6 @@ namespace rod::_directory
 	using namespace _win32;
 
 	inline constexpr auto stats_mask = stat::query::ino | stat::query::type | stat::query::atime | stat::query::mtime | stat::query::ctime | stat::query::btime | stat::query::size | stat::query::alloc | stat::query::is_sparse | stat::query::is_compressed | stat::query::is_reparse_point;
-	inline constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 	inline constexpr std::size_t buff_size = 65536;
 
 	result<directory_handle> directory_handle::reopen(const path_handle &other, file_flags flags) noexcept
@@ -19,7 +18,7 @@ namespace rod::_directory
 		if (flags == file_flags(other.native_handle().flags))
 		{
 			if (auto hnd = clone(other); hnd.has_value()) [[likely]]
-				return from_path_handle(std::move(*hnd), flags);
+				return directory_handle(std::move(*hnd), flags);
 			else
 				return hnd.error();
 		}
@@ -34,12 +33,14 @@ namespace rod::_directory
 
 		auto hnd = ntapi->reopen_file(other.native_handle(), &iosb, access, share, opts);
 		if (hnd.has_value()) [[likely]]
-			return directory_handle(native_handle_type(*hnd, std::uint32_t(flags)));
+			return directory_handle(*hnd, flags);
 		else
 			return hnd.error();
 	}
 	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
+		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+
 		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files))) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (mode == open_mode::truncate || mode == open_mode::supersede) [[unlikely]]
@@ -78,13 +79,17 @@ namespace rod::_directory
 			auto case_info = file_case_sensitive_information{.flags = 1/*FILE_CS_FLAG_CASE_SENSITIVE_DIR*/};
 			ntapi->set_file_info(*hnd, &iosb, &case_info, FileCaseSensitiveInformation);
 		}
-		return directory_handle(native_handle_type(*hnd, std::uint32_t(flags)));
+		return directory_handle(*hnd, flags);
 	}
 
 	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to.absolute();
-		if (auto hnd = reopen_as_deletable(*this, abs_timeout); hnd.has_value()) [[likely]]
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
 			return _win32::do_link(hnd->native_handle(), base, path, replace, abs_timeout);
 		else
 			return hnd.error();
@@ -92,7 +97,11 @@ namespace rod::_directory
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to.absolute();
-		if (auto hnd = reopen_as_deletable(*this, abs_timeout); hnd.has_value()) [[likely]]
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
 			return _win32::do_relink(hnd->native_handle(), base, path, replace, abs_timeout);
 		else
 			return hnd.error();
@@ -100,49 +109,14 @@ namespace rod::_directory
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to.absolute();
-		if (auto hnd = reopen_as_deletable(*this, abs_timeout); hnd.has_value()) [[likely]]
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
 			return _win32::do_unlink(hnd->native_handle(), abs_timeout, flags());
 		else
 			return hnd.error();
-	}
-
-	template<typename F>
-	[[nodiscard]] static inline result<bool> query_directory(const ntapi &ntapi, void *hnd, std::span<std::byte> buff, unicode_string *filter, bool reset, const file_timeout &to, F &&f) noexcept
-	{
-		auto iosb = io_status_block();
-		auto status = ntapi.NtQueryDirectoryFile(hnd, nullptr, nullptr, 0, &iosb, buff.data(), buff.size(), FileIdFullDirectoryInformation, false, filter, reset);
-		if (status == STATUS_PENDING)
-			status = ntapi.wait_io(hnd, &iosb, to);
-		if (is_status_failure(status))
-			return {in_place_error, status_error_code(status)};
-
-		bool eof = false;
-		for (auto pos = buff.data(); !eof;)
-		{
-			auto full_info = reinterpret_cast<const file_id_full_dir_information *>(pos);
-			eof = (full_info->next_off == 0);
-			pos += full_info->next_off;
-
-			/* Skip directory wildcards. */
-			if (full_info->name_len >= 1 && full_info->name[0] == '.' && (full_info->name_len == 1 || (full_info->name_len == 2 && full_info->name[1] == '.')))
-				continue;
-
-			auto st = stat(nullptr);
-			st.ino = full_info->file_id;
-			st.type = attr_to_type(full_info->attributes, full_info->reparse_tag);
-			st.atime = filetime_to_tp(full_info->atime);
-			st.mtime = filetime_to_tp(full_info->mtime);
-			st.ctime = filetime_to_tp(full_info->ctime);
-			st.btime = filetime_to_tp(full_info->btime);
-			st.size = full_info->eof;
-			st.alloc = full_info->alloc_size;
-			st.is_sparse = full_info->attributes & FILE_ATTRIBUTE_SPARSE_FILE;
-			st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
-			st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
-
-			eof = f(*full_info, st);
-		}
-		return eof;
 	}
 
 	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
@@ -173,21 +147,21 @@ namespace rod::_directory
 		while (result_size < req.buffs.size() && !eof)
 		{
 			auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
-			eof = query_directory(*ntapi, native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto &info, auto &st)
+			eof = query_directory(*ntapi, native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
 			{
 				auto &entry = req.buffs[result_size++];
-				if (entry._buff.size() >= info.name_len)
+				if (entry._buff.size() >= sv.size())
 				{
 					/* Try to terminate path for efficiency. */
-					if ((entry._is_terminated = entry._buff.size() > info.name_len))
+					if ((entry._is_terminated = entry._buff.size() > sv.size()))
 						entry._buff[entry._buff.size()] = '\0';
 
-					std::memcpy(entry._buff.data(), info.name, info.name_len * sizeof(wchar_t));
-					entry._buff = entry._buff.subspan(0, info.name_len);
+					std::memcpy(entry._buff.data(), sv.data(), sv.size() * sizeof(wchar_t));
+					entry._buff = entry._buff.subspan(0, sv.size());
 				}
 				else
 				{
-					auto old_size = buffer_size, new_size = buffer_size + info.name_len + 1;
+					auto old_size = buffer_size, new_size = buffer_size + sv.size() + 1;
 					auto old_buff = result_buff, new_buff = result_buff;
 
 					if (new_size > old_size)
@@ -201,9 +175,9 @@ namespace rod::_directory
 					}
 
 					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
-					std::memcpy(result_buff + old_size, info.name, info.name_len * sizeof(wchar_t));
+					std::memcpy(result_buff + old_size, sv.data(), sv.size() * sizeof(wchar_t));
 					auto off = reinterpret_cast<wchar_t *>(old_size);
-					auto len = ULONG(-LONG(info.name_len));
+					auto len = ULONG(-LONG(sv.size()));
 					entry._buff = std::span(off, len);
 
 					result_buff = new_buff;
@@ -239,40 +213,15 @@ namespace rod::_directory
 
 	result<directory_iterator> directory_iterator::from_handle(const path_handle &other) noexcept
 	{
-		typename basic_handle::native_handle_type result = INVALID_HANDLE_VALUE;
-		if (::DuplicateHandle(::GetCurrentProcess(), other.native_handle(), ::GetCurrentProcess(), &result.value, SYNCHRONIZE | FILE_LIST_DIRECTORY, 0, 0) != 0)
-			return directory_iterator(std::move(result));
+		if (auto hnd = directory_handle::reopen(other, file_flags::read); hnd.has_value()) [[likely]]
+			return directory_iterator(hnd->release());
 		else
-			return dos_error_code(::GetLastError());
+			return hnd.error();
 	}
 	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view path) noexcept
 	{
-		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
-		constexpr auto access = SYNCHRONIZE | FILE_LIST_DIRECTORY;
-
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
-
-		auto &[upath, rpath] = *rend;
-		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
-		if (guard.has_error()) [[unlikely]]
-			return guard.error();
-
-		auto obj_attrib = object_attributes();
-		auto iosb = io_status_block();
-
-		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
-		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = &upath;
-
-		auto hnd = ntapi->create_file(obj_attrib, &iosb, access, 0, share, file_open, opts);
-		if (hnd.has_value()) [[likely]]
-			return directory_iterator(*hnd);
+		if (auto hnd = directory_handle::open(base, path, file_flags::read); hnd.has_value()) [[likely]]
+			return directory_iterator(hnd->release());
 		else
 			return hnd.error();
 	}
@@ -292,12 +241,12 @@ namespace rod::_directory
 			return buff.error();
 
 		auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
-		auto err = query_directory(*ntapi, _dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto &info, auto &st)
+		auto err = query_directory(*ntapi, _dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st)
 		{
 			_entry._query = stats_mask;
 			_entry._st = st;
 
-			try { str.assign(info.name, info.name_len); }
+			try { str.assign(sv.data(), sv.size()); }
 			catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
 			return false;
 		});

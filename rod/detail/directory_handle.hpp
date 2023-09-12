@@ -220,14 +220,6 @@ namespace rod
 			template<typename Op>
 			using io_request = _directory::io_request<Op>;
 
-		private:
-			[[nodiscard]] static directory_handle from_path_handle(path_handle &&hnd, file_flags flags) noexcept
-			{
-				auto native = hnd.release();
-				native.flags = std::uint32_t(flags);
-				return directory_handle(native);
-			}
-
 		public:
 			/** Re-opens the directory handle references by \a other.
 			 * @note The following values of \a flags are not supported:
@@ -303,14 +295,22 @@ namespace rod
 			directory_handle &operator=(directory_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), _read_guard = false, *this); }
 
 			/** Initializes directory handle from a native handle. */
-			explicit directory_handle(native_handle_type hnd) noexcept : adp_base(hnd) {}
+			explicit directory_handle(native_handle_type hnd, file_flags flags) noexcept : adp_base(native_handle_type(hnd, std::uint32_t(flags))) {}
 			/** Initializes directory handle from a native handle and explicit device & inode IDs. */
-			explicit directory_handle(native_handle_type hnd, dev_t dev, ino_t ino) noexcept : adp_base(hnd, dev, ino) {}
+			explicit directory_handle(native_handle_type hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(native_handle_type(hnd, std::uint32_t(flags)), dev, ino) {}
+
+			/** Initializes directory handle from a path handle rvalue and file flags. */
+			explicit directory_handle(path_handle &&hnd, file_flags flags) noexcept : directory_handle(hnd.release(), flags) {}
+			/** Initializes directory handle from a path handle rvalue, file flags and explicit device & inode IDs. */
+			explicit directory_handle(path_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
 
 			/** Returns the flags of the directory handle. */
 			[[nodiscard]] file_flags flags() const noexcept { return static_cast<file_flags>(adp_base::native_handle().flags); }
 
+			[[nodiscard]] constexpr explicit operator path_handle &() & noexcept { return static_cast<path_handle &>(adp_base::base()); }
 			[[nodiscard]] constexpr operator const path_handle &() const & noexcept { return static_cast<const path_handle &>(adp_base::base()); }
+
+			[[nodiscard]] constexpr explicit operator path_handle &&() && noexcept { return static_cast<path_handle &&>(std::move(adp_base::base())); }
 			[[nodiscard]] constexpr operator const path_handle &&() const && noexcept { return static_cast<const path_handle &&>(std::move(adp_base::base())); }
 
 			constexpr void swap(directory_handle &other) noexcept { adp_base::swap(other); }
@@ -335,7 +335,7 @@ namespace rod
 			result<directory_handle> do_clone() const noexcept
 			{
 				if (auto res = clone(base()); res.has_value())
-					return from_path_handle(std::move(*res), flags());
+					return directory_handle(std::move(*res), flags());
 				else
 					return res.error();
 			}
