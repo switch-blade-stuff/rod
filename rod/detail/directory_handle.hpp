@@ -304,6 +304,11 @@ namespace rod
 			/** Initializes directory handle from a path handle rvalue, file flags and explicit device & inode IDs. */
 			explicit directory_handle(path_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
 
+			/** Initializes directory handle from a path handle rvalue and file flags. */
+			explicit directory_handle(path_handle &&hnd, file_flags flags) noexcept : directory_handle(native_handle_type(hnd.release(), flags)) {}
+			/** Initializes directory handle from a path handle rvalue, file flags and explicit device & inode IDs. */
+			explicit directory_handle(path_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(native_handle_type(hnd.release(), flags), dev, ino) {}
+
 			/** Returns the flags of the directory handle. */
 			[[nodiscard]] file_flags flags() const noexcept { return static_cast<file_flags>(adp_base::native_handle().flags); }
 
