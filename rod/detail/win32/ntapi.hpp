@@ -24,8 +24,7 @@
 
 #define ROD_NTAPI __stdcall
 
-#include "../handle_stat.hpp"
-#include "../handle_base.hpp"
+#include "../fs_handle_base.hpp"
 #include "../timeout.hpp"
 
 namespace rod::_win32
@@ -64,6 +63,9 @@ namespace rod::_win32
 	template<bool Term = true>
 	inline constexpr auto render_as_ustring(path_view_component path) noexcept -> result<std::pair<unicode_string, path_view_component::rendered_path<Term, wchar_t>>>
 	{
+		if (path.empty())
+			return {};
+
 		try
 		{
 			auto rpath = path_view_component::rendered_path<Term, wchar_t>(path);
@@ -86,6 +88,54 @@ namespace rod::_win32
 	{
 		union { FILETIME _ft; std::int64_t _tp; };
 		return (_ft = ft, file_clock::time_point(_tp));
+	}
+
+	enum disposition : ULONG
+	{
+		file_supersede = 0,
+		file_open,
+		file_create,
+		file_open_if,
+		file_overwrite,
+		file_overwrite_if,
+	};
+
+	inline static auto mode_to_disp(open_mode mode) noexcept
+	{
+		switch (mode)
+		{
+			case open_mode::always: return file_open_if;
+			case open_mode::create: return file_create;
+			case open_mode::existing: return file_open;
+			case open_mode::truncate: return file_overwrite;
+			case open_mode::supersede: return file_supersede;
+		}
+	}
+	inline static auto flags_to_opts(file_flags flags) noexcept
+	{
+		DWORD opts = 1; /*FILE_DIRECTORY_FILE*/
+		if (!bool(flags & file_flags::non_blocking))
+			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
+		return opts;
+	}
+	inline static auto flags_to_access(file_flags flags) noexcept
+	{
+		DWORD access = SYNCHRONIZE;
+		if (bool(flags & file_flags::read))
+			access |= STANDARD_RIGHTS_READ;
+		if (bool(flags & file_flags::write))
+			access |= STANDARD_RIGHTS_WRITE;
+		if (bool(flags & file_flags::attr_read))
+			access |= FILE_READ_ATTRIBUTES | FILE_READ_EA;
+		if (bool(flags & file_flags::attr_write))
+			access |= FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA;
+		if (bool(flags & file_flags::data_read))
+			access |= FILE_READ_DATA;
+		if (bool(flags & file_flags::data_write))
+			access |= FILE_WRITE_DATA;
+		if (bool(flags & file_flags::append))
+			access |= FILE_APPEND_DATA;
+		return access;
 	}
 
 	template<typename T>
@@ -159,16 +209,6 @@ namespace rod::_win32
 		ULONG attr;
 		void *security_desc;
 		void *security_qos;
-	};
-
-	enum disposition : ULONG
-	{
-		file_supersede = 0,
-		file_open,
-		file_create,
-		file_open_if,
-		file_overwrite,
-		file_overwrite_if,
 	};
 
 	using io_apc_routine = void (ROD_NTAPI *)(_In_ ULONG_PTR apc_ctx, _In_ io_status_block *iosb, _In_ ULONG);
@@ -539,6 +579,7 @@ namespace rod::_win32
 		result<heapalloc_ptr<wchar_t>> dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept;
 		result<heapalloc_ptr<wchar_t>> canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept;
 
+		result<void *> reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
 		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
 		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
 

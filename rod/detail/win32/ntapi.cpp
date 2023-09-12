@@ -292,9 +292,20 @@ namespace rod::_win32
 		return std::move(guard);
 	}
 
+	result<void *> ntapi::reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to) const noexcept
+	{
+		/* Hack to re-open a file by using root handle empty path. */
+		auto attr = object_attributes();
+		auto path = unicode_string();
+		attr.root_dir = handle;
+		attr.name = &path;
+		return open_file(attr, iosb, access, share, opts, to);
+	}
 	result<void *> ntapi::open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to) const noexcept
 	{
 		auto handle = INVALID_HANDLE_VALUE;
+		*iosb = io_status_block();
+
 		auto status = NtOpenFile(&handle, access, &obj, iosb, share, opts);
 		if (status == STATUS_PENDING) [[unlikely]]
 			 status = wait_io(handle, iosb, to);
@@ -308,6 +319,8 @@ namespace rod::_win32
 	result<void *> ntapi::create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to) const noexcept
 	{
 		auto handle = INVALID_HANDLE_VALUE;
+		*iosb = io_status_block();
+
 		auto status = NtCreateFile(&handle, access, &obj, iosb, nullptr, attr, share, disp, opts, nullptr, 0);
 		if (status == STATUS_PENDING) [[unlikely]]
 			status = wait_io(handle, iosb, to);

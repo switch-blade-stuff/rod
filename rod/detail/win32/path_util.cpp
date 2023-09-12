@@ -102,7 +102,7 @@ namespace rod
 		return dev_a == dev_b && ino_a == ino_b;
 	}
 
-	inline static result<void *> open_readable(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<void *> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto access = SYNCHRONIZE | FILE_READ_ATTRIBUTES | FILE_LIST_DIRECTORY;
@@ -120,7 +120,7 @@ namespace rod
 			hnd = ntapi.open_file(obj_attrib, iosb, DELETE | SYNCHRONIZE, share, opts, to);
 		return hnd;
 	}
-	inline static result<void *> open_deletable(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<void *> open_deletable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 0x4000 | 0x200000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REPARSE_POINT*/;
 		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES;
@@ -141,7 +141,7 @@ namespace rod
 
  	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
-		auto res = open_deletable(ntapi, iosb, base, upath, to);
+		auto res = open_deletable_dir(ntapi, iosb, base, upath, to);
 		auto hnd = basic_handle();
 
 		if (auto err = res.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
@@ -195,7 +195,7 @@ namespace rod
 	}
 	inline static result<std::size_t> do_remove_all(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
 	{
-		auto hnd = open_readable(ntapi, iosb, base, upath, to);
+		auto hnd = open_readable_dir(ntapi, iosb, base, upath, to);
 		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
 			return 0;
 		else if (err) [[unlikely]]

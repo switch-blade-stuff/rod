@@ -220,7 +220,28 @@ namespace rod
 			template<typename Op>
 			using io_request = _directory::io_request<Op>;
 
+		private:
+			[[nodiscard]] static directory_handle from_path_handle(path_handle &&hnd, file_flags flags) noexcept
+			{
+				auto native = hnd.release();
+				native.flags = std::uint32_t(flags);
+				return directory_handle(native);
+			}
+
 		public:
+			/** Re-opens the directory handle references by \a other.
+			 * @note The following values of \a flags are not supported:
+			 * <ul>
+			 * <li>`unlink_on_close`</li>
+			 * <li>`no_sparse_files`</li>
+			 * <li>`case_sensitive`</li>
+			 * </ul>
+			 *
+			 * @param other Handle to the directory to be re-opened.
+			 * @param flags Handle flags to re-open the handle with.
+			 * @return Handle to the directory or a status code on failure. */
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> reopen(const path_handle &other, file_flags flags = file_flags::read) noexcept;
+
 			/** Creates a uniquely-named directory relative to \a base.
 			 * @note The following values of \a flags are not supported:
 			 * <ul>
@@ -272,16 +293,6 @@ namespace rod
 			 * @return Handle to the directory or a status code on failure. */
 			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> open(const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing) noexcept;
 
-			/* TODO: Implement reopen */
-
-		private:
-			directory_handle(path_handle &&other, file_flags flags) noexcept : adp_base(std::forward<path_handle>(other))
-			{
-				auto hnd = adp_base::release();
-				hnd.flags = std::uint32_t(flags);
-				adp_base::release(hnd);
-			}
-
 		public:
 			directory_handle(const directory_handle &) = delete;
 			directory_handle &operator=(const directory_handle &) = delete;
@@ -296,11 +307,11 @@ namespace rod
 			/** Initializes directory handle from a native handle and explicit device & inode IDs. */
 			explicit directory_handle(native_handle_type hnd, dev_t dev, ino_t ino) noexcept : adp_base(hnd, dev, ino) {}
 
-			[[nodiscard]] constexpr operator const path_handle &() const & noexcept { return static_cast<const path_handle &>(adp_base::base()); }
-			[[nodiscard]] constexpr operator const path_handle &&() const && noexcept { return static_cast<const path_handle &&>(std::move(adp_base::base())); }
-
 			/** Returns the flags of the directory handle. */
 			[[nodiscard]] file_flags flags() const noexcept { return static_cast<file_flags>(adp_base::native_handle().flags); }
+
+			[[nodiscard]] constexpr operator const path_handle &() const & noexcept { return static_cast<const path_handle &>(adp_base::base()); }
+			[[nodiscard]] constexpr operator const path_handle &&() const && noexcept { return static_cast<const path_handle &&>(std::move(adp_base::base())); }
 
 			constexpr void swap(directory_handle &other) noexcept { adp_base::swap(other); }
 			friend constexpr void swap(directory_handle &a, directory_handle &b) noexcept { a.swap(b); }
@@ -324,7 +335,7 @@ namespace rod
 			result<directory_handle> do_clone() const noexcept
 			{
 				if (auto res = clone(base()); res.has_value())
-					return directory_handle(std::move(*res), flags());
+					return from_path_handle(std::move(*res), flags());
 				else
 					return res.error();
 			}

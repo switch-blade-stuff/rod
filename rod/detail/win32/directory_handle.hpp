@@ -21,15 +21,8 @@ namespace rod::_win32
 		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 		constexpr auto access = GENERIC_READ | SYNCHRONIZE | DELETE;
 
-		auto obj_attrib = object_attributes();
-		auto upath = unicode_string();
 		auto iosb = io_status_block();
-
-		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.root_dir = dir.native_handle();
-		obj_attrib.name = &upath;
-
-		auto hnd = ntapi->open_file(obj_attrib, &iosb, access, share, flags, to);
+		auto hnd = ntapi->reopen_file(dir.native_handle(), &iosb, access, share, flags, to);
 		if (hnd.has_value()) [[likely]]
 			return directory_handle(*hnd);
 		else
