@@ -14,6 +14,8 @@ namespace rod
 	{
 	public:
 		using value_type = std::byte;
+		using element_type = std::byte;
+
 		using pointer = value_type *;
 		using const_pointer = const value_type *;
 
@@ -32,7 +34,7 @@ namespace rod
 
 		/** Initializes a byte buffer from a contiguous range of bytes defined by [\a begin, \a end). */
 		template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::same_as<std::iter_value_t<I>, std::byte>
-		constexpr byte_buffer(I begin, I end) noexcept(noexcept(std::distance(begin, end))) : byte_buffer(std::to_address(begin), std::size_t(std::distance(begin, end))) {}
+		constexpr byte_buffer(I begin, S end) noexcept(noexcept(std::distance(begin, end))) : byte_buffer(std::to_address(begin), std::size_t(std::distance(begin, end))) {}
 		/** Initializes a byte buffer from a contiguous range of bytes. */
 		template<std::ranges::contiguous_range R> requires(!decays_to_same<R, byte_buffer> && std::same_as<std::ranges::range_value_t<R>, std::byte>)
 		constexpr byte_buffer(R &&data) noexcept(noexcept(std::ranges::data(data)) && noexcept(std::ranges::size(data))) : byte_buffer(std::ranges::data(data), std::ranges::size(data)) {}
@@ -76,7 +78,7 @@ namespace rod
 		[[nodiscard]] constexpr const_pointer data() const noexcept { return _data; }
 
 		/** Converts the byte buffer to a span of bytes. */
-		[[nodiscard]] constexpr std::span<value_type> as_span() const noexcept { return std::span(_data, _len); }
+		[[nodiscard]] constexpr std::span<element_type> as_span() const noexcept { return std::span(_data, _len); }
 
 	private:
 		pointer _data;
@@ -91,27 +93,32 @@ namespace rod
 	static_assert(std::constructible_from<byte_buffer, std::span<std::byte>>);
 	static_assert(std::constructible_from<byte_buffer, std::vector<std::byte>>);
 
-	/** Converts a contiguous range of bytes defined by [\a begin, \a end). */
-	template<std::contiguous_iterator I, std::sentinel_for<I> S>
-	[[nodiscard]] inline byte_buffer as_bytes(I begin, S end) noexcept(noexcept(std::span(begin, end))) { return std::span(begin, end).as_bytes(); }
+	/** Converts a contiguous range of bytes defined by [\a begin, \a end) to `byte_buffer`. */
+	template<std::contiguous_iterator I, std::sentinel_for<I> S> requires(!std::is_const_v<std::remove_reference_t<std::iter_reference_t<I>>>)
+	[[nodiscard]] inline byte_buffer as_bytes(I begin, S end) noexcept(noexcept(std::span(begin, end))) { return std::as_writable_bytes(std::span(begin, end)); }
 	/** Converts a contiguous range of elements to `byte_buffer`. */
-	template<std::ranges::contiguous_range R>
-	[[nodiscard]] inline byte_buffer as_bytes(R &&data) noexcept(noexcept(as_bytes(std::ranges::begin(data), std::ranges::end(data)))) { return as_bytes(std::ranges::begin(data), std::ranges::end(data)); }
+	template<std::ranges::contiguous_range R> requires(!std::is_const_v<std::remove_reference_t<std::ranges::range_reference_t<R>>>)
+	[[nodiscard]] inline byte_buffer as_bytes(R &&data) noexcept(noexcept(rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)))) { return rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)); }
 
-	static_assert(noexcept(as_bytes(std::declval<float *>(), std::declval<float *>())));
-	static_assert(noexcept(as_bytes(std::declval<std::vector<int>>())));
+	static_assert(requires (std::span<int> s) { { rod::as_bytes(s) } noexcept -> std::same_as<byte_buffer>; });
+	static_assert(requires (float *ptr) { { rod::as_bytes(ptr, ptr) } noexcept -> std::same_as<byte_buffer>; });
 
 	/** Trivial contiguous range used as input IO buffer by file and socket handles.
 	 * @note For the purposes of ABI compatibility, `const_byte_buffer` is layout-compatible with `struct iov`. */
 	class const_byte_buffer
 	{
 	public:
-		using value_type = const std::byte;
-		using pointer = value_type *;
-		using const_pointer = value_type *;
+		using value_type = std::byte;
+		using element_type = const std::byte;
 
-		using iterator = value_type *;
-		using const_iterator = value_type *;
+		using pointer = const value_type *;
+		using const_pointer = const value_type *;
+
+		using iterator = const value_type *;
+		using const_iterator = const value_type *;
+		using reverse_iterator = std::reverse_iterator<iterator>;
+		using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+
 		using reverse_iterator = std::reverse_iterator<iterator>;
 		using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
@@ -125,7 +132,7 @@ namespace rod
 
 		/** Initializes a byte buffer from a contiguous range of bytes defined by [\a begin, \a end). */
 		template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::same_as<std::iter_value_t<I>, std::byte>
-		constexpr const_byte_buffer(I begin, I end) noexcept(noexcept(std::distance(begin, end))) : const_byte_buffer(std::to_address(begin), std::size_t(std::distance(begin, end))) {}
+		constexpr const_byte_buffer(I begin, S end) noexcept(noexcept(std::distance(begin, end))) : const_byte_buffer(std::to_address(begin), std::size_t(std::distance(begin, end))) {}
 		/** Initializes a byte buffer from a contiguous range of bytes. */
 		template<std::ranges::contiguous_range R> requires(!decays_to_same<R, const_byte_buffer> && std::same_as<std::ranges::range_value_t<R>, std::byte>)
 		constexpr const_byte_buffer(R &&data) noexcept(noexcept(std::ranges::data(data)) && noexcept(std::ranges::size(data))) : const_byte_buffer(std::ranges::data(data), std::ranges::size(data)) {}
@@ -169,7 +176,7 @@ namespace rod
 		[[nodiscard]] constexpr const_pointer data() const noexcept { return _data; }
 
 		/** Converts the byte buffer to a span of bytes. */
-		[[nodiscard]] constexpr std::span<value_type> as_span() const noexcept { return std::span(_data, _len); }
+		[[nodiscard]] constexpr std::span<element_type> as_span() const noexcept { return std::span(_data, _len); }
 
 	private:
 		pointer _data;
@@ -185,15 +192,15 @@ namespace rod
 	static_assert(std::constructible_from<const_byte_buffer, std::span<std::byte>>);
 	static_assert(std::constructible_from<const_byte_buffer, std::vector<std::byte>>);
 
-	/** Converts a contiguous range of bytes defined by [\a begin, \a end). */
-	template<std::contiguous_iterator I, std::sentinel_for<I> S>
-	[[nodiscard]] inline const_byte_buffer as_const_bytes(I begin, S end) noexcept(noexcept(std::span(begin, end))) { return std::span(begin, end).as_bytes(); }
-	/** Converts a contiguous range of elements to `byte_buffer`. */
-	template<std::ranges::contiguous_range R>
-	[[nodiscard]] inline const_byte_buffer as_const_bytes(R &&data) noexcept(noexcept(as_bytes(std::ranges::begin(data), std::ranges::end(data)))) { return as_bytes(std::ranges::begin(data), std::ranges::end(data)); }
+	/** Converts a contiguous range of bytes defined by [\a begin, \a end) to `const_byte_buffer`. */
+	template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::is_const_v<std::remove_reference_t<std::iter_reference_t<I>>>
+	[[nodiscard]] inline const_byte_buffer as_bytes(I begin, S end) noexcept(noexcept(std::span(begin, end))) { return std::as_bytes(std::span(begin, end)); }
+	/** Converts a contiguous range of elements to `const_byte_buffer`. */
+	template<std::ranges::contiguous_range R> requires std::is_const_v<std::remove_reference_t<std::ranges::range_reference_t<R>>>
+	[[nodiscard]] inline const_byte_buffer as_bytes(R &&data) noexcept(noexcept(rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)))) { return rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)); }
 
-	static_assert(noexcept(as_const_bytes(std::declval<float *>(), std::declval<float *>())));
-	static_assert(noexcept(as_const_bytes(std::declval<std::vector<int>>())));
+	static_assert(requires (std::span<const int> s) { { rod::as_bytes(s) } noexcept -> std::same_as<const_byte_buffer>; });
+	static_assert(requires (const float *ptr) { { rod::as_bytes(ptr, ptr) } noexcept -> std::same_as<const_byte_buffer>; });
 }
 
 template<>
