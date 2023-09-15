@@ -42,6 +42,24 @@ namespace rod::fs
 	 * </ul> */
 	[[nodiscard]] ROD_API_PUBLIC result<path> weakly_canonical(path_view path) noexcept;
 
+	/** Returns the absolute version of \a path as if via `std::filesystem::current_path() / p`.
+	 * @return Weakly-canonical version of \a path or a status code on failure.
+	 * @errors
+	 * <ul>
+	 * <li>`std::errc::no_such_file_or_directory` if \a path does not reference a valid filesystem location.</li>
+	 * <li>`std::errc::bad_alloc` on failure to allocate path memory.</li>
+	 * <li>Errors returned by `GetFullPathNameW` on Windows.</li>
+	 * </ul> */
+	[[nodiscard]] ROD_API_PUBLIC result<path> absolute(path_view path) noexcept;
+	/* TODO: Document usage. */
+	[[nodiscard]] ROD_API_PUBLIC result<path> relative(path_view path) noexcept;
+	/* TODO: Document usage. */
+	[[nodiscard]] ROD_API_PUBLIC result<path> proximate(path_view path) noexcept;
+	/* TODO: Document usage. */
+	[[nodiscard]] ROD_API_PUBLIC result<path> relative(path_view path, path_view base) noexcept;
+	/* TODO: Document usage. */
+	[[nodiscard]] ROD_API_PUBLIC result<path> proximate(path_view path, path_view base) noexcept;
+
 	/* TODO: Implement. */
 	/** Creates all directories specified by \a path relative to parent location \a base.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
