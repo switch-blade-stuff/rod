@@ -430,9 +430,9 @@ namespace rod
 				if (!std::is_constant_evaluated())
 				{
 					if constexpr (std::same_as<C, char>)
-						return strnlen(first, static_cast<std::size_t>(end - begin));
+						return strnlen(begin, static_cast<std::size_t>(end - begin));
 					if constexpr (std::same_as<C, wchar_t>)
-						return wcsnlen(first, static_cast<std::size_t>(end - begin));
+						return wcsnlen(begin, static_cast<std::size_t>(end - begin));
 				}
 #endif
 			return generic_strlen(begin, end);
@@ -467,12 +467,17 @@ namespace rod
 			defer_guard() = delete;
 			defer_guard(const defer_guard &) = delete;
 
-			constexpr defer_guard(defer_guard &&) noexcept(std::is_nothrow_move_constructible_v<F>) = default;
-			constexpr defer_guard &operator=(defer_guard &&) noexcept(std::is_nothrow_move_assignable_v<F>) = default;
+			constexpr defer_guard(defer_guard &&other) noexcept(std::is_nothrow_move_constructible_v<F>) : empty_base<F>(std::forward<empty_base<F>>(other)), _invoke(std::exchange(other._invoke, {})) {}
+			constexpr defer_guard &operator=(defer_guard &&other) noexcept(std::is_nothrow_move_assignable_v<F>) { return (empty_base<F>::operator=(std::forward<empty_base<F>>(other)), std::swap(_invoke, other._invoke), *this); }
 
 			template<typename F2>
-			constexpr explicit defer_guard(F2 &&func) noexcept(std::is_nothrow_constructible_v<F, F2>) : empty_base<F>(std::forward<F2>(func)) {}
-			constexpr ~defer_guard() noexcept(nothrow_callable<F> && std::is_nothrow_destructible_v<F>) { std::invoke(empty_base<F>::value()); }
+			constexpr explicit defer_guard(F2 &&func) noexcept(std::is_nothrow_constructible_v<F, F2>) : empty_base<F>(std::forward<F2>(func)), _invoke(true) {}
+			constexpr ~defer_guard() noexcept(nothrow_callable<F> && std::is_nothrow_destructible_v<F>) { if (std::exchange(_invoke, {})) std::invoke(empty_base<F>::value()); }
+
+			constexpr void release() noexcept { _invoke = false; }
+
+		private:
+			bool _invoke;
 		};
 
 		template<typename F>

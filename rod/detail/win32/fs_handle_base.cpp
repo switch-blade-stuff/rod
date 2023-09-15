@@ -14,14 +14,14 @@ namespace rod::_win32
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return rend.error();
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
+		auto &upath = rpath->first;
 		auto guard = ntapi.dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
-			return guard.error();
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		auto link_info = reinterpret_cast<file_link_information *>(buff->get());
 		auto iosb = io_status_block();
@@ -46,14 +46,14 @@ namespace rod::_win32
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
+		auto &upath = rpath->first;
 		auto guard = ntapi.dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
-			return guard.error();
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		auto rename_info = reinterpret_cast<file_rename_information *>(buff->get());
 		auto iosb = io_status_block();
@@ -87,7 +87,7 @@ namespace rod::_win32
 		else
 			return ntapi.error();
 	}
-	result<> do_unlink(void *hnd, const file_timeout &to, file_flags flags) noexcept
+	result<> do_unlink(void *hnd, file_flags flags, const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to.absolute();
 		auto iosb = io_status_block();

@@ -201,6 +201,12 @@ namespace rod
 	 * @return Vector of `discovered_path` structures describing discovered temporary directories or a status code on failure. */
 	[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode = discovery_mode::all, std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh = false) noexcept;
 
+	/** Attempts to find the specified executable or library in the current environment (such as the `PATH` environment variable).
+	 * @param filter Filter string used for path lookup.
+	 * @param dirs Directory paths to search in addition to system-defaults.
+	 * @return Path to the target file or a status code on failure. */
+	[[nodiscard]] ROD_API_PUBLIC result<path> find_system_file(path_view filter, std::span<const path_view> dirs = {}) noexcept;
+
 	result<directory_handle> directory_handle::open_temporary(path_view path, file_flags flags, open_mode mode) noexcept
 	{
 		if (!path.empty())

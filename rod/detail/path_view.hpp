@@ -963,6 +963,14 @@ namespace rod
 		path::path(path_view_like p, path::format_type fmt) : path(from_view_like(p, fmt)) {}
 		path::path(path_view_like p, const std::locale &loc, path::format_type fmt) : path(from_view_like(p, loc, fmt)) {}
 
+		path &path::operator/=(path_view_like p) { return append(p); }
+		path &path::append(path_view_like p) { return append(from_view_like(p, format())); }
+		path &path::append(path_view_like p, const std::locale &loc) { return append(from_view_like(p, loc, format())); }
+
+		path &path::operator+=(path_view_like p) { return concat(p); }
+		path &path::concat(path_view_like p) { return concat(from_view_like(p, format())); }
+		path &path::concat(path_view_like p, const std::locale &loc) { return concat(from_view_like(p, loc, format())); }
+
 		/** Preforms a component-wise lexicographical equality comparison between \a a and \a b. Equivalent to `a.compare(path(b)) == 0`. */
 		template<_path::accepted_source Src>
 		[[nodiscard]] inline constexpr bool operator==(const path &a, const Src &b) noexcept { return path_view(a).compare(b) == 0; }

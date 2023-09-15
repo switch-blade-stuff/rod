@@ -18,14 +18,14 @@ namespace rod
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
+		auto &upath = rpath->first;
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
-			return guard.error();
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		auto obj_attrib = object_attributes();
 		auto iosb = io_status_block();
@@ -37,7 +37,11 @@ namespace rod
 		auto hnd = ntapi->create_file(obj_attrib, &iosb, SYNCHRONIZE, 0, share, file_open, opts);
 		if (hnd.has_value()) [[likely]]
 			return path_handle(*hnd);
+
+		/* Map known error codes. */
+		if (auto err = hnd.error(); is_error_file_not_found(err))
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 		else
-			return hnd.error();
+			return err;
 	}
 }

@@ -104,11 +104,11 @@ namespace rod::_win32
 	{
 		switch (mode)
 		{
-			case open_mode::always: return file_open_if;
-			case open_mode::create: return file_create;
-			case open_mode::existing: return file_open;
-			case open_mode::truncate: return file_overwrite;
-			case open_mode::supersede: return file_supersede;
+		case open_mode::always: return file_open_if;
+		case open_mode::create: return file_create;
+		case open_mode::existing: return file_open;
+		case open_mode::truncate: return file_overwrite;
+		case open_mode::supersede: return file_supersede;
 		}
 	}
 	inline static auto flags_to_opts(file_flags flags) noexcept
@@ -579,6 +579,43 @@ namespace rod::_win32
 	const std::error_category &status_category() noexcept;
 	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
 	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
+
+	inline static bool is_error_file_not_found(std::error_code err) noexcept
+	{
+		static const auto cnds = std::array
+		{
+			/* DOS errors */
+			std::error_condition(ERROR_FILE_NOT_FOUND, std::system_category()),
+			std::error_condition(ERROR_PATH_NOT_FOUND, std::system_category()),
+			std::error_condition(ERROR_INVALID_NAME, std::system_category()),
+			std::error_condition(ERROR_BAD_NETPATH, std::system_category()),
+			/* POSIX errors */
+			std::make_error_condition(std::errc::no_such_file_or_directory),
+		};
+		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
+	}
+	inline static bool is_error_file_exists(std::error_code err) noexcept
+	{
+		static const auto cnds = std::array
+		{
+			/* DOS errors */
+			std::error_condition(ERROR_ALREADY_EXISTS, std::system_category()),
+			/* POSIX errors */
+			std::make_error_condition(std::errc::file_exists),
+		};
+		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
+	}
+	inline static bool is_error_not_empty(std::error_code err) noexcept
+	{
+		static const auto cnds = std::array
+		{
+			/* DOS errors */
+			std::error_condition(ERROR_NOT_EMPTY, std::system_category()),
+			/* POSIX errors */
+			std::make_error_condition(std::errc::directory_not_empty),
+		};
+		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
+	}
 
 	struct ntapi
 	{

@@ -76,9 +76,15 @@ namespace rod
 		constexpr ~basic_timeout() noexcept(std::is_nothrow_destructible_v<absolute_type> && std::is_nothrow_destructible_v<relative_type>)
 		{
 			if (_is_relative)
-				_relative.~relative_type();
+			{
+				if constexpr (!std::is_trivially_destructible_v<relative_type>)
+					_relative.~relative_type();
+			}
 			else
-				_absolute.~absolute_type();
+			{
+				if constexpr (!std::is_trivially_destructible_v<absolute_type>)
+					_absolute.~absolute_type();
+			}
 		}
 
 		/** Checks if the timeout is relative. */

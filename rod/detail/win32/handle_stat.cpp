@@ -249,14 +249,14 @@ namespace rod::_handle
 		auto iosb = io_status_block();
 		bool is_dir = false;
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
+		auto &upath = rpath->first;
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
-			return guard.error();
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
 		obj_attrib.length = sizeof(object_attributes);

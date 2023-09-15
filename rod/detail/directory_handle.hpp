@@ -221,7 +221,7 @@ namespace rod
 			using io_request = _directory::io_request<Op>;
 
 		public:
-			/** Re-opens the directory handle references by \a other.
+			/** Re-opens the directory handle referenced by \a other.
 			 * @note The following values of \a flags are not supported:
 			 * <ul>
 			 * <li>`unlink_on_close`</li>
@@ -292,12 +292,12 @@ namespace rod
 			/** Initializes a closed directory handle. */
 			directory_handle() noexcept = default;
 			directory_handle(directory_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
-			directory_handle &operator=(directory_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), _read_guard = false, *this); }
+			directory_handle &operator=(directory_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
 
 			/** Initializes directory handle from a native handle. */
-			explicit directory_handle(native_handle_type hnd, file_flags flags) noexcept : adp_base(native_handle_type(hnd, std::uint32_t(flags))) {}
+			explicit directory_handle(native_handle_type hnd, file_flags flags) noexcept : adp_base(native_handle_type(hnd, flags)) {}
 			/** Initializes directory handle from a native handle and explicit device & inode IDs. */
-			explicit directory_handle(native_handle_type hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(native_handle_type(hnd, std::uint32_t(flags)), dev, ino) {}
+			explicit directory_handle(native_handle_type hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(native_handle_type(hnd, flags), dev, ino) {}
 
 			/** Initializes directory handle from a path handle rvalue and file flags. */
 			explicit directory_handle(path_handle &&hnd, file_flags flags) noexcept : directory_handle(hnd.release(), flags) {}
@@ -305,7 +305,7 @@ namespace rod
 			explicit directory_handle(path_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
 
 			/** Returns the flags of the directory handle. */
-			[[nodiscard]] file_flags flags() const noexcept { return static_cast<file_flags>(adp_base::native_handle().flags); }
+			[[nodiscard]] file_flags flags() const noexcept { return file_flags(native_handle().flags); }
 
 			[[nodiscard]] constexpr explicit operator path_handle &() & noexcept { return static_cast<path_handle &>(adp_base::base()); }
 			[[nodiscard]] constexpr operator const path_handle &() const & noexcept { return static_cast<const path_handle &>(adp_base::base()); }
@@ -346,7 +346,7 @@ namespace rod
 
 			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const timeout_type &to) noexcept;
 
-			bool _read_guard = false;
+			bool _read_guard = {};
 		};
 
 		static_assert(std::convertible_to<const directory_handle &, const path_handle &>);

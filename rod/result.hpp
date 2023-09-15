@@ -4,9 +4,6 @@
 
 #pragma once
 
-#include <optional>
-#include <memory>
-
 #include "utility.hpp"
 
 /* FIXME:
@@ -171,7 +168,7 @@ namespace rod
 			constexpr result() noexcept(is_nothrow_default_constructible::value) requires is_default_constructible::value
 			{
 				if constexpr (!std::is_void_v<Val>)
-					std::construct_at(&_storage.value);
+					new (&_storage.value) value_type();
 				_state = is_value;
 			}
 			/** Initializes a value result using \a val. */
@@ -186,7 +183,7 @@ namespace rod
 			template<typename T = Val, typename... Args, typename = std::enable_if_t<!std::is_void_v<T>>> requires std::constructible_from<Val, Args...>
 			constexpr result(in_place_value_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<Val, Args...>)
 			{
-				std::construct_at(&_storage.value, std::forward<Args>(args)...);
+				new (&_storage.value) value_type(std::forward<Args>(args)...);
 				_state = is_value;
 			}
 			/** Direct-initializes result's value from passed initializer list and arguments.
@@ -195,7 +192,7 @@ namespace rod
 			template<typename T = Val, typename U, typename... Args, typename = std::enable_if_t<!std::is_void_v<T>>> requires std::constructible_from<Val, std::initializer_list<U>, Args...>
 			constexpr result(in_place_value_t, std::initializer_list<U> init, Args &&...args) noexcept(std::is_nothrow_constructible_v<Val, std::initializer_list<U>, Args...>)
 			{
-				std::construct_at(&_storage.value, init, std::forward<Args>(args)...);
+				new (&_storage.value) value_type(init, std::forward<Args>(args)...);
 				_state = is_value;
 			}
 
@@ -204,7 +201,7 @@ namespace rod
 			template<typename... Args> requires std::constructible_from<Err, Args...>
 			constexpr result(in_place_error_t, Args &&...args) noexcept(std::is_nothrow_constructible_v<Err, Args...>)
 			{
-				std::construct_at(&_storage.error, std::forward<Args>(args)...);
+				new (&_storage.error) error_type(std::forward<Args>(args)...);
 				_state = is_error;
 			}
 			/** Direct-initializes result's error from passed initializer list and arguments.
@@ -213,7 +210,7 @@ namespace rod
 			template<typename T, typename... Args> requires std::constructible_from<Err, std::initializer_list<T>, Args...>
 			constexpr result(in_place_error_t, std::initializer_list<T> init, Args &&...args) noexcept(std::is_nothrow_constructible_v<Err, std::initializer_list<T>, Args...>)
 			{
-				std::construct_at(&_storage.error, init, std::forward<Args>(args)...);
+				new (&_storage.error) error_type(init, std::forward<Args>(args)...);
 				_state = is_error;
 			}
 
@@ -223,10 +220,10 @@ namespace rod
 				if (has_value())
 				{
 					if constexpr (!std::is_void_v<Val>)
-						std::construct_at(&_storage.value, other._storage.value);
+						new (&_storage.value) value_type(other._storage.value);
 				}
 				else if (has_error())
-					std::construct_at(&_storage.error, other._storage.error);
+					new (&_storage.error) error_type(other._storage.error);
 				_state = other._state;
 			}
 			template<typename Val2, typename Err2, typename = std::enable_if_t<!std::same_as<result, result<Val2, Err2>>>> requires is_constructible<Val2, Err2>::value
@@ -235,10 +232,10 @@ namespace rod
 				if (has_value())
 				{
 					if constexpr (!std::is_void_v<Val>)
-						std::construct_at(&_storage.value, std::move(other._storage.value));
+						new (&_storage.value) value_type(std::move(other._storage.value));
 				}
 				else if (has_error())
-					std::construct_at(&_storage.error, std::move(other._storage.error));
+					new (&_storage.value) error_type(std::move(other._storage.error));
 				_state = other._state;
 			}
 
@@ -282,20 +279,20 @@ namespace rod
 				if (has_value())
 				{
 					if constexpr (!std::is_void_v<Val>)
-						std::construct_at(&_storage.value, other._storage.value);
+						new (&_storage.value) value_type(other._storage.value);
 				}
 				else if (has_error())
-					std::construct_at(&_storage.error, other._storage.error);
+					new (&_storage.error) error_type(other._storage.error);
 			}
 			constexpr result(result &&other) noexcept(is_nothrow_move_constructible::value) requires is_move_constructible::value : _state(other._state)
 			{
 				if (has_value())
 				{
 					if constexpr (!std::is_void_v<Val>)
-						std::construct_at(&_storage.value, std::move(other._storage.value));
+						new (&_storage.value) value_type(std::move(other._storage.value));
 				}
 				else if (has_error())
-					std::construct_at(&_storage.error, std::move(other._storage.error));
+					new (&_storage.error) error_type(std::move(other._storage.error));
 			}
 
 			constexpr result &operator=(const result &other) noexcept(is_nothrow_copy_assignable::value) requires is_copy_assignable::value
@@ -340,7 +337,7 @@ namespace rod
 			constexpr auto emplace_error(Args &&...args) noexcept(is_nothrow_destructible::value && std::is_nothrow_constructible_v<Err, Args...>) -> std::add_lvalue_reference_t<Err>
 			{
 				destroy();
-				std::construct_at(&_storage.error, std::forward<Args>(args)...);
+				new (&_storage.error) error_type(std::forward<Args>(args)...);
 				_state = is_error;
 				return _storage.error;
 			}
@@ -351,7 +348,7 @@ namespace rod
 			constexpr auto emplace_value(Args &&...args) noexcept(is_nothrow_destructible::value && std::is_nothrow_constructible_v<Val, Args...>) -> std::enable_if_t<!std::is_void_v<T>, std::add_lvalue_reference_t<T>>
 			{
 				destroy();
-				std::construct_at(&_storage.value, std::forward<Args>(args)...);
+				new (&_storage.value) value_type(std::forward<Args>(args)...);
 				_state = is_value;
 				return _storage.value;
 			}
@@ -701,7 +698,7 @@ namespace rod
 			constexpr void assign_value(Val2 &&val) noexcept(std::is_nothrow_assignable_v<Val, Val2>)
 			{
 				if (!has_value())
-					std::construct_at(&_storage.value, std::forward<Val2>(val));
+					new (&_storage.value) value_type(std::forward<Val2>(val));
 				else
 					_storage.value = std::forward<Val2>(val);
 			}
@@ -709,7 +706,7 @@ namespace rod
 			constexpr void assign_error(Err2 &&err) noexcept(std::is_nothrow_assignable_v<Err, Err2>)
 			{
 				if (!has_value())
-					std::construct_at(&_storage.error, std::forward<Err2>(err));
+					new (&_storage.error) error_type(std::forward<Err2>(err));
 				else
 					_storage.error = std::forward<Err2>(err);
 			}
@@ -718,11 +715,14 @@ namespace rod
 			{
 				if (has_value())
 				{
-					if constexpr (!std::is_void_v<Val>)
-						std::destroy_at(&_storage.value);
+					if constexpr (!std::is_void_v<Val> && !std::is_trivially_destructible_v<value_type>)
+						_storage.value.~value_type();
 				}
 				else if (has_error())
-					std::destroy_at(&_storage.error);
+				{
+					if constexpr (!std::is_trivially_destructible_v<error_type>)
+						_storage.error.~error_type();
+				}
 			}
 
 			storage_t _storage;

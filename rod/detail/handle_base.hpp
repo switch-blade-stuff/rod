@@ -72,8 +72,11 @@ namespace rod
 		struct to_native_path_t
 		{
 			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>
-			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt, dev_t dev, ino_t ino) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t> { return tag_invoke(*this, hnd, fmt, dev, ino); }
-			template<typename Hnd> requires(!tag_invocable<to_native_path_t, const Hnd &, native_path_format> && tag_invocable<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>)
+			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt, dev_t dev, ino_t ino) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>
+			{
+				return tag_invoke(*this, hnd, fmt, dev, ino);
+			}
+			template<typename Hnd> requires(tag_invocable<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t> && !tag_invocable<to_native_path_t, const Hnd &, native_path_format>)
 			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>
 			{
 				stat st;
@@ -94,6 +97,7 @@ namespace rod
 			/** Structure representing an annotated native handle. */
 			struct native_handle_type
 			{
+				using flags_type = std::uint32_t;
 #if defined(ROD_WIN32)
 				using value_type = void *;
 #elif defined(ROD_POSIX)
@@ -112,10 +116,10 @@ namespace rod
 				native_handle_type(native_handle_type &&other) noexcept { swap(other); }
 				native_handle_type &operator=(native_handle_type &&other) noexcept { return (swap(other), *this); }
 
-				constexpr native_handle_type(value_type value) : value(value) {}
-				constexpr native_handle_type(value_type value, std::uint32_t flags) : value(value), flags(flags) {}
-				template<typename T> requires std::is_enum_v<T> && std::convertible_to<std::underlying_type_t<T>, std::uint32_t>
-				constexpr native_handle_type(value_type value, T flags) : value(value), flags(std::uint32_t(flags)) {}
+				constexpr native_handle_type(value_type value) noexcept : value(value), flags() {}
+				constexpr native_handle_type(value_type value, std::uint32_t flags) noexcept : value(value), flags(flags) {}
+				template<typename T> requires std::is_enum_v<T> && std::convertible_to<std::underlying_type_t<T>, flags_type>
+				constexpr native_handle_type(value_type value, T flags) noexcept : native_handle_type(value, flags_type(flags)) {}
 
 				[[nodiscard]] constexpr operator value_type &() & noexcept { return value; }
 				[[nodiscard]] constexpr operator value_type &&() && noexcept { return std::move(value); }
@@ -135,7 +139,7 @@ namespace rod
 				[[nodiscard]] friend constexpr bool operator!=(const native_handle_type &a, const native_handle_type &b) noexcept { return a.value != b.value; }
 
 				value_type value;
-				std::uint32_t flags = 0;
+				flags_type flags;
 			};
 
 		public:
@@ -384,14 +388,21 @@ namespace rod
 
 	/** Customization point object used to close an open handle.
 	 * @param hnd Handle to close.
-	 * @return `void` result on success or a status code on failure. */
+	 * @return `void` result on success or a status code on failure.
+	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `close` on POSIX or `CloseHandle` on Windows. */
 	inline constexpr auto close = close_t{};
 	/** Customization point object used to clone a handle.
 	 * @param hnd Handle to clone.
-	 * @return Result containing the cloned handle on success or a status code on failure. */
+	 * @return Result containing the cloned handle on success or a status code on failure.
+	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `fcntl(F_DUPFD_CLOEXEC)`, `fcntl(F_DUPFD)`, `fcntl(F_GETFL)`, and `fcntl(F_SETFL)` on POSIX or `DuplicateHandle` on Windows. */
 	inline constexpr auto clone = clone_t{};
 
 	using _handle::native_path_format;
 	using _handle::to_object_path_t;
 	using _handle::to_native_path_t;
+
+	/* TODO: Document usage */
+	inline constexpr auto to_object_path = to_object_path_t{};
+	/* TODO: Document usage */
+	inline constexpr auto to_native_path = to_native_path_t{};
 }

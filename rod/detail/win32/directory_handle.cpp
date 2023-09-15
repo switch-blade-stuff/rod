@@ -48,14 +48,14 @@ namespace rod::_directory
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return rend.error();
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
+		auto &upath = rpath->first;
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
-			return guard.error();
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		auto obj_attrib = object_attributes();
 		auto access = flags_to_access(flags);
@@ -69,7 +69,15 @@ namespace rod::_directory
 
 		auto hnd = ntapi->create_file(obj_attrib, &iosb, access, 0, share, disp, opts);
 		if (hnd.has_error()) [[unlikely]]
-			return hnd.error();
+		{
+			/* Map known error codes. */
+			if (auto err = hnd.error(); is_error_file_not_found(err))
+				return std::make_error_code(std::errc::no_such_file_or_directory);
+			else if (is_error_file_exists(err) && disp == file_create)
+				return std::make_error_code(std::errc::file_exists);
+			else
+				return err;
+		}
 
 		/* Optionally set case-sensitive flag on newly created directories if requested. */
 		if (bool(flags & file_flags::case_sensitive) && mode == open_mode::create || (mode == open_mode::always && iosb.info == 2 /*FILE_CREATED*/))
@@ -112,7 +120,7 @@ namespace rod::_directory
 			return ntapi.error();
 
 		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
-			return _win32::do_unlink(hnd->native_handle(), abs_timeout, flags());
+			return _win32::do_unlink(hnd->native_handle(), flags(), abs_timeout);
 		else
 			return hnd.error();
 	}
@@ -133,14 +141,14 @@ namespace rod::_directory
 		if (buff.has_error()) [[unlikely]]
 			return buff.error();
 
-		auto rend = render_as_ustring<true>(req.filter);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
+		auto rfilter = render_as_ustring<true>(req.filter);
+		if (rfilter.has_error()) [[unlikely]]
+			return rfilter.error();
 
 		std::size_t buffer_size = req.buffs._buff_max, result_size = 0;
 		wchar_t *result_buff = req.buffs._buff.release();
 		bool reset_pos = !req.resume, eof = false;
-		auto &ufilter = rend->first;
+		auto &ufilter = rfilter->first;
 
 		while (result_size < req.buffs.size() && !eof)
 		{

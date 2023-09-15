@@ -270,24 +270,25 @@ namespace rod
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
-			return {in_place_error, ntapi.error()};
+			return ntapi.error();
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
-		auto guard = ntapi->dos_path_to_nt_path(upath, false);
-		if (auto err = guard.error_or({}); err && err.value() != ERROR_PATH_NOT_FOUND) [[unlikely]]
-			return {in_place_error, guard.error()};
-		else if (err.value() == ERROR_PATH_NOT_FOUND)
-			return false;
+		auto &upath = rpath->first;
+		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
+		if (guard.has_error())
+			return 0;
+
+		auto iosb = io_status_block();
+		auto res = do_remove(*ntapi, &iosb, base, &upath, abs_timeout);
+		if (res.has_value()) [[likely]]
+			return res;
 
 		/* Map STATUS_DIRECTORY_NOT_EMPTY to std::errc::directory_not_empty. */
-		auto iosb = io_status_block();
-		auto res =  do_remove(*ntapi, &iosb, base, &upath, abs_timeout);
-		if (auto err = res.error_or({}); err.category() == status_category() && err.value() == 0xc0000101/*STATUS_DIRECTORY_NOT_EMPTY*/)
-			return {in_place_error, std::make_error_code(std::errc::directory_not_empty)};
+		if (auto err = res.error(); is_error_not_empty(err)) [[likely]]
+			return std::make_error_code(std::errc::directory_not_empty);
 		else
 			return res;
 	}
@@ -298,21 +299,22 @@ namespace rod
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return rend.error();
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		auto &[upath, rpath] = *rend;
-		auto guard = ntapi->dos_path_to_nt_path(upath, false);
-		if (auto err = guard.error_or({}); err && err.value() != ERROR_PATH_NOT_FOUND) [[unlikely]]
-			return guard.error();
-		else if (err.value() == ERROR_PATH_NOT_FOUND)
+		auto &upath = rpath->first;
+		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
+		if (guard.has_error())
 			return 0;
 
-		/* Try to remove using `do_remove`. If returned STATUS_DIRECTORY_NOT_EMPTY, recursively iterate through the directory. */
 		auto iosb = io_status_block();
 		auto res = do_remove(*ntapi, &iosb, base, &upath, abs_timeout);
-		if (auto err = res.error_or({}); err.category() == status_category() && err.value() == 0xc0000101/*STATUS_DIRECTORY_NOT_EMPTY*/)
+		if (res.has_value()) [[likely]]
+			return res;
+
+		/* If returned STATUS_DIRECTORY_NOT_EMPTY, recursively iterate through the directory. */
+		if (auto err = res.error(); is_error_not_empty(err)) [[likely]]
 			return do_remove_all(*ntapi, &iosb, base, &upath, abs_timeout);
 		else
 			return res;

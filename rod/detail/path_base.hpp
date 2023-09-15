@@ -1059,33 +1059,40 @@ namespace rod
 			}
 
 		public:
-			/** Appends string representation of \a other to string representation of `this`. */
+			/** Concatenates string representation of \a other with string representation of `this`. */
 			path &operator+=(const path &other) { return operator+=(other._string); }
 
-			/** Appends string \a str to string representation of `this`. */
+			/** Concatenates string \a str with string representation of `this`. */
 			path &operator+=(const string_type &str) { return concat_native(str); }
-			/** Appends string \a str to string representation of `this`. */
+			/** Concatenates string \a str with string representation of `this`. */
 			path &operator+=(string_view_type str) { return concat_native(str); }
 
-			/** Appends character \a ch to string representation of `this`. */
+			/** Concatenates character \a ch with string representation of `this`. */
 			path &operator+=(value_type ch) { return concat_native(string_view_type(&ch, 1)); }
-			/** Appends C-style string \a str to string representation of `this`. */
+			/** Concatenates C-style string \a str with string representation of `this`. */
 			path &operator+=(const value_type *str) { return concat_native(string_view_type(str)); }
 
-			/** Appends character range \a src to string representation of `this`. */
+			/** Concatenates character range \a src with string representation of `this`. */
 			template<accepted_source Src>
 			path &operator+=(Src &&src) { return concat(std::forward<Src>(src)); }
-			/** Appends character range \a src to string representation of `this`. */
+			/** Concatenates character range \a src with string representation of `this`. */
 			template<accepted_source Src>
 			path &concat(Src &&src) { return concat_native(std::forward<Src>(src)); }
-			/** Appends character range \a src to string representation of `this` using locale \a loc for encoding conversion. */
+			/** Concatenates character range \a src with string representation of `this` using locale \a loc for encoding conversion. */
 			template<accepted_source Src>
 			path &concat(Src &&src, const std::locale &loc) { return concat_native(std::forward<Src>(src), loc); }
 
-			/** Appends characters in range [\a begin, \a end) to string representation of `this`. */
+			/** Concatenates a view-like component \a p with string representation of `this`. */
+			inline path &operator+=(path_view_like p);
+			/** Concatenates a view-like component \a p with string representation of `this`. */
+			inline path &concat(path_view_like p);
+			/** Concatenates a view-like component \a p with string representation of `this` using locale \a loc for encoding conversion. */
+			inline path &concat(path_view_like p, const std::locale &loc);
+
+			/** Concatenates characters in range [\a begin, \a end) with string representation of `this`. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
 			path &concat(I begin, S end) { return concat_native(std::ranges::subrange(begin, end)); }
-			/** Appends characters in range [\a begin, \a end) to string representation of `this` using locale \a loc for encoding conversion. */
+			/** Concatenates characters in range [\a begin, \a end) with string representation of `this` using locale \a loc for encoding conversion. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
 			path &concat(I begin, S end, const std::locale &loc) { return concat_native(std::ranges::subrange(begin, end), loc); }
 
@@ -1124,6 +1131,13 @@ namespace rod
 			/** Appends character range \a src to `this` using locale \a loc for encoding conversion. */
 			template<accepted_source Src>
 			path &append(Src &&src, const std::locale &loc) { return append_native(std::forward<Src>(src), loc); }
+
+			/** Appends a view-like component \a p to `this`. */
+			inline path &operator/=(path_view_like p);
+			/** Appends a view-like component \a p to `this`. */
+			inline path &append(path_view_like p);
+			/** Appends a view-like component \a p to `this` using locale \a loc for encoding conversion. */
+			inline path &append(path_view_like p, const std::locale &loc);
 
 			/** Appends characters in range [\a begin, \a end) to `this`. */
 			template<std::forward_iterator I, std::sentinel_for<I> S> requires accepted_char<std::iter_value_t<I>>
