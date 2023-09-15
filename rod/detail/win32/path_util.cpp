@@ -9,7 +9,7 @@ namespace rod::fs
 {
 	using namespace _win32;
 
-	auto current_path() noexcept -> result<path>
+	result<path> current_path() noexcept
 	{
 		try
 		{
@@ -25,7 +25,7 @@ namespace rod::fs
 		}
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
-	auto current_path(path_view path) noexcept -> result<>
+	result<void> current_path(path_view path) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -85,11 +85,15 @@ namespace rod::fs
 
 		if (auto res = get_stat(st, {}, a, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
 			return {in_place_error, res.error()};
+		else if (*res != (stat::query::dev | stat::query::ino))
+			return false;
 		dev_a = st.dev;
 		ino_a = st.ino;
 
 		if (auto res = get_stat(st, {}, b, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
 			return {in_place_error, res.error()};
+		else if (*res != (stat::query::dev | stat::query::ino))
+			return false;
 		dev_b = st.dev;
 		ino_b = st.ino;
 
@@ -247,7 +251,7 @@ namespace rod::fs
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
-	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
 		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES | FILE_LIST_DIRECTORY;
@@ -256,7 +260,7 @@ namespace rod::fs
 		auto obj_attrib = object_attributes();
 		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
 		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = upath;
+		obj_attrib.name = &upath;
 
 		/* Open the target with backup semantics (i.e. do not care if directory or file). */
 		auto hnd = ntapi.open_file(obj_attrib, iosb, access, share, opts, to);
@@ -269,7 +273,7 @@ namespace rod::fs
 		else
 			return hnd.error();
 	}
-	inline static result<directory_handle> open_deletable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<directory_handle> open_deletable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 0x4000 | 0x200000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REPARSE_POINT*/;
 		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES;
@@ -278,7 +282,7 @@ namespace rod::fs
 		auto obj_attrib = object_attributes();
 		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
 		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = upath;
+		obj_attrib.name = &upath;
 
 		/* Open the target with backup semantics (i.e. do not care if directory or file). */
 		auto hnd = ntapi.open_file(obj_attrib, iosb, access, share, opts, to);
@@ -336,7 +340,7 @@ namespace rod::fs
 		}
 		return 1;
 	}
- 	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+ 	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		auto hnd = open_deletable_dir(ntapi, iosb, base, upath, to);
 		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
@@ -346,7 +350,7 @@ namespace rod::fs
 
 		return do_remove(ntapi, iosb, *hnd, to);
 	}
-	inline static result<std::size_t> do_remove_all(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
+	inline static result<std::size_t> do_remove_all(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		auto hnd = open_readable_dir(ntapi, iosb, base, upath, to);
 		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
@@ -383,9 +387,9 @@ namespace rod::fs
 			/* Recursively call remove on the subdirectory. */
 			result<std::size_t> res;
 			if (st.type == file_type::directory)
-				res = do_remove_all(ntapi, iosb, *hnd, &uleaf, to);
+				res = do_remove_all(ntapi, iosb, *hnd, uleaf, to);
 			else
-				res = do_remove(ntapi, iosb, *hnd, &uleaf, to);
+				res = do_remove(ntapi, iosb, *hnd, uleaf, to);
 
 			if (res.has_value()) [[likely]]
 				removed += *res;
@@ -427,7 +431,7 @@ namespace rod::fs
 			return 0;
 
 		auto iosb = io_status_block();
-		auto res = do_remove(*ntapi, &iosb, base, &upath, abs_timeout);
+		auto res = do_remove(*ntapi, &iosb, base, upath, abs_timeout);
 		if (res.has_value()) [[likely]]
 			return res;
 
@@ -454,13 +458,13 @@ namespace rod::fs
 			return 0;
 
 		auto iosb = io_status_block();
-		auto res = do_remove(*ntapi, &iosb, base, &upath, abs_timeout);
+		auto res = do_remove(*ntapi, &iosb, base, upath, abs_timeout);
 		if (res.has_value()) [[likely]]
 			return res;
 
 		/* If returned STATUS_DIRECTORY_NOT_EMPTY, recursively iterate through the directory. */
 		if (auto err = res.error(); is_error_not_empty(err)) [[likely]]
-			return do_remove_all(*ntapi, &iosb, base, &upath, abs_timeout);
+			return do_remove_all(*ntapi, &iosb, base, upath, abs_timeout);
 		else
 			return res;
 	}

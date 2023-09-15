@@ -9,9 +9,9 @@
 namespace rod::fs
 {
 	/** Returns path of the current directory as if via `getcwd`. */
-	[[nodiscard]] ROD_API_PUBLIC auto current_path() noexcept -> result<path>;
+	[[nodiscard]] ROD_API_PUBLIC result<path> current_path() noexcept;
 	/** Changes path of the current directory to \a path as if via `chdir`. */
-	[[nodiscard]] ROD_API_PUBLIC auto current_path(path_view path) noexcept -> result<>;
+	[[nodiscard]] ROD_API_PUBLIC result<void> current_path(path_view path) noexcept;
 
 	/** Checks if \a path references a valid filesystem location.
 	 * @errors
