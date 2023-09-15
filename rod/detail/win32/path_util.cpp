@@ -24,7 +24,6 @@ namespace rod
 				return std::move(path);
 		}
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
 	}
 	auto current_path(path_view path) noexcept -> result<>
 	{
@@ -53,15 +52,13 @@ namespace rod
 		if (ntapi.has_error()) [[unlikely]]
 			return {in_place_error, ntapi.error()};
 
-		auto rend = render_as_ustring<true>(path);
-		if (rend.has_error()) [[unlikely]]
-			return {in_place_error, rend.error()};
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return {in_place_error, rpath.error()};
 
-		auto &[upath, rpath] = *rend;
+		auto &upath = rpath->first;
 		auto guard = ntapi->dos_path_to_nt_path(upath, false);
-		if (auto err = guard.error_or({}); err && err.value() != ERROR_PATH_NOT_FOUND) [[unlikely]]
-			return {in_place_error, guard.error()};
-		else if (err.value() == ERROR_PATH_NOT_FOUND)
+		if (guard.has_error())
 			return false;
 
 		auto basic_info = file_basic_information();
@@ -69,17 +66,14 @@ namespace rod
 		obj_attrib.length = sizeof(object_attributes);
 		obj_attrib.name = &upath;
 
-		/* If possible, try to get all requested data using `NtQueryAttributesFile` to avoid opening a handle altogether. */
+		/* Try to get file attributes to see if the file exists. */
 		if (auto status = ntapi->NtQueryAttributesFile(&obj_attrib, &basic_info); is_status_failure(status)) [[unlikely]]
 		{
 			if (status == 0xc000003a /*STATUS_OBJECT_PATH_NOT_FOUND*/)
 				return false;
 
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
-			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath)) [[unlikely]]
-				return {in_place_error, status_error_code(status)};
-			else
-				return false;
+			return ntapi->RtlIsDosDeviceName_Ustr(&upath);
 		}
 		return true;
 	}
@@ -100,6 +94,117 @@ namespace rod
 		ino_b = st.ino;
 
 		return dev_a == dev_b && ino_a == ino_b;
+	}
+
+	[[nodiscard]] result<path> absolute(path_view path) noexcept
+	{
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
+
+		auto guard = ntapi->canonize_win32_path(rpath->first, false);
+		if (guard.has_error()) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+
+		try
+		{
+			std::wstring res;
+			if (const auto n = ::GetFullPathNameW(rpath->first.buff, 0, nullptr, nullptr); !n) [[unlikely]]
+				return dos_error_code(::GetLastError());
+			else
+				res.resize(n);
+			if (!::GetFullPathNameW(rpath->first.buff, DWORD(res.size() + 1), res.data(), nullptr)) [[unlikely]]
+				return dos_error_code(::GetLastError());
+			else
+				return std::move(res);
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+	}
+
+	inline static result<path> do_canonical(const ntapi &ntapi, unicode_string &upath) noexcept
+	{
+		constexpr auto opts = 0x20 | 0x4000 | 0x200000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REPARSE_POINT*/;
+		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+		constexpr auto access = SYNCHRONIZE | FILE_READ_ATTRIBUTES;
+
+		auto guard = ntapi.dos_path_to_nt_path(upath, false);
+		if (guard.has_error()) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+
+		auto obj_attrib = object_attributes();
+		auto iosb = io_status_block();
+
+		obj_attrib.length = sizeof(object_attributes);
+		obj_attrib.name = &upath;
+
+		/* Open the target with backup semantics (i.e. do not care if directory or file). */
+		auto hnd = ntapi.open_file(obj_attrib, &iosb, access, share, opts).transform([](auto hnd) { return basic_handle(hnd); });
+		if (hnd.has_error() && is_error_file_not_found(hnd.error())) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+
+		/* Use DOS native path instead of to_object_path since to_object_path returns an NT path. */
+		return to_native_path(*hnd, native_path_format::generic);
+	}
+
+	result<path> canonical(path_view path) noexcept
+	{
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
+
+		return do_canonical(*ntapi, rpath->first);
+	}
+	result<path> weakly_canonical(path_view path) noexcept
+	{
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
+
+		auto &upath = rpath->first;
+		auto res = do_canonical(*ntapi, upath);
+		if (res.has_value() || !is_error_file_not_found(res.error()))
+			return res;
+
+		try
+		{
+			const auto norm = rod::path(path).lexically_normal();
+			const auto rel = path_view(norm).relative_path();
+			res.emplace_value(norm.root_path());
+			bool canonize = true;
+
+			/* Convert as many valid components as possible. */
+			for (auto &comp : rel)
+			{
+				res->append(comp);
+				if (canonize)
+				{
+					upath.max = (upath.size = USHORT(res->native_size() * sizeof(wchar_t))) + sizeof(wchar_t);
+					upath.buff = const_cast<wchar_t *>(res->c_str());
+					auto tmp = do_canonical(*ntapi, upath);
+
+					if (tmp.has_value()) [[likely]]
+						res = std::move(tmp);
+					else if (is_error_file_not_found(tmp.error()))
+						canonize = false;
+					else
+						return tmp;
+				}
+			}
+		}
+		catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
+		return res;
 	}
 
 	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string *upath, const file_timeout &to) noexcept
