@@ -4,7 +4,7 @@
 
 #include "directory_handle.hpp"
 
-namespace rod::_directory
+namespace rod::_dir
 {
 	using namespace _win32;
 
@@ -258,7 +258,7 @@ namespace rod::_directory
 		});
 
 		/* Reset the iterator to sentinel on EOF so that end iterator comparisons are equal. */
-		if (status == 0x80000006/*STATUS_NO_MORE_FILES*/)
+		if (status == 0x80000006 /*STATUS_NO_MORE_FILES*/)
 		{
 			_entry = directory_entry{};
 			_dir_hnd = basic_handle{};

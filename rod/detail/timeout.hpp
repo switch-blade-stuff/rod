@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "file_clock.hpp"
+#include <chrono>
+
 #include "../utility.hpp"
 
 namespace rod
@@ -122,6 +123,4 @@ namespace rod
 
 	/** Timeout type using `std::chrono::system_clock`. */
 	using system_timeout = basic_timeout<std::chrono::system_clock>;
-	/** Timeout type using `file_clock`. */
-	using file_timeout = basic_timeout<file_clock>;
 }

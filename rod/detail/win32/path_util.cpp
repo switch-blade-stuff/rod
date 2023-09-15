@@ -5,7 +5,7 @@
 #include "../path_util.hpp"
 #include "ntapi.hpp"
 
-namespace rod
+namespace rod::fs
 {
 	using namespace _win32;
 
@@ -179,7 +179,7 @@ namespace rod
 
 		try
 		{
-			const auto norm = rod::path(path).lexically_normal();
+			const auto norm = fs::path(path).lexically_normal();
 			const auto rel = path_view(norm).relative_path();
 			res.emplace_value(norm.root_path());
 			bool canonize = true;
@@ -337,7 +337,7 @@ namespace rod
 				continue; /* Should never happen. */
 
 			auto uleaf = unicode_string();
-			uleaf.size = uleaf.max = seq.front().size() * sizeof(wchar_t);
+			uleaf.size = uleaf.max = USHORT(seq.front().size() * sizeof(wchar_t));
 			uleaf.buff = seq.front().data();
 
 			/* Recursively call remove on the subdirectory. */

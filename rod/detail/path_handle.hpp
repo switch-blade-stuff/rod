@@ -17,8 +17,6 @@ namespace rod
 			friend adp_base;
 
 		public:
-			using native_handle_type = typename adp_base::native_handle_type;
-
 			/** Opens a path handle for an existing directory specified by \a path relative to parent location \a base.
 			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
@@ -35,7 +33,7 @@ namespace rod
 			path_handle &operator=(path_handle &&) noexcept = default;
 
 			/** Initializes path handle from a native handle. */
-			explicit path_handle(native_handle_type hnd) noexcept : adp_base(hnd) {}
+			explicit path_handle(typename adp_base::native_handle_type hnd) noexcept : adp_base(hnd) {}
 			/** Initializes path handle from a basic handle. */
 			explicit path_handle(basic_handle &&other) noexcept : adp_base(std::forward<basic_handle>(other)) {}
 
@@ -49,5 +47,5 @@ namespace rod
 		static_assert(handle<path_handle>);
 	}
 
-	using _path::path_handle;
+	namespace fs { using _path::path_handle; }
 }

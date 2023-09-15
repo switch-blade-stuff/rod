@@ -35,9 +35,8 @@ namespace rod::_path
 			{
 				if (++src_pos == src_last) [[unlikely]]
 					break;
-				if (const auto lh = *src_pos; lh >= 0xdc00 && lh <= 0xdfff)
-					[[likely]]
-							cp = (cp << 10) + lh + 0xfca02400;
+				if (const auto lh = *src_pos; lh >= 0xdc00 && lh <= 0xdfff) [[likely]]
+					cp = (cp << 10) + lh + 0xfca02400;
 				else
 					break;
 			}

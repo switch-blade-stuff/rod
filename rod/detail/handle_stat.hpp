@@ -4,8 +4,8 @@
 
 #pragma once
 
+#include "file_clock.hpp"
 #include "path_view.hpp"
-#include "timeout.hpp"
 #include "../tag.hpp"
 
 namespace rod
@@ -13,11 +13,8 @@ namespace rod
 	namespace _handle { class basic_handle; }
 	namespace _path { class path_handle; }
 
-	namespace _handle
+	namespace fs
 	{
-		using extent_type = std::uint64_t;
-		using size_type = std::size_t;
-
 		/** Filesystem device ID type. */
 		using dev_t = std::uint64_t;
 		/** Filesystem inode ID type. */
@@ -95,6 +92,12 @@ namespace rod
 		constexpr file_perm &operator&=(file_perm &a, file_perm b) noexcept { return a = a & b; }
 		constexpr file_perm &operator|=(file_perm &a, file_perm b) noexcept { return a = a | b; }
 		constexpr file_perm &operator^=(file_perm &a, file_perm b) noexcept { return a = a ^ b; }
+	}
+
+	namespace _handle
+	{
+		using extent_type = std::uint64_t;
+		using size_type = std::size_t;
 
 		/** Structure containing stats of a filesystem object, derived from POSIX `struct stat`. */
 		struct stat
@@ -150,11 +153,11 @@ namespace rod
 			};
 
 			/** Device ID. */
-			dev_t dev;
+			fs::dev_t dev;
 			/** Object ID. */
-			ino_t ino;
+			fs::ino_t ino;
 			/** ID of a special file (POSIX only). */
-			dev_t rdev;
+			fs::dev_t rdev;
 			/** User id of the object (POSIX only). */
 			std::int16_t uid;
 			/** Group id of the object (POSIX only). */
@@ -162,18 +165,18 @@ namespace rod
 			/** Total number of hard links. */
 			std::int16_t nlink;
 			/** Type of the object. */
-			file_type type;
+			fs::file_type type;
 			/** Permissions of the object (POSIX only). */
-			file_perm perm;
+			fs::file_perm perm;
 
 			/** Time of last access. */
-			union { typename file_clock::time_point atime; };
+			union { typename fs::file_clock::time_point atime; };
 			/** Time of last modification. */
-			union { typename file_clock::time_point mtime; };
+			union { typename fs::file_clock::time_point mtime; };
 			/** Time of last status change. */
-			union { typename file_clock::time_point ctime; };
+			union { typename fs::file_clock::time_point ctime; };
 			/** File creation (birth) time. */
-			union { typename file_clock::time_point btime; };
+			union { typename fs::file_clock::time_point btime; };
 
 			/** Size of the file in bytes. */
 			_handle::extent_type size;
@@ -211,15 +214,15 @@ namespace rod
 		constexpr stat::query &operator^=(stat::query &a, stat::query b) noexcept { return a = a ^ b; }
 
 		/* Default implementation for path types. */
-		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, path_view path, stat::query q, bool nofollow) noexcept;
-		inline static result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, const path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, base, path_view(path), q, nofollow); }
+		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept;
+		inline static result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, const fs::path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, base, fs::path_view(path), q, nofollow); }
 
 		template<typename Res>
 		concept stat_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<stat::query>, Res>;
 
 		struct get_stat_t
 		{
-			template<typename Path> requires one_of<std::decay_t<Path>, path, path_view>
+			template<typename Path> requires one_of<std::decay_t<Path>, fs::path, fs::path_view>
 			result<stat::query> operator()(stat &st, const _path::path_handle &base, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_get_stat(st, base, std::forward<Path>(path), q, nofollow); }
 			template<typename Hnd> requires tag_invocable<get_stat_t, stat &, const Hnd &, stat::query>
 			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
@@ -229,7 +232,46 @@ namespace rod
 			template<typename Hnd> requires tag_invocable<set_stat_t, const stat &, Hnd &, stat::query>
 			stat_result auto operator()(const stat &st, Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
 		};
+	}
 
+	using _handle::stat;
+	using _handle::get_stat_t;
+	using _handle::set_stat_t;
+
+	/** Customization point object used to query selected stats for the specified filesystem object.
+	 * @note Some of the queried fields may not be supported by the platform or the filesystems, which will be indicated by a cleared bit in the returned mask.
+	 *
+	 * @overload Queries stats of an object referenced by \a hnd.
+	 * @param hnd Handle to the target object.
+	 * @param q Query flags used to select requested stats.
+	 * @return Mask of the obtained stats, or a status code on failure.
+	 *
+	 * @overload Queries stats of an object referenced by path \a path relative to \a base.
+	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param q Query flags used to select requested stats.
+	 * @param nofollow If set to `true`, will not follow symlinks. `false` by default.
+	 * @return Mask of the obtained stats, or a status code on failure. */
+	inline constexpr auto get_stat = get_stat_t{};
+	/** Customization point object used to modify selected stats for the specified filesystem object.
+	 * Only the following fields can be modified:
+	 * <ul>
+	 * <li>`perm` (POSIX only)</li>
+	 * <li>`uid` (POSIX only)</li>
+	 * <li>`gid` (POSIX only)</li>
+	 * <li>`atime`</li>
+	 * <li>`mtime`</li>
+	 * <li>`btime`</li>
+	 * </ul>
+	 *
+	 * @param hnd Handle to the target object.
+	 * @param q Query flags used to select modified stats.
+	 * @return Mask of the modified stats, or a status code on failure. */
+	inline constexpr auto set_stat = set_stat_t{};
+
+	namespace _handle
+	{
+		/** Status and capability flags of a filesystem. */
 		enum class fs_flags : std::int16_t
 		{
 			all = -1,
@@ -339,7 +381,7 @@ namespace rod
 			/** Name of the mounted filesystem. */
 			std::string fs_name;
 			/** Path to the filesystem mount directory. */
-			path fs_path;
+			fs::path fs_path;
 		};
 
 		[[nodiscard]] constexpr fs_stat::query operator~(fs_stat::query h) noexcept { return fs_stat::query(~int(h)); }
@@ -360,50 +402,13 @@ namespace rod
 		};
 	}
 
-	using _handle::file_perm;
-	using _handle::file_type;
-	using _handle::dev_t;
-	using _handle::ino_t;
+	namespace fs
+	{
+		using _handle::fs_flags;
+		using _handle::fs_stat;
+		using _handle::get_fs_stat_t;
 
-	using _handle::stat;
-	using _handle::get_stat_t;
-	using _handle::set_stat_t;
-
-	/** Customization point object used to query selected stats for the specified filesystem object.
-	 * @note Some of the queried fields may not be supported by the platform or the filesystems, which will be indicated by a cleared bit in the returned mask.
-	 *
-	 * @overload Queries stats of an object referenced by \a hnd.
-	 * @param hnd Handle to the target object.
-	 * @param q Query flags used to select requested stats.
-	 * @return Mask of the obtained stats, or a status code on failure.
-	 *
-	 * @overload Queries stats of an object referenced by path \a path relative to \a base.
-	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
-	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
-	 * @param q Query flags used to select requested stats.
-	 * @param nofollow If set to `true`, will not follow symlinks. `false` by default.
-	 * @return Mask of the obtained stats, or a status code on failure. */
-	inline constexpr auto get_stat = get_stat_t{};
-	/** Customization point object used to modify selected stats for the specified filesystem object.
-	 * Only the following fields can be modified:
-	 * <ul>
-	 * <li>`perm` (POSIX only)</li>
-	 * <li>`uid` (POSIX only)</li>
-	 * <li>`gid` (POSIX only)</li>
-	 * <li>`atime`</li>
-	 * <li>`mtime`</li>
-	 * <li>`btime`</li>
-	 * </ul>
-	 *
-	 * @param hnd Handle to the target object.
-	 * @param q Query flags used to select modified stats.
-	 * @return Mask of the modified stats, or a status code on failure. */
-	inline constexpr auto set_stat = set_stat_t{};
-
-	using _handle::fs_flags;
-	using _handle::fs_stat;
-	using _handle::get_fs_stat_t;
-
-	/** TODO: Document usage. */
-	inline constexpr auto get_fs_stat = get_fs_stat_t{};
+		/** TODO: Document usage. */
+		inline constexpr auto get_fs_stat = get_fs_stat_t{};
+	}
 }

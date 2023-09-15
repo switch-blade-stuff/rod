@@ -4,11 +4,9 @@
 
 #pragma once
 
-#include <chrono>
+#include "timeout.hpp"
 
-#include "config.hpp"
-
-namespace rod
+namespace rod::fs
 {
 #ifdef ROD_WIN32
 	/** System clock used for filesystem IO operations, such as Win32 `FILETIME` or POSIX `timespec`.
@@ -84,4 +82,7 @@ namespace rod
 	 * @note `time_point` is guaranteed to be convertible to `system_clock::time_point`. */
 	using file_clock = std::chrono::system_clock;
 #endif
+
+	/** Timeout type using `file_clock`. */
+	using file_timeout = basic_timeout<fs::file_clock>;
 }

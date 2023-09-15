@@ -471,8 +471,8 @@ namespace rod
 			void complete_result(const result<std::size_t, std::error_code> &res) noexcept
 			{
 				ctx->release_io_entry(entry);
-				if (res.has_value())
-					[[likely]] set_value(std::move(_rcv), res.value());
+				if (res.has_value()) [[likely]]
+					set_value(std::move(_rcv), res.value());
 				else if (const auto err = res.error_or({}); err.value() != ECANCELED)
 					set_error(std::move(_rcv), err);
 				else

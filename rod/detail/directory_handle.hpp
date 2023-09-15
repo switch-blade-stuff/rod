@@ -6,12 +6,11 @@
 
 #include "fs_handle_base.hpp"
 #include "io_handle_base.hpp"
-#include "path_discovery.hpp"
 #include "path_handle.hpp"
 
 namespace rod
 {
-	namespace _directory
+	namespace _dir
 	{
 		class directory_entry;
 		class directory_iterator;
@@ -27,8 +26,8 @@ namespace rod
 			friend class directory_handle;
 
 		public:
-			using value_type = typename path::value_type;
-			using size_type = typename path::size_type;
+			using value_type = typename fs::path::value_type;
+			using size_type = typename fs::path::size_type;
 
 		public:
 			/** Initializes an empty directory entry buffer. */
@@ -63,9 +62,9 @@ namespace rod
 			[[nodiscard]] constexpr value_type *data() const noexcept { return _buff.data(); }
 
 			/** Returns the data of the directory entry buffer as a `path_view`. */
-			[[nodiscard]] constexpr path_view path() const noexcept { return static_cast<path_view>(*this); }
+			[[nodiscard]] constexpr fs::path_view path() const noexcept { return static_cast<fs::path_view>(*this); }
 			/** Converts directory entry buffer to a `path_view`. Equivalent to `path()`. */
-			[[nodiscard]] constexpr explicit operator path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, path_view::native_format}; }
+			[[nodiscard]] constexpr explicit operator fs::path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, fs::path_view::native_format}; }
 
 			/** Returns a pair of directory entry stats and a mask of initialized fields. */
 			[[nodiscard]] constexpr std::pair<stat, stat::query> st() const noexcept { return {_st, _query}; }
@@ -84,7 +83,7 @@ namespace rod
 
 			struct free_deleter { void operator()(auto *p) const noexcept { if (p) std::free(p); } };
 
-			using buff_type = std::unique_ptr<typename path::value_type[], free_deleter>;
+			using buff_type = std::unique_ptr<typename fs::path::value_type[], free_deleter>;
 			using data_type = std::span<io_buffer<read_some_t>>;
 
 		public:
@@ -184,7 +183,7 @@ namespace rod
 			io_buffer_sequence<read_some_t> buffs;
 			/** Directory enumeration filter passed to the native platform API.
 			 * @note If the platform does not provide directory filtering, it is preformed manually. */
-			path_view filter;
+			fs::path_view filter;
 			/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
 			bool resume = {};
 		};
@@ -193,32 +192,24 @@ namespace rod
 		 *
 		 * `directory_handle` works as an extended version of `path_handle` (and is convertible to it),
 		 * providing additional support for directory creation, enumeration, and filesystem operations. */
-		class directory_handle : public fs_handle_adaptor<directory_handle, path_handle>
+		class directory_handle : public fs::fs_handle_adaptor<directory_handle, fs::path_handle>
 		{
-			friend fs_handle_adaptor<directory_handle, path_handle>;
-			friend handle_adaptor<directory_handle, path_handle>;
+			friend fs::fs_handle_adaptor<directory_handle, fs::path_handle>;
+			friend handle_adaptor<directory_handle, fs::path_handle>;
 			friend std::lock_guard<directory_handle>;
 
-			using adp_base = fs_handle_adaptor<directory_handle, path_handle>;
+			using adp_base = fs::fs_handle_adaptor<directory_handle, fs::path_handle>;
 
 		public:
-			using native_handle_type = typename adp_base::native_handle_type;
-			/** Timeout type used for handle operations. */
-			using timeout_type = typename adp_base::timeout_type;
-			/** Integer type used for handle offsets. */
-			using extent_type = typename adp_base::extent_type;
-			/** Integer type used for handle buffers. */
-			using size_type = typename adp_base::size_type;
-
 			template<typename Op>
-			using io_buffer_sequence = _directory::io_buffer_sequence<Op>;
+			using io_buffer_sequence = _dir::io_buffer_sequence<Op>;
 			template<typename Op>
-			using io_buffer = _directory::io_buffer<Op>;
+			using io_buffer = _dir::io_buffer<Op>;
 
 			template<typename Op>
 			using io_result = result<io_buffer_sequence<Op>>;
 			template<typename Op>
-			using io_request = _directory::io_request<Op>;
+			using io_request = _dir::io_request<Op>;
 
 		public:
 			/** Re-opens the directory handle referenced by \a other.
@@ -232,7 +223,7 @@ namespace rod
 			 * @param other Handle to the directory to be re-opened.
 			 * @param flags Handle flags to re-open the handle with.
 			 * @return Handle to the directory or a status code on failure. */
-			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> reopen(const path_handle &other, file_flags flags = file_flags::read) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> reopen(const fs::path_handle &other, fs::file_flags flags = fs::file_flags::read) noexcept;
 
 			/** Creates a uniquely-named directory relative to \a base.
 			 * @note The following values of \a flags are not supported:
@@ -242,9 +233,9 @@ namespace rod
 			 * </ul>
 			 *
 			 * @param base Handle to the parent location. If set to an invalid handle, generates a unique directory within the current working directory.
-			 * @param flags Handle flags to open the handle with. `file_flags::read | file_flags::write` by default.
+			 * @param flags Handle flags to open the handle with. `fs::file_flags::read | fs::file_flags::write` by default.
 			 * @return Handle to the directory or a status code on failure. */
-			[[nodiscard]] static result<directory_handle> open_unique(const path_handle &base, file_flags flags = file_flags::read | file_flags::write) noexcept
+			[[nodiscard]] static result<directory_handle> open_unique(const fs::path_handle &base, fs::file_flags flags = fs::file_flags::read | fs::file_flags::write) noexcept
 			{
 				try { return open(base, _handle::generate_unique_name(), flags, open_mode::always); }
 				catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
@@ -262,10 +253,10 @@ namespace rod
 			 * </ul>
 			 *
 			 * @param path Path to the target directory, relative to the system's temporary file directory.
-			 * @param flags Handle flags to open the handle with. `file_flags::read | file_flags::write` by default.
+			 * @param flags Handle flags to open the handle with. `fs::file_flags::read | fs::file_flags::write` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::always` by default.
 			 * @return Handle to the directory or a status code on failure. */
-			[[nodiscard]] inline static result<directory_handle> open_temporary(path_view path, file_flags flags = file_flags::read | file_flags::write, open_mode mode = open_mode::always) noexcept;
+			[[nodiscard]] inline static result<directory_handle> open_temporary(fs::path_view path, fs::file_flags flags = fs::file_flags::read | fs::file_flags::write, open_mode mode = open_mode::always) noexcept;
 			/** Opens or creates a directory.
 			 * @note The following values of \a flags are not supported:
 			 * <ul>
@@ -280,10 +271,10 @@ namespace rod
 			 *
 			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
-			 * @param flags Handle flags to open the handle with. `file_flags::read` by default.
+			 * @param flags Handle flags to open the handle with. `fs::file_flags::read` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::existing` by default.
 			 * @return Handle to the directory or a status code on failure. */
-			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> open(const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> open(const fs::path_handle &base, fs::path_view path, fs::file_flags flags = fs::file_flags::read, open_mode mode = open_mode::existing) noexcept;
 
 		public:
 			directory_handle(const directory_handle &) = delete;
@@ -295,30 +286,30 @@ namespace rod
 			directory_handle &operator=(directory_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
 
 			/** Initializes directory handle from a native handle. */
-			explicit directory_handle(native_handle_type hnd, file_flags flags) noexcept : adp_base(native_handle_type(hnd, flags)) {}
+			explicit directory_handle(typename adp_base::native_handle_type hnd, fs::file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, flags)) {}
 			/** Initializes directory handle from a native handle and explicit device & inode IDs. */
-			explicit directory_handle(native_handle_type hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(native_handle_type(hnd, flags), dev, ino) {}
+			explicit directory_handle(typename adp_base::native_handle_type hnd, fs::file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(typename adp_base::native_handle_type(hnd, flags), dev, ino) {}
 
 			/** Initializes directory handle from a path handle rvalue and file flags. */
-			explicit directory_handle(path_handle &&hnd, file_flags flags) noexcept : directory_handle(hnd.release(), flags) {}
+			explicit directory_handle(fs::path_handle &&hnd, fs::file_flags flags) noexcept : directory_handle(hnd.release(), flags) {}
 			/** Initializes directory handle from a path handle rvalue, file flags and explicit device & inode IDs. */
-			explicit directory_handle(path_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
+			explicit directory_handle(fs::path_handle &&hnd, fs::file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
 
 			/** Returns the flags of the directory handle. */
-			[[nodiscard]] file_flags flags() const noexcept { return file_flags(native_handle().flags); }
+			[[nodiscard]] fs::file_flags flags() const noexcept { return fs::file_flags(native_handle().flags); }
 
-			[[nodiscard]] constexpr explicit operator path_handle &() & noexcept { return static_cast<path_handle &>(adp_base::base()); }
-			[[nodiscard]] constexpr operator const path_handle &() const & noexcept { return static_cast<const path_handle &>(adp_base::base()); }
+			[[nodiscard]] constexpr explicit operator fs::path_handle &() & noexcept { return static_cast<fs::path_handle &>(adp_base::base()); }
+			[[nodiscard]] constexpr operator const fs::path_handle &() const & noexcept { return static_cast<const fs::path_handle &>(adp_base::base()); }
 
-			[[nodiscard]] constexpr explicit operator path_handle &&() && noexcept { return static_cast<path_handle &&>(std::move(adp_base::base())); }
-			[[nodiscard]] constexpr operator const path_handle &&() const && noexcept { return static_cast<const path_handle &&>(std::move(adp_base::base())); }
+			[[nodiscard]] constexpr explicit operator fs::path_handle &&() && noexcept { return static_cast<fs::path_handle &&>(std::move(adp_base::base())); }
+			[[nodiscard]] constexpr operator const fs::path_handle &&() const && noexcept { return static_cast<const fs::path_handle &&>(std::move(adp_base::base())); }
 
 			constexpr void swap(directory_handle &other) noexcept { adp_base::swap(other); }
 			friend constexpr void swap(directory_handle &a, directory_handle &b) noexcept { a.swap(b); }
 
 		public:
 			template<decays_to_same<read_some_t> Op, decays_to_same<directory_handle> Hnd, decays_to_same<io_request<Op>> Req>
-			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
 
 		private:
 			void unlock() noexcept
@@ -340,18 +331,18 @@ namespace rod
 					return res.error();
 			}
 
-			ROD_API_PUBLIC result<> do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;
-			ROD_API_PUBLIC result<> do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;
-			ROD_API_PUBLIC result<> do_unlink(const file_timeout &to) noexcept;
+			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
+			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
+			ROD_API_PUBLIC result<> do_unlink(const typename adp_base::timeout_type &to) noexcept;
 
-			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const timeout_type &to) noexcept;
+			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const typename adp_base::timeout_type &to) noexcept;
 
 			bool _read_guard = {};
 		};
 
-		static_assert(std::convertible_to<const directory_handle &, const path_handle &>);
+		static_assert(std::convertible_to<const directory_handle &, const fs::path_handle &>);
 		static_assert(io_handle<directory_handle, read_some_t>);
-		static_assert(fs_handle<directory_handle>);
+		static_assert(fs::fs_handle<directory_handle>);
 
 		/** Structure describing an element of a directory returned by directory iterators.
 		 * @note `directory_entry` is a "soft" description of an entry and does not behave like a handle. */
@@ -364,9 +355,9 @@ namespace rod
 			constexpr directory_entry() noexcept = default;
 
 			/** Returns a const reference to path of the directory entry. */
-			[[nodiscard]] constexpr const rod::path &path() const & noexcept { return _path; }
+			[[nodiscard]] constexpr const fs::path &path() const & noexcept { return _path; }
 			/** Returns an rvalue reference to path of the directory entry. */
-			[[nodiscard]] constexpr rod::path &&path() && noexcept { return std::move(_path); }
+			[[nodiscard]] constexpr fs::path &&path() && noexcept { return std::move(_path); }
 
 			/** Returns a pair of directory entry stats and a mask of initialized fields. */
 			[[nodiscard]] constexpr std::pair<stat, stat::query> st() const noexcept { return {_st, _query}; }
@@ -381,9 +372,9 @@ namespace rod
 
 		private:
 			/* Hack to get a mutable reference to path's string. */
-			auto &to_path_string() noexcept { return (typename path::string_type &) std::move(_path).native(); }
+			auto &to_path_string() noexcept { return (typename fs::path::string_type &) std::move(_path).native(); }
 
-			rod::path _path;
+			fs::path _path;
 			stat _st = stat(nullptr);
 			stat::query _query = {};
 		};
@@ -401,12 +392,12 @@ namespace rod
 			/** Creates a directory iterator from a clone of handle \a hnd.
 			 * @param hnd Handle to the target directory.
 			 * @return Iterator to the first entry in the directory (may be the end iterator), or a status code on failure to create the iterator. */
-			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_handle(const path_handle &hnd) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_handle(const fs::path_handle &hnd) noexcept;
 			/** Creates a directory iterator for directory specified by \a path relative to parent location \a base.
 			 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 			 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 			 * @return Iterator to the first entry in the directory (may be the end iterator), or a status code on failure to create the iterator. */
-			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_path(const path_handle &base, path_view path) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_path(const fs::path_handle &base, fs::path_view path) noexcept;
 
 		private:
 			explicit directory_iterator(typename basic_handle::native_handle_type &&hnd) noexcept : _dir_hnd(std::forward<decltype(hnd)>(hnd)) {}
@@ -423,7 +414,11 @@ namespace rod
 			 * @note This will clone the internal handle and copy the path buffer.
 			 * @throw std::system_error On failure to clone the internal handle.
 			 * @throw std::bad_alloc On failure to copy the path buffer. */
-			directory_iterator(const directory_iterator &other) : _dir_hnd(clone(other._dir_hnd).value()), _entry(other._entry) {}
+			directory_iterator(const directory_iterator &other)
+			{
+				_dir_hnd = clone(other._dir_hnd).value();
+				_entry = other._entry;
+			}
 			/** Copy-assigns the iterator from \a other.
 			 * @note This will clone the internal handle and copy the path buffer.
 			 * @throw std::system_error On failure to clone the internal handle.
@@ -442,16 +437,16 @@ namespace rod
 			/** Returns a copy of `this`.
 			 * @throw std::system_error On failure to clone the internal handle.
 			 * @throw std::bad_alloc On failure to copy the path buffer. */
-			[[nodiscard]] directory_iterator begin() const { return *this; }
+			[[nodiscard]] directory_iterator begin() const { return directory_iterator(*this); }
 			/** Returns an empty sentinel iterator. */
-			[[nodiscard]] directory_iterator end() const noexcept { return {}; }
+			[[nodiscard]] directory_iterator end() const noexcept { return directory_iterator(); }
 
 			/** Advances the iterator with max timeout.
 			 * @throw std::system_error On failure to clone or advance the internal handle.
 			 * @throw std::bad_alloc On failure to copy the path buffer. */
 			directory_iterator &operator++() { return (next().value(), *this); }
 			/** Advances the iterator using an optional timeout and returns errors as `result`. */
-			ROD_API_PUBLIC result<> next(const file_timeout & = file_timeout()) noexcept;
+			ROD_API_PUBLIC result<> next(const typename directory_handle::timeout_type & = {}) noexcept;
 
 			/** Advances the iterator with max timeout and returns a copy of the previous position.
 			 * @throw std::system_error On failure to clone or advance the internal handle.
@@ -485,19 +480,22 @@ namespace rod
 		};
 	}
 
-	using _directory::directory_handle;
+	namespace fs
+	{
+		using _dir::directory_handle;
 
-	using _directory::directory_iterator;
-	using _directory::directory_entry;
+		using _dir::directory_iterator;
+		using _dir::directory_entry;
+	}
 }
 
 template<typename Op>
-inline constexpr bool std::ranges::enable_view<rod::directory_handle::io_buffer_sequence<Op>> = true;
+inline constexpr bool std::ranges::enable_view<rod::fs::directory_handle::io_buffer_sequence<Op>> = true;
 
 template<>
-inline constexpr bool std::ranges::enable_borrowed_range<rod::directory_iterator> = true;
+inline constexpr bool std::ranges::enable_borrowed_range<rod::fs::directory_iterator> = true;
 template<>
-inline constexpr bool std::ranges::enable_view<rod::directory_iterator> = true;
+inline constexpr bool std::ranges::enable_view<rod::fs::directory_iterator> = true;
 
-static_assert(std::input_iterator<rod::directory_iterator>);
-static_assert(std::ranges::view<rod::directory_iterator>);
+static_assert(std::input_iterator<rod::fs::directory_iterator>);
+static_assert(std::ranges::range<rod::fs::directory_iterator>);

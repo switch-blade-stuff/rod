@@ -197,7 +197,7 @@ namespace rod
 
 	/** Hashes a range of elements defined by [\a begin, \a end) using hash builder \a b. */
 	template<std::forward_iterator I, std::sentinel_for<I> S, hash_builder_for<std::iter_value_t<I>> B>
-	[[nodiscard]] constexpr std::size_t hash_range(I begin, S end, B &&b) noexcept(noexcept(b.write(*first)) && noexcept(b.finish()))
+	[[nodiscard]] constexpr std::size_t hash_range(I begin, S end, B &&b) noexcept(noexcept(b.write(*begin)) && noexcept(b.finish()))
 	{
 		std::for_each(begin, end, [&](auto &v) { b.write(v); });
 		return static_cast<std::size_t>(b.finish());

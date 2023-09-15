@@ -720,53 +720,52 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr int compare(std::basic_string_view<C> a_str, format_type a_fmt, std::basic_string_view<C> b_str, format_type b_fmt) noexcept
 		{
-			const auto a_root_name_end = a_str.begin() + root_name_size(a_str, a_fmt);
-			const auto b_root_name_end = b_str.begin() + root_name_size(b_str, b_fmt);
-
-			/* End comparison if name strings compare unequal. */
-			const auto a_root_name = std::basic_string_view<C>(a_str.begin(), a_root_name_end);
-			const auto b_root_name = std::basic_string_view<C>(b_str.begin(), b_root_name_end);
-			if (const auto cmp = a_root_name.compare(b_root_name); cmp != 0)
-				return cmp;
-
 			const auto a_pred = [&](auto ch) { return is_separator(ch, a_fmt); };
 			const auto b_pred = [&](auto ch) { return is_separator(ch, b_fmt); };
-			const auto a_root_path_end = std::find_if_not(a_root_name_end, a_str.end(), a_pred);
-			const auto b_root_path_end = std::find_if_not(b_root_name_end, b_str.end(), b_pred);
-
-			/* End comparison if root directory separators are unequal. */
-			const auto a_root_dir = std::basic_string_view<C>(a_root_name_end, a_root_path_end);
-			const auto b_root_dir = std::basic_string_view<C>(b_root_name_end, b_root_path_end);
-			if (const auto a_empty = a_root_dir.empty(), b_empty = b_root_dir.empty(); a_empty != b_empty)
-				return a_empty - b_empty;
-
-			/* Compare element-wise. */
-			for (auto a_pos = a_root_path_end, b_pos = b_root_path_end;;)
+			const auto do_compare = [&](auto a_pos, auto a_end, auto b_pos, auto b_end) noexcept -> int
 			{
-				/* End comparison if path string lengths are unequal. */
-				const auto a_at_end = a_pos == a_str.end();
-				const auto b_at_end = b_pos == b_str.end();
-				if (a_at_end || b_at_end) return a_at_end - b_at_end;
-
-				/* End comparison if component string lengths are unequal. */
-				const auto a_is_sep = is_separator(*a_pos, a_fmt);
-				const auto b_is_sep = is_separator(*b_pos, b_fmt);
-				if (a_is_sep != b_is_sep) return a_is_sep - b_is_sep;
-
-				/* Compare directory separators or component characters. */
-				if (a_is_sep)
+				for (;;)
 				{
-					a_pos = std::find_if_not(std::next(a_pos), a_str.end(), a_pred);
-					b_pos = std::find_if_not(std::next(b_pos), b_str.end(), b_pred);
-				}
-				else if (const auto cmp = *a_pos - *b_pos; cmp != 0)
-					return cmp;
-				else
-				{
+					/* End comparison if path string lengths are unequal. */
+					const auto a_at_end = a_pos == a_end;
+					const auto b_at_end = b_pos == b_end;
+					if (a_at_end || b_at_end) return a_at_end - b_at_end;
+
+					/* End comparison if component string lengths are unequal. */
+					const auto a_is_sep = is_separator(*a_pos, a_fmt);
+					const auto b_is_sep = is_separator(*b_pos, b_fmt);
+					if (a_is_sep != b_is_sep) return a_is_sep - b_is_sep;
+
+					/* Skip remaining separators. */
+					if (a_is_sep)
+					{
+						a_pos = std::find_if_not(std::next(a_pos), a_end, a_pred);
+						b_pos = std::find_if_not(std::next(b_pos), b_end, b_pred);
+						continue;
+					}
+					/* Compare component characters. */
+					if (const auto cmp = *a_pos - *b_pos; cmp != 0)
+						return cmp;
+
 					a_pos = std::next(a_pos);
 					b_pos = std::next(b_pos);
 				}
-			}
+			};
+
+			/* Compare root names. */
+			const auto a_root_name_end = a_str.begin() + root_name_size(a_str, a_fmt);
+			const auto b_root_name_end = b_str.begin() + root_name_size(b_str, b_fmt);
+			if (auto cmp = do_compare(a_str.begin(), a_root_name_end, b_str.begin(), b_root_name_end); cmp != 0)
+				return cmp;
+
+			/* Compare root directories. */
+			const auto a_root_path_end = std::find_if_not(a_root_name_end, a_str.end(), a_pred);
+			const auto b_root_path_end = std::find_if_not(b_root_name_end, b_str.end(), b_pred);
+			if (const auto a_empty = a_root_name_end >= a_root_path_end, b_empty = b_root_name_end >= b_root_path_end; a_empty != b_empty)
+				return a_empty - b_empty;
+
+			/* Compare element-wise. */
+			return do_compare(a_root_path_end, a_str.end(), b_root_path_end, b_str.end());
 		}
 		inline constexpr int compare_bytes(std::span<const std::uint8_t> a_bytes, std::span<const std::uint8_t> b_bytes) noexcept
 		{
@@ -1060,7 +1059,9 @@ namespace rod
 
 		public:
 			/** Concatenates string representation of \a other with string representation of `this`. */
-			path &operator+=(const path &other) { return operator+=(other._string); }
+			path &operator+=(const path &other) { return concat(other); }
+			/** Concatenates string representation of \a other with string representation of `this`. */
+			inline path &concat(const path &other) { return concat(other._string); }
 
 			/** Concatenates string \a str with string representation of `this`. */
 			path &operator+=(const string_type &str) { return concat_native(str); }
@@ -1576,33 +1577,36 @@ namespace rod
 		};
 	}
 
-	using _path::path;
-	using _path::operator==;
-	using _path::operator<=>;
+	namespace fs
+	{
+		using _path::path;
+		using _path::operator==;
+		using _path::operator<=>;
 
-	/** Functor used for lexicographical equality comparison of paths. */
-	template<typename P>
-	using path_compare_equal = _path::compare_equal<P>;
-	/** Functor used for lexicographical three-way comparison of paths. */
-	template<typename P>
-	using path_compare_three_way = _path::compare_three_way<P>;
+		/** Functor used for lexicographical equality comparison of paths. */
+		template<typename P>
+		using path_compare_equal = _path::compare_equal<P>;
+		/** Functor used for lexicographical three-way comparison of paths. */
+		template<typename P>
+		using path_compare_three_way = _path::compare_three_way<P>;
 
-	/** Functor used for lexicographical inequality comparison of paths. */
-	template<typename P>
-	using path_compare_not_equal = _path::compare_not_equal<P>;
-	/** Functor used for lexicographical less-than comparison of paths. */
-	template<typename P>
-	using path_compare_less_than = _path::compare_less_than<P>;
-	/** Functor used for lexicographical less-equal comparison of paths. */
-	template<typename P>
-	using path_compare_less_equal = _path::compare_less_equal<P>;
-	/** Functor used for lexicographical greater-than comparison of paths. */
-	template<typename P>
-	using path_compare_greater_than = _path::compare_greater_than<P>;
-	/** Functor used for lexicographical greater-equal comparison of paths. */
-	template<typename P>
-	using path_compare_greater_equal = _path::compare_greater_equal<P>;
+		/** Functor used for lexicographical inequality comparison of paths. */
+		template<typename P>
+		using path_compare_not_equal = _path::compare_not_equal<P>;
+		/** Functor used for lexicographical less-than comparison of paths. */
+		template<typename P>
+		using path_compare_less_than = _path::compare_less_than<P>;
+		/** Functor used for lexicographical less-equal comparison of paths. */
+		template<typename P>
+		using path_compare_less_equal = _path::compare_less_equal<P>;
+		/** Functor used for lexicographical greater-than comparison of paths. */
+		template<typename P>
+		using path_compare_greater_than = _path::compare_greater_than<P>;
+		/** Functor used for lexicographical greater-equal comparison of paths. */
+		template<typename P>
+		using path_compare_greater_equal = _path::compare_greater_equal<P>;
+	}
 }
 
 template<>
-struct std::hash<rod::path> { [[nodiscard]] constexpr std::size_t operator()(const rod::path &p) const noexcept { return rod::_path::hash_string<typename rod::path::value_type>(p.native(), p.format()); } };
+struct std::hash<rod::fs::path> { [[nodiscard]] constexpr std::size_t operator()(const rod::fs::path &p) const noexcept { return rod::_path::hash_string<typename rod::fs::path::value_type>(p.native(), p.format()); } };

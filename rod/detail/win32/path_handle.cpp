@@ -5,7 +5,7 @@
 #include "../path_handle.hpp"
 #include "ntapi.hpp"
 
-namespace rod
+namespace rod::_path
 {
 	using namespace _win32;
 

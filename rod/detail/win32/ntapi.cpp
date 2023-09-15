@@ -194,9 +194,9 @@ namespace rod::_win32
 	{
 		/* Ignore paths that already start with an NT prefix or are relative to a base directory. */
 		const auto sv = std::wstring_view(upath.buff, upath.size / sizeof(wchar_t));
-		if (passthrough || (sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\")))
+		if (passthrough || (sv.starts_with(LR"(\!!\)") || sv.starts_with(LR"(\!!\)")))
 		{
-			if (sv.starts_with(L"\\!!\\"))
+			if (sv.starts_with(LR"(\!!\)"))
 			{
 				upath.size -= 3 * sizeof(wchar_t);
 				upath.max -= 3 * sizeof(wchar_t);
@@ -214,7 +214,7 @@ namespace rod::_win32
 	{
 		/* Ignore paths that don't need canonization. */
 		const auto sv = std::wstring_view(upath.buff, upath.size / sizeof(wchar_t));
-		if (passthrough || !(sv.starts_with(L"\\!!\\") || sv.starts_with(L"\\??\\") || sv.starts_with(L"\\\\?\\")))
+		if (passthrough || !(sv.starts_with(LR"(\!!\)") || sv.starts_with(LR"(\??\)") || sv.starts_with(LR"(\\?\)")) || sv.starts_with(LR"(\\.\)"))
 			return {};
 
 		unicode_string src_path = upath;
@@ -222,7 +222,7 @@ namespace rod::_win32
 
 		/* Duplicate the source string. Make sure to allocate enough space for potential GLOBALROOT\, any other slack and null terminator. */
 		upath.max = (upath.size = src_path.size) + (MAX_PATH + 1) * sizeof(wchar_t);
-		upath.buff = (PWCHAR) ::HeapAlloc(::GetProcessHeap(), 0, upath.max);
+		upath.buff = static_cast<wchar_t *>(::HeapAlloc(::GetProcessHeap(), 0, upath.max));
 		if (upath.buff == nullptr) [[unlikely]]
 			return std::make_error_code(std::errc::not_enough_memory);
 		else
@@ -232,7 +232,7 @@ namespace rod::_win32
 		upath.buff[upath.size / sizeof(wchar_t)] = L'\0';
 
 		/* Use RtlNtPathNameToDosPathName for \??\ namespace paths. */
-		if (upath.size >= 8 && std::memcmp(upath.buff, L"\\??\\", 8) == 0)
+		if (upath.size >= 8 && std::wcsncmp(upath.buff, LR"(\??\)", 4) == 0)
 		{
 			auto conv_buff = unicode_string_buffer();
 			conv_buff.buffer.buff = (PUCHAR) upath.buff;
@@ -246,21 +246,21 @@ namespace rod::_win32
 		}
 
 		/* Replace \!!\Gobal??\ with \\?\ */
-		if (upath.size >= 24 && std::memcmp(upath.buff, L"\\!!\\Global??\\", 24) == 0)
+		if (upath.size >= 24 && _wcsnicmp(upath.buff, LR"(\!!\Global??\)", 12) == 0)
 		{
-			std::memcpy(upath.buff += 8, L"\\\\?", 6);
+			std::memcpy(upath.buff += 8, LR"(\\?)", 6);
 			upath.size -= 16;
 			upath.max -= 16;
 		}
 		/* Replace \!!\Device\ with \\.\ */
-		if (upath.size >= 22 && std::memcmp(upath.buff, L"\\!!\\Device\\", 22) == 0)
+		if (upath.size >= 22 && _wcsnicmp(upath.buff, LR"(\!!\Device\)", 11) == 0)
 		{
-			std::memcpy(upath.buff += 7, L"\\\\.", 6);
+			std::memcpy(upath.buff += 7, LR"(\\.)", 6);
 			upath.size -= 14;
 			upath.max -= 14;
 		}
 		/* Replace \!!\ with \\?\GLOBALROOT\ */
-		if (upath.size >= 8 && std::memcmp(upath.buff, L"\\!!\\", 8) == 0)
+		if (upath.size >= 8 && std::wcsncmp(upath.buff, LR"(\!!\)", 4) == 0)
 		{
 			std::move_backward(upath.buff + 3, upath.buff + upath.size / sizeof(wchar_t) + 1, upath.buff + 14);
 			std::memcpy(upath.buff, L"\\\\?\\GLOBALROOT", 28);
@@ -268,21 +268,21 @@ namespace rod::_win32
 		}
 
 		/* Replace \\?\UNC\ with \\, only if there are no illegal sequences. */
-		if (upath.size >= 16 && std::memcmp(upath.buff, L"\\\\?\\UNC\\", 16) == 0 && !_path::has_illegal_path_sequences({upath.buff, upath.size / sizeof(wchar_t)}))
+		if (upath.size >= 16 && std::wcsncmp(upath.buff, LR"(\\?\UNC\)", 8) == 0 && !_path::has_illegal_path_sequences({upath.buff, upath.size / sizeof(wchar_t)}))
 		{
 			std::memcpy(upath.buff += 6, L"\\\\", 4);
 			upath.size -= 12;
 			upath.max -= 12;
 		}
 		/* Replace \\?\X: with X:, only if there are no illegal sequences. */
-		if (upath.size >= 12 && std::memcmp(upath.buff, L"\\\\?\\", 8) == 0 && _path::is_drive_letter(upath.buff[4]) && upath.buff[5] == L':' && !_path::has_illegal_path_sequences({upath.buff + 12, upath.size / sizeof(wchar_t) - 12}))
+		if (upath.size >= 12 && std::wcsncmp(upath.buff, LR"(\\?\)", 4) == 0 && _path::is_drive_letter(upath.buff[4]) && upath.buff[5] == L':' && !_path::has_illegal_path_sequences({upath.buff + 12, upath.size / sizeof(wchar_t) - 12}))
 		{
 			upath.buff += 4;
 			upath.size -= 8;
 			upath.max -= 8;
 		}
 		/* If the path does not start with \\?\ but there are illegal sequences, add \\?\. */
-		if (upath.size >= 8 && std::memcmp(upath.buff, L"\\\\?\\", 8) != 0 && _path::has_illegal_path_sequences({upath.buff - 8, upath.size / sizeof(wchar_t) - 8}))
+		if (upath.size >= 8 && std::wcsncmp(upath.buff, LR"(\\?\)", 4) != 0 && _path::has_illegal_path_sequences({upath.buff - 8, upath.size / sizeof(wchar_t) - 8}))
 		{
 			std::move_backward(upath.buff, upath.buff + upath.size / sizeof(wchar_t) + 1, upath.buff + 4);
 			std::memcpy(upath.buff, L"\\\\?\\", 8);
@@ -335,7 +335,7 @@ namespace rod::_win32
 	ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
 	{
 		*iosb = io_status_block();
-		auto status = NtSetInformationFile(handle, iosb, data, size, type);
+		auto status = NtSetInformationFile(handle, iosb, data, ULONG(size), type);
 		if (status == STATUS_PENDING)
 			status = wait_io(handle, iosb, to);
 		return status;
@@ -343,7 +343,7 @@ namespace rod::_win32
 	ntstatus ntapi::get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
 	{
 		*iosb = io_status_block();
-		auto status = NtQueryInformationFile(handle, iosb, data, size, type);
+		auto status = NtQueryInformationFile(handle, iosb, data, ULONG(size), type);
 		if (status == STATUS_PENDING)
 			status = wait_io(handle, iosb, to);
 		return status;

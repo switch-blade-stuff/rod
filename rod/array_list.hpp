@@ -169,7 +169,7 @@ namespace rod
 		using difference_type = typename std::allocator_traits<allocator_type>::difference_type;
 
 	private:
-		constexpr static size_type apply_growth(size_type n) noexcept { return n + n / 2; }
+		constexpr static size_type apply_growth(size_type n) noexcept { return n + ((n / 2) | 1); }
 
 	public:
 		/** Initializes an empty list. */
@@ -603,7 +603,7 @@ namespace rod
 
 			if (_list_size >= _data_size)
 			{
-				const auto new_size = std::max<size_type>(apply_growth(_data_size), 1);
+				const auto new_size = apply_growth(_data_size);
 				const auto new_data = std::allocator_traits<node_allocator>::allocate(allocator_base::value(), new_size);
 
 				try

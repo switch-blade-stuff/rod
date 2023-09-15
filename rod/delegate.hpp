@@ -195,12 +195,12 @@ namespace rod
 		static return_t invoke_obj(void *ptr, Args ...args) { return std::invoke(*reinterpret_cast<T *>(ptr), args...); }
 
 		template<typename T>
-		static void delete_mem(void *ptr) {}
+		static void delete_mem(void *) {}
 		template<typename T>
 		static void delete_obj(void *ptr) { delete reinterpret_cast<T *>(ptr); }
 
 		template<typename T>
-		static void *copy_mem(const void *ptr) {}
+		static void *copy_mem(const void *) {}
 		template<typename T>
 		static void *copy_obj(const void *ptr) { return new T(*reinterpret_cast<T *>(ptr)); }
 

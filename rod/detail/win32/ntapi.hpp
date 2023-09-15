@@ -25,10 +25,12 @@
 #define ROD_NTAPI __stdcall
 
 #include "../fs_handle_base.hpp"
-#include "../timeout.hpp"
+#include "../file_clock.hpp"
 
 namespace rod::_win32
 {
+	using namespace fs;
+
 	using ntstatus = ULONG;
 
 	inline constexpr ntstatus error_status_max = 0xffff'ffff;
@@ -38,7 +40,56 @@ namespace rod::_win32
 
 	[[nodiscard]] inline constexpr bool is_status_failure(ntstatus st) noexcept { return st > message_status_max; }
 
-	inline constexpr file_type attr_to_type(ULONG file_attr, ULONG reparse_tag = 0) noexcept
+	enum disposition : ULONG
+	{
+		file_supersede = 0,
+		file_open,
+		file_create,
+		file_open_if,
+		file_overwrite,
+		file_overwrite_if,
+	};
+
+	inline constexpr auto mode_to_disp(open_mode mode) noexcept
+	{
+		switch (mode)
+		{
+			case open_mode::always: return file_open_if;
+			case open_mode::create: return file_create;
+			case open_mode::existing: return file_open;
+			case open_mode::truncate: return file_overwrite;
+			case open_mode::supersede: return file_supersede;
+		}
+		return disposition();
+	}
+	inline constexpr auto flags_to_opts(file_flags flags) noexcept
+	{
+		DWORD opts = 1; /*FILE_DIRECTORY_FILE*/
+		if (!bool(flags & file_flags::non_blocking))
+			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
+		return opts;
+	}
+	inline constexpr auto flags_to_access(file_flags flags) noexcept
+	{
+		DWORD access = SYNCHRONIZE;
+		if (bool(flags & file_flags::read))
+			access |= STANDARD_RIGHTS_READ;
+		if (bool(flags & file_flags::write))
+			access |= STANDARD_RIGHTS_WRITE;
+		if (bool(flags & file_flags::attr_read))
+			access |= FILE_READ_ATTRIBUTES | FILE_READ_EA;
+		if (bool(flags & file_flags::attr_write))
+			access |= FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA;
+		if (bool(flags & file_flags::data_read))
+			access |= FILE_READ_DATA;
+		if (bool(flags & file_flags::data_write))
+			access |= FILE_WRITE_DATA;
+		if (bool(flags & file_flags::append))
+			access |= FILE_APPEND_DATA;
+		return access;
+	}
+
+	inline constexpr auto attr_to_type(ULONG file_attr, ULONG reparse_tag = 0) noexcept
 	{
 		constexpr auto attr_regular = FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | FILE_ATTRIBUTE_SPARSE_FILE | FILE_ATTRIBUTE_COMPRESSED | FILE_ATTRIBUTE_ENCRYPTED | FILE_ATTRIBUTE_TEMPORARY |
 		                              FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_SYSTEM;
@@ -88,54 +139,6 @@ namespace rod::_win32
 	{
 		union { FILETIME _ft; std::int64_t _tp; };
 		return (_ft = ft, file_clock::time_point(_tp));
-	}
-
-	enum disposition : ULONG
-	{
-		file_supersede = 0,
-		file_open,
-		file_create,
-		file_open_if,
-		file_overwrite,
-		file_overwrite_if,
-	};
-
-	inline static auto mode_to_disp(open_mode mode) noexcept
-	{
-		switch (mode)
-		{
-		case open_mode::always: return file_open_if;
-		case open_mode::create: return file_create;
-		case open_mode::existing: return file_open;
-		case open_mode::truncate: return file_overwrite;
-		case open_mode::supersede: return file_supersede;
-		}
-	}
-	inline static auto flags_to_opts(file_flags flags) noexcept
-	{
-		DWORD opts = 1; /*FILE_DIRECTORY_FILE*/
-		if (!bool(flags & file_flags::non_blocking))
-			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
-		return opts;
-	}
-	inline static auto flags_to_access(file_flags flags) noexcept
-	{
-		DWORD access = SYNCHRONIZE;
-		if (bool(flags & file_flags::read))
-			access |= STANDARD_RIGHTS_READ;
-		if (bool(flags & file_flags::write))
-			access |= STANDARD_RIGHTS_WRITE;
-		if (bool(flags & file_flags::attr_read))
-			access |= FILE_READ_ATTRIBUTES | FILE_READ_EA;
-		if (bool(flags & file_flags::attr_write))
-			access |= FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA;
-		if (bool(flags & file_flags::data_read))
-			access |= FILE_READ_DATA;
-		if (bool(flags & file_flags::data_write))
-			access |= FILE_WRITE_DATA;
-		if (bool(flags & file_flags::append))
-			access |= FILE_APPEND_DATA;
-		return access;
 	}
 
 	template<typename T>
@@ -655,7 +658,7 @@ namespace rod::_win32
 		ntstatus query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const file_timeout &to, F &&f) const noexcept
 		{
 			auto iosb = io_status_block();
-			auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), buff.size(), FileIdFullDirectoryInformation, false, filter, reset);
+			auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), ULONG(buff.size()), FileIdFullDirectoryInformation, false, filter, reset);
 			if (status == STATUS_PENDING)
 				status = wait_io(handle, &iosb, to);
 			if (is_status_failure(status))
@@ -686,7 +689,8 @@ namespace rod::_win32
 				st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
 				st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
 
-				eof = f(name, st);
+				if (!f(name, st))
+					break;
 			}
 			if (eof)
 				return 0x80000006 /*STATUS_NO_MORE_FILES*/;

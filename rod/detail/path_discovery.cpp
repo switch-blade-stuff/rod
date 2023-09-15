@@ -11,6 +11,8 @@ namespace rod
 {
 	namespace _detail
 	{
+		using namespace fs;
+
 		/* Not using regex here since std::regex is slow AF, and I don't want to depend on external regex lib. */
 		template<std::size_t N>
 		inline static bool match_masks(std::string_view name, std::initializer_list<std::array<char, N>> masks) noexcept
@@ -156,128 +158,131 @@ namespace rod
 		}
 	}
 
-	using _detail::discovery_cache;
+	namespace fs
+	{
+		using _detail::discovery_cache;
 
-	const directory_handle &starting_working_directory() noexcept
-	{
-		static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::working_dir>(); }).value_or({});
-		return value;
-	}
-	const directory_handle &starting_install_directory() noexcept
-	{
-		static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::install_dir>(); }).value_or({});
-		return value;
-	}
-	const directory_handle &starting_runtime_directory() noexcept
-	{
-		static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::runtime_dir>(); }).value_or({});
-		return value;
-	}
-
-	inline static result<bool> filter_dir(discovery_mode mode, discovered_path &dir, const discovered_path *entry) noexcept
-	{
-		result<directory_handle> hnd;
-		if (entry != nullptr)
+		const directory_handle &starting_working_directory() noexcept
 		{
-			dir.memory_backed = _detail::match_memory_backed(entry->fs_type);
-			dir.storage_backed = _detail::match_storage_backed(entry->fs_type);
-			dir.network_backed = entry->network_backed;
+			static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::working_dir>(); }).value_or({});
+			return value;
 		}
-		else
+		const directory_handle &starting_install_directory() noexcept
 		{
-			fs_stat st;
-			if (hnd = directory_handle::open({}, dir.path, file_flags::attr_read); hnd.has_error()) [[unlikely]]
-				return {in_place_error, hnd.error()};
-			if (auto res = get_fs_stat(st, *hnd, fs_stat::query::fs_type | fs_stat::query::flags); res.has_error()) [[unlikely]]
-				return {in_place_error, res.error()};
-
-			dir.memory_backed = _detail::match_memory_backed(st.fs_type);
-			dir.storage_backed = _detail::match_storage_backed(st.fs_type);
-			dir.network_backed = bool(st.flags & fs_flags::network);
+			static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::install_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_runtime_directory() noexcept
+		{
+			static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::runtime_dir>(); }).value_or({});
+			return value;
 		}
 
+		inline static result<bool> filter_dir(discovery_mode mode, discovered_path &dir, const discovered_path *entry) noexcept
+		{
+			result<directory_handle> hnd;
+			if (entry != nullptr)
+			{
+//				dir.memory_backed = _detail::match_memory_backed(entry->fs_type);
+//				dir.storage_backed = _detail::match_storage_backed(entry->fs_type);
+				dir.network_backed = entry->network_backed;
+			}
+			else
+			{
+				fs_stat st;
+				if (hnd = directory_handle::open({}, dir.path, file_flags::attr_read); hnd.has_error()) [[unlikely]]
+					return {in_place_error, hnd.error()};
+				if (auto res = get_fs_stat(st, *hnd, fs_stat::query::fs_type | fs_stat::query::flags); res.has_error()) [[unlikely]]
+					return {in_place_error, res.error()};
 
-		/* TODO: check if we can create a file in the directory. */
+				dir.memory_backed = _detail::match_memory_backed(st.fs_type);
+				dir.storage_backed = _detail::match_storage_backed(st.fs_type);
+				dir.network_backed = bool(st.flags & fs_flags::network);
+			}
+
+
+			/* TODO: check if we can create a file in the directory. */
 #if 0
-		auto tmp = file_handle::open_unique(dir.path, file_flags::unlink_on_close);
-		if (tmp.)
+			auto tmp = file_handle::open_unique(dir.path, file_flags::unlink_on_close);
+			if (tmp.)
 #endif
 
-		if (entry != nullptr)
-		{
-			dir.dev = entry->dev;
-			dir.ino = entry->ino;
-		}
-		else
-		{
-			stat st;
-			if (auto res = get_stat(st, *hnd, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
-				return {in_place_error, res.error()};
-
-			dir.dev = st.dev;
-			dir.ino = st.ino;
-		}
-		return true;
-	}
-
-	result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode, std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
-	{
-		auto &cache = discovery_cache::instance();
-		if (cache.has_error()) [[unlikely]]
-			return cache.error();
-
-		auto guard = std::lock_guard(*cache);
-		if (refresh || cache->temp_dirs.empty()) [[unlikely]]
-		{
-			auto res = cache->refresh_dirs<&discovery_cache::temp_dirs>(_detail::find_temp_dirs);
-			if (res.has_error()) [[unlikely]]
-				return res.error();
-		}
-
-		try
-		{
-			std::vector<discovered_path> result;
-			result.reserve(override.size() + fallback.size() + cache->temp_dirs.size());
-
-			for (auto &entry : override)
+			if (entry != nullptr)
 			{
-				auto dir = discovered_path{.path = entry, .source = discovery_source::override};
-				if (auto res = filter_dir(mode, dir, nullptr); res.has_value() && *res)
-					result.push_back(dir);
-				else if (res.has_error()) [[unlikely]]
-					return res.error();
+				dir.dev = entry->dev;
+				dir.ino = entry->ino;
 			}
-			for (auto &entry : cache->temp_dirs)
+			else
 			{
-				auto dir = discovered_path{.path = entry.path, .source = entry.source};
-				if (auto res = filter_dir(mode, dir, &entry); res.has_value() && *res)
-					result.push_back(dir);
-				else if (res.has_error()) [[unlikely]]
-					return res.error();
+				stat st;
+				if (auto res = get_stat(st, *hnd, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
+					return {in_place_error, res.error()};
+
+				dir.dev = st.dev;
+				dir.ino = st.ino;
 			}
-			for (auto &entry : fallback)
+			return true;
+		}
+
+		result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode, std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
+		{
+			auto &cache = discovery_cache::instance();
+			if (cache.has_error()) [[unlikely]]
+				return cache.error();
+
+			auto guard = std::lock_guard(*cache);
+			if (refresh || cache->temp_dirs.empty()) [[unlikely]]
 			{
-				auto dir = discovered_path{.path = entry, .source = discovery_source::fallback};
-				if (auto res = filter_dir(mode, dir, nullptr); res.has_value() && *res)
-					result.push_back(dir);
-				else if (res.has_error()) [[unlikely]]
+				auto res = cache->refresh_dirs<&discovery_cache::temp_dirs>(_detail::find_temp_dirs);
+				if (res.has_error()) [[unlikely]]
 					return res.error();
 			}
 
-			return std::move(result);
-		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
-	}
+			try
+			{
+				std::vector<discovered_path> result;
+				result.reserve(override.size() + fallback.size() + cache->temp_dirs.size());
 
-	const directory_handle &temporary_file_directory() noexcept
-	{
-		static const directory_handle value;
-		return value;
-	}
-	const directory_handle &temporary_pipe_directory() noexcept
-	{
-		static const directory_handle value;
-		return value;
+				for (auto &entry: override)
+				{
+					auto dir = discovered_path{.path = path(entry), .source = discovery_source::override};
+					if (auto res = filter_dir(mode, dir, nullptr); res.has_value() && *res)
+						result.push_back(dir);
+					else if (res.has_error()) [[unlikely]]
+						return res.error();
+				}
+				for (auto &entry: cache->temp_dirs)
+				{
+					auto dir = discovered_path{.path = entry.path, .source = entry.source};
+					if (auto res = filter_dir(mode, dir, &entry); res.has_value() && *res)
+						result.push_back(dir);
+					else if (res.has_error()) [[unlikely]]
+						return res.error();
+				}
+				for (auto &entry: fallback)
+				{
+					auto dir = discovered_path{.path = path(entry), .source = discovery_source::fallback};
+					if (auto res = filter_dir(mode, dir, nullptr); res.has_value() && *res)
+						result.push_back(dir);
+					else if (res.has_error()) [[unlikely]]
+						return res.error();
+				}
+
+				return std::move(result);
+			}
+			catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+			catch (const std::system_error &e) { return e.code(); }
+		}
+
+		const directory_handle &temporary_file_directory() noexcept
+		{
+			static const directory_handle value;
+			return value;
+		}
+		const directory_handle &temporary_pipe_directory() noexcept
+		{
+			static const directory_handle value;
+			return value;
+		}
 	}
 }

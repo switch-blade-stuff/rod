@@ -6,7 +6,7 @@
 
 #include "directory_handle.hpp"
 
-namespace rod
+namespace rod::fs
 {
 	/** Returns path of the current directory as if via `getcwd`. */
 	[[nodiscard]] ROD_API_PUBLIC auto current_path() noexcept -> result<path>;
@@ -23,16 +23,6 @@ namespace rod
 	/** Checks if path views \a a and \a b reference the same filesystem object.
 	 * @errors Errors returned by `get_stat`. */
 	[[nodiscard]] ROD_API_PUBLIC result<bool> equivalent(path_view a, path_view b) noexcept;
-
-	/** Returns the absolute version of \a path as if via `std::filesystem::current_path() / p`.
-	 * @return Weakly-canonical version of \a path or a status code on failure.
-	 * @errors
-	 * <ul>
-	 * <li>`std::errc::no_such_file_or_directory` if \a path does not reference a valid filesystem location.</li>
-	 * <li>`std::errc::bad_alloc` on failure to allocate path memory.</li>
-	 * <li>Errors returned by `GetFullPathNameW` on Windows.</li>
-	 * </ul> */
-	[[nodiscard]] ROD_API_PUBLIC result<path> absolute(path_view path) noexcept;
 
 	/** Returns the canonical version of \a path. Canonical path has no relative path elements or symlinks and is guaranteed to reference an existing filesystem location.
 	 * @return Weakly-canonical version of \a path or a status code on failure.

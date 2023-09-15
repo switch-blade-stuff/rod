@@ -10,7 +10,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
-rod::file_clock::time_point rod::file_clock::now() noexcept
+rod::fs::file_clock::time_point rod::fs::file_clock::now() noexcept
 {
 	union { FILETIME ft = {}; std::int64_t qw; };
 	::GetSystemTimeAsFileTime(&ft);

@@ -62,7 +62,7 @@ namespace rod
 		};
 
 		template<typename Res>
-		concept path_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<path>, result<path>>;
+		concept path_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<fs::path>, result<fs::path>>;
 
 		struct to_object_path_t
 		{
@@ -71,13 +71,13 @@ namespace rod
 		};
 		struct to_native_path_t
 		{
-			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>
-			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt, dev_t dev, ino_t ino) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>
+			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
+			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt, fs::dev_t dev, fs::ino_t ino) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
 			{
 				return tag_invoke(*this, hnd, fmt, dev, ino);
 			}
-			template<typename Hnd> requires(tag_invocable<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t> && !tag_invocable<to_native_path_t, const Hnd &, native_path_format>)
-			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, dev_t, ino_t>
+			template<typename Hnd> requires(tag_invocable<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t> && !tag_invocable<to_native_path_t, const Hnd &, native_path_format>)
+			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
 			{
 				stat st;
 				if (auto res = get_stat(st, hnd, stat::query::dev | stat::query::ino); res.has_value()) [[likely]]
@@ -185,7 +185,7 @@ namespace rod
 			template<typename Hnd>
 			friend auto tag_invoke(to_object_path_t, const Hnd &hnd) noexcept { return hnd.do_to_object_path(); }
 			template<typename Hnd>
-			friend auto tag_invoke(to_native_path_t, const Hnd &hnd, native_path_format fmt, dev_t dev, ino_t ino) noexcept { return hnd.do_to_native_path(fmt, dev, ino); }
+			friend auto tag_invoke(to_native_path_t, const Hnd &hnd, native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept { return hnd.do_to_native_path(fmt, dev, ino); }
 
 		private:
 			ROD_API_PUBLIC auto do_close() noexcept -> result<>;
@@ -195,16 +195,25 @@ namespace rod
 			ROD_API_PUBLIC result<stat::query> do_set_stat(const stat &, stat::query) noexcept;
 			ROD_API_PUBLIC result<fs_stat::query> do_get_fs_stat(fs_stat &, fs_stat::query) const noexcept;
 
-			ROD_API_PUBLIC result<path> do_to_object_path() const noexcept;
-			ROD_API_PUBLIC result<path> do_to_native_path(native_path_format, dev_t, ino_t) const noexcept;
+			ROD_API_PUBLIC result<fs::path> do_to_object_path() const noexcept;
+			ROD_API_PUBLIC result<fs::path> do_to_native_path(native_path_format, fs::dev_t, fs::ino_t) const noexcept;
 
 			native_handle_type _hnd;
+		};
+
+		template<typename T>
+		struct define_timeout_type {};
+		template<typename T> requires(requires { typename T::timeout_type; })
+		struct define_timeout_type<T>
+		{
+			/** Timeout type used for handle operations. */
+			using timeout_type = typename T::timeout_type;
 		};
 
 		template<typename Child, typename Base>
 		struct handle_adaptor { class type; };
 		template<typename Child, typename Base>
-		class handle_adaptor<Child, Base>::type
+		class handle_adaptor<Child, Base>::type : public define_timeout_type<Base>
 		{
 			friend Child;
 
@@ -242,8 +251,8 @@ namespace rod
 			friend constexpr void swap(Hnd0 &&a, Hnd1 &&b) noexcept { get_adaptor(std::forward<Hnd0>(a)).swap(std::forward<Hnd1>(b)); }
 
 		public:
-			[[nodiscard]] friend constexpr bool operator==(const type &, const type &) noexcept = default;
-			[[nodiscard]] friend constexpr bool operator!=(const type &, const type &) noexcept = default;
+			[[nodiscard]] friend constexpr bool operator==(const type &a, const type &b) noexcept { return a._base == b._base; }
+			[[nodiscard]] friend constexpr bool operator!=(const type &a, const type &b) noexcept { return a._base != b._base; }
 
 		private:
 			static constexpr int do_close = 1;
@@ -341,6 +350,21 @@ namespace rod
 			Base _base;
 		};
 	}
+
+	namespace _handle
+	{
+		template<typename Hnd>
+		struct handle_timeout_impl;
+		template<typename Hnd> requires(requires { typename Hnd::timeout_type; })
+		struct handle_timeout_impl<Hnd> { using type = typename Hnd::timeout_type; };
+	}
+
+	/** Type trait used to obtain the timeout type of handle \a Hnd. */
+	template<typename Hnd>
+	struct handle_timeout : _handle::handle_timeout_impl<Hnd> {};
+	/** Alias for `typename handle_timeout&lt;Hnd&gt;::type` */
+	template<typename Hnd>
+	using handle_timeout_t = typename handle_timeout<Hnd>::type;
 
 	/** Concept used to define a handle type. */
 	template<typename Hnd>

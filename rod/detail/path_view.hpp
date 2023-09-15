@@ -1028,20 +1028,23 @@ namespace rod
 		auto operator<=>(std::span<const std::byte>, path_view_component) = delete;
 	}
 
-	using _path::path_view_component;
-	using _path::path_view;
+	namespace fs
+	{
+		using _path::path_view_component;
+		using _path::path_view;
 
-	using _path::visit;
-	using _path::operator<;
-	using _path::operator==;
-	using _path::operator<=>;
+		using _path::visit;
+		using _path::operator<;
+		using _path::operator==;
+		using _path::operator<=>;
 
-	/** Checks if type \a T is a path-like type, that is, `rod::path_view` can be constructed from it. */
-	template<typename T>
-	concept path_like = std::constructible_from<path_view, T>;
+		/** Checks if type \a T is a path-like type, that is, `fs::path_view` can be constructed from it. */
+		template<typename T>
+		concept path_like = std::constructible_from<path_view, T>;
+	}
 }
 
 template<>
-inline constexpr bool std::ranges::enable_borrowed_range<rod::path_view> = true;
+inline constexpr bool std::ranges::enable_borrowed_range<rod::fs::path_view> = true;
 template<>
-inline constexpr bool std::ranges::enable_view<rod::path_view> = true;
+inline constexpr bool std::ranges::enable_view<rod::fs::path_view> = true;

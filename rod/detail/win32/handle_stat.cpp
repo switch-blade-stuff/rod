@@ -399,8 +399,8 @@ namespace rod::_handle
 			else
 				buff->get()[len] = 0;
 
-			const bool is_hdd = !std::memcmp(buff->get(), L"\\Device\\HarddiskVolume", 44);
-			const bool is_unc = !std::memcmp(buff->get(), L"\\Device\\Mup", 22);
+			const bool is_hdd = _wcsnicmp(buff->get(), LR"(\Device\HarddiskVolume)", 22) == 0;
+			const bool is_unc = _wcsnicmp(buff->get(), LR"(\Device\Mup)", 11) == 0;
 			if (!is_hdd && !is_unc) [[unlikely]]
 				return std::make_error_code(std::errc::invalid_argument);
 			if (is_hdd)
@@ -552,8 +552,8 @@ namespace rod::_handle
 					if (std::memcmp(hnd_path.data(), buff->get() - hnd_path.size() + len, hnd_path.size()) != 0)
 						continue;
 
-					const bool is_hdd = !std::memcmp(buff->get(), L"\\Device\\HarddiskVolume", 44);
-					const bool is_unc = !std::memcmp(buff->get(), L"\\Device\\Mup", 22);
+					const bool is_hdd = _wcsnicmp(buff->get(), LR"(\Device\HarddiskVolume)", 22) == 0;
+					const bool is_unc = _wcsnicmp(buff->get(), LR"(\Device\Mup)", 11) == 0;
 					if (!is_hdd && !is_unc) [[unlikely]]
 						return std::make_error_code(std::errc::invalid_argument);
 
