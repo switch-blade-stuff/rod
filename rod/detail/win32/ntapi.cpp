@@ -8,6 +8,109 @@
 
 namespace rod::_win32
 {
+	struct status_entry
+	{
+		ntstatus status = {};
+		ULONG dos_err = {};
+		int posix_err = {};
+		std::string msg = {};
+	};
+
+	const status_entry *find_status(long status) noexcept
+	{
+		/* Load NT status table at runtime to use current locale strings. */
+		static const auto table = []()
+		{
+			constexpr std::pair<ULONG, ULONG> err_ranges[] = {{0x0000'0000, 0x0000'ffff}, {0x4000'0000, 0x4000'ffff}, {0x8000'0001, 0x8000'ffff}, {0xc000'0001, 0xc000'ffff}};
+			constexpr std::size_t buff_size = 32768;
+
+			const auto &ntapi = ntapi::instance().value();
+			auto tmp_buffer = std::make_unique<wchar_t[]>(buff_size);
+			auto msg_buffer = std::make_unique<char[]>(buff_size);
+			std::vector<status_entry> result;
+
+			for (const auto &range : err_ranges)
+				for (ULONG i = range.first; i < range.second; ++i)
+				{
+					/* Decode message string from NT status. Assume status code does not exist if FormatMessageW fails. */
+					const auto flags = FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+					const auto tmp_length = ::FormatMessageW(flags, ntapi.ntdll, i, 0, tmp_buffer.get(), buff_size, nullptr);
+					if (tmp_length == 0) [[unlikely]]
+						continue;
+					const auto msg_length = ::WideCharToMultiByte(65001 /* UTF8 */, WC_ERR_INVALID_CHARS, tmp_buffer.get(), int(tmp_length), msg_buffer.get(), buff_size, nullptr, nullptr);
+					if (msg_length < 0) [[unlikely]]
+						continue;
+
+					/* Decode Win32 & POSIX error codes from NT status. */
+					int posix_err = 0;
+					const auto win32_err = ntapi.RtlNtStatusToDosError(i);
+					const auto cnd = std::error_code(int(win32_err), std::system_category()).default_error_condition();
+					if (cnd.category() == std::generic_category())
+						posix_err = cnd.value();
+
+					/* Create the resulting entry. */
+					result.emplace_back(i, win32_err, posix_err, std::string(msg_buffer.get(), msg_length));
+				}
+
+			return result;
+		}();
+
+		const auto pos = std::ranges::find_if(table, [=](auto &e) { return e.status == status; });
+		return pos == table.end() ? nullptr : std::to_address(pos);
+	}
+	const std::error_category &status_category() noexcept
+	{
+		static const status_category_type value;
+		return value;
+	}
+
+	std::string status_category_type::message(int value) const
+	{
+		if (const auto e = find_status(value); e != nullptr && !e->msg.empty()) [[likely]]
+			return e->msg;
+
+		const auto status = static_cast<ULONG>(value);
+		if (status <= success_status_max)
+			return "Unknown NT success code";
+		else if (status <= message_status_max)
+			return "Unknown NT message code";
+		else if (status <= warning_status_max)
+			return "Unknown NT warning code";
+		else
+			return "Unknown NT error code";
+	}
+	std::error_condition status_category_type::default_error_condition(int value) const noexcept
+	{
+		if (const auto e = find_status(value); e && e->posix_err)
+			return {e->posix_err, std::generic_category()};
+		else
+			return {value, *this};
+	}
+	bool status_category_type::equivalent(const std::error_code &code, int value) const noexcept
+	{
+		if (code.category() == *this || std::strcmp(code.category().name(), name()) == 0)
+			return code.value() == value;
+
+		const auto e = find_status(value);
+		if (e && (code.category() == std::system_category() || std::strcmp(code.category().name(), std::system_category().name()) == 0))
+			return code.value() == int(e->dos_err);
+		if (e && (code.category() == std::generic_category() || std::strcmp(code.category().name(), std::generic_category().name()) == 0))
+			return code.value() == e->posix_err;
+		return false;
+	}
+	bool status_category_type::equivalent(int value, const std::error_condition &cnd) const noexcept
+	{
+		if (cnd.category() == *this || std::strcmp(cnd.category().name(), name()) == 0)
+			return cnd.value() == value;
+
+		const auto e = find_status(value);
+		if (e && (cnd.category() == std::system_category() || std::strcmp(cnd.category().name(), std::system_category().name()) == 0))
+			return cnd.value() == int(e->dos_err);
+		if (e && (cnd.category() == std::generic_category() || std::strcmp(cnd.category().name(), std::generic_category().name()) == 0))
+			return cnd.value() == e->posix_err;
+		return false;
+	}
+
 	[[nodiscard]] inline static result<void *> load_library(const char *name) noexcept
 	{
 		if (auto handle = ::LoadLibraryA(name); handle == nullptr)
@@ -148,7 +251,7 @@ namespace rod::_win32
 		}
 		if (iosb->status == 0)
 		{
-			iosb->status = 0xc0000120 /* STATUS_CANCELLED */;
+			iosb->status = 0xc0000120; /*STATUS_CANCELLED*/
 			return iosb->status;
 		}
 		return iosb->status;
@@ -166,7 +269,7 @@ namespace rod::_win32
 		else
 			timeout = nullptr;
 
-		while (iosb->status == 0x00000103 /* STATUS_PENDING */)
+		while (iosb->status == STATUS_PENDING)
 		{
 			if (to.is_relative() && timeout)
 			{
@@ -182,7 +285,7 @@ namespace rod::_win32
 			else if (status == STATUS_TIMEOUT)
 			{
 				status = cancel_io(handle, iosb); /* Cancel pending IO on timeout. */
-				if (!is_status_failure(status) || status == 0xc0000120 /* STATUS_CANCELLED */)
+				if (!is_status_failure(status) || status == 0xc0000120 /*STATUS_CANCELLED*/)
 					iosb->status = STATUS_TIMEOUT;
 				break;
 			}
@@ -205,10 +308,10 @@ namespace rod::_win32
 			return {};
 		}
 
-		if (RtlDosPathNameToNtPathName_U(upath.buff, &upath, nullptr, nullptr)) [[likely]]
-			return heapalloc_ptr<wchar_t>(upath.buff);
+		if (!RtlDosPathNameToNtPathName_U(upath.buff, &upath, nullptr, nullptr)) [[unlikely]]
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 		else
-			return dos_error_code(ERROR_PATH_NOT_FOUND);
+			return heapalloc_ptr<wchar_t>(upath.buff);
 	}
 	result<heapalloc_ptr<wchar_t>> ntapi::canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept
 	{
@@ -240,7 +343,7 @@ namespace rod::_win32
 			conv_buff.string = upath;
 
 			if (!RtlNtPathNameToDosPathName(0, &conv_buff, nullptr, nullptr)) [[unlikely]]
-				return dos_error_code(ERROR_PATH_NOT_FOUND);
+				return std::make_error_code(std::errc::no_such_file_or_directory);
 			else
 				upath = conv_buff.string;
 		}
@@ -332,6 +435,64 @@ namespace rod::_win32
 			return handle;
 	}
 
+	ntstatus ntapi::link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept
+	{
+		auto buff_size = upath.size * sizeof(wchar_t) + sizeof(file_link_information);
+		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size);
+		if (buff.get() == nullptr) [[unlikely]]
+			return STATUS_NO_MEMORY;
+
+		auto link_info = reinterpret_cast<file_link_information *>(buff.get());
+		std::memcpy(link_info->name, upath.buff, upath.size);
+		link_info->flags = replace ? 0x1 | 0x2 /*FILE_LINK_REPLACE_IF_EXISTS | FILE_LINK_POSIX_SEMANTICS*/ : 0;
+		link_info->root_dir = base != INVALID_HANDLE_VALUE ? base : nullptr;
+		link_info->name_len = upath.size;
+
+		/* Try FileLinkInformationEx first, which will fail before Win10 RS5, in which case fall back to FileLinkInformation. */
+		auto status = set_file_info(handle, iosb, link_info, buff_size, FileLinkInformationEx, to);
+		if (is_status_failure(status))
+			status = set_file_info(handle, iosb, link_info, buff_size, FileLinkInformation, to);
+		return status;
+	}
+	ntstatus ntapi::relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept
+	{
+		auto buff_size = upath.size * sizeof(wchar_t) + sizeof(file_rename_information);
+		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size);
+		if (buff.get() == nullptr) [[unlikely]]
+			return STATUS_NO_MEMORY;
+
+		auto rename_info = reinterpret_cast<file_rename_information *>(buff.get());
+		std::memcpy(rename_info->name, upath.buff, upath.size);
+		rename_info->flags = replace ? 0x1 | 0x2 /*FILE_RENAME_REPLACE_IF_EXISTS | FILE_RENAME_POSIX_SEMANTICS*/ : 0;
+		rename_info->root_dir = base != INVALID_HANDLE_VALUE ? base : nullptr;
+		rename_info->name_len = upath.size;
+
+		/* Try FileRenameInformationEx first, which will fail before Win10 RS1, in which case fall back to FileRenameInformation. */
+		auto status = set_file_info(handle, iosb, rename_info, buff_size, FileRenameInformationEx, to);
+		if (is_status_failure(status))
+			status = set_file_info(handle, iosb, rename_info, buff_size, FileRenameInformation, to);
+		return status;
+	}
+	ntstatus ntapi::unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const file_timeout &to) const noexcept
+	{
+		/* Try to unlink with POSIX semantics via the Win10 API. */
+		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
+		if (auto status = set_file_info(handle, iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx); is_status_failure(status))
+		{
+			/* Hiding the object is not strictly necessary so discard the error on failure. */
+			auto basic_info = file_basic_information{.attributes = FILE_ATTRIBUTE_HIDDEN};
+			set_file_info(handle, iosb, &basic_info, FileBasicInformation, to);
+
+			if (mark_for_delete)
+			{
+				/* Unlike `remove` and `remove_all`, `unlink` requires sufficient access rights, so do not re-try when returned STATUS_ACCESS_DENIED. */
+				auto disp_info = file_disposition_information{.del = true};
+				return set_file_info(handle, iosb, &disp_info, FileDispositionInformation, to);
+			}
+		}
+		return 0;
+	}
+
 	ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
 	{
 		*iosb = io_status_block();
@@ -347,108 +508,5 @@ namespace rod::_win32
 		if (status == STATUS_PENDING)
 			status = wait_io(handle, iosb, to);
 		return status;
-	}
-
-	struct status_entry
-	{
-		ntstatus status = {};
-		ULONG dos_err = {};
-		int posix_err = {};
-		std::string msg = {};
-	};
-
-	const status_entry *find_status(long status) noexcept
-	{
-		/* Load NT status table at runtime to use current locale strings. */
-		static const auto table = []()
-		{
-			constexpr std::pair<ULONG, ULONG> err_ranges[] = {{0x0000'0000, 0x0000'ffff}, {0x4000'0000, 0x4000'ffff}, {0x8000'0001, 0x8000'ffff}, {0xc000'0001, 0xc000'ffff}};
-			constexpr std::size_t buff_size = 32768;
-
-			const auto &ntapi = ntapi::instance().value();
-			auto tmp_buffer = std::make_unique<wchar_t[]>(buff_size);
-			auto msg_buffer = std::make_unique<char[]>(buff_size);
-			std::vector<status_entry> result;
-
-			for (const auto &range : err_ranges)
-				for (ULONG i = range.first; i < range.second; ++i)
-				{
-					/* Decode message string from NT status. Assume status code does not exist if FormatMessageW fails. */
-					const auto flags = FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-					const auto tmp_length = ::FormatMessageW(flags, ntapi.ntdll, i, 0, tmp_buffer.get(), buff_size, nullptr);
-					if (tmp_length == 0) [[unlikely]]
-						continue;
-					const auto msg_length = ::WideCharToMultiByte(65001 /* UTF8 */, WC_ERR_INVALID_CHARS, tmp_buffer.get(), int(tmp_length), msg_buffer.get(), buff_size, nullptr, nullptr);
-					if (msg_length < 0) [[unlikely]]
-						continue;
-
-					/* Decode Win32 & POSIX error codes from NT status. */
-					int posix_err = 0;
-					const auto win32_err = ntapi.RtlNtStatusToDosError(i);
-					const auto cnd = std::error_code(int(win32_err), std::system_category()).default_error_condition();
-					if (cnd.category() == std::generic_category())
-						posix_err = cnd.value();
-
-					/* Create the resulting entry. */
-					result.emplace_back(i, win32_err, posix_err, std::string(msg_buffer.get(), msg_length));
-				}
-
-			return result;
-		}();
-
-		const auto pos = std::ranges::find_if(table, [=](auto &e) { return e.status == status; });
-		return pos == table.end() ? nullptr : std::to_address(pos);
-	}
-	const std::error_category &status_category() noexcept
-	{
-		static const status_category_type value;
-		return value;
-	}
-
-	std::string status_category_type::message(int value) const
-	{
-		if (const auto e = find_status(value); e != nullptr && !e->msg.empty()) [[likely]]
-			return e->msg;
-
-		const auto status = static_cast<ULONG>(value);
-		if (status <= success_status_max)
-			return "Unknown NT success code";
-		else if (status <= message_status_max)
-			return "Unknown NT message code";
-		else if (status <= warning_status_max)
-			return "Unknown NT warning code";
-		else
-			return "Unknown NT error code";
-	}
-	std::error_condition status_category_type::default_error_condition(int value) const noexcept
-	{
-		if (const auto e = find_status(value); e && e->posix_err)
-			return {e->posix_err, std::generic_category()};
-		else
-			return {value, *this};
-	}
-	bool status_category_type::equivalent(const std::error_code &code, int value) const noexcept
-	{
-		if (code.category() == *this || std::strcmp(code.category().name(), name()) == 0)
-			return code.value() == value;
-
-		const auto e = find_status(value);
-		if (e && (code.category() == std::system_category() || std::strcmp(code.category().name(), std::system_category().name()) == 0))
-			return code.value() == int(e->dos_err);
-		if (e && (code.category() == std::generic_category() || std::strcmp(code.category().name(), std::generic_category().name()) == 0))
-			return code.value() == e->posix_err;
-		return false;
-	}
-	bool status_category_type::equivalent(int value, const std::error_condition &cnd) const noexcept
-	{
-		if (cnd.category() == *this || std::strcmp(cnd.category().name(), name()) == 0)
-			return cnd.value() == value;
-
-		const auto e = find_status(value);
-		if (e && (cnd.category() == std::system_category() || std::strcmp(cnd.category().name(), std::system_category().name()) == 0))
-			return cnd.value() == int(e->dos_err);
-		if (e && (cnd.category() == std::generic_category() || std::strcmp(cnd.category().name(), std::generic_category().name()) == 0))
-			return cnd.value() == e->posix_err;
-		return false;
 	}
 }

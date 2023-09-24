@@ -73,7 +73,7 @@ namespace rod
 			/** Hint to the OS to prefer precaching of data. Mutually exclusive with `force_precache`. */
 			force_precache = 0x20,
 			/** Enable additional synchronization for some IO operations to prevent data races in certain caching modes. */
-			sanity_buffers = 0x40,
+			sanity_barriers = 0x40,
 		};
 
 		[[nodiscard]] constexpr file_caching operator~(file_caching h) noexcept { return file_caching(~std::uint8_t(h)); }
@@ -113,7 +113,7 @@ namespace rod
 			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
 
 		public:
-			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const path_handle &, fs::path_like Path = fs::path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<link_t, Hnd, Base, Path, bool, To>
+			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const fs::path_handle &, fs::path_like Path = fs::path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<link_t, Hnd, Base, Path, bool, To>
 			link_result auto operator()(Hnd &&hnd, Base &&base, Path &&path, bool replace = false, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, std::forward<To>(to)); }
 		};
 		class relink_t
@@ -122,7 +122,7 @@ namespace rod
 			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
 
 		public:
-			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const path_handle &, fs::path_like Path = fs::path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<relink_t, Hnd, Base, Path, bool, To>
+			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const fs::path_handle &, fs::path_like Path = fs::path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<relink_t, Hnd, Base, Path, bool, To>
 			link_result auto operator()(Hnd &&hnd, Base &&base, Path path, bool replace = false, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, std::forward<To>(to)); }
 		};
 		class unlink_t

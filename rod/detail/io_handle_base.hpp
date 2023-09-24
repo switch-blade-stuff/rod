@@ -142,15 +142,15 @@ namespace rod
 
 		public:
 			using adaptor<Op>::type::operator();
-			template<typename Hnd, buffer_range<std::decay_t<Hnd>, Op> Buff = std::initializer_list<buffer_t<Hnd>>, decays_to_same<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
+			template<typename Hnd, buffer_range<std::decay_t<Hnd>, Op> Buff = std::initializer_list<buffer_t<Hnd>>, std::convertible_to<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
 			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &pos, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
 			{
-				return tag_invoke(Op{}, std::forward<Buff>(hnd), std::forward<Buff>(buff), pos, std::forward<To>(to));
+				return tag_invoke(Op{}, std::forward<Buff>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(pos), std::forward<To>(to));
 			}
-			template<typename Hnd, decays_to_same<buffer_t<Hnd>> Buff = buffer_t<Hnd>, decays_to_same<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
+			template<typename Hnd, decays_to_same<buffer_t<Hnd>> Buff = buffer_t<Hnd>, std::convertible_to<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
 			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &pos, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
 			{
-				return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Buff>(buff), pos, std::forward<To>(to));
+				return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(pos), std::forward<To>(to));
 			}
 		};
 		template<typename Op>

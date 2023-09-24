@@ -107,12 +107,12 @@ namespace rod::_handle
 			if (fmt == native_path_format::system)
 			{
 				/* Map \Device\ device paths to \\.\, \Global??\ to \\?\ and the rest to \\?\GLOBALROOT */
-				if (result.compare(0, 9, L"\\Global??\\") == 0)
-					result.replace(1, 9, std::wstring_view(L"\\?\\"));
-				else if (result.compare(0, 8, L"\\Device\\") == 0)
-					result.replace(1, 8, std::wstring_view(L"\\.\\"));
+				if (result.compare(0, 9, LR"(\Global??\)") == 0)
+					result.replace(1, 9, std::wstring_view(LR"(\?\)"));
+				else if (result.compare(0, 8, LR"(\Device\)") == 0)
+					result.replace(1, 8, std::wstring_view(LR"(\.\)"));
 				else if (result.starts_with(L'\\'))
-					result.insert(0, std::wstring_view(L"\\\\?\\GLOBALROOT"));
+					result.insert(0, std::wstring_view(LR"(\\?\GLOBALROOT)"));
 				return std::move(result);
 			}
 

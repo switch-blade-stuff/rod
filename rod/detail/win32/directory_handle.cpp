@@ -27,7 +27,7 @@ namespace rod::_dir
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto access = flags_to_access(flags);
+		auto access = flags_to_access(flags) & ~DELETE;
 		auto opts = flags_to_opts(flags);
 		auto iosb = io_status_block();
 
@@ -40,7 +40,7 @@ namespace rod::_dir
 	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
 		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files))) [[unlikely]]
-			return std::make_error_code(std::errc::invalid_argument);
+			return std::make_error_code(std::errc::not_supported);
 		if (mode == open_mode::truncate || mode == open_mode::supersede) [[unlikely]]
 			return std::make_error_code(std::errc::is_a_directory);
 
@@ -58,8 +58,8 @@ namespace rod::_dir
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		auto obj_attrib = object_attributes();
-		auto access = flags_to_access(flags);
-		auto opts = flags_to_opts(flags);
+		auto access = flags_to_access(flags) & ~DELETE;
+		auto opts = flags_to_opts(flags) | 1; /*FILE_DIRECTORY_FILE*/
 		auto disp = mode_to_disp(mode);
 		auto iosb = io_status_block();
 
@@ -73,6 +73,8 @@ namespace rod::_dir
 			/* Map known error codes. */
 			if (auto err = hnd.error(); is_error_file_not_found(err))
 				return std::make_error_code(std::errc::no_such_file_or_directory);
+			else if (is_error_not_a_directory(err))
+				return std::make_error_code(std::errc::not_a_directory);
 			else if (is_error_file_exists(err) && disp == file_create)
 				return std::make_error_code(std::errc::file_exists);
 			else
@@ -82,7 +84,7 @@ namespace rod::_dir
 		/* Optionally set case-sensitive flag on newly created directories if requested. */
 		if (bool(flags & file_flags::case_sensitive) && mode == open_mode::create || (mode == open_mode::always && iosb.info == 2 /*FILE_CREATED*/))
 		{
-			auto case_info = file_case_sensitive_information{.flags = 1/*FILE_CS_FLAG_CASE_SENSITIVE_DIR*/};
+			auto case_info = file_case_sensitive_information{.flags = 1 /*FILE_CS_FLAG_CASE_SENSITIVE_DIR*/};
 			ntapi->set_file_info(*hnd, &iosb, &case_info, FileCaseSensitiveInformation);
 		}
 		return directory_handle(*hnd, flags);
@@ -90,39 +92,71 @@ namespace rod::_dir
 
 	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+			return std::make_error_code(std::errc::not_supported);
+
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
-			return _win32::do_link(hnd->native_handle(), base, path, replace, abs_timeout);
+		auto rpath = render_as_ustring<false>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
+
+		auto del_hnd = reopen_as_deletable(*ntapi, *this, abs_timeout);
+		if (del_hnd.has_error()) [[unlikely]]
+			return del_hnd.error();
+
+		auto iosb = io_status_block();
+		if (auto status = ntapi->link_file(del_hnd->native_handle(), &iosb, base.native_handle(), rpath->first, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
 		else
-			return hnd.error();
+			return {};
 	}
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+			return std::make_error_code(std::errc::not_supported);
+
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
-			return _win32::do_relink(hnd->native_handle(), base, path, replace, abs_timeout);
+		auto rpath = render_as_ustring<false>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
+
+		auto del_hnd = reopen_as_deletable(*ntapi, *this, abs_timeout);
+		if (del_hnd.has_error()) [[unlikely]]
+			return del_hnd.error();
+
+		auto iosb = io_status_block();
+		if (auto status = ntapi->relink_file(del_hnd->native_handle(), &iosb, base.native_handle(), rpath->first, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
 		else
-			return hnd.error();
+			return {};
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+			return std::make_error_code(std::errc::not_supported);
+
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		if (auto hnd = reopen_as_deletable(*ntapi, *this, abs_timeout); hnd.has_value()) [[likely]]
-			return _win32::do_unlink(hnd->native_handle(), flags(), abs_timeout);
+		auto del_hnd = reopen_as_deletable(*ntapi, *this, abs_timeout);
+		if (del_hnd.has_error()) [[unlikely]]
+			return del_hnd.error();
+
+		auto iosb = io_status_block();
+		if (auto status = ntapi->unlink_file(del_hnd->native_handle(), &iosb, !bool(flags() & file_flags::unlink_on_close), abs_timeout); is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
 		else
-			return hnd.error();
+			return {};
 	}
 
 	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
@@ -138,8 +172,8 @@ namespace rod::_dir
 			return ntapi.error();
 
 		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t));
-		if (buff.has_error()) [[unlikely]]
-			return buff.error();
+		if (buff.get() == nullptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
 
 		auto rfilter = render_as_ustring<true>(req.filter);
 		if (rfilter.has_error()) [[unlikely]]
@@ -152,7 +186,7 @@ namespace rod::_dir
 
 		while (result_size < req.buffs.size() && !eof)
 		{
-			auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
+			auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
 			eof = ntapi->query_directory(native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
 			{
 				auto &entry = req.buffs[result_size++];
@@ -243,10 +277,10 @@ namespace rod::_dir
 			return ntapi.error();
 
 		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t));
-		if (buff.has_error()) [[unlikely]]
-			return buff.error();
+		if (buff.get() == nullptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
 
-		auto bytes = std::span{buff->get(), buff_size * sizeof(wchar_t)};
+		auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
 		auto status = ntapi->query_directory(_dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st)
 		{
 			_entry._query = stats_mask;

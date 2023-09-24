@@ -139,7 +139,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/directory_handle.hpp
 
         # Filesystem IO
-        # rod/detail/file_handle.hpp
+        rod/detail/file_handle.hpp
         # rod/detail/mapping_source.hpp
         # rod/detail/mapping_handle.hpp
         # rod/detail/file_mapping.hpp
@@ -159,6 +159,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
 # Platform-independent sources
 target_sources(${PROJECT_NAME} PRIVATE
         rod/detail/path_base.cpp
+        rod/detail/path_util.cpp
         rod/detail/path_discovery.cpp
         rod/detail/thread_pool.cpp
         rod/utility.cpp
@@ -189,10 +190,10 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/path_handle.cpp
             rod/detail/win32/path_discovery.hpp
             rod/detail/win32/path_discovery.cpp
-            rod/detail/win32/fs_handle_base.hpp
-            rod/detail/win32/fs_handle_base.cpp
             rod/detail/win32/directory_handle.hpp
             rod/detail/win32/directory_handle.cpp
+            rod/detail/win32/file_handle.hpp
+            rod/detail/win32/file_handle.cpp
             #[[rod/win32/iocp_context.cpp]])
 endif ()
 

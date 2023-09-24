@@ -77,27 +77,34 @@ namespace rod::fs
 		}
 		return true;
 	}
-	result<bool> equivalent(path_view a, path_view b) noexcept
+
+	result<path> absolute(path_view path) noexcept
 	{
-		dev_t dev_a, dev_b;
-		ino_t ino_a, ino_b;
-		stat st;
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
 
-		if (auto res = get_stat(st, {}, a, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
-			return {in_place_error, res.error()};
-		else if (*res != (stat::query::dev | stat::query::ino))
-			return false;
-		dev_a = st.dev;
-		ino_a = st.ino;
+		auto rpath = render_as_ustring<true>(path);
+		if (rpath.has_error()) [[unlikely]]
+			return rpath.error();
 
-		if (auto res = get_stat(st, {}, b, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
-			return {in_place_error, res.error()};
-		else if (*res != (stat::query::dev | stat::query::ino))
-			return false;
-		dev_b = st.dev;
-		ino_b = st.ino;
+		auto guard = ntapi->canonize_win32_path(rpath->first, false);
+		if (guard.has_error()) [[unlikely]]
+			return guard.error();
 
-		return dev_a == dev_b && ino_a == ino_b;
+		try
+		{
+			std::wstring res;
+			if (const auto n = ::GetFullPathNameW(rpath->first.buff, 0, nullptr, nullptr); !n) [[unlikely]]
+				return dos_error_code(::GetLastError());
+			else
+				res.resize(n);
+			if (!::GetFullPathNameW(rpath->first.buff, DWORD(res.size() + 1), res.data(), nullptr)) [[unlikely]]
+				return dos_error_code(::GetLastError());
+			else
+				return std::move(res);
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
 	inline static result<path> do_canonical(const ntapi &ntapi, unicode_string &upath) noexcept
@@ -180,75 +187,6 @@ namespace rod::fs
 		}
 		catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
 		return res;
-	}
-
-	result<path> absolute(path_view path) noexcept
-	{
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
-		auto rpath = render_as_ustring<true>(path);
-		if (rpath.has_error()) [[unlikely]]
-			return rpath.error();
-
-		auto guard = ntapi->canonize_win32_path(rpath->first, false);
-		if (guard.has_error()) [[unlikely]]
-			return std::make_error_code(std::errc::no_such_file_or_directory);
-
-		try
-		{
-			std::wstring res;
-			if (const auto n = ::GetFullPathNameW(rpath->first.buff, 0, nullptr, nullptr); !n) [[unlikely]]
-				return dos_error_code(::GetLastError());
-			else
-				res.resize(n);
-			if (!::GetFullPathNameW(rpath->first.buff, DWORD(res.size() + 1), res.data(), nullptr)) [[unlikely]]
-				return dos_error_code(::GetLastError());
-			else
-				return std::move(res);
-		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-	result<path> relative(path_view path) noexcept
-	{
-		if (auto curr = current_path(); curr.has_value()) [[likely]]
-			return relative(path, *curr);
-		else
-			return curr.error();
-	}
-	result<path> proximate(path_view path) noexcept
-	{
-		if (auto curr = current_path(); curr.has_value()) [[likely]]
-			return proximate(path, *curr);
-		else
-			return curr.error();
-	}
-	result<path> relative(path_view path, path_view base) noexcept
-	{
-		auto path_canon = weakly_canonical(path);
-		if (path_canon.has_error()) [[unlikely]]
-			return path_canon.error();
-
-		auto base_canon = weakly_canonical(base);
-		if (base_canon.has_error()) [[unlikely]]
-			return base_canon.error();
-
-		try { return path_canon->lexically_relative(*base_canon); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-	}
-	result<path> proximate(path_view path, path_view base) noexcept
-	{
-		auto path_canon = weakly_canonical(path);
-		if (path_canon.has_error()) [[unlikely]]
-			return path_canon.error();
-
-		auto base_canon = weakly_canonical(base);
-		if (base_canon.has_error()) [[unlikely]]
-			return base_canon.error();
-
-		try { return path_canon->lexically_proximate(*base_canon); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
 	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept

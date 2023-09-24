@@ -41,6 +41,8 @@ namespace rod::_path
 		/* Map known error codes. */
 		if (auto err = hnd.error(); is_error_file_not_found(err))
 			return std::make_error_code(std::errc::no_such_file_or_directory);
+		else if (is_error_not_a_directory(err))
+			return std::make_error_code(std::errc::not_a_directory);
 		else
 			return err;
 	}

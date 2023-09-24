@@ -323,13 +323,7 @@ namespace rod
 					std::atomic_ref(_read_guard).wait(true);
 			}
 
-			result<directory_handle> do_clone() const noexcept
-			{
-				if (auto res = clone(base()); res.has_value())
-					return directory_handle(std::move(*res), flags());
-				else
-					return res.error();
-			}
+			result<directory_handle> do_clone() const noexcept { return clone(base()).transform([&](_path::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
 			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
 			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;

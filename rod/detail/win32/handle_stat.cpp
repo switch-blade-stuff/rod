@@ -20,10 +20,10 @@ namespace rod::_handle
 		if ((file_attr & FILE_ATTRIBUTE_REPARSE_POINT) && !reparse_tag)
 		{
 			auto buff = ROD_MAKE_BUFFER(std::byte, buff_size * sizeof(wchar_t) + sizeof(reparse_data_buffer));
-			if (buff.has_error()) [[unlikely]]
-				return buff.error();
+			if (buff.get() == nullptr) [[unlikely]]
+				return std::make_error_code(std::errc::not_enough_memory);
 
-			auto reparse_data = reinterpret_cast<reparse_data_buffer *>(buff->get());
+			auto reparse_data = reinterpret_cast<reparse_data_buffer *>(buff.get());
 			std::memset(reparse_data, 0, sizeof(reparse_data_buffer));
 			DWORD written = 0;
 
@@ -341,8 +341,8 @@ namespace rod::_handle
 			return ntapi.error();
 
 		auto buff = ROD_MAKE_BUFFER(wchar_t, buff_size * sizeof(wchar_t));
-		if (buff.has_error()) [[unlikely]]
-			return buff.error();
+		if (buff.get() == nullptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
 
 		auto sector_info = file_fs_sector_size_information();
 		if (bool(q & (stat::query::blksize | stat::query::blocks)))
@@ -356,9 +356,9 @@ namespace rod::_handle
 		}
 
 		/* Failure could mean we are not on Win10 1709 or above and FileStatInformation may not be available. */
-		if (auto res = query_stat_info(*ntapi, buff->get(), sector_info, st, _hnd, q); res.has_value())
+		if (auto res = query_stat_info(*ntapi, buff.get(), sector_info, st, _hnd, q); res.has_value())
 			done = *res;
-		else if (res = query_all_info(*ntapi, buff->get(), sector_info, st, _hnd, q); res.has_value())
+		else if (res = query_all_info(*ntapi, buff.get(), sector_info, st, _hnd, q); res.has_value())
 			done = *res;
 		else
 			return res;
@@ -366,7 +366,7 @@ namespace rod::_handle
 		/* Try to get device ID using Win10 FileIdInformation. */
 		if (bool(q & (stat::query::dev/* | stat::query::ino*/)))
 		{
-			auto id_info = reinterpret_cast<file_id_information *>(buff->get());
+			auto id_info = reinterpret_cast<file_id_information *>(buff.get());
 			std::memset(id_info, 0, sizeof(file_id_information));
 			auto iosb = io_status_block();
 
@@ -394,25 +394,25 @@ namespace rod::_handle
 		/* Re-try to get device ID from volume name. */
 		if (bool(q & stat::query::dev))
 		{
-			if (const auto len = ::GetFinalPathNameByHandleW(_hnd, buff->get(), buff_size, VOLUME_NAME_NT); !len || len >= buff_size) [[unlikely]]
+			if (const auto len = ::GetFinalPathNameByHandleW(_hnd, buff.get(), buff_size, VOLUME_NAME_NT); !len || len >= buff_size) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
-				buff->get()[len] = 0;
+				buff.get()[len] = 0;
 
-			const bool is_hdd = _wcsnicmp(buff->get(), LR"(\Device\HarddiskVolume)", 22) == 0;
-			const bool is_unc = _wcsnicmp(buff->get(), LR"(\Device\Mup)", 11) == 0;
+			const bool is_hdd = _wcsnicmp(buff.get(), LR"(\Device\HarddiskVolume)", 22) == 0;
+			const bool is_unc = _wcsnicmp(buff.get(), LR"(\Device\Mup)", 11) == 0;
 			if (!is_hdd && !is_unc) [[unlikely]]
 				return std::make_error_code(std::errc::invalid_argument);
 			if (is_hdd)
 			{
-				st.dev = _wtoi(buff->get() + 22);
+				st.dev = _wtoi(buff.get() + 22);
 				done |= stat::query::dev;
 			}
 		}
 #if 0 /* Don't use the object or file reference IDs to stay consistent with other inode sources (ex. NtQueryDirectoryFile). */
 		if (bool(q & stat::query::ino))
 		{
-			auto objid_info = reinterpret_cast<file_objectid_information *>(buff->get());
+			auto objid_info = reinterpret_cast<file_objectid_information *>(buff.get());
 			auto iosb = io_status_block();
 
 			auto status = ntapi->get_file_info(_hnd, &iosb, &objid_info, buff_size * sizeof(wchar_t), FileObjectIdInformation);
@@ -469,13 +469,13 @@ namespace rod::_handle
 			return ntapi.error();
 
 		auto buff = ROD_MAKE_BUFFER(wchar_t, buff_size * sizeof(wchar_t));
-		if (buff.has_error()) [[unlikely]]
-			return buff.error();
+		if (buff.get() == nullptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
 
 		/* Query filesystem type & attributes. */
 		if (bool(q & (fs_stat::query::flags | fs_stat::query::filename_max | fs_stat::query::fs_type)))
 		{
-			auto attr_info = reinterpret_cast<file_fs_attribute_information *>(buff->get());
+			auto attr_info = reinterpret_cast<file_fs_attribute_information *>(buff.get());
 			auto iosb = io_status_block();
 
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, attr_info, sizeof(file_fs_attribute_information), FileFsAttributeInformation);
@@ -542,18 +542,18 @@ namespace rod::_handle
 				/* Query volume name. */
 				if (bool(q & fs_stat::query::fs_name))
 				{
-					auto len = ::GetFinalPathNameByHandleW(native_handle(), buff->get(), buff_size, FILE_NAME_OPENED | VOLUME_NAME_NT);
+					auto len = ::GetFinalPathNameByHandleW(native_handle(), buff.get(), buff_size, FILE_NAME_OPENED | VOLUME_NAME_NT);
 					if (!len || len >= buff_size) [[unlikely]]
 						return dos_error_code(::GetLastError());
 					else
-						buff->get()[len] = 0;
+						buff.get()[len] = 0;
 
 					/* Make sure path to the handle did not change. */
-					if (std::memcmp(hnd_path.data(), buff->get() - hnd_path.size() + len, hnd_path.size()) != 0)
+					if (std::memcmp(hnd_path.data(), buff.get() - hnd_path.size() + len, hnd_path.size()) != 0)
 						continue;
 
-					const bool is_hdd = _wcsnicmp(buff->get(), LR"(\Device\HarddiskVolume)", 22) == 0;
-					const bool is_unc = _wcsnicmp(buff->get(), LR"(\Device\Mup)", 11) == 0;
+					const bool is_hdd = _wcsnicmp(buff.get(), LR"(\Device\HarddiskVolume)", 22) == 0;
+					const bool is_unc = _wcsnicmp(buff.get(), LR"(\Device\Mup)", 11) == 0;
 					if (!is_hdd && !is_unc) [[unlikely]]
 						return std::make_error_code(std::errc::invalid_argument);
 
@@ -565,13 +565,13 @@ namespace rod::_handle
 						len += 1;
 						for (std::size_t seps = 2; seps; len += bool(seps))
 						{
-							if (buff->get()[len] == '\\')
+							if (buff.get()[len] == '\\')
 								seps -= 1;
 						}
 					}
 
 					st.fs_name.resize(len + 3);
-					static_cast_copy(buff->get(), buff->get() + len, st.fs_name.data());
+					static_cast_copy(buff.get(), buff.get() + len, st.fs_name.data());
 					std::memcpy(st.fs_name.data(), "\\!!", 3 * sizeof(char));
 					done |= fs_stat::query::fs_name;
 					q &= ~fs_stat::query::fs_name;
@@ -579,17 +579,17 @@ namespace rod::_handle
 				/* Query volume path. */
 				if (bool(q & fs_stat::query::fs_path))
 				{
-					const auto len = ::GetFinalPathNameByHandleW(native_handle(), buff->get(), buff_size, FILE_NAME_OPENED | VOLUME_NAME_DOS);
+					const auto len = ::GetFinalPathNameByHandleW(native_handle(), buff.get(), buff_size, FILE_NAME_OPENED | VOLUME_NAME_DOS);
 					if (!len || len >= buff_size) [[unlikely]]
 						return dos_error_code(::GetLastError());
 					else
-						buff->get()[len] = 0;
+						buff.get()[len] = 0;
 
 					/* Make sure path to the handle did not change. */
-					if (std::memcmp(hnd_path.data(), buff->get() - hnd_path.size() + len, hnd_path.size()) != 0)
+					if (std::memcmp(hnd_path.data(), buff.get() - hnd_path.size() + len, hnd_path.size()) != 0)
 						continue;
 
-					st.fs_path = std::wstring_view(buff->get(), std::size_t(len) - hnd_path.size());
+					st.fs_path = std::wstring_view(buff.get(), std::size_t(len) - hnd_path.size());
 					done |= fs_stat::query::fs_path;
 					q &= ~fs_stat::query::fs_path;
 				}
@@ -600,7 +600,7 @@ namespace rod::_handle
 		/* Query filesystem ID. */
 		if (bool(q & fs_stat::query::fs_id))
 		{
-			auto obj_info = reinterpret_cast<file_fs_objectid_information *>(buff->get());
+			auto obj_info = reinterpret_cast<file_fs_objectid_information *>(buff.get());
 			auto iosb = io_status_block();
 
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, obj_info, sizeof(file_fs_objectid_information), FileFsObjectIdInformation);
@@ -618,7 +618,7 @@ namespace rod::_handle
 		/* Query filesystem block info. */
 		if (bool(q & (fs_stat::query::blk_size | fs_stat::query::blk_count | fs_stat::query::blk_avail | fs_stat::query::blk_free)))
 		{
-			auto size_info = reinterpret_cast<file_fs_full_size_information *>(buff->get());
+			auto size_info = reinterpret_cast<file_fs_full_size_information *>(buff.get());
 			auto iosb = io_status_block();
 
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, size_info, sizeof(file_fs_full_size_information), FileFsFullSizeInformation);
@@ -651,7 +651,7 @@ namespace rod::_handle
 		/* Query filesystem IO size. */
 		if (bool(q & fs_stat::query::io_size))
 		{
-			auto size_info = reinterpret_cast<file_fs_sector_size_information *>(buff->get());
+			auto size_info = reinterpret_cast<file_fs_sector_size_information *>(buff.get());
 			auto iosb = io_status_block();
 
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, size_info, sizeof(file_fs_sector_size_information), FileFsSectorSizeInformation);

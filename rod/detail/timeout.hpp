@@ -112,6 +112,29 @@ namespace rod
 		}
 		friend constexpr void swap(basic_timeout &a, basic_timeout &b) noexcept(std::is_nothrow_swappable_v<absolute_type> && std::is_nothrow_swappable_v<relative_type>) { a.swap(b); }
 
+		friend constexpr bool operator==(const basic_timeout &a, const basic_timeout &b) noexcept(noexcept(a._absolute == b._absolute) && noexcept(a._relative == b._relative))
+		{
+			if (a._is_relative == b._is_relative)
+			{
+				if (a._is_relative)
+					return a._relative == b._relative;
+				else
+					return a._absolute == b._absolute;
+			}
+			return false;
+		}
+		friend constexpr bool operator!=(const basic_timeout &a, const basic_timeout &b) noexcept(noexcept(a._absolute != b._absolute) && noexcept(a._relative != b._relative))
+		{
+			if (a._is_relative == b._is_relative)
+			{
+				if (a._is_relative)
+					return a._relative != b._relative;
+				else
+					return a._absolute != b._absolute;
+			}
+			return true;
+		}
+
 	private:
 		union
 		{

@@ -54,24 +54,17 @@ namespace rod::_win32
 	{
 		switch (mode)
 		{
-			case open_mode::always: return file_open_if;
-			case open_mode::create: return file_create;
-			case open_mode::existing: return file_open;
-			case open_mode::truncate: return file_overwrite;
-			case open_mode::supersede: return file_supersede;
+		case open_mode::always: return file_open_if;
+		case open_mode::create: return file_create;
+		case open_mode::existing: return file_open;
+		case open_mode::truncate: return file_overwrite;
+		case open_mode::supersede: return file_supersede;
 		}
 		return disposition();
 	}
-	inline constexpr auto flags_to_opts(file_flags flags) noexcept
-	{
-		DWORD opts = 1; /*FILE_DIRECTORY_FILE*/
-		if (!bool(flags & file_flags::non_blocking))
-			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
-		return opts;
-	}
 	inline constexpr auto flags_to_access(file_flags flags) noexcept
 	{
-		DWORD access = SYNCHRONIZE;
+		DWORD access = DELETE | SYNCHRONIZE;
 		if (bool(flags & file_flags::read))
 			access |= STANDARD_RIGHTS_READ;
 		if (bool(flags & file_flags::write))
@@ -87,6 +80,59 @@ namespace rod::_win32
 		if (bool(flags & file_flags::append))
 			access |= FILE_APPEND_DATA;
 		return access;
+	}
+
+	inline constexpr auto flags_to_opts(file_flags flags) noexcept
+	{
+		DWORD opts = 0;
+		if (!bool(flags & file_flags::non_blocking))
+			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
+		if (bool(flags & file_flags::unlink_on_close))
+			opts |= 0x1000; /*FILE_DELETE_ON_CLOSE*/
+		return opts;
+	}
+	inline constexpr auto caching_to_opts(file_caching caching) noexcept
+	{
+		DWORD opts = 0;
+		if (!bool(caching & file_caching::write))
+			opts |= 2; /*FILE_WRITE_THROUGH*/
+		if (!bool(caching & (file_caching::read | file_caching::write)))
+			opts |= 8; /*FILE_NO_INTERMEDIATE_BUFFERING*/
+		if (bool(caching & file_caching::avoid_precache))
+			opts |= 0x800; /*FILE_RANDOM_ACCESS*/
+		if (bool(caching & file_caching::force_precache))
+			opts |= 4; /*FILE_SEQUENTIAL_ONLY*/
+		return opts;
+	}
+
+	inline constexpr auto perm_to_attr(file_perm perm) noexcept
+	{
+		DWORD attr = 0;
+		if (!bool(perm & (file_perm::write | file_perm::exec)))
+			attr = FILE_ATTRIBUTE_READONLY;
+		return attr;
+	}
+	inline constexpr auto flags_to_attr(file_flags flags) noexcept
+	{
+		DWORD attr = 0;
+		return attr;
+	}
+	inline constexpr auto caching_to_attr(file_caching caching) noexcept
+	{
+		DWORD attr = 0;
+		if (bool(caching & file_caching::temporary))
+			attr = FILE_ATTRIBUTE_TEMPORARY;
+		return attr;
+	}
+
+	inline constexpr auto make_handle_opts(file_flags flags, file_caching caching) noexcept
+	{
+		return flags_to_opts(flags) | caching_to_opts(caching);
+	}
+	inline constexpr auto make_handle_attr(file_flags flags, file_caching caching, file_perm perm) noexcept
+	{
+		const auto attr = flags_to_attr(flags) | caching_to_attr(caching) | perm_to_attr(perm);
+		return attr ? attr : FILE_ATTRIBUTE_NORMAL;
 	}
 
 	inline constexpr auto attr_to_type(ULONG file_attr, ULONG reparse_tag = 0) noexcept
@@ -145,15 +191,6 @@ namespace rod::_win32
 	struct malloca_deleter { void operator()(T *p) const noexcept { _freea(p); } };
 	template<typename T>
 	using malloca_handle = std::unique_ptr<T, malloca_deleter<T>>;
-
-	template<typename T>
-	inline constexpr result<malloca_handle<T>> make_malloca_handle(void *p, std::size_t n) noexcept
-	{
-		if (p == nullptr && n)
-			return std::make_error_code(std::errc::not_enough_memory);
-		else
-			return malloca_handle<T>(static_cast<T *>(p));
-	}
 
 	struct rtl_buffer
 	{
@@ -583,6 +620,17 @@ namespace rod::_win32
 	inline static std::error_code dos_error_code(ULONG err) noexcept { return {int(err), std::system_category()}; }
 	inline static std::error_code status_error_code(ntstatus status) noexcept { return {int(status), status_category()}; }
 
+	inline static bool is_error_not_a_directory(std::error_code err) noexcept
+	{
+		static const auto cnds = std::array
+		{
+			/* DOS errors */
+			std::error_condition(ERROR_DIRECTORY, std::system_category()),
+			/* POSIX errors */
+			std::make_error_condition(std::errc::not_a_directory),
+		};
+		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
+	}
 	inline static bool is_error_file_not_found(std::error_code err) noexcept
 	{
 		static const auto cnds = std::array
@@ -639,6 +687,10 @@ namespace rod::_win32
 		result<void *> reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
 		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
 		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
+
+		ntstatus link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept;
+		ntstatus relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept;
+		ntstatus unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const file_timeout &to) const noexcept;
 
 		ntstatus set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
 		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
@@ -731,4 +783,4 @@ namespace rod::_win32
 	};
 }
 
-#define ROD_MAKE_BUFFER(T, n) (rod::_win32::make_malloca_handle<T>(_malloca(n), n))
+#define ROD_MAKE_BUFFER(T, n) (rod::_win32::malloca_handle<T>(static_cast<T *>(_malloca(n))))
