@@ -28,11 +28,11 @@
 #include "detail/adaptors/let.hpp"
 #include "detail/adaptors/on.hpp"
 
-#include "detail/execute.hpp"
-#include "detail/sync_wait.hpp"
-#include "detail/ensure_started.hpp"
-#include "detail/start_detached.hpp"
-#include "detail/receiver_adaptor.hpp"
+#include "detail/utility/execute.hpp"
+#include "detail/utility/sync_wait.hpp"
+#include "detail/utility/ensure_started.hpp"
+#include "detail/utility/start_detached.hpp"
+#include "rod/detail/receiver_adaptor.hpp"
 
 #include "stop_token.hpp"
 

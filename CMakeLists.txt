@@ -62,6 +62,8 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/config.hpp
 
         # Utilities
+        rod/detail/receiver_adaptor.hpp
+        rod/detail/priority_queue.hpp
         rod/detail/atomic_queue.hpp
         rod/detail/basic_queue.hpp
         rod/detail/byte_buffer.hpp
@@ -76,14 +78,8 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/hash.hpp
         rod/tag.hpp
 
-        # Scheduling algorithms
-        rod/detail/receiver_adaptor.hpp
-        rod/detail/ensure_started.hpp
-        rod/detail/start_detached.hpp
-        rod/detail/priority_queue.hpp
+        # Scheduling base
         rod/detail/async_base.hpp
-        rod/detail/sync_wait.hpp
-        rod/detail/execute.hpp
         rod/stop_token.hpp
         rod/scheduling.hpp
 
@@ -112,6 +108,12 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/adaptors/then.hpp
         rod/detail/adaptors/let.hpp
         rod/detail/adaptors/on.hpp
+
+        # Async algorithms
+        rod/detail/algorithm/ensure_started.hpp
+        rod/detail/algorithm/start_detached.hpp
+        rod/detail/algorithm/sync_wait.hpp
+        rod/detail/algorithm/execute.hpp
 
         # Execution contexts
         rod/detail/run_loop.hpp
@@ -151,7 +153,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         # Win32 headers
         # rod/win32/iocp_context.hpp
 
-        # Common headers
+        # API headers
         rod/path.hpp
         rod/file.hpp
         #[[rod/io.hpp]])

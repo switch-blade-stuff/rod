@@ -11,8 +11,8 @@
 #include <utility>
 #include <thread>
 
-#include "../detail/priority_queue.hpp"
-#include "../detail/atomic_queue.hpp"
+#include "rod/detail/priority_queue.hpp"
+#include "rod/detail/atomic_queue.hpp"
 #include "../detail/basic_queue.hpp"
 #include "filetime_clock.hpp"
 

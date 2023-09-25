@@ -5,7 +5,7 @@
 #pragma once
 
 #include "../queries/completion.hpp"
-#include "../receiver_adaptor.hpp"
+#include "rod/detail/algorithm/receiver_adaptor.hpp"
 #include "closure.hpp"
 
 namespace rod

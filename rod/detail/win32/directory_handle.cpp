@@ -75,7 +75,7 @@ namespace rod::_dir
 				return std::make_error_code(std::errc::no_such_file_or_directory);
 			else if (is_error_not_a_directory(err))
 				return std::make_error_code(std::errc::not_a_directory);
-			else if (is_error_file_exists(err) && disp == file_create)
+			else if (is_error_file_exists(err) && mode == open_mode::create)
 				return std::make_error_code(std::errc::file_exists);
 			else
 				return err;

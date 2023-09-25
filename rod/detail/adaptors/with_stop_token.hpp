@@ -6,7 +6,7 @@
 
 #include <optional>
 
-#include "../receiver_adaptor.hpp"
+#include "rod/detail/algorithm/receiver_adaptor.hpp"
 #include "../../stop_token.hpp"
 #include "../async_base.hpp"
 #include "closure.hpp"

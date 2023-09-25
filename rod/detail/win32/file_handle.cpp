@@ -12,13 +12,8 @@ namespace rod::_file
 
 	result<file_handle> file_handle::do_open(const path_handle &base, path_view path, file_flags flags, open_mode mode, file_caching caching, file_perm perm) noexcept
 	{
-		auto opts = make_handle_opts(flags, caching) | 0x40; /*FILE_NON_DIRECTORY_FILE*/
-		auto attr = make_handle_attr(flags, caching, perm);
-		auto access = flags_to_access(flags);
-		auto disp = mode_to_disp(mode);
-
-		/* Assert NtCreateFile requirements. */
-		if ((opts & 8 /*FILE_NO_INTERMEDIATE_BUFFERING*/) && (access & FILE_APPEND_DATA))
+		/* NtCreateFile does not support append access without IO buffering. */
+		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append))
 			return std::make_error_code(std::errc::not_supported);
 
 		const auto &ntapi = ntapi::instance();
@@ -35,6 +30,10 @@ namespace rod::_file
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 
 		auto obj_attrib = object_attributes();
+		auto opts = make_handle_opts(flags, caching) | 0x40; /*FILE_NON_DIRECTORY_FILE*/
+		auto attr = make_handle_attr(flags, caching, perm);
+		auto access = flags_to_access(flags);
+		auto disp = mode_to_disp(mode);
 		auto iosb = io_status_block();
 
 		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
@@ -49,18 +48,18 @@ namespace rod::_file
 				return std::make_error_code(std::errc::no_such_file_or_directory);
 			else if (is_error_not_a_directory(err))
 				return std::make_error_code(std::errc::not_a_directory);
-			else if (is_error_file_exists(err) && disp == file_create)
+			else if (is_error_file_exists(err) && mode == open_mode::create)
 				return std::make_error_code(std::errc::file_exists);
 			else
 				return err;
 		}
 
 		/* Make sparse if created a new file. */
-		if ((iosb.info == 2 /*FILE_CREATED*/ || (mode != open_mode::existing && mode != open_mode::always)) && !bool(flags & file_flags::no_sparse_files))
+		if (!bool(flags & file_flags::no_sparse_files) && (mode == open_mode::truncate || mode == open_mode::supersede || iosb.info == 2 /*FILE_CREATED*/))
 		{
 			DWORD bytes = 0;
-			auto sparse_buff = FILE_SET_SPARSE_BUFFER{.SetSparse = 1};
-			::DeviceIoControl(*hnd, FSCTL_SET_SPARSE, &sparse_buff, sizeof(sparse_buff), nullptr, 0, &bytes, nullptr);
+			auto buffer = FILE_SET_SPARSE_BUFFER{.SetSparse = 1};
+			::DeviceIoControl(*hnd, FSCTL_SET_SPARSE, &buffer, sizeof(buffer), nullptr, 0, &bytes, nullptr);
 		}
 		/* Flush the file if additional sanity barriers are requested. */
 		if (mode == open_mode::truncate && bool(caching & file_caching::sanity_barriers))

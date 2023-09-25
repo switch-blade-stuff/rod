@@ -5,7 +5,7 @@
 #pragma once
 
 #include "start_detached.hpp"
-#include "adaptors/then.hpp"
+#include "../adaptors/then.hpp"
 
 namespace rod
 {
