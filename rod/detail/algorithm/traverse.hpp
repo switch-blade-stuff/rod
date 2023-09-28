@@ -101,7 +101,7 @@ namespace rod
 			template<typename V2>
 			constexpr explicit channel_result(V2 &&v) noexcept(std::is_nothrow_constructible_v<V, V2>) : empty_base<V>(std::forward<V2>(v)) {}
 
-			constexpr decltype(auto) operator()() noexcept(noexcept(std::move(empty_base<V>::value()).result())) { return empty_base<V>::value().result(); }
+			constexpr decltype(auto) operator()() noexcept(noexcept(empty_base<V>::value().result())) { return empty_base<V>::value().result(); }
 		};
 		template<typename E>
 		struct channel_result<set_error_t, E> : empty_base<E>
@@ -118,9 +118,14 @@ namespace rod
 		{
 			using next_state_t = connect_result_t<schedule_result_t<Sch &>, type>;
 			using operation_t = typename operation<Sch, Rcv, V>::type;
-			using receiver_t = typename receiver<Sch, Rcv, V>::type;
 
 		public:
+			type(const type &) = delete;
+			type &operator=(const type &) = delete;
+
+			type(type &&) = delete;
+			type &operator=(type &&) = delete;
+
 			constexpr type(operation_t *op, fs::directory_handle &&base) : type(nullptr, op, std::forward<fs::directory_handle>(base), 0) {}
 			constexpr type(next_state_t *next, operation_t *op, fs::directory_handle &&base, std::size_t level) : _next(next), _op(op), _base(std::forward<fs::directory_handle>(base)), _level(level) {}
 
