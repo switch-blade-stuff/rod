@@ -146,6 +146,9 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         # rod/detail/mapping_handle.hpp
         # rod/detail/file_mapping.hpp
 
+        # Filesystem algorithms
+        rod/detail/algorithm/traverse.hpp
+
         # Linux headers
         # rod/linux/io_uring_context.hpp
         # rod/linux/epoll_context.hpp

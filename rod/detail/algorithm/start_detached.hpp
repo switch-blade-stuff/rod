@@ -69,7 +69,7 @@ namespace rod
 				assert(old_flags & started);
 
 				if (!(old_flags & complete)) [[unlikely]]
-					_flags.wait(old_flags | waiting, std::memory_order_release);
+					_flags.wait(old_flags | waiting);
 			}
 
 		private:

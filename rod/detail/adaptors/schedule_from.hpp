@@ -165,7 +165,7 @@ namespace rod
 				std::visit([&]<typename T>(T &t)
 				{
 					if constexpr (!std::same_as<T, std::monostate>)
-					    std::apply([&]<typename... Args>(auto tag, Args &&...args) { tag(std::move(rcv_base::value()), std::move(args)...); }, t);
+					    std::apply([&](auto tag, auto &&...args) { tag(std::move(rcv_base::value()), std::move(args)...); }, t);
 					else
 						std::terminate();
 				}, _data);

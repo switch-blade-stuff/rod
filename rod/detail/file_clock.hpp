@@ -10,7 +10,7 @@ namespace rod::fs
 {
 #ifdef ROD_WIN32
 	/** System clock used for filesystem IO operations, such as Win32 `FILETIME` or POSIX `timespec`.
-	 * @note `time_point` is guaranteed to be convertible to `system_clock::time_point`. */
+	 * @note `time_point` is guaranteed to be convertible to and from `system_clock::time_point`. */
 	struct file_clock
 	{
 		using duration = std::chrono::duration<std::int64_t , std::ratio<1, 10'000'000>>;
@@ -79,10 +79,10 @@ namespace rod::fs
 	};
 #else
 	/** System clock used for filesystem IO operations, such as Win32 `FILETIME` or POSIX `timespec`.
-	 * @note `time_point` is guaranteed to be convertible to `system_clock::time_point`. */
+	 * @note `time_point` is guaranteed to be convertible to and from `system_clock::time_point`. */
 	using file_clock = std::chrono::system_clock;
 #endif
 
 	/** Timeout type using `file_clock`. */
-	using file_timeout = basic_timeout<fs::file_clock>;
+	using file_timeout = basic_timeout<file_clock>;
 }

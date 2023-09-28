@@ -45,6 +45,27 @@ namespace rod
 	template<typename T, typename... Ts>
 	concept one_of = (std::same_as<T, Ts> || ...);
 
+	/** Concept used to check if tuple-like type \a T has an element at index \a N.
+	 * @note Equivalent to C++23 exposition-only `is-tuple-element` concept. */
+	template<typename T, std::size_t N>
+	concept is_tuple_element = requires (T t)
+	{
+		typename std::tuple_element_t<N, T>;
+		{ std::get<N>(t) } -> std::convertible_to<std::tuple_element_t<N, T> &>;
+	};
+	/** Concept used to check if type \a T is a tuple-like type (can be used with tuple algorithms and participate in structural binding).
+	 * @note Equivalent to C++23 exposition-only `tuple-like` concept. */
+	template<typename T>
+	concept tuple_like = requires
+	{
+		typename std::tuple_size<T>::type;
+		requires std::same_as<std::remove_cvref_t<decltype(std::tuple_size_v<T>)>, std::size_t>;
+	} && []<std::size_t... I>(std::index_sequence<I...>) { return (is_tuple_element<T, I> && ...); }(std::make_index_sequence<std::tuple_size_v<T>>{});
+	/** Concept used to check if type \a T is a pair-like type (models `tuple_like` and has only `2` elements).
+	 * @note Equivalent to C++23 exposition-only `pair-like` concept. */
+	template<typename T>
+	concept pair_like = tuple_like<T> && std::tuple_size_v<T> == 2;
+
 	namespace _detail
 	{
 		template<typename... Ts>

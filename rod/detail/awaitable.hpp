@@ -40,7 +40,7 @@ namespace rod
 		constexpr T &&get_awaiter(T &&value, auto *) noexcept { return static_cast<T &&>(value); }
 
 		template<typename T>
-		concept await_suspend_result = std::is_void_v<T> || std::same_as<T, bool> || instance_of<T, std::coroutine_handle>;
+		concept await_suspend_result = std::same_as<T, void> || std::same_as<T, bool> || instance_of<T, std::coroutine_handle>;
 
 		template<typename A, typename P>
 		concept with_await_suspend = std::same_as<P, void> || requires(A &a, std::coroutine_handle<P> h)

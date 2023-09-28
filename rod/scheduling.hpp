@@ -28,14 +28,14 @@
 #include "detail/adaptors/let.hpp"
 #include "detail/adaptors/on.hpp"
 
-#include "detail/utility/execute.hpp"
-#include "detail/utility/sync_wait.hpp"
-#include "detail/utility/ensure_started.hpp"
-#include "detail/utility/start_detached.hpp"
-#include "rod/detail/receiver_adaptor.hpp"
-
+#include "detail/receiver_adaptor.hpp"
 #include "stop_token.hpp"
 
 #include "detail/run_loop.hpp"
 #include "detail/awaitable.hpp"
 #include "detail/thread_pool.hpp"
+
+#include "detail/algorithm/execute.hpp"
+#include "detail/algorithm/sync_wait.hpp"
+#include "detail/algorithm/ensure_started.hpp"
+#include "detail/algorithm/start_detached.hpp"

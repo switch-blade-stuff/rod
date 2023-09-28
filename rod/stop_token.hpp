@@ -167,7 +167,7 @@ namespace rod
 			{
 				while (flags & status_t::is_busy)
 				{
-					_flags.wait(flags, std::memory_order_acq_rel);
+					_flags.wait(flags);
 					flags = _flags.load(std::memory_order_relaxed);
 				}
 
@@ -189,7 +189,7 @@ namespace rod
 				for (; flags; flags = _flags.load(std::memory_order_relaxed))
 				{
 					if (flags & status_t::has_req) return false;
-					if (flags & status_t::is_busy) _flags.wait(flags, std::memory_order_acq_rel);
+					if (flags & status_t::is_busy) _flags.wait(flags);
 				}
 
 				if (_flags.compare_exchange_weak(
@@ -236,7 +236,7 @@ namespace rod
 				unlock(old);
 
 				if (tid != std::this_thread::get_id())
-					node->complete.wait(false, std::memory_order_acq_rel);
+					node->complete.wait(false);
 				else if (node->removed)
 					*node->removed = true;
 			}

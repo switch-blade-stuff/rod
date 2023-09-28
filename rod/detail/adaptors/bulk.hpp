@@ -7,7 +7,7 @@
 #include <functional>
 
 #include "../queries/completion.hpp"
-#include "rod/detail/algorithm/receiver_adaptor.hpp"
+#include "../receiver_adaptor.hpp"
 #include "closure.hpp"
 
 namespace rod
