@@ -80,11 +80,11 @@ namespace rod
 
 	namespace _traverse
 	{
-		template<typename Snd, typename V>
+		template<typename Sch, typename Snd, typename V>
 		struct sender { class type; };
-		template<typename Sch, typename Rcv, typename V>
+		template<typename Snd, typename Rcv, typename V>
 		struct receiver { class type; };
-		template<typename Sch, typename Rcv, typename V>
+		template<typename Snd, typename Rcv, typename V>
 		struct operation { class type; };
 
 		template<typename C, typename...>
@@ -113,11 +113,13 @@ namespace rod
 			constexpr decltype(auto) operator()() && noexcept { return std::forward_as_tuple(std::move(empty_base<E>::value())); }
 		};
 
-		template<typename Sch, typename Rcv, typename V>
-		class receiver<Sch, Rcv, V>::type
+		template<typename Snd, typename Rcv, typename V>
+		class receiver<Snd, Rcv, V>::type : public receiver_adaptor<type>
 		{
-			using next_state_t = connect_result_t<schedule_result_t<Sch &>, type>;
-			using operation_t = typename operation<Sch, Rcv, V>::type;
+			friend receiver_adaptor<type>;
+
+			using operation_t = typename operation<Snd, Rcv, V>::type;
+			using next_state_t = connect_result_t<const Snd &, type>;
 
 		public:
 			type(const type &) = delete;
@@ -132,6 +134,15 @@ namespace rod
 			~type() { delete _next; }
 
 		private:
+			inline env_of_t<Rcv> do_get_env() const noexcept;
+
+			void do_set_value() noexcept { run(); }
+
+			/* These are propagated to downstream. */
+			inline void do_set_stopped() noexcept;
+			template<typename Err>
+			inline void do_set_error(Err &&err) noexcept;
+
 			/* Algorithm (depth-first recursive async traversal):
 			 * 1. Enumerate the top-level directory until EOF.
 			 * 2. For each directory entry:
@@ -155,13 +166,13 @@ namespace rod
 			std::size_t _level;
 		};
 
-		template<typename Sch, typename Rcv, typename V>
-		class operation<Sch, Rcv, V>::type : empty_base<Sch>, empty_base<Rcv>
+		template<typename Snd, typename Rcv, typename V>
+		class operation<Snd, Rcv, V>::type : empty_base<Snd>, empty_base<Rcv>
 		{
-			friend class receiver<Sch, Rcv, V>::type;
+			friend class receiver<Snd, Rcv, V>::type;
 
-			using receiver_t = typename receiver<Sch, Rcv, V>::type;
-			using state_t = connect_result_t<schedule_result_t<Sch &>, receiver_t>;
+			using receiver_t = typename receiver<Snd, Rcv, V>::type;
+			using worker_state_t = connect_result_t<const Snd &, receiver_t>;
 
 			using stopped_variant = std::variant<channel_result<set_stopped_t>>;
 			using value_variant = std::variant<channel_result<set_value_t, V>>;
@@ -173,10 +184,10 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			template<typename Sch2, typename Rcv2, typename V2>
-			constexpr type(Sch2 &&sch, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&base) : empty_base<Sch>(std::forward<Sch2>(sch)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), _workers(1), _data(std::forward<V2>(v))
+			template<typename Snd2, typename Rcv2, typename V2>
+			constexpr type(Snd2 &&snd, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&base) : empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), _workers(1), _data(std::forward<V2>(v))
 			{
-				_worker_state = new state_t(connect(schedule(empty_base<Sch>::value()), receiver_t(this, std::forward<fs::directory_handle>(base))));
+				_worker_state = new worker_state_t(connect(sender(), receiver_t(this, std::forward<fs::directory_handle>(base))));
 			}
 
 			~type() { delete _worker_state; }
@@ -184,6 +195,8 @@ namespace rod
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(*op._worker_state); }
 
 		private:
+			[[nodiscard]] const auto &sender() const noexcept { return empty_base<Snd>::value(); }
+
 			[[nodiscard]] auto &visitor() noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
 			[[nodiscard]] auto &visitor() const noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
 
@@ -290,12 +303,21 @@ namespace rod
 			}
 
 			std::atomic<std::size_t> _workers;
-			state_t *_worker_state = nullptr;
+			worker_state_t *_worker_state;
 			data_t _data;
 		};
 
-		template<typename Sch, typename Rcv, typename V>
-		void receiver<Sch, Rcv, V>::type::run() noexcept
+		template<typename Snd, typename Rcv, typename V>
+		env_of_t<Rcv> receiver<Snd, Rcv, V>::type::do_get_env() const noexcept { return get_env(_op->empty_base<Rcv>::value()); }
+
+		template<typename Snd, typename Rcv, typename V>
+		void receiver<Snd, Rcv, V>::type::do_set_stopped() noexcept { _op->complete_stop(); }
+		template<typename Snd, typename Rcv, typename V>
+		template<typename Err>
+		void receiver<Snd, Rcv, V>::type::do_set_error(Err &&err) noexcept { _op->complete_error(std::forward<Err>(err)); }
+
+		template<typename Snd, typename Rcv, typename V>
+		void receiver<Snd, Rcv, V>::type::run() noexcept
 		{
 			auto buffs = std::vector<read_some_buffer_t<fs::directory_handle>>(64);
 			auto req = read_some_request_t<fs::directory_handle>{.buffs = buffs};
@@ -391,7 +413,7 @@ namespace rod
 
 				{ /* Start subdirectory traversal operation. */
 					const auto g = _op->incref_guard();
-					_next = new next_state_t(connect(schedule(empty_base<Sch>::value()), type(_next, this, std::move(*subdir), _level + 1)));
+					_next = new next_state_t(connect(_op->sender(), type(_next, this, std::move(*subdir), _level + 1)));
 				}
 				start(*_next);
 			}

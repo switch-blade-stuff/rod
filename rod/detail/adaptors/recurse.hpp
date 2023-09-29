@@ -66,7 +66,7 @@ namespace rod
 
 			template<typename Snd2, typename Pred2>
 			constexpr explicit type(Snd2 &&snd, Rcv &&rcv, Pred2 &&pred) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Pred, Pred2> && noexcept(_detail::nothrow_callable<connect_t, Snd &, receiver_t>))
-					: pred_base(std::forward<Pred2>(pred)), snd_base(std::forward<Snd2>(snd)), rcv_base(std::forward<Rcv>(rcv)), _state(connect(snd_base::value(), receiver_t(this))) {}
+					: pred_base(std::forward<Pred2>(pred)), snd_base(std::forward<Snd2>(snd)), rcv_base(std::forward<Rcv>(rcv)), _state(connect(std::as_const(snd_base::value()), receiver_t(this))) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(op._state); }
 
@@ -74,11 +74,11 @@ namespace rod
 			void restart() noexcept(_detail::nothrow_callable<connect_t, Snd &, receiver_t>)
 			{
 				if constexpr (std::is_move_assignable_v<state_t>)
-					_state = connect(snd_base::value(), receiver_t(this));
+					_state = connect(std::as_const(snd_base::value()), receiver_t(this));
 				else
 				{
 					_state.~state_t();
-					new (std::addressof(_state)) state_t(connect(snd_base::value(), receiver_t(this)));
+					new (std::addressof(_state)) state_t(connect(std::as_const(snd_base::value()), receiver_t(this)));
 				}
 				start(_state);
 			}
