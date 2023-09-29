@@ -80,7 +80,7 @@ namespace rod
 
 	namespace _traverse
 	{
-		template<typename Sch, typename Snd, typename V>
+		template<typename Sch, typename V>
 		struct sender { class type; };
 		template<typename Snd, typename Rcv, typename V>
 		struct receiver { class type; };
@@ -128,8 +128,8 @@ namespace rod
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			constexpr type(operation_t *op, fs::directory_handle &&base) : type(nullptr, op, std::forward<fs::directory_handle>(base), 0) {}
-			constexpr type(next_state_t *next, operation_t *op, fs::directory_handle &&base, std::size_t level) : _next(next), _op(op), _base(std::forward<fs::directory_handle>(base)), _level(level) {}
+			constexpr type(operation_t *op, fs::directory_handle &&dir) : type(nullptr, op, std::forward<fs::directory_handle>(dir), 0) {}
+			constexpr type(next_state_t *next, operation_t *op, fs::directory_handle &&dir, std::size_t level) : _next(next), _op(op), _dir(std::forward<fs::directory_handle>(dir)), _level(level) {}
 
 			~type() { delete _next; }
 
@@ -162,7 +162,7 @@ namespace rod
 			next_state_t *_next;
 			operation_t *_op;
 
-			fs::directory_handle _base;
+			fs::directory_handle _dir;
 			std::size_t _level;
 		};
 
@@ -185,9 +185,9 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			template<typename Snd2, typename Rcv2, typename V2>
-			constexpr type(Snd2 &&snd, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&base) : empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), _workers(1), _data(std::forward<V2>(v))
+			constexpr type(Snd2 &&snd, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&dir) : empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), _workers(1), _data(std::forward<V2>(v))
 			{
-				_worker_state = new worker_state_t(connect(sender(), receiver_t(this, std::forward<fs::directory_handle>(base))));
+				_worker_state = new worker_state_t(connect(snd(), receiver_t(this, std::forward<fs::directory_handle>(dir))));
 			}
 
 			~type() { delete _worker_state; }
@@ -195,10 +195,36 @@ namespace rod
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { start(*op._worker_state); }
 
 		private:
-			[[nodiscard]] const auto &sender() const noexcept { return empty_base<Snd>::value(); }
+			[[nodiscard]] auto &rcv() noexcept { return empty_base<Rcv>::value(); }
+			[[nodiscard]] const auto &rcv() const noexcept { return empty_base<Rcv>::value(); }
+			[[nodiscard]] const auto &snd() const noexcept { return empty_base<Snd>::value(); }
 
 			[[nodiscard]] auto &visitor() noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
 			[[nodiscard]] auto &visitor() const noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
+
+			std::size_t lock() noexcept
+			{
+				std::size_t workers;
+				while ((workers = _workers.exchange(0, std::memory_order_acq_rel)) == 0)
+					_workers.wait(workers);
+				return workers;
+			}
+			void unlock(std::size_t workers) noexcept
+			{
+				_workers.store(workers, std::memory_order_release);
+				_workers.notify_one();
+			}
+
+			[[nodiscard]] auto decref_guard() noexcept
+			{
+				const auto workers = lock();
+				return std::make_pair(workers, defer_invoke([this, workers]() noexcept { unlock(workers - 1); }));
+			}
+			[[nodiscard]] auto incref_guard() noexcept
+			{
+				const auto workers = lock();
+				return std::make_pair(workers, defer_invoke([this, workers]() noexcept { unlock(workers + 1); }));
+			}
 
 			template<typename C>
 			constexpr void apply_result(auto &res) noexcept
@@ -229,7 +255,7 @@ namespace rod
 			constexpr void apply_channel(Res &&res) noexcept
 			{
 				if (res.has_error())
-					set_error(std::move(empty_base<Rcv>::value()), res.error());
+					set_error(std::move(rcv()), res.error());
 				else
 					apply_channel<C>(std::move(*res));
 			}
@@ -237,33 +263,9 @@ namespace rod
 			constexpr void invoke_channel(Args &&...args) noexcept
 			{
 				if constexpr (!_detail::nothrow_callable<C, Rcv &&, Args...> && !std::same_as<C, set_error_t>)
-					try { C{}(std::move(empty_base<Rcv>::value()), std::forward<Args>(args)...); } catch(...) { invoke_channel<set_error_t>(std::current_exception()); }
+					try { C{}(std::move(rcv()), std::forward<Args>(args)...); } catch(...) { invoke_channel<set_error_t>(std::current_exception()); }
 				else
-					C{}(std::move(empty_base<Rcv>::value()), std::forward<Args>(args)...);
-			}
-
-			std::size_t lock() noexcept
-			{
-				std::size_t workers;
-				while ((workers = _workers.exchange(0, std::memory_order_acq_rel)) == 0)
-					_workers.wait(workers);
-				return workers;
-			}
-			void unlock(std::size_t workers) noexcept
-			{
-				_workers.store(workers, std::memory_order_release);
-				_workers.notify_one();
-			}
-
-			auto decref_guard() noexcept
-			{
-				const auto workers = lock();
-				return std::make_pair(workers, defer_invoke([this, workers]() noexcept { unlock(workers - 1); }));
-			}
-			auto incref_guard() noexcept
-			{
-				const auto workers = lock();
-				return std::make_pair(workers, defer_invoke([this, workers]() noexcept { unlock(workers + 1); }));
+					C{}(std::move(rcv()), std::forward<Args>(args)...);
 			}
 
 			void complete_next() noexcept
@@ -308,7 +310,7 @@ namespace rod
 		};
 
 		template<typename Snd, typename Rcv, typename V>
-		env_of_t<Rcv> receiver<Snd, Rcv, V>::type::do_get_env() const noexcept { return get_env(_op->empty_base<Rcv>::value()); }
+		env_of_t<Rcv> receiver<Snd, Rcv, V>::type::do_get_env() const noexcept { return get_env(_op->rcv()); }
 
 		template<typename Snd, typename Rcv, typename V>
 		void receiver<Snd, Rcv, V>::type::do_set_stopped() noexcept { _op->complete_stop(); }
@@ -323,7 +325,7 @@ namespace rod
 			auto req = read_some_request_t<fs::directory_handle>{.buffs = buffs};
 			for (;;)
 			{
-				auto read_res = read_some(_base, std::move(req));
+				auto read_res = read_some(_dir, std::move(req));
 				if (read_res.has_error()) [[unlikely]]
 				{
 					_op->complete_error(read_res.error());
@@ -346,7 +348,7 @@ namespace rod
 				/* Make sure we have the required stats. Type is needed for further subdirectory traversal. */
 				if (!bool(st_mask & stat::query::type))
 				{
-					auto st_res = get_stat(st, _base, entry.path(), stat::query::type);
+					auto st_res = get_stat(st, _dir, entry.path(), stat::query::type);
 					if (st_res.has_error()) [[unlikely]]
 					{
 						_op->complete_error(st_res.error());
@@ -356,7 +358,7 @@ namespace rod
 				}
 
 				{ /* Report entry to the visitor. */
-					auto accept_res = _op->visitor().accept_entry(_base, entry.path(), st, st_mask, _level);
+					auto accept_res = _op->visitor().accept_entry(_dir, entry.path(), st, st_mask, _level);
 					bool accept = bool(accept_res);
 					if constexpr (decays_to_instance_of<decltype(accept_res), result>)
 					{
@@ -371,12 +373,13 @@ namespace rod
 						continue;
 				}
 
+				/* FIXME: How should out-of-descriptors condition be handled (ex. add entry to a list and process later)? */
 				/* Attempt to open the subdirectory and report errors. */
-				auto subdir = fs::directory_handle::open(_base, entry.path());
+				auto subdir = fs::directory_handle::open(_dir, entry.path());
 				if (subdir.has_error()) [[unlikely]]
 				{
 					/* Ignore the subdirectory as requested by the user. */
-					auto ignore_res = _op->visitor().ignore_error(subdir.error(), _base, entry.path(), _level);
+					auto ignore_res = _op->visitor().ignore_error(subdir.error(), _dir, entry.path(), _level);
 					bool ignore = bool(ignore_res);
 					if constexpr (decays_to_instance_of<decltype(ignore_res), result>)
 					{
@@ -413,7 +416,7 @@ namespace rod
 
 				{ /* Start subdirectory traversal operation. */
 					const auto g = _op->incref_guard();
-					_next = new next_state_t(connect(_op->sender(), type(_next, this, std::move(*subdir), _level + 1)));
+					_next = new next_state_t(connect(_op->snd(), type(_next, this, std::move(*subdir), _level + 1)));
 				}
 				start(*_next);
 			}
@@ -421,6 +424,16 @@ namespace rod
 			/* Successfully enumerated all files & subdirectories. */
 			_op->complete_value();
 		}
+
+		template<typename Sch, typename V>
+		class sender<Sch, V>::type : empty_base<Sch>, empty_base<V>
+		{
+			using env_t = env_of_t<schedule_result_t<Sch>>;
+
+		public:
+		private:
+			fs::directory_handle _dir;
+		};
 
 		struct traverse_t
 		{
