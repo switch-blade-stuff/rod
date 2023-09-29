@@ -333,11 +333,11 @@ namespace rod
 				}
 
 				/* Expand the buffer if full and attempt another read. */
-				if (read_res->size() < buffs.size()) [[likely]]
+				if (read_res->second || read_res->first.size() < buffs.size()) [[likely]]
 					break;
 
 				buffs.resize(buffs.size() * 2);
-				req.buffs = {std::move(*read_res), buffs};
+				req.buffs = {std::move(read_res->first), buffs};
 			}
 
 			/* Enumerate directory entries. */

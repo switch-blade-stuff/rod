@@ -309,8 +309,8 @@ namespace rod::fs
 			};
 			if (auto res = read_some(*hnd, req, to); res.has_error()) [[unlikely]]
 				return res.error();
-			else if (!res->empty())
-				seq = std::move(*res);
+			else if (!res->first.empty())
+				seq = std::move(res->first);
 			else
 				break;
 

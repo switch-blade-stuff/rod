@@ -207,7 +207,7 @@ namespace rod
 			using io_buffer = _dir::io_buffer<Op>;
 
 			template<typename Op>
-			using io_result = result<io_buffer_sequence<Op>>;
+			using io_result = result<std::pair<io_buffer_sequence<Op>, bool>>;
 			template<typename Op>
 			using io_request = _dir::io_request<Op>;
 

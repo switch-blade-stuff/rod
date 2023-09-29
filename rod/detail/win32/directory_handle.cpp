@@ -162,7 +162,7 @@ namespace rod::_dir
 	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
 	{
 		if (req.buffs.empty()) [[unlikely]]
-			return std::move(req.buffs);
+			return std::make_pair(std::move(req.buffs), false);
 
 		const auto abs_timeout = to.absolute();
 		auto g = std::lock_guard(*this);
@@ -181,13 +181,14 @@ namespace rod::_dir
 
 		std::size_t buffer_size = req.buffs._buff_max, result_size = 0;
 		wchar_t *result_buff = req.buffs._buff.release();
-		bool reset_pos = !req.resume, eof = false;
 		auto &ufilter = rfilter->first;
+		bool reset_pos = !req.resume;
+		ntstatus status = 0;
 
-		while (result_size < req.buffs.size() && !eof)
+		while (result_size < req.buffs.size() && !is_status_failure(status))
 		{
 			auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
-			eof = ntapi->query_directory(native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
+			status = ntapi->query_directory(native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
 			{
 				auto &entry = req.buffs[result_size++];
 				if (entry._buff.size() >= sv.size())
@@ -242,13 +243,21 @@ namespace rod::_dir
 			entry._buff = std::span(result_buff + off, len);
 		}
 
+		/* Always truncate to result_size to avoid empty-entry checks. */
+		req.buffs._data = req.buffs._data.subspan(0, result_size);
 		/* Save the buffer max size for later re-use. */
 		req.buffs._buff_max = std::max(req.buffs._buff_max, buffer_size);
 		req.buffs._buff.reset(result_buff);
 
-		/* Always truncate to result_size to avoid empty-entry checks. */
-		req.buffs._data = req.buffs._data.subspan(0, result_size);
-		return std::move(req.buffs);
+		if (is_status_failure(status))
+		{
+			/* Treat errors during a partial result as EOF. */
+			if (result_size != 0 || status == 0x80000006 /*STATUS_NO_MORE_FILES*/) [[likely]]
+				return std::make_pair(std::move(req.buffs), true);
+			else
+				return status_error_code(status);
+		}
+		return std::make_pair(std::move(req.buffs), false);
 	}
 
 	result<directory_iterator> directory_iterator::from_handle(const path_handle &other) noexcept

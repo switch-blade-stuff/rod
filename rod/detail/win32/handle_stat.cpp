@@ -271,6 +271,8 @@ namespace rod::_handle
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
 			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath))
 				return status_error_code(status);
+			else
+				goto stat_handle;
 		}
 
 		/* Data is only useful if the target is not a symlink or we don't want to follow symlinks. */
@@ -317,6 +319,7 @@ namespace rod::_handle
 				return done;
 		}
 
+	stat_handle:
 		/* If we still need more data then do the slow thing and open the handle. */
 		const auto opts = 0x20 | 0x4000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT*/ | (is_dir ? 1 /*FILE_DIRECTORY_FILE*/ : 0) | (nofollow ? 0x20'0000 /*FILE_OPEN_REPARSE_POINT*/ : 0);
 		const auto share = FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE;
