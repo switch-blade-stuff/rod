@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../queries/completion.hpp"
+#include "../adaptors/closure.hpp"
 #include "../directory_handle.hpp"
 #include "../receiver_adaptor.hpp"
 
@@ -80,7 +81,7 @@ namespace rod
 
 	namespace _traverse
 	{
-		template<typename Sch, typename V>
+		template<typename Snd, typename V>
 		struct sender { class type; };
 		template<typename Snd, typename Rcv, typename V>
 		struct receiver { class type; };
@@ -478,21 +479,45 @@ namespace rod
 			fs::directory_handle _dir;
 		};
 
-		struct traverse_t
+		class traverse_t
 		{
-			template<typename Sch, typename V>
-			using sender_t = typename sender<schedule_result_t<Sch>, std::decay_t<V>>::type;
+			template<typename Snd>
+			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
+			template<typename V>
+			using back_adaptor = _detail::back_adaptor<traverse_t, std::decay_t<V>, fs::directory_handle>;
+			template<typename Snd, typename V>
+			using sender_t = typename sender<Snd, std::decay_t<V>>::type;
 
 		public:
-			template<rod::scheduler Sch, fs::traverse_visitor V> requires tag_invocable<traverse_t, Sch, V, fs::directory_handle>
-			[[nodiscard]] rod::sender auto operator()(Sch &&sch, V &&visitor, fs::directory_handle dir) const noexcept(nothrow_tag_invocable<traverse_t, Sch, V, fs::directory_handle>)
+			template<rod::sender_of<set_value_t()> Snd, fs::traverse_visitor V> requires _detail::tag_invocable_with_completion_scheduler<traverse_t, set_value_t, Snd, Snd, V, fs::directory_handle>
+			[[nodiscard]] rod::sender auto operator()(Snd &&snd, V &&visitor, fs::directory_handle dir) const noexcept(nothrow_tag_invocable<traverse_t, value_scheduler<Snd>, Snd, V, fs::directory_handle>)
 			{
-				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<V>(visitor), std::move(dir));
+				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<V>(visitor), std::move(dir));
 			}
-			template<rod::scheduler Sch, fs::traverse_visitor V> requires(!tag_invocable<traverse_t, Sch, V, fs::directory_handle>)
-			[[nodiscard]] sender_t<Sch, V> operator()(Sch &&sch, V &&visitor, fs::directory_handle dir) const noexcept(std::is_nothrow_constructible_v<sender_t<Sch, V>, schedule_result_t<Sch>, V, fs::directory_handle>)
+			template<rod::sender_of<set_value_t()> Snd, fs::traverse_visitor V> requires(!_detail::tag_invocable_with_completion_scheduler<traverse_t, set_value_t, Snd, Snd, V, fs::directory_handle> && tag_invocable<traverse_t, Snd, V, fs::directory_handle>)
+			[[nodiscard]] rod::sender auto operator()(Snd &&snd, V &&visitor, fs::directory_handle dir) const noexcept(nothrow_tag_invocable<traverse_t, Snd, V, fs::directory_handle>)
 			{
-				return sender_t<Sch, V>(schedule(std::forward<Sch>(sch)), std::forward<V>(visitor), std::forward<fs::directory_handle>(dir));
+				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<V>(visitor), std::move(dir));
+			}
+			template<rod::sender_of<set_value_t()> Snd, fs::traverse_visitor V> requires(!_detail::tag_invocable_with_completion_scheduler<traverse_t, set_value_t, Snd, Snd, V, fs::directory_handle> && !tag_invocable<traverse_t, Snd, V, fs::directory_handle>)
+			[[nodiscard]] sender_t<Snd, V> operator()(Snd &&snd, V &&visitor, fs::directory_handle dir) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, V>, Snd, V, fs::directory_handle>)
+			{
+				return sender_t<Snd, V>(schedule(std::forward<Snd>(snd)), std::forward<V>(visitor), std::forward<fs::directory_handle>(dir));
+			}
+
+			template<fs::traverse_visitor V>
+			[[nodiscard]] back_adaptor<V> operator()(V &&visitor, fs::directory_handle dir) const noexcept(std::is_nothrow_constructible_v<back_adaptor<V>, traverse_t, V, fs::directory_handle>)
+			{
+				return back_adaptor<V>{*this, {std::forward<V>(visitor), std::move(dir)}};
+			}
+		};
+		class schedule_traverse_t : traverse_t
+		{
+		public:
+			template<rod::scheduler Sch, fs::traverse_visitor V> requires _detail::callable<traverse_t, schedule_result_t<Sch>, V, fs::directory_handle>
+			[[nodiscard]] rod::sender auto operator()(Sch &&sch, V &&visitor, fs::directory_handle dir) const noexcept(_detail::nothrow_callable<traverse_t, schedule_result_t<Sch>, V, fs::directory_handle>)
+			{
+				return traverse_t::operator()(schedule(std::forward<Sch>(sch)), std::forward<V>(visitor), std::move(dir));
 			}
 		};
 	}
@@ -503,5 +528,10 @@ namespace rod
 
 		/* TODO: Document usage. */
 		inline constexpr auto traverse = traverse_t{};
+
+		using _traverse::schedule_traverse_t;
+
+		/* TODO: Document usage. */
+		inline constexpr auto schedule_traverse = schedule_traverse_t{};
 	}
 }
