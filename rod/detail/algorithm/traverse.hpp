@@ -228,21 +228,6 @@ namespace rod
 				return std::make_pair(workers, defer_invoke([this, workers]() noexcept { unlock(workers + 1); }));
 			}
 
-			template<typename C>
-			void apply_result(auto &res) noexcept
-			{
-				const auto do_apply = [&]() noexcept(noexcept(std::move(res)()))
-				{
-					if constexpr (std::is_void_v<decltype(std::move(res)())>)
-						(std::move(res)(), invoke_channel<C>());
-					else
-						apply_channel<C>(std::move(res)());
-				};
-				if constexpr (!noexcept(do_apply()))
-					try { do_apply(); } catch (...) { invoke_channel<set_error_t>(std::current_exception()); }
-				else
-					do_apply();
-			}
 			template<typename C, typename Res>
 			void apply_channel(Res &&res) noexcept
 			{
@@ -273,7 +258,20 @@ namespace rod
 			void complete_next() noexcept
 			{
 				/* Complete the selected channel using the result provided by channel_result::operator() */
-				std::visit([&]<typename C, typename... Ts>(channel_result<C, Ts...> &res) noexcept { apply_result<C>(res); }, _data);
+				std::visit([&]<typename C, typename... Ts>(channel_result<C, Ts...> &res) noexcept
+				{
+					const auto do_apply = [&]() noexcept(noexcept(std::move(res)()))
+					{
+						if constexpr (std::is_void_v<decltype(std::move(res)())>)
+							(std::move(res)(), invoke_channel<C>());
+						else
+							apply_channel<C>(std::move(res)());
+					};
+					if constexpr (!noexcept(do_apply()))
+						try { do_apply(); } catch (...) { invoke_channel<set_error_t>(std::current_exception()); }
+					else
+						do_apply();
+				}, _data);
 			}
 			void complete_stop() noexcept
 			{
