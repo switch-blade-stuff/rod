@@ -129,7 +129,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			type(operation_t *op, fs::directory_handle &&dir) : type(nullptr, op, std::forward<fs::directory_handle>(dir), 0) {}
-			type(next_state_t *next, operation_t *op, fs::directory_handle &&dir, std::size_t level) : _next(next), _op(op), _dir(std::forward<fs::directory_handle>(dir)), _level(level) {}
+			type(next_state_t *next, operation_t *op, fs::directory_handle &&dir, std::size_t level) : _next(next), _op(op), _dir(std::move(dir)), _level(level) {}
 
 			~type() { delete _next; }
 
@@ -167,12 +167,11 @@ namespace rod
 		};
 
 		template<typename Snd, typename Rcv, typename V>
-		class operation<Snd, Rcv, V>::type : empty_base<Snd>, empty_base<Rcv>
+		class operation<Snd, Rcv, V>::type : empty_base<Snd>, empty_base<Rcv>, connect_result_t<const Snd &, typename receiver<Snd, Rcv, V>::type>
 		{
 			friend class receiver<Snd, Rcv, V>::type;
 
-			using receiver_t = typename receiver<Snd, Rcv, V>::type;
-			using worker_state_t = connect_result_t<const Snd &, receiver_t>;
+			using worker_base = connect_result_t<const Snd &, typename receiver<Snd, Rcv, V>::type>;
 
 			using stopped_variant = std::variant<channel_result<set_stopped_t>>;
 			using value_variant = std::variant<channel_result<set_value_t, V>>;
@@ -185,14 +184,16 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			template<typename Snd2, typename Rcv2, typename V2>
-			type(Snd2 &&snd, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&dir) : empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), _workers(1), _data(std::forward<V2>(v))
+			type(Snd2 &&snd, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&dir) : empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), worker_base(connect(snd(), receiver_t(this, std::move(dir)))), _workers(1), _data(std::forward<V2>(v)) {}
+
+			friend void tag_invoke(start_t, type &op) noexcept
 			{
-				_worker_state = new worker_state_t(connect(snd(), receiver_t(this, std::forward<fs::directory_handle>(dir))));
+				/* If the constructor has failed to allocate a worker, immediately complete with an error. */
+				if (op._workers.load(std::memory_order_relaxed) != 0)
+					start(*op._worker_state);
+				else
+					op.complete_next();
 			}
-
-			~type() { delete _worker_state; }
-
-			friend void tag_invoke(start_t, type &op) noexcept { start(*op._worker_state); }
 
 		private:
 			[[nodiscard]] auto &rcv() noexcept { return empty_base<Rcv>::value(); }
@@ -272,8 +273,6 @@ namespace rod
 			{
 				/* Complete the selected channel using the result provided by channel_result::operator() */
 				std::visit([&]<typename C, typename... Ts>(channel_result<C, Ts...> &res) noexcept { apply_result<C>(res); }, _data);
-				/* Delete the worker chain once the last one completes. This will bypass the destructor's `delete`. */
-				delete std::exchange(_worker_state, nullptr);
 			}
 			void complete_stop() noexcept
 			{
@@ -305,7 +304,6 @@ namespace rod
 			}
 
 			std::atomic<std::size_t> _workers;
-			worker_state_t *_worker_state;
 			data_t _data;
 		};
 
@@ -420,7 +418,12 @@ namespace rod
 					if (_op->_data.index() != 0) [[unlikely]]
 						break;
 
-					_next = new next_state_t(connect(_op->snd(), type(_next, this, std::move(*subdir), _level + 1)));
+					try { _next = new next_state_t(connect(_op->snd(), type(_next, this, std::move(*subdir), _level + 1))); }
+					catch (const std::bad_alloc &)
+					{
+						_op->complete_error(handle_error(std::make_error_code(std::errc::not_enough_memory)));
+						return;
+					}
 				}
 				start(*_next);
 			}
