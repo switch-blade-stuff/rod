@@ -178,7 +178,7 @@ namespace rod
 			using value_variant = std::variant<channel_result<set_value_t, V>>;
 			template<typename... Errs>
 			using error_variant = std::variant<channel_result<set_error_t, std::decay_t<Errs>>...>;
-			using data_t = _detail::concat_tuples_t<value_variant, errors_list<V, Snd, env_of_t<Rcv>, error_variant>, stopped_variant>;
+			using data_t = _detail::concat_tuples_t<value_variant, errors_list<V, Snd, env_of_t<Snd>, error_variant>, stopped_variant>;
 
 		public:
 			type(type &&) = delete;
@@ -465,7 +465,7 @@ namespace rod
 			friend constexpr signs_t<E> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
 
 			/* Since directory_handle is not copyable, connect should not accept a const-qualified sender. */
-			template<rod::receiver Rcv> requires receiver_of<receiver_t<Rcv>, value_signs_t>
+			template<rod::receiver Rcv> requires receiver_of<receiver_t<Rcv>, signs_t<env_of_t<Snd>>>
 			friend operation_t<Rcv> tag_invoke(connect_t, type &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, Snd, Rcv, V, fs::directory_handle>)
 			{
 				return operation_t<Rcv>(std::move(s.empty_base<Snd>::value()), std::forward<Rcv>(rcv), std::move(s.empty_base<V>::value()), std::move(s._dir));
