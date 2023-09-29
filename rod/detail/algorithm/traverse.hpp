@@ -309,93 +309,91 @@ namespace rod
 				}
 
 				/* Expand the buffer if full and attempt another read. */
-				if (read_res->size() == buffs.size()) [[unlikely]]
+				if (read_res->size() < buffs.size()) [[likely]]
+					break;
+
+				buffs.resize(buffs.size() * 2);
+				req.buffs = {std::move(*read_res), buffs};
+			}
+
+			/* Enumerate directory entries. */
+			for (auto &entry : req.buffs)
+			{
+				auto [st, st_mask] = entry.st();
+
+				/* Make sure we have the required stats. Type is needed for further subdirectory traversal. */
+				if (!bool(st_mask & stat::query::type))
 				{
-					buffs.resize(buffs.size() * 2);
-					req.buffs = {std::move(*read_res), buffs};
+					auto st_res = get_stat(st, _base, entry.path(), stat::query::type);
+					if (st_res.has_error()) [[unlikely]]
+					{
+						_op->complete_error(st_res.error());
+						return;
+					}
+					st_mask |= *st_res;
+				}
+
+				{ /* Report entry to the visitor. */
+					auto accept_res = _op->visitor().accept_entry(_base, entry.path(), st, st_mask, _level);
+					bool accept = bool(accept_res);
+					if constexpr (decays_to_instance_of<decltype(accept_res), result>)
+					{
+						if (accept_res.has_error()) [[unlikely]]
+						{
+							_op->complete_error(accept_res.error());
+							return;
+						}
+						accept = bool(*accept_res);
+					}
+					if (!accept || st.type != fs::file_type::directory)
+						continue;
+				}
+
+				/* Attempt to open the subdirectory and report errors. */
+				auto subdir = fs::directory_handle::open(_base, entry.path());
+				if (subdir.has_error()) [[unlikely]]
+				{
+					/* Ignore the subdirectory as requested by the user. */
+					auto ignore_res = _op->visitor().ignore_error(subdir.error(), _base, entry.path(), _level);
+					bool ignore = bool(ignore_res);
+					if constexpr (decays_to_instance_of<decltype(ignore_res), result>)
+					{
+						if (ignore_res.has_error()) [[unlikely]]
+						{
+							_op->complete_error(ignore_res.error());
+							return;
+						}
+						ignore = bool(*ignore_res);
+					}
+					if (!ignore)
+					{
+						_op->complete_error(subdir.error());
+						return;
+					}
 					continue;
 				}
 
-				/* Enumerate directory entries. */
-				for (auto &entry : *read_res)
-				{
-					auto [st, st_mask] = entry.st();
-
-					/* Make sure we have the required stats. Type is needed for further subdirectory traversal. */
-					if (!bool(st_mask & stat::query::type))
+				{ /* Report subdirectory handle to the visitor. */
+					auto accept_res = _op->visitor().accept_handle(*subdir, _level + 1);
+					auto accept = bool(accept_res);
+					if constexpr (decays_to_instance_of<decltype(accept_res), result>)
 					{
-						auto st_res = get_stat(st, _base, entry.path(), stat::query::type);
-						if (st_res.has_error()) [[unlikely]]
+						if (accept_res.has_error()) [[unlikely]]
 						{
-							_op->complete_error(st_res.error());
+							_op->complete_error(accept_res.error());
 							return;
 						}
-						st_mask |= *st_res;
+						accept = bool(*accept_res);
 					}
-
-					{ /* Report entry to the visitor. */
-						auto accept_res = _op->visitor().accept_entry(_base, entry.path(), st, st_mask, _level);
-						bool accept = bool(accept_res);
-						if constexpr (decays_to_instance_of<decltype(accept_res), result>)
-						{
-							if (accept_res.has_error()) [[unlikely]]
-							{
-								_op->complete_error(accept_res.error());
-								return;
-							}
-							accept = bool(*accept_res);
-						}
-						if (!accept || st.type != fs::file_type::directory)
-							continue;
-					}
-
-					/* Attempt to open the subdirectory and report errors. */
-					auto subdir = fs::directory_handle::open(_base, entry.path());
-					if (subdir.has_error()) [[unlikely]]
-					{
-						/* Ignore the subdirectory as requested by the user. */
-						auto ignore_res = _op->visitor().ignore_error(subdir.error(), _base, entry.path(), _level);
-						bool ignore = bool(ignore_res);
-						if constexpr (decays_to_instance_of<decltype(ignore_res), result>)
-						{
-							if (ignore_res.has_error()) [[unlikely]]
-							{
-								_op->complete_error(ignore_res.error());
-								return;
-							}
-							ignore = bool(*ignore_res);
-						}
-						if (!ignore)
-						{
-							_op->complete_error(subdir.error());
-							return;
-						}
+					if (!accept) [[unlikely]]
 						continue;
-					}
-
-					{ /* Report subdirectory handle to the visitor. */
-						auto accept_res = _op->visitor().accept_handle(*subdir, _level + 1);
-						auto accept = bool(accept_res);
-						if constexpr (decays_to_instance_of<decltype(accept_res), result>)
-						{
-							if (accept_res.has_error()) [[unlikely]]
-							{
-								_op->complete_error(accept_res.error());
-								return;
-							}
-							accept = bool(*accept_res);
-						}
-						if (!accept) [[unlikely]]
-							continue;
-					}
-
-					{ /* Start subdirectory traversal operation. */
-						const auto _ = _op->incref_guard();
-						_next = new next_state_t(connect(schedule(empty_base<Sch>::value()), type(_next, this, std::move(*subdir), _level + 1)));
-					}
-					start(*_next);
 				}
-				break;
+
+				{ /* Start subdirectory traversal operation. */
+					const auto g = _op->incref_guard();
+					_next = new next_state_t(connect(schedule(empty_base<Sch>::value()), type(_next, this, std::move(*subdir), _level + 1)));
+				}
+				start(*_next);
 			}
 
 			/* Successfully enumerated all files & subdirectories. */
