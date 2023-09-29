@@ -344,8 +344,7 @@ namespace rod
 			for (auto &entry : req.buffs)
 			{
 				auto [st, st_mask] = entry.st();
-
-				/* Make sure we have the required stats. Type is needed for further subdirectory traversal. */
+#if !defined(ROD_WIN32) && !defined(ROD_POSIX) /* Explicit query check is only needed for unknown systems where entry type is not guaranteed. */
 				if (!bool(st_mask & stat::query::type))
 				{
 					auto st_res = get_stat(st, _dir, entry.path(), stat::query::type);
@@ -356,6 +355,7 @@ namespace rod
 					}
 					st_mask |= *st_res;
 				}
+#endif
 
 				{ /* Report entry to the visitor. */
 					auto accept_res = _op->visitor().accept_entry(_dir, entry.path(), st, st_mask, _level);

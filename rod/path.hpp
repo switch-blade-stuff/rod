@@ -12,3 +12,5 @@
 
 #include "detail/path_discovery.hpp"
 #include "detail/path_util.hpp"
+
+#include "detail/algorithm/traverse.hpp"
