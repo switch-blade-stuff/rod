@@ -29,8 +29,6 @@
 
 namespace rod::_win32
 {
-	using namespace fs;
-
 	using ntstatus = ULONG;
 
 	inline constexpr ntstatus error_status_max = 0xffff'ffff;
@@ -62,74 +60,74 @@ namespace rod::_win32
 		}
 		return disposition();
 	}
-	inline constexpr auto flags_to_access(file_flags flags) noexcept
+	inline constexpr auto flags_to_access(fs::file_flags flags) noexcept
 	{
 		DWORD access = DELETE | SYNCHRONIZE;
-		if (bool(flags & file_flags::read))
+		if (bool(flags & fs::file_flags::read))
 			access |= STANDARD_RIGHTS_READ;
-		if (bool(flags & file_flags::write))
+		if (bool(flags & fs::file_flags::write))
 			access |= STANDARD_RIGHTS_WRITE;
-		if (bool(flags & file_flags::attr_read))
+		if (bool(flags & fs::file_flags::attr_read))
 			access |= FILE_READ_ATTRIBUTES | FILE_READ_EA;
-		if (bool(flags & file_flags::attr_write))
+		if (bool(flags & fs::file_flags::attr_write))
 			access |= FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA;
-		if (bool(flags & file_flags::data_read))
+		if (bool(flags & fs::file_flags::data_read))
 			access |= FILE_READ_DATA;
-		if (bool(flags & file_flags::data_write))
+		if (bool(flags & fs::file_flags::data_write))
 			access |= FILE_WRITE_DATA;
-		if (bool(flags & file_flags::append))
+		if (bool(flags & fs::file_flags::append))
 			access |= FILE_APPEND_DATA;
 		return access;
 	}
 
-	inline constexpr auto flags_to_opts(file_flags flags) noexcept
+	inline constexpr auto flags_to_opts(fs::file_flags flags) noexcept
 	{
 		DWORD opts = 0;
-		if (!bool(flags & file_flags::non_blocking))
+		if (!bool(flags & fs::file_flags::non_blocking))
 			opts |= 0x20; /*FILE_SYNCHRONOUS_IO_NONALERT*/
-		if (bool(flags & file_flags::unlink_on_close))
+		if (bool(flags & fs::file_flags::unlink_on_close))
 			opts |= 0x1000; /*FILE_DELETE_ON_CLOSE*/
 		return opts;
 	}
-	inline constexpr auto caching_to_opts(file_caching caching) noexcept
+	inline constexpr auto caching_to_opts(fs::file_caching caching) noexcept
 	{
 		DWORD opts = 0;
-		if (!bool(caching & file_caching::write))
+		if (!bool(caching & fs::file_caching::write))
 			opts |= 2; /*FILE_WRITE_THROUGH*/
-		if (!bool(caching & (file_caching::read | file_caching::write)))
+		if (!bool(caching & (fs::file_caching::read | fs::file_caching::write)))
 			opts |= 8; /*FILE_NO_INTERMEDIATE_BUFFERING*/
-		if (bool(caching & file_caching::avoid_precache))
+		if (bool(caching & fs::file_caching::avoid_precache))
 			opts |= 0x800; /*FILE_RANDOM_ACCESS*/
-		if (bool(caching & file_caching::force_precache))
+		if (bool(caching & fs::file_caching::force_precache))
 			opts |= 4; /*FILE_SEQUENTIAL_ONLY*/
 		return opts;
 	}
 
-	inline constexpr auto perm_to_attr(file_perm perm) noexcept
+	inline constexpr auto perm_to_attr(fs::file_perm perm) noexcept
 	{
 		DWORD attr = 0;
-		if (!bool(perm & (file_perm::write | file_perm::exec)))
+		if (!bool(perm & (fs::file_perm::write | fs::file_perm::exec)))
 			attr = FILE_ATTRIBUTE_READONLY;
 		return attr;
 	}
-	inline constexpr auto flags_to_attr(file_flags flags) noexcept
+	inline constexpr auto flags_to_attr(fs::file_flags flags) noexcept
 	{
 		DWORD attr = 0;
 		return attr;
 	}
-	inline constexpr auto caching_to_attr(file_caching caching) noexcept
+	inline constexpr auto caching_to_attr(fs::file_caching caching) noexcept
 	{
 		DWORD attr = 0;
-		if (bool(caching & file_caching::temporary))
+		if (bool(caching & fs::file_caching::temporary))
 			attr = FILE_ATTRIBUTE_TEMPORARY;
 		return attr;
 	}
 
-	inline constexpr auto make_handle_opts(file_flags flags, file_caching caching) noexcept
+	inline constexpr auto make_handle_opts(fs::file_flags flags, fs::file_caching caching) noexcept
 	{
 		return flags_to_opts(flags) | caching_to_opts(caching);
 	}
-	inline constexpr auto make_handle_attr(file_flags flags, file_caching caching, file_perm perm) noexcept
+	inline constexpr auto make_handle_attr(fs::file_flags flags, fs::file_caching caching, fs::file_perm perm) noexcept
 	{
 		const auto attr = flags_to_attr(flags) | caching_to_attr(caching) | perm_to_attr(perm);
 		return attr ? attr : FILE_ATTRIBUTE_NORMAL;
@@ -141,13 +139,13 @@ namespace rod::_win32
 		                              FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_SYSTEM;
 
 		if (file_attr & FILE_ATTRIBUTE_REPARSE_POINT && (reparse_tag == IO_REPARSE_TAG_MOUNT_POINT || reparse_tag == IO_REPARSE_TAG_SYMLINK))
-			return file_type::symlink;
+			return fs::file_type::symlink;
 		if (file_attr & FILE_ATTRIBUTE_DIRECTORY)
-			return file_type::directory;
+			return fs::file_type::directory;
 		else if (file_attr & attr_regular)
-			return file_type::regular;
+			return fs::file_type::regular;
 		else
-			return file_type::unknown;
+			return fs::file_type::unknown;
 	}
 
 	struct unicode_string
@@ -158,14 +156,14 @@ namespace rod::_win32
 	};
 
 	template<bool Term = true>
-	inline constexpr auto render_as_ustring(path_view_component path) noexcept -> result<std::pair<unicode_string, path_view_component::rendered_path<Term, wchar_t>>>
+	inline constexpr auto render_as_ustring(fs::path_view_component path) noexcept -> result<std::pair<unicode_string, fs::path_view_component::rendered_path<Term, wchar_t>>>
 	{
 		if (path.empty())
 			return {};
 
 		try
 		{
-			auto rpath = path_view_component::rendered_path<Term, wchar_t>(path);
+			auto rpath = fs::path_view_component::rendered_path<Term, wchar_t>(path);
 			auto upath = unicode_string();
 
 			upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
@@ -176,15 +174,15 @@ namespace rod::_win32
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 
-	inline static FILETIME tp_to_filetime(typename file_clock::time_point tp) noexcept
+	inline static FILETIME tp_to_filetime(typename fs::file_clock::time_point tp) noexcept
 	{
 		union { FILETIME _ft; std::int64_t _tp; };
 		return (_tp = tp.time_since_epoch().count(), _ft);
 	}
-	inline static typename file_clock::time_point filetime_to_tp(FILETIME ft) noexcept
+	inline static typename fs::file_clock::time_point filetime_to_tp(FILETIME ft) noexcept
 	{
 		union { FILETIME _ft; std::int64_t _tp; };
-		return (_ft = ft, file_clock::time_point(_tp));
+		return (_ft = ft, fs::file_clock::time_point(_tp));
 	}
 
 	template<typename T>
@@ -369,7 +367,10 @@ namespace rod::_win32
 	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff,
 	                                             _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
 	using NtQueryDirectoryFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *event, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb,
-												 _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ bool single, _In_opt_ unicode_string *name, _In_ bool restart);
+	                                                      _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ bool single, _In_opt_ unicode_string *name, _In_ bool restart);
+
+	using NtFlushBuffersFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb);
+	using NtFlushBuffersFileEx_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_ ULONG flags, _In_ void *params, _In_ ULONG params_size, _Out_ io_status_block *iosb);
 
 	struct reparse_data_buffer
 	{
@@ -678,36 +679,15 @@ namespace rod::_win32
 			::FreeLibrary(static_cast<HMODULE>(bcrypt));
 		}
 
-		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
-		ntstatus wait_io(void *handle, io_status_block *iosb, const file_timeout &to = file_timeout()) const noexcept;
-
 		result<heapalloc_ptr<wchar_t>> dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept;
 		result<heapalloc_ptr<wchar_t>> canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept;
 
-		result<void *> reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
-		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
-		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to = file_timeout()) const noexcept;
-
-		ntstatus link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept;
-		ntstatus relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept;
-		ntstatus unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const file_timeout &to) const noexcept;
-
-		ntstatus set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
-		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to = file_timeout()) const noexcept;
-
-		template<typename T>
-		ntstatus set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
-		{
-			return set_file_info(handle, iosb, data, sizeof(T), type, to);
-		}
-		template<typename T>
-		ntstatus get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const file_timeout &to = file_timeout()) const noexcept
-		{
-			return get_file_info(handle, iosb, data, sizeof(T), type, to);
-		}
+		result<void *> reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
 
 		template<typename F>
-		ntstatus query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const file_timeout &to, F &&f) const noexcept
+		ntstatus query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const fs::file_timeout &to, F &&f) const noexcept
 		{
 			auto iosb = io_status_block();
 			auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), ULONG(buff.size()), FileIdFullDirectoryInformation, false, filter, reset);
@@ -750,6 +730,27 @@ namespace rod::_win32
 				return 0;
 		}
 
+		ntstatus link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept;
+		ntstatus relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept;
+		ntstatus unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const fs::file_timeout &to) const noexcept;
+
+		ntstatus set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+
+		template<typename T>
+		ntstatus set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept
+		{
+			return set_file_info(handle, iosb, data, sizeof(T), type, to);
+		}
+		template<typename T>
+		ntstatus get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept
+		{
+			return get_file_info(handle, iosb, data, sizeof(T), type, to);
+		}
+
+		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
+		ntstatus wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+
 		void *ntdll;
 		void *bcrypt;
 
@@ -764,6 +765,9 @@ namespace rod::_win32
 		NtReadFile_t NtReadFile;
 		NtWriteFile_t NtWriteFile;
 		NtQueryDirectoryFile_t NtQueryDirectoryFile;
+
+		NtFlushBuffersFile_t NtFlushBuffersFile;
+		NtFlushBuffersFileEx_t NtFlushBuffersFileEx;
 
 		NtQueryAttributesFile_t NtQueryAttributesFile;
 		NtQueryInformationByName_t NtQueryInformationByName;

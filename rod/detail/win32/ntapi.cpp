@@ -179,6 +179,15 @@ namespace rod::_win32
 			else
 				return sym.error();
 
+			if (auto sym = load_sym<NtFlushBuffersFile_t>(result.ntdll, "NtFlushBuffersFile"); sym.has_value()) [[likely]]
+				result.NtFlushBuffersFile = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtFlushBuffersFileEx_t>(result.ntdll, "NtFlushBuffersFileEx", true); sym.has_value()) [[likely]]
+				result.NtFlushBuffersFileEx = *sym;
+			else
+				return sym.error();
+
 			if (auto sym = load_sym<NtQueryAttributesFile_t>(result.ntdll, "NtQueryAttributesFile"); sym.has_value()) [[likely]]
 				result.NtQueryAttributesFile = *sym;
 			else
@@ -234,63 +243,6 @@ namespace rod::_win32
 			return result;
 		}();
 		return value;
-	}
-
-	ntstatus ntapi::cancel_io(void *handle, io_status_block *iosb) const noexcept
-	{
-		if (iosb->status != STATUS_PENDING)
-			return iosb->status;
-
-		const auto status = NtCancelIoFileEx(handle, iosb, iosb);
-		if (is_status_failure(status))
-		{
-			if (status == 0xc0000225 /* STATUS_NOT_FOUND */)
-				return iosb->status = 0xc0000120 /*STATUS_CANCELLED */;
-			else
-				return status;
-		}
-		if (iosb->status == 0)
-		{
-			iosb->status = 0xc0000120; /*STATUS_CANCELLED*/
-			return iosb->status;
-		}
-		return iosb->status;
-	}
-	ntstatus ntapi::wait_io(void *handle, io_status_block *iosb, const file_timeout &to) const noexcept
-	{
-		auto time_end = std::chrono::steady_clock::time_point();
-		auto timeout_ft = FILETIME();
-		auto timeout = &timeout_ft;
-
-		if (to.is_relative() && to.relative() != file_clock::duration::max())
-			time_end = std::chrono::steady_clock::now() + to.relative();
-		else if (!to.is_relative())
-			timeout_ft = tp_to_filetime(to.absolute());
-		else
-			timeout = nullptr;
-
-		while (iosb->status == STATUS_PENDING)
-		{
-			if (to.is_relative() && timeout)
-			{
-				 if (auto time_left = time_end - std::chrono::steady_clock::now(); time_left.count() >= 0)
-					 timeout_ft = tp_to_filetime(time_left.count() / -100);
-				 else
-					 timeout_ft = FILETIME();
-			}
-
-			auto status = NtWaitForSingleObject(handle, true, timeout);
-			if (status == 0 /* STATUS_SUCCESS */)
-				iosb->status = 0;
-			else if (status == STATUS_TIMEOUT)
-			{
-				status = cancel_io(handle, iosb); /* Cancel pending IO on timeout. */
-				if (!is_status_failure(status) || status == 0xc0000120 /*STATUS_CANCELLED*/)
-					iosb->status = STATUS_TIMEOUT;
-				break;
-			}
-		}
-		return iosb->status;
 	}
 
 	result<heapalloc_ptr<wchar_t>> ntapi::dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept
@@ -395,7 +347,7 @@ namespace rod::_win32
 		return std::move(guard);
 	}
 
-	result<void *> ntapi::reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to) const noexcept
+	result<void *> ntapi::reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to) const noexcept
 	{
 		/* Hack to re-open a file by using root handle empty path. */
 		auto attr = object_attributes();
@@ -404,22 +356,26 @@ namespace rod::_win32
 		attr.name = &path;
 		return open_file(attr, iosb, access, share, opts, to);
 	}
-	result<void *> ntapi::open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const file_timeout &to) const noexcept
+	result<void *> ntapi::open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to) const noexcept
 	{
 		auto handle = INVALID_HANDLE_VALUE;
 		*iosb = io_status_block();
 
 		auto status = NtOpenFile(&handle, access, &obj, iosb, share, opts);
 		if (status == STATUS_PENDING) [[unlikely]]
-			 status = wait_io(handle, iosb, to);
+			status = wait_io(handle, iosb, to);
 		if (iosb->info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
-		else if (is_status_failure(status)) [[unlikely]]
+		if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+			return std::make_error_code(std::errc::operation_canceled);
+		if (status == STATUS_TIMEOUT) [[unlikely]]
+			return std::make_error_code(std::errc::timed_out);
+		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return handle;
 	}
-	result<void *> ntapi::create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const file_timeout &to) const noexcept
+	result<void *> ntapi::create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const fs::file_timeout &to) const noexcept
 	{
 		auto handle = INVALID_HANDLE_VALUE;
 		*iosb = io_status_block();
@@ -429,13 +385,17 @@ namespace rod::_win32
 			status = wait_io(handle, iosb, to);
 		if (iosb->info == 5 /*FILE_DOES_NOT_EXIST*/) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
-		else if (is_status_failure(status)) [[unlikely]]
+		if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+			return std::make_error_code(std::errc::operation_canceled);
+		if (status == STATUS_TIMEOUT) [[unlikely]]
+			return std::make_error_code(std::errc::timed_out);
+		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return handle;
 	}
 
-	ntstatus ntapi::link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept
+	ntstatus ntapi::link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept
 	{
 		auto buff_size = upath.size * sizeof(wchar_t) + sizeof(file_link_information);
 		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size);
@@ -454,7 +414,7 @@ namespace rod::_win32
 			status = set_file_info(handle, iosb, link_info, buff_size, FileLinkInformation, to);
 		return status;
 	}
-	ntstatus ntapi::relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const file_timeout &to) const noexcept
+	ntstatus ntapi::relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept
 	{
 		auto buff_size = upath.size * sizeof(wchar_t) + sizeof(file_rename_information);
 		auto buff = ROD_MAKE_BUFFER(std::byte, buff_size);
@@ -473,7 +433,7 @@ namespace rod::_win32
 			status = set_file_info(handle, iosb, rename_info, buff_size, FileRenameInformation, to);
 		return status;
 	}
-	ntstatus ntapi::unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const file_timeout &to) const noexcept
+	ntstatus ntapi::unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const fs::file_timeout &to) const noexcept
 	{
 		/* Try to unlink with POSIX semantics via the Win10 API. */
 		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS*/
@@ -493,7 +453,7 @@ namespace rod::_win32
 		return 0;
 	}
 
-	ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
+	ntstatus ntapi::set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to) const noexcept
 	{
 		*iosb = io_status_block();
 		auto status = NtSetInformationFile(handle, iosb, data, ULONG(size), type);
@@ -501,12 +461,69 @@ namespace rod::_win32
 			status = wait_io(handle, iosb, to);
 		return status;
 	}
-	ntstatus ntapi::get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const file_timeout &to) const noexcept
+	ntstatus ntapi::get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to) const noexcept
 	{
 		*iosb = io_status_block();
 		auto status = NtQueryInformationFile(handle, iosb, data, ULONG(size), type);
 		if (status == STATUS_PENDING)
 			status = wait_io(handle, iosb, to);
 		return status;
+	}
+
+	ntstatus ntapi::cancel_io(void *handle, io_status_block *iosb) const noexcept
+	{
+		if (iosb->status != STATUS_PENDING)
+			return iosb->status;
+
+		const auto status = NtCancelIoFileEx(handle, iosb, iosb);
+		if (is_status_failure(status))
+		{
+			if (status == 0xc0000225 /* STATUS_NOT_FOUND */)
+				return iosb->status = 0xc0000120 /*STATUS_CANCELLED */;
+			else
+				return status;
+		}
+		if (iosb->status == 0)
+		{
+			iosb->status = 0xc0000120; /*STATUS_CANCELLED*/
+			return iosb->status;
+		}
+		return iosb->status;
+	}
+	ntstatus ntapi::wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to) const noexcept
+	{
+		auto time_end = std::chrono::steady_clock::time_point();
+		auto timeout_ft = FILETIME();
+		auto timeout = &timeout_ft;
+
+		if (to.is_relative() && to.relative() != fs::file_clock::duration::max())
+			time_end = std::chrono::steady_clock::now() + to.relative();
+		else if (!to.is_relative())
+			timeout_ft = tp_to_filetime(to.absolute());
+		else
+			timeout = nullptr;
+
+		while (iosb->status == STATUS_PENDING)
+		{
+			if (to.is_relative() && timeout)
+			{
+				if (auto time_left = time_end - std::chrono::steady_clock::now(); time_left.count() >= 0)
+					timeout_ft = tp_to_filetime(time_left.count() / -100);
+				else
+					timeout_ft = FILETIME();
+			}
+
+			auto status = NtWaitForSingleObject(handle, true, timeout);
+			if (status == 0 /* STATUS_SUCCESS */)
+				iosb->status = 0;
+			else if (status == STATUS_TIMEOUT)
+			{
+				status = cancel_io(handle, iosb); /* Cancel pending IO on timeout. */
+				if (!is_status_failure(status) || status == 0xc0000120 /*STATUS_CANCELLED*/)
+					iosb->status = STATUS_TIMEOUT;
+				break;
+			}
+		}
+		return iosb->status;
 	}
 }

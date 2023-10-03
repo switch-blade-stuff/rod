@@ -72,9 +72,9 @@ namespace rod
 		template<typename V>
 		concept traverse_visitor = requires(std::decay_t<V> &v, _traverse::handle_error e, const directory_handle &h, path_view p, stat s, stat::query q, std::size_t l)
 		{
-			{ v.accept_entry(h, p, s, q, l) } -> _traverse::boolean_result;
-			{ v.ignore_error(e, h, p, l) } -> _traverse::boolean_result;
-			{ v.accept_handle(h, l) } -> _traverse::boolean_result;
+			{ v.accept_entry(h, p, s, q, l) } noexcept -> _traverse::boolean_result;
+			{ v.ignore_error(e, h, p, l) } noexcept -> _traverse::boolean_result;
+			{ v.accept_handle(h, l) } noexcept -> _traverse::boolean_result;
 			{ v.result() };
 		};
 	}
@@ -174,11 +174,9 @@ namespace rod
 
 			using worker_base = connect_result_t<const Snd &, typename receiver<Snd, Rcv, V>::type>;
 
-			using stopped_variant = std::variant<channel_result<set_stopped_t>>;
-			using value_variant = std::variant<channel_result<set_value_t, V>>;
 			template<typename... Errs>
-			using error_variant = std::variant<channel_result<set_error_t, std::decay_t<Errs>>...>;
-			using data_t = _detail::concat_tuples_t<value_variant, errors_list<V, Snd, env_of_t<Snd>, error_variant>, stopped_variant>;
+			using make_error_variant = std::variant<channel_result<set_error_t, std::decay_t<Errs>>...>;
+			using data_t = _detail::concat_tuples_t<std::variant<channel_result<set_value_t, V>, channel_result<set_stopped_t>>, errors_list<V, Snd, env_of_t<Snd>, make_error_variant>>;
 
 		public:
 			type(type &&) = delete;
@@ -441,16 +439,15 @@ namespace rod
 
 			template<typename... Ts>
 			using bind_set_stopped = set_stopped_t();
-			template<typename S, typename E>
-			using stop_signs_t = _detail::gather_signatures_t<set_stopped_t, S, E, bind_set_stopped, completion_signatures>;
-
 			template<typename... Ts>
 			using make_error_signs = completion_signatures<set_error_t(std::decay_t<Ts>)...>;
-			template<typename S, typename E>
-			using error_signs_t = errors_list<V, S, E, make_error_signs>;
-
 			template<typename... Ts>
 			using make_value_signs = completion_signatures<set_value_t(std::decay_t<Ts>...)>;
+
+			template<typename S, typename E>
+			using stop_signs_t = _detail::gather_signatures_t<set_stopped_t, S, E, bind_set_stopped, completion_signatures>;
+			template<typename S, typename E>
+			using error_signs_t = errors_list<V, S, E, make_error_signs>;
 			using value_signs_t = values_list<V, make_value_signs>;
 
 			template<typename E>

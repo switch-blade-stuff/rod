@@ -235,7 +235,7 @@ namespace rod
 						new (&_storage.value) value_type(std::move(other._storage.value));
 				}
 				else if (has_error())
-					new (&_storage.value) error_type(std::move(other._storage.error));
+					new (&_storage.error) error_type(std::move(other._storage.error));
 				_state = other._state;
 			}
 

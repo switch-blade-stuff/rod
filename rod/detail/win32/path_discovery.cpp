@@ -8,21 +8,21 @@ namespace rod::_detail
 {
 	using namespace _win32;
 
-	inline static auto find_shell_dirs(std::span<const GUID> ids, std::vector<discovered_path> &dirs) noexcept
+	inline static auto find_shell_dirs(std::span<const GUID> ids, std::vector<fs::discovered_path> &dirs) noexcept
 	{
 		dirs.clear();
 		for (auto id : ids)
 			with_shell_path(id, [&](auto dir)
 			{
-				auto entry = discovered_path{.path = path(dir, path::native_format), .source = discovery_source::system};
-				if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+				auto entry = fs::discovered_path{.path = fs::path(dir, fs::path::native_format), .source = fs::discovery_source::system};
+				if (query_discovered_dir(fs::discovery_mode::all, entry).value_or(false)) [[likely]]
 					dirs.emplace_back(std::move(entry));
 			});
 		return result<>();
 	}
-	inline static auto find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto sv) { return path(sv); }); }
+	inline static auto find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto sv) { return fs::path(sv); }); }
 
-	result<> find_temp_dirs(std::vector<discovered_path> &dirs) noexcept
+	result<> find_temp_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
 		try
 		{
@@ -33,18 +33,18 @@ namespace rod::_detail
 			for (auto env: {L"TMP", L"TEMP", L"LOCALAPPDATA"})
 				with_env_var(env, [&](auto dir)
 				{
-					auto entry = discovered_path{.path = path(dir, path::native_format), .source = discovery_source::environment};
+					auto entry = fs::discovered_path{.path = fs::path(dir, fs::path::native_format), .source = fs::discovery_source::environment};
 					if (env[0] == L'L') entry.path += L"\\Temp";
-					if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+					if (query_discovered_dir(fs::discovery_mode::all, entry).value_or(false)) [[likely]]
 						dirs.emplace_back(std::move(entry));
 				});
 
 			/* Find %LOCALAPPDATA%\Temp */
 			with_shell_path(FOLDERID_LocalAppData, [&](auto dir)
 			{
-				auto entry = discovered_path{.path = path(dir, path::native_format), .source = discovery_source::system};
+				auto entry = fs::discovered_path{.path = fs::path(dir, fs::path::native_format), .source = fs::discovery_source::system};
 				entry.path += L"\\Temp";
-				if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+				if (query_discovered_dir(fs::discovery_mode::all, entry).value_or(false)) [[likely]]
 					dirs.emplace_back(std::move(entry));
 			});
 
@@ -55,8 +55,8 @@ namespace rod::_detail
 				{
 					buffer.resize(len);
 					buffer.append(L"\\Temp");
-					auto entry = discovered_path{.path = path(std::move(buffer), path::native_format), .source = discovery_source::fallback};
-					if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+					auto entry = fs::discovered_path{.path = fs::path(std::move(buffer), fs::path::native_format), .source = fs::discovery_source::fallback};
+					if (query_discovered_dir(fs::discovery_mode::all, entry).value_or(false)) [[likely]]
 						dirs.emplace_back(std::move(entry));
 				}
 			}
@@ -67,8 +67,8 @@ namespace rod::_detail
 				{
 					buffer.resize(buffer.find_last_of(L'\\', len));
 					buffer.append(L"\\Temp");
-					auto entry = discovered_path{.path = path(std::move(buffer), path::native_format), .source = discovery_source::fallback};
-					if (query_discovered_dir(discovery_mode::all, entry).value_or(false)) [[likely]]
+					auto entry = fs::discovered_path{.path = fs::path(std::move(buffer), fs::path::native_format), .source = fs::discovery_source::fallback};
+					if (query_discovered_dir(fs::discovery_mode::all, entry).value_or(false)) [[likely]]
 						dirs.emplace_back(std::move(entry));
 				}
 			}
@@ -77,23 +77,23 @@ namespace rod::_detail
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
-	result<> find_data_dirs(std::vector<discovered_path> &dirs) noexcept
+	result<> find_data_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
 		const auto ids = std::array{FOLDERID_LocalAppData, FOLDERID_RoamingAppData, FOLDERID_AppDataProgramData, FOLDERID_ProgramData};
 		return find_shell_dirs(ids, dirs);
 	}
-	result<> find_state_dirs(std::vector<discovered_path> &dirs) noexcept
+	result<> find_state_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
 		const auto ids = std::array{FOLDERID_LocalAppData};
 		return find_shell_dirs(ids, dirs);
 	}
-	result<> find_config_dirs(std::vector<discovered_path> &dirs) noexcept
+	result<> find_config_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
 		const auto ids = std::array{FOLDERID_LocalAppData, FOLDERID_RoamingAppData, FOLDERID_AppDataProgramData, FOLDERID_ProgramData};
 		return find_shell_dirs(ids, dirs);
 	}
 
-	result<path> find_install_dir() noexcept
+	result<fs::path> find_install_dir() noexcept
 	{
 		try
 		{
@@ -116,18 +116,18 @@ namespace rod::_detail
 		catch (const std::system_error &e) { return e.code(); }
 	}
 	/* Windows does not have a user-specific temporary runtime directory. */
-	result<path> find_runtime_dir() noexcept { return {}; }
+	result<fs::path> find_runtime_dir() noexcept { return {}; }
 
-	result<path> find_temp_pipe_dir() noexcept
+	result<fs::path> find_temp_pipe_dir() noexcept
 	{
-		try { return path(L"\\!!\\Device\\NamedPipe\\"); }
+		try { return fs::path(L"\\!!\\Device\\NamedPipe\\"); }
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 		catch (const std::system_error &e) { return e.code(); }
 	}
 
-	result<path> find_user_home_dir() noexcept { return with_env_var(L"USERPROFILE", [](auto sv) { return path(sv); }); }
-	result<path> find_data_home_dir() noexcept { return find_localappdata(); }
-	result<path> find_cache_home_dir() noexcept { return find_localappdata(); }
-	result<path> find_state_home_dir() noexcept { return find_localappdata(); }
-	result<path> find_config_home_dir() noexcept { return find_localappdata(); }
+	result<fs::path> find_user_home_dir() noexcept { return with_env_var(L"USERPROFILE", [](auto sv) { return fs::path(sv); }); }
+	result<fs::path> find_data_home_dir() noexcept { return find_localappdata(); }
+	result<fs::path> find_cache_home_dir() noexcept { return find_localappdata(); }
+	result<fs::path> find_state_home_dir() noexcept { return find_localappdata(); }
+	result<fs::path> find_config_home_dir() noexcept { return find_localappdata(); }
 }

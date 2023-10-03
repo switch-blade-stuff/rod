@@ -211,7 +211,7 @@ namespace rod
 			bool submit_io_event(operation_base *node, io_cmd<Op, Buff> cmd) noexcept
 			{
 				const auto bytes = rod::as_byte_buffer(const_cast<std::ranges::range_value_t<Buff> *>(std::data(cmd.buff)), std::size(cmd.buff));
-				return submit_io_event(node, io_cmd<Op, std::span<std::byte>>{cmd.fd, cmd.pos, bytes});
+				return submit_io_event(node, io_cmd<Op, std::span<std::byte>>{cmd.fd, cmd.off, bytes});
 			}
 
 			ROD_API_PUBLIC void add_timer(timer_operation_base *node) noexcept;

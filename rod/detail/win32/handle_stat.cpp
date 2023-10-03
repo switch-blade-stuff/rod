@@ -15,7 +15,7 @@ namespace rod::_handle
 
 	constexpr std::size_t buff_size = 32768;
 
-	inline static auto query_file_type(const ntapi &ntapi, void *hnd, ULONG file_attr, ULONG reparse_tag) noexcept -> result<file_type>
+	inline static auto query_file_type(const ntapi &ntapi, void *hnd, ULONG file_attr, ULONG reparse_tag) noexcept -> result<fs::file_type>
 	{
 		if ((file_attr & FILE_ATTRIBUTE_REPARSE_POINT) && !reparse_tag)
 		{
@@ -235,7 +235,7 @@ namespace rod::_handle
 		return done;
 	}
 
-	result<stat::query> do_get_stat(stat &st, const path_handle &base, path_view path, stat::query q, bool nofollow) noexcept
+	result<stat::query> do_get_stat(stat &st, const fs::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept
 	{
 		auto done = stat::query::none;
 		if (q == done) return done;
@@ -306,12 +306,12 @@ namespace rod::_handle
 			}
 			if (bool(q & stat::query::type) && is_dir)
 			{
-				st.type = file_type::directory;
+				st.type = fs::file_type::directory;
 				done |= stat::query::type;
 			}
 			if (bool(q & stat::query::perm))
 			{
-				st.perm = (basic_info.attributes & FILE_ATTRIBUTE_READONLY) ? (file_perm::all & ~file_perm::write) : file_perm::all;
+				st.perm = (basic_info.attributes & FILE_ATTRIBUTE_READONLY) ? (fs::file_perm::all & ~fs::file_perm::write) : fs::file_perm::all;
 				done |= stat::query::perm;
 			}
 
@@ -354,6 +354,10 @@ namespace rod::_handle
 			auto status = ntapi->NtQueryVolumeInformationFile(_hnd, &iosb, &sector_info, sizeof(sector_info), FileFsSectorSizeInformation);
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(_hnd, &iosb);
+			if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+				return std::make_error_code(std::errc::operation_canceled);
+			if (status == STATUS_TIMEOUT) [[unlikely]]
+				return std::make_error_code(std::errc::timed_out);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 		}
@@ -445,6 +449,10 @@ namespace rod::_handle
 		auto status = ntapi->get_file_info(_hnd, &iosb, &basic_info, FileBasicInformation);
 		if (status == STATUS_PENDING) [[unlikely]]
 			status = ntapi->wait_io(_hnd, &iosb);
+		if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+			return std::make_error_code(std::errc::operation_canceled);
+		if (status == STATUS_TIMEOUT) [[unlikely]]
+			return std::make_error_code(std::errc::timed_out);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 
@@ -484,6 +492,10 @@ namespace rod::_handle
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, attr_info, sizeof(file_fs_attribute_information), FileFsAttributeInformation);
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(native_handle(), &iosb);
+			if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+				return std::make_error_code(std::errc::operation_canceled);
+			if (status == STATUS_TIMEOUT) [[unlikely]]
+				return std::make_error_code(std::errc::timed_out);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 
@@ -609,6 +621,10 @@ namespace rod::_handle
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, obj_info, sizeof(file_fs_objectid_information), FileFsObjectIdInformation);
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(native_handle(), &iosb);
+			if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+				return std::make_error_code(std::errc::operation_canceled);
+			if (status == STATUS_TIMEOUT) [[unlikely]]
+				return std::make_error_code(std::errc::timed_out);
 
 			/* Some filesystems may not support filesystem IDs. */
 			if (!is_status_failure(status))
@@ -627,6 +643,10 @@ namespace rod::_handle
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, size_info, sizeof(file_fs_full_size_information), FileFsFullSizeInformation);
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(native_handle(), &iosb);
+			if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+				return std::make_error_code(std::errc::operation_canceled);
+			if (status == STATUS_TIMEOUT) [[unlikely]]
+				return std::make_error_code(std::errc::timed_out);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 
@@ -660,6 +680,10 @@ namespace rod::_handle
 			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, size_info, sizeof(file_fs_sector_size_information), FileFsSectorSizeInformation);
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(native_handle(), &iosb);
+			if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+				return std::make_error_code(std::errc::operation_canceled);
+			if (status == STATUS_TIMEOUT) [[unlikely]]
+				return std::make_error_code(std::errc::timed_out);
 			if (is_status_failure(status)) [[unlikely]]
 				return status_error_code(status);
 

@@ -106,15 +106,16 @@ namespace rod
 		concept buffer_range = std::ranges::sized_range<std::decay_t<T>> && decays_to_same<std::ranges::range_value_t<std::decay_t<T>>, io_buffer_t<std::decay_t<Hnd>, Op>>;
 
 		template<typename Op>
-		struct adaptor { struct type; };
+		struct adaptor { class type; };
 		template<typename Op>
 		struct sparse_adaptor { class type; };
 		template<typename Op>
 		struct stream_adaptor { class type; };
 
 		template<typename Op>
-		struct adaptor<Op>::type
+		class adaptor<Op>::type
 		{
+		protected:
 			template<typename Hnd>
 			using request_t = io_request_t<std::decay_t<Hnd>, Op>;
 			template<typename Hnd>
@@ -127,6 +128,7 @@ namespace rod
 			template<typename Hnd>
 			using extent_t = handle_extent_t<std::decay_t<Hnd>>;
 
+		public:
 			template<typename Hnd, decays_to_same<request_t<Hnd>> Req = request_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
 			result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to = To()) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
 		};
@@ -143,14 +145,14 @@ namespace rod
 		public:
 			using adaptor<Op>::type::operator();
 			template<typename Hnd, buffer_range<std::decay_t<Hnd>, Op> Buff = std::initializer_list<buffer_t<Hnd>>, std::convertible_to<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
-			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &pos, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
+			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &off, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
 			{
-				return tag_invoke(Op{}, std::forward<Buff>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(pos), std::forward<To>(to));
+				return tag_invoke(Op{}, std::forward<Buff>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(off), std::forward<To>(to));
 			}
 			template<typename Hnd, decays_to_same<buffer_t<Hnd>> Buff = buffer_t<Hnd>, std::convertible_to<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
-			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &pos, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
+			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &off, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
 			{
-				return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(pos), std::forward<To>(to));
+				return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(off), std::forward<To>(to));
 			}
 		};
 		template<typename Op>
@@ -193,6 +195,42 @@ namespace rod
 		_detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, handle_timeout_t<Hnd>>;
 	};
 
+	namespace _sync
+	{
+		struct sync_at_t : _io_operation::adaptor<sync_at_t>::type {};
+	}
+
+	using _sync::sync_at_t;
+
+	/* TODO: Document usage. */
+	inline constexpr auto sync_at = sync_at_t{};
+
+	template<typename Hnd>
+	using sync_at_buffer_sequence_t = io_buffer_sequence_t<Hnd, sync_at_t>;
+	template<typename Hnd>
+	using sync_at_buffer_t = io_buffer_t<Hnd, sync_at_t>;
+
+	template<typename Hnd>
+	using sync_at_request_t = io_request_t<Hnd, sync_at_t>;
+	template<typename Hnd>
+	using sync_at_result_t = io_result_t<Hnd, sync_at_t>;
+
+	template<typename Hnd>
+	using sync_at_value_t = io_value_t<Hnd, sync_at_t>;
+	template<typename Hnd>
+	using sync_at_error_t = io_error_t<Hnd, sync_at_t>;
+
+	namespace _extents
+	{
+		struct clone_extents_t : _io_operation::adaptor<clone_extents_t>::type {};
+		struct zero_extents_t : _io_operation::adaptor<zero_extents_t>::type {};
+		struct list_extents_t : _io_operation::adaptor<list_extents_t>::type {};
+	}
+
+	using _extents::clone_extents_t;
+	using _extents::zero_extents_t;
+	using _extents::list_extents_t;
+
 	namespace _read_some
 	{
 		struct read_some_at_t : _io_operation::sparse_adaptor<read_some_at_t>::type {};
@@ -216,7 +254,7 @@ namespace rod
 	 * @overload Preforms a sparse input operation using a range of IO buffers.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param dst Sized range of `io_buffer_t&lt;decltype(hnd), read_some_at_t&gt;` containing requested IO buffers.
-	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
+	 * @param off Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
 	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
@@ -225,7 +263,7 @@ namespace rod
 	 * @overload Preforms a sparse input operation using a single IO buffer.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param dst Requested IO buffer of type `io_buffer_t&lt;decltype(hnd), read_some_at_t&gt;`.
-	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
+	 * @param off Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
 	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
@@ -314,7 +352,7 @@ namespace rod
 	 * @overload Preforms a sparse output operation using a range of buffers.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Sized range of `io_buffer_t&lt;decltype(hnd), write_some_at_t&gt;` containing requested IO buffers.
-	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
+	 * @param off Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
 	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
@@ -323,7 +361,7 @@ namespace rod
 	 * @overload Preforms a sparse output operation using a single IO buffer.
 	 * @param hnd Handle to preform the IO operation on.
 	 * @param src Requested IO buffer of type `io_buffer_t&lt;decltype(hnd), write_some_at_t&gt;`.
-	 * @param pos Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
+	 * @param off Value of type `handle_extent_t&lt;decltype(hnd)&gt;` specifying the target offset within the handle.
 	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
 	 * @return Result containing the amount of bytes transferred or a status code on failure.
 	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
@@ -396,4 +434,5 @@ namespace rod
 	concept stream_io_handle = stream_input_handle<Hnd> && stream_output_handle<Hnd>;
 
 	/* TODO: Implement async IO operations. */
+
 }

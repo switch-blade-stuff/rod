@@ -78,9 +78,11 @@ namespace rod
 
 			template<typename Rcv>
 			using receiver_t = typename receiver<Rcv, Tok>::type;
-			using env_t = typename env<env_of_t<Snd>, Tok>::type;
+			template<typename Env>
+			using env_t = typename env<std::decay_t<Env>, Tok>::type;
 
-			using signs_t = make_completion_signatures<Snd, env_t, completion_signatures<set_stopped_t()>>;
+			template<typename Env>
+			using signs_t = make_completion_signatures<Snd, env_t<Env>, completion_signatures<set_stopped_t()>>;
 
 		public:
 			using is_sender = std::true_type;
@@ -89,12 +91,12 @@ namespace rod
 			template<typename Snd2>
 			constexpr explicit type(Snd2 &&snd, Tok tok) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_move_constructible_v<Tok>) : snd_base(std::forward<Snd2>(snd)), tok_base(std::move(tok)) {}
 
-			friend constexpr env_t tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &> && std::is_nothrow_constructible_v<env_t, env_of_t<Snd>, const Tok &>)
+			friend constexpr env_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &> && std::is_nothrow_constructible_v<env_t<Snd>, env_of_t<Snd>, const Tok &>)
 			{
 				return env_t(get_env(s.snd_base::value()), s.tok_base::value());
 			}
-			template<decays_to_same<type> T, typename E>
-			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) noexcept { return {}; }
+			template<decays_to_same<type> T, typename Env>
+			friend constexpr signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
 			template<decays_to_same<type> T, typename Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<Rcv>>
 			friend constexpr auto tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<receiver_t<Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Snd>>)

@@ -11,8 +11,6 @@ namespace rod
 {
 	namespace _detail
 	{
-		using namespace fs;
-
 		/* Not using regex here since std::regex is slow AF, and I don't want to depend on external regex lib. */
 		template<std::size_t N>
 		inline static bool match_masks(std::string_view name, std::initializer_list<std::array<char, N>> masks) noexcept
@@ -99,16 +97,16 @@ namespace rod
 			return match_masks(name, {lustre_mask, smbfs_mask, nfs1_mask, nfs2_mask, nfs3_mask, nfs4_mask, nfs5_mask, nfs6_mask, nfs7_mask, nfs8_mask, nfs9_mask, cifs_mask});
 		}
 
-		result<bool> query_discovered_dir(discovery_mode mode, discovered_path &dir) noexcept
+		result<bool> query_discovered_dir(fs::discovery_mode mode, fs::discovered_path &dir) noexcept
 		{
 			/* TODO: Try to create a temporary file in the target directory to see if it's suitable and to do `get_fs_stat`. */
 
 			/* Apply mode filter. */
-			if (bool(mode & discovery_mode::storage_backed) < dir.storage_backed)
+			if (bool(mode & fs::discovery_mode::storage_backed) < dir.storage_backed)
 				return false;
-			if (bool(mode & discovery_mode::network_backed) < dir.network_backed)
+			if (bool(mode & fs::discovery_mode::network_backed) < dir.network_backed)
 				return false;
-			if (bool(mode & discovery_mode::memory_backed) < dir.memory_backed)
+			if (bool(mode & fs::discovery_mode::memory_backed) < dir.memory_backed)
 				return false;
 
 			return true;
@@ -119,7 +117,7 @@ namespace rod
 			static auto value = []() -> result<discovery_cache>
 			{
 				discovery_cache result;
-				if (auto path = current_path(); path.has_value()) [[likely]]
+				if (auto path = fs::current_path(); path.has_value()) [[likely]]
 					result.working_dir = std::move(*path);
 				else
 					return path.error();
@@ -137,10 +135,10 @@ namespace rod
 		}
 
 		template<auto discovery_cache::*Path>
-		auto discovery_cache::open_cached_dir() const noexcept -> directory_handle
+		auto discovery_cache::open_cached_dir() const noexcept -> fs::directory_handle
 		{
 			if (!(this->*Path).empty()) [[likely]]
-				return directory_handle::open({}, this->*Path).value_or({});
+				return fs::directory_handle::open({}, this->*Path).value_or({});
 			else
 				return {};
 		}

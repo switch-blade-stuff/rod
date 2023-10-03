@@ -12,38 +12,99 @@ namespace rod
 	{
 		class basic_handle;
 
-		/** Enumeration used to control behavior of handle open functions. */
-		enum class open_mode : std::uint8_t
-		{
-			/** Open if exists or create if missing. */
-			always,
-			/** Create only if does not exist and fail otherwise. */
-			create,
+		template<typename Hnd>
+		struct handle_timeout_impl;
+		template<typename Hnd> requires(requires { typename Hnd::timeout_type; })
+		struct handle_timeout_impl<Hnd> { using type = typename Hnd::timeout_type; };
+	}
 
-			/** Open only if already exists and fail otherwise. */
-			existing,
-			/** Open and overwrite contents only if already exists and fail otherwise. */
-			truncate,
-			/** Replace if already exists or create if missing. */
-			supersede,
-		};
+	/** Type trait used to obtain the timeout type of handle \a Hnd. */
+	template<typename Hnd>
+	struct handle_timeout : _handle::handle_timeout_impl<Hnd> {};
+	/** Alias for `typename handle_timeout&lt;Hnd&gt;::type` */
+	template<typename Hnd>
+	using handle_timeout_t = typename handle_timeout<Hnd>::type;
 
+	namespace _close
+	{
 		template<typename Res>
 		concept close_result = is_result_with_value_v<Res, void>;
-		template<typename Res, typename Hnd>
-		concept clone_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
 
 		struct close_t
 		{
 			template<typename Hnd> requires tag_invocable<close_t, Hnd>
 			close_result auto operator()(Hnd &&hnd) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd)); }
 		};
+	}
+
+	using _close::close_t;
+
+	/** Customization point object used to close an open handle.
+	 * @param hnd Handle to close.
+	 * @return `void` result on success or a status code on failure.
+	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `close` on POSIX or `CloseHandle` on Windows. */
+	inline constexpr auto close = close_t{};
+
+	namespace _clone
+	{
+		template<typename Res, typename Hnd>
+		concept clone_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
+
 		struct clone_t
 		{
 			template<typename Hnd> requires tag_invocable<clone_t, const Hnd &>
 			[[nodiscard]] clone_result<Hnd> auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
 		};
+	}
 
+	using _clone::clone_t;
+
+	/** Customization point object used to clone a handle.
+	 * @param hnd Handle to clone.
+	 * @return Result containing the cloned handle on success or a status code on failure.
+	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `fcntl(F_DUPFD_CLOEXEC)`, `fcntl(F_DUPFD)`, `fcntl(F_GETFL)`, and `fcntl(F_SETFL)` on POSIX or `DuplicateHandle` on Windows. */
+	inline constexpr auto clone = clone_t{};
+
+	namespace _sync
+	{
+		/** Flags used to control handle synchronization behavior. */
+		enum class sync_mode : int
+		{
+			none = 0,
+			/** Synchronize everything. */
+			all = -1,
+			/** Synchronize handle data only. */
+			data = 1,
+			/** Synchronize handle metadata only. */
+			metadata = 2,
+		};
+
+		[[nodiscard]] constexpr sync_mode operator~(sync_mode h) noexcept { return sync_mode(~int(h)); }
+		[[nodiscard]] constexpr sync_mode operator&(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) & int(b)); }
+		[[nodiscard]] constexpr sync_mode operator|(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) | int(b)); }
+		[[nodiscard]] constexpr sync_mode operator^(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) ^ int(b)); }
+		constexpr sync_mode &operator&=(sync_mode &a, sync_mode b) noexcept { return a = a & b; }
+		constexpr sync_mode &operator|=(sync_mode &a, sync_mode b) noexcept { return a = a | b; }
+		constexpr sync_mode &operator^=(sync_mode &a, sync_mode b) noexcept { return a = a ^ b; }
+
+		template<typename Res>
+		concept sync_result = instance_of<Res, result> && std::same_as<typename Res::value_type, void>;
+
+		struct sync_t
+		{
+			template<typename Hnd, typename To = handle_timeout_t<Hnd>> requires tag_invocable<sync_t, Hnd, sync_mode, const To &>
+			sync_result auto operator()(Hnd &&hnd, sync_mode mode = sync_mode::all, const To &to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), mode, to); }
+		};
+	}
+
+	using _sync::sync_mode;
+	using _sync::sync_t;
+
+	/* TODO: Document usage. */
+	inline constexpr auto sync = sync_t{};
+
+	namespace _to_path
+	{
 		/** Enumeration used to select representation of the path returned by `to_native_path`. */
 		enum class native_path_format
 		{
@@ -88,6 +149,34 @@ namespace rod
 
 			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format>
 			[[nodiscard]] path_result auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept { return tag_invoke(*this, hnd, fmt); }
+		};
+	}
+
+	using _to_path::native_path_format;
+	using _to_path::to_object_path_t;
+	using _to_path::to_native_path_t;
+
+	/* TODO: Document usage */
+	inline constexpr auto to_object_path = to_object_path_t{};
+	/* TODO: Document usage */
+	inline constexpr auto to_native_path = to_native_path_t{};
+
+	namespace _handle
+	{
+		/** Enumeration used to control behavior of handle open functions. */
+		enum class open_mode : std::uint8_t
+		{
+			/** Open if exists or create if missing. */
+			always,
+			/** Create only if does not exist and fail otherwise. */
+			create,
+
+			/** Open only if already exists and fail otherwise. */
+			existing,
+			/** Open and overwrite contents only if already exists and fail otherwise. */
+			truncate,
+			/** Replace if already exists or create if missing. */
+			supersede,
 		};
 
 		/** Basic system handle type. */
@@ -351,21 +440,6 @@ namespace rod
 		};
 	}
 
-	namespace _handle
-	{
-		template<typename Hnd>
-		struct handle_timeout_impl;
-		template<typename Hnd> requires(requires { typename Hnd::timeout_type; })
-		struct handle_timeout_impl<Hnd> { using type = typename Hnd::timeout_type; };
-	}
-
-	/** Type trait used to obtain the timeout type of handle \a Hnd. */
-	template<typename Hnd>
-	struct handle_timeout : _handle::handle_timeout_impl<Hnd> {};
-	/** Alias for `typename handle_timeout&lt;Hnd&gt;::type` */
-	template<typename Hnd>
-	using handle_timeout_t = typename handle_timeout<Hnd>::type;
-
 	/** Concept used to define a handle type. */
 	template<typename Hnd>
 	concept handle = !std::copyable<Hnd> && std::movable<Hnd> && std::destructible<Hnd> && std::swappable<Hnd> && std::equality_comparable<Hnd> && requires(Hnd &mut_hnd, const Hnd &hnd)
@@ -378,11 +452,11 @@ namespace rod
 		{ mut_hnd.release() } -> std::convertible_to<typename Hnd::native_handle_type>;
 		{ mut_hnd.release(std::declval<typename Hnd::native_handle_type>()) } -> std::convertible_to<typename Hnd::native_handle_type>;
 
-		_detail::callable<_handle::close_t, Hnd &>;
-		_detail::callable<_handle::clone_t, const Hnd &>;
+		_detail::callable<close_t, Hnd &>;
+		_detail::callable<clone_t, const Hnd &>;
 
-		_detail::callable<_handle::to_object_path_t, const Hnd &>;
-		_detail::callable<_handle::to_native_path_t, const Hnd &, _handle::native_path_format>;
+		_detail::callable<to_object_path_t, const Hnd &>;
+		_detail::callable<to_native_path_t, const Hnd &, native_path_format>;
 
 		_detail::callable<get_stat_t, stat &, const Hnd &, stat::query>;
 		_detail::callable<set_stat_t, const stat &, Hnd &, stat::query>;
@@ -406,27 +480,4 @@ namespace rod
 		static_assert(handle<dummy_handle>, "Child of `hande_adaptor` must satisfy `handle`");
 		static_assert(handle<basic_handle>, "`basic_handle` must satisfy `handle`");
 	}
-
-	using _handle::close_t;
-	using _handle::clone_t;
-
-	/** Customization point object used to close an open handle.
-	 * @param hnd Handle to close.
-	 * @return `void` result on success or a status code on failure.
-	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `close` on POSIX or `CloseHandle` on Windows. */
-	inline constexpr auto close = close_t{};
-	/** Customization point object used to clone a handle.
-	 * @param hnd Handle to clone.
-	 * @return Result containing the cloned handle on success or a status code on failure.
-	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `fcntl(F_DUPFD_CLOEXEC)`, `fcntl(F_DUPFD)`, `fcntl(F_GETFL)`, and `fcntl(F_SETFL)` on POSIX or `DuplicateHandle` on Windows. */
-	inline constexpr auto clone = clone_t{};
-
-	using _handle::native_path_format;
-	using _handle::to_object_path_t;
-	using _handle::to_native_path_t;
-
-	/* TODO: Document usage */
-	inline constexpr auto to_object_path = to_object_path_t{};
-	/* TODO: Document usage */
-	inline constexpr auto to_native_path = to_native_path_t{};
 }

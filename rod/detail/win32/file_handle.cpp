@@ -4,6 +4,8 @@
 
 #include "file_handle.hpp"
 
+#include <numeric>
+
 namespace rod::_file
 {
 	using namespace _win32;
@@ -68,7 +70,7 @@ namespace rod::_file
 		return file_handle(*hnd, flags, caching);
 	}
 
-	result<> file_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	result<> file_handle::do_link(const path_handle &base, path_view path, bool replace, const fs::file_timeout &to) noexcept
 	{
 		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
@@ -88,7 +90,7 @@ namespace rod::_file
 		else
 			return {};
 	}
-	result<> file_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	result<> file_handle::do_relink(const path_handle &base, path_view path, bool replace, const fs::file_timeout &to) noexcept
 	{
 		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
@@ -108,7 +110,7 @@ namespace rod::_file
 		else
 			return {};
 	}
-	result<> file_handle::do_unlink(const file_timeout &to) noexcept
+	result<> file_handle::do_unlink(const fs::file_timeout &to) noexcept
 	{
 		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
@@ -125,8 +127,49 @@ namespace rod::_file
 			return {};
 	}
 
+	result<void, io_status_code> file_handle::do_sync(sync_mode mode, const fs::file_timeout &to) noexcept
+	{
+		/* WinNT does not have sparse flush, so do_sync and do_sync_at are identical. */
+		return do_sync_at({.mode = mode}, to);
+	}
+	io_result<sync_at_t> file_handle::do_sync_at(io_request<sync_at_t> req, const fs::file_timeout &to) noexcept
+	{
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+			return std::make_error_code(std::errc::not_supported);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		ULONG mode = 0;
+		if ((req.mode & sync_mode::metadata) == sync_mode::none)
+			mode |= 1; /*FLUSH_FLAGS_FILE_DATA_ONLY*/
+		if (bool(flags() & file_flags::non_blocking))
+			mode |= 2; /*FLUSH_FLAGS_NO_SYNC*/
+
+		auto iosb = io_status_block();
+		auto status = ntstatus();
+
+		/* NtFlushBuffersFileEx may not be supported. */
+		if (!ntapi->NtFlushBuffersFileEx)
+			status = ntapi->NtFlushBuffersFileEx(native_handle(), mode, nullptr, 0, &iosb);
+		else
+			status = ntapi->NtFlushBuffersFile(native_handle(), &iosb);
+
+		if (status == STATUS_PENDING)
+			status = ntapi->wait_io(native_handle(), &iosb, to);
+		if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
+			return std::make_error_code(std::errc::operation_canceled);
+		else if (status == STATUS_TIMEOUT) [[unlikely]]
+			return std::make_error_code(std::errc::timed_out);
+		else if (is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+		else
+			return req.buffs;
+	}
+
 	template<auto IoFunc, typename Op>
-	typename file_handle::io_result<Op> file_handle::invoke_io_func_at(io_request<Op> req, std::uint64_t pos, const file_timeout &to) noexcept
+	typename file_handle::io_result<Op> file_handle::invoke_io_func(io_request<Op> req, const fs::file_timeout &to) noexcept
 	{
 		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
@@ -142,7 +185,7 @@ namespace rod::_file
 			return std::make_error_code(std::errc::not_enough_memory);
 
 		std::memset(iosb_buff.get(), 0, buff_size);
-		std::size_t pending = 0, bytes_done = 0;
+		extent_type pending = 0, bytes_done = 0;
 		std::error_code result_status = {};
 
 		/* Start IO operations. */
@@ -151,7 +194,7 @@ namespace rod::_file
 			auto &iosb = iosb_buff.get()[i];
 			auto &data = req.buffs[i];
 
-			LARGE_INTEGER offset = {.QuadPart = LONGLONG(pos)};
+			LARGE_INTEGER offset = {.QuadPart = LONGLONG(req.off)};
 			if (offset.QuadPart < 0) [[unlikely]]
 			{
 				result_status = std::make_error_code(std::errc::value_too_large);
@@ -161,11 +204,11 @@ namespace rod::_file
 			((*ntapi).*IoFunc)(native_handle(), nullptr, nullptr, 0, &iosb, const_cast<std::byte *>(data.data()), ULONG(data.size()), &offset, nullptr);
 			if (iosb.status == STATUS_PENDING)
 			{
-				pos += data.size();
+				req.off += data.size();
 				pending += 1;
 			}
 			else if (!is_status_failure(iosb.status))
-				pos += iosb.info;
+				req.off += iosb.info;
 		}
 
 		/* Wait until all pending operations complete or timeout is reached. */
@@ -220,12 +263,12 @@ namespace rod::_file
 			return req.buffs;
 	}
 
-	read_some_at_result_t<file_handle> file_handle::do_read_some_at(io_request<read_some_at_t> req, std::uint64_t pos, const file_timeout &to) noexcept
+	read_some_at_result_t<file_handle> file_handle::do_read_some_at(io_request<read_some_at_t> req, const fs::file_timeout &to) noexcept
 	{
-		return invoke_io_func_at<&ntapi::NtReadFile>(std::forward<decltype(req)>(req), pos, to);
+		return invoke_io_func<&ntapi::NtReadFile>(std::forward<decltype(req)>(req), to);
 	}
-	write_some_at_result_t<file_handle> file_handle::do_write_some_at(io_request<write_some_at_t> req, std::uint64_t pos, const file_timeout &to) noexcept
+	write_some_at_result_t<file_handle> file_handle::do_write_some_at(io_request<write_some_at_t> req, const fs::file_timeout &to) noexcept
 	{
-		return invoke_io_func_at<&ntapi::NtWriteFile>(std::forward<decltype(req)>(req), pos, to);
+		return invoke_io_func<&ntapi::NtWriteFile>(std::forward<decltype(req)>(req), to);
 	}
 }

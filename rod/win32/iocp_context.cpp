@@ -88,7 +88,7 @@ namespace rod::_iocp
 			iosb.info = 0;
 
 			chunk = static_cast<ULONG>(cmd.buff.size() - batch_bytes);
-			offset.quad = static_cast<LONGLONG>(cmd.pos);
+			offset.quad = static_cast<LONGLONG>(cmd.off);
 
 			if (const auto status = ntapi::instance.NtReadFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ULONG_PTR>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
 				entry->pending += (status == STATUS_PENDING || notify_func != nullptr);
@@ -115,7 +115,7 @@ namespace rod::_iocp
 			iosb.info = 0;
 
 			chunk = static_cast<ULONG>(cmd.buff.size() - batch_bytes);
-			offset.quad = static_cast<LONGLONG>(cmd.pos);
+			offset.quad = static_cast<LONGLONG>(cmd.off);
 
 			if (const auto status = ntapi::instance.NtWriteFile(cmd.hnd, nullptr, nullptr, reinterpret_cast<ULONG_PTR>(&iosb), &iosb, cmd.buff.data() + batch_bytes, chunk, &offset, nullptr); status >= 0)
 				entry->pending += (status == STATUS_PENDING || notify_func != nullptr);

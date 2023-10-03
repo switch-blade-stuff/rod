@@ -183,11 +183,11 @@ namespace rod::_io_uring
 	}
 	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_read_some_at_t, std::span<std::byte>> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.pos);
+		return submit_io_event(IORING_OP_READ, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.off);
 	}
 	bool context::submit_io_event(operation_base *node, io_cmd_t<schedule_write_some_at_t, std::span<std::byte>> cmd) noexcept
 	{
-		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.pos);
+		return submit_io_event(IORING_OP_WRITE, node, cmd.fd.native_handle(), cmd.buff.data(), cmd.buff.size(), cmd.off);
 	}
 	bool context::cancel_io_event(operation_base *node) noexcept
 	{

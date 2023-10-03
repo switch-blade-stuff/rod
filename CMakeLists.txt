@@ -167,6 +167,7 @@ target_sources(${PROJECT_NAME} PRIVATE
         rod/detail/path_util.cpp
         rod/detail/path_discovery.cpp
         rod/detail/thread_pool.cpp
+        rod/detail/run_loop.cpp
         rod/utility.cpp
         rod/result.cpp)
 

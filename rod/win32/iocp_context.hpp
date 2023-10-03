@@ -150,7 +150,7 @@ namespace rod
 			std::size_t start_io(io_cmd<Op, Buff> cmd)
 			{
 				const auto bytes = rod::as_byte_buffer(const_cast<std::ranges::range_value_t<Buff> *>(std::data(cmd.buff)), std::size(cmd.buff));
-				return start_io(io_cmd<Op, std::span<std::byte>>{cmd.hnd, bytes, cmd.pos});
+				return start_io(io_cmd<Op, std::span<std::byte>>{cmd.hnd, bytes, cmd.off});
 			}
 
 			context *ctx;

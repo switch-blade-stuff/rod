@@ -15,16 +15,70 @@ namespace rod
 	{
 		class file_handle;
 
-		template<typename Op, bool EnableStream, bool EnableSparse>
+		struct  extent_pair { _handle::extent_type pos = 0; _handle::extent_type len = 0; };
+
+		template<typename Op>
 		struct select_io_buffer;
-		template<bool EnableSparse>
-		struct select_io_buffer<read_some_t, true, EnableSparse> { using type = byte_buffer; };
-		template<bool EnableStream>
-		struct select_io_buffer<read_some_at_t, EnableStream, true> { using type = byte_buffer; };
-		template<bool EnableSparse>
-		struct select_io_buffer<write_some_t, true, EnableSparse> { using type = const_byte_buffer; };
-		template<bool EnableStream>
-		struct select_io_buffer<write_some_at_t, EnableStream, true> { using type = const_byte_buffer; };
+		template<one_of<list_extents_t, zero_extents_t, clone_extents_t> Op>
+		struct select_io_buffer<Op> { using type = extent_pair; };
+		template<one_of<read_some_t, read_some_at_t> Op>
+		struct select_io_buffer<Op> { using type = byte_buffer; };
+		template<one_of<sync_at_t, write_some_t, write_some_at_t> Op>
+		struct select_io_buffer<Op> { using type = const_byte_buffer; };
+
+		template<typename Op>
+		using io_buffer = typename select_io_buffer<Op>::type;
+		template<typename Op>
+		using io_buffer_sequence = std::span<io_buffer<Op>>;
+
+		template<typename Op>
+		struct select_io_result;
+		template<one_of<zero_extents_t, clone_extents_t> Op>
+		struct select_io_result<Op> { using type = result<extent_pair, io_status_code>; };
+		template<std::same_as<list_extents_t> Op>
+		struct select_io_result<Op> { using type = result<std::vector<extent_pair>, io_status_code>; };
+		template<one_of<sync_at_t, read_some_t, read_some_at_t, write_some_t, write_some_at_t> Op>
+		struct select_io_result<Op> { using type = result<io_buffer_sequence<Op>, io_status_code>; };
+
+		template<typename Op>
+		using io_result = typename select_io_result<Op>::type;
+
+		template<typename Op>
+		struct io_request;
+		template<std::same_as<sync_at_t> Op>
+		struct io_request<Op>
+		{
+			io_buffer_sequence<Op> buffs;
+			_handle::extent_type off = 0;
+			sync_mode mode = sync_mode::all;
+		};
+		template<one_of<read_some_t, write_some_t> Op>
+		struct io_request<Op>
+		{
+			io_buffer_sequence<Op> buffs;
+		};
+		template<one_of<read_some_at_t, write_some_at_t> Op>
+		struct io_request<Op>
+		{
+			io_buffer_sequence<Op> buffs;
+			_handle::extent_type off = 0;
+		};
+		template<std::same_as<list_extents_t> Op>
+		struct io_request<Op>
+		{
+			std::vector<io_buffer<Op>> buff;
+		};
+		template<std::same_as<clone_extents_t> Op>
+		struct io_request<Op>
+		{
+			extent_pair extent = {};
+
+			file_handle &dst;
+			_handle::extent_type off = 0;
+
+			bool force_copy = false;
+			bool emulate = true;
+		};
 
 		template<typename Hnd>
 		concept file_like = sparse_io_handle<Hnd> && std::convertible_to<const Hnd &, const file_handle &>;
@@ -41,14 +95,14 @@ namespace rod
 
 		public:
 			template<typename Op>
-			using io_buffer = typename select_io_buffer<Op, false, true>::type;
+			using io_buffer = _file::io_buffer<Op>;
 			template<typename Op>
-			using io_buffer_sequence = std::span<io_buffer<Op>>;
+			using io_buffer_sequence = _file::io_buffer_sequence<Op>;
 
 			template<typename Op>
-			using io_result = result<io_buffer_sequence<Op>, io_status_code>;
+			using io_result = _file::io_result<Op>;
 			template<typename Op>
-			struct io_request { io_buffer_sequence<Op> buffs; };
+			using io_request = _file::io_request<Op>;
 
 		private:
 			using path_view = fs::path_view;
@@ -105,10 +159,20 @@ namespace rod
 			friend constexpr void swap(file_handle &a, file_handle &b) noexcept { a.swap(b); }
 
 		public:
-			template<decays_to_same<read_some_at_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req, decays_to_same<std::uint64_t> Ext>
-			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, Ext pos, const fs::file_timeout &to) noexcept { return hnd.do_read_some_at(std::move(req), pos, to); }
-			template<decays_to_same<write_some_at_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<std::uint64_t> Ext, decays_to_same<io_request<Op>> Req>
-			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, Ext pos, const fs::file_timeout &to) noexcept { return hnd.do_write_some_at(std::move(req), pos, to); }
+			template<decays_to_same<sync_t> Op, decays_to_same<file_handle> Hnd>
+			friend auto tag_invoke(Op, Hnd &&hnd, sync_mode mode, const fs::file_timeout &to) noexcept { return hnd.do_sync(mode, to); }
+			template<decays_to_same<sync_at_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_sync_at(std::move(req), to); }
+
+			template<decays_to_same<read_some_at_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_read_some_at(std::move(req), to); }
+			template<decays_to_same<write_some_at_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_write_some_at(std::move(req), to); }
+
+			template<decays_to_same<list_extents_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_list_extents(std::move(req), to); }
+			template<decays_to_same<clone_extents_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
+			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_clone_extents(std::move(req), to); }
 
 		private:
 			result<file_handle> do_clone() const noexcept { return clone(base()).transform([&](basic_handle &&hnd) { return file_handle(std::move(hnd), flags(), caching()); }); }
@@ -117,11 +181,17 @@ namespace rod
 			ROD_API_PUBLIC result<> do_relink(const path_handle &base, path_view path, bool replace, const fs::file_timeout &to) noexcept;
 			ROD_API_PUBLIC result<> do_unlink(const fs::file_timeout &to) noexcept;
 
-			template<auto IoFunc, typename Op>
-			inline io_result<Op> invoke_io_func_at(io_request<Op> req, std::uint64_t pos, const fs::file_timeout &to) noexcept;
+			ROD_API_PUBLIC result<void, io_status_code> do_sync(sync_mode mode, const fs::file_timeout &to) noexcept;
+			ROD_API_PUBLIC io_result<sync_at_t> do_sync_at(io_request<sync_at_t> req, const fs::file_timeout &to) noexcept;
 
-			ROD_API_PUBLIC io_result<read_some_at_t> do_read_some_at(io_request<read_some_at_t> req, std::uint64_t pos, const fs::file_timeout &to) noexcept;
-			ROD_API_PUBLIC io_result<write_some_at_t> do_write_some_at(io_request<write_some_at_t> req, std::uint64_t pos, const fs::file_timeout &to) noexcept;
+			template<auto IoFunc, typename Op>
+			inline io_result<Op> invoke_io_func(io_request<Op> req, const fs::file_timeout &to) noexcept;
+
+			ROD_API_PUBLIC io_result<read_some_at_t> do_read_some_at(io_request<read_some_at_t> req, const fs::file_timeout &to) noexcept;
+			ROD_API_PUBLIC io_result<write_some_at_t> do_write_some_at(io_request<write_some_at_t> req, const fs::file_timeout &to) noexcept;
+
+			ROD_API_PUBLIC io_result<list_extents_t> do_list_extents(io_request<list_extents_t> req, const fs::file_timeout &to) const noexcept;
+			ROD_API_PUBLIC io_result<clone_extents_t> do_clone_extents(io_request<clone_extents_t> req, const fs::file_timeout &to) const noexcept;
 		};
 
 		template<typename Base>

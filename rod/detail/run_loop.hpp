@@ -164,6 +164,12 @@ namespace rod
 			using timer_queue_t = _detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::_timer_prev, &timer_operation_base::_timer_next>;
 			using task_queue_t = _detail::basic_queue<operation_base, &operation_base::_next>;
 
+			struct thread_context
+			{
+				std::unique_lock<std::mutex> lock;
+				task_queue_t local_queue;
+			};
+
 		public:
 			run_loop(run_loop &&) = delete;
 			run_loop(const run_loop &) = delete;
@@ -174,50 +180,10 @@ namespace rod
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept { return {this}; }
 
 			/** Blocks the current thread until `finish` is called and executes scheduled operations. */
-			void run()
-			{
-				for (task_queue_t local_queue;;)
-				{
-					while (!local_queue.empty())
-					{
-						auto *node = local_queue.pop_front();
-						node->_notify_func(node);
-					}
+			ROD_API_PUBLIC void run();
+			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */
+			ROD_API_PUBLIC void finish();
 
-					auto g = std::unique_lock{_mtx};
-
-					/* Acquire tasks from the producer queue. */
-					while (!_task_queue.empty())
-					{
-						auto *node = _task_queue.pop_front();
-						local_queue.push_back(node);
-					}
-
-					/* Dispatch elapsed timers. */
-					if (!_timer_queue.empty())
-						for (const auto now = clock::now(); !_timer_queue.empty();)
-						{
-							if (_timer_queue.front()->_tp > now)
-							{
-								_next_timeout = _timer_queue.front()->_tp;
-								break;
-							}
-							auto *node = _timer_queue.pop_front();
-							local_queue.push_back(node);
-						}
-
-					/* Do not wait if we have tasks to dispatch. */
-					if (!local_queue.empty())
-						continue;
-					else if (_is_stopping && is_idle())
-						return;
-
-					if (_timer_queue.empty())
-						_cnd.wait(g, [&]() { return !is_idle() || _is_stopping; });
-					else
-						_cnd.wait_until(g, _next_timeout);
-				}
-			}
 			/** Blocks the current thread until stopped via \a tok and executes scheduled operations.
 			 * @param tok Stop token used to stop execution of the event loop. */
 			template<stoppable_token Tok>
@@ -226,14 +192,6 @@ namespace rod
 				const auto do_stop = [&]() { finish(); };
 				const auto cb = stop_callback_for_t<Tok, decltype(do_stop)>{std::forward<Tok>(tok), do_stop};
 				run();
-			}
-
-			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */
-			void finish()
-			{
-				const auto g = std::unique_lock{_mtx};
-				_is_stopping = true;
-				_cnd.notify_all();
 			}
 
 			/** Returns copy of the stop source associated with the run loop. */
@@ -246,18 +204,11 @@ namespace rod
 		private:
 			constexpr bool is_idle() const noexcept { return _timer_queue.empty() && _task_queue.empty(); }
 
-			void schedule(operation_base *node) noexcept
-			{
-				const auto g = std::unique_lock{_mtx};
-				_task_queue.push_back(node);
-				_cnd.notify_one();
-			}
-			void schedule_timer(timer_operation_base *node) noexcept
-			{
-				const auto g = std::unique_lock{_mtx};
-				_timer_queue.insert(node);
-				_cnd.notify_one();
-			}
+			ROD_API_PUBLIC bool run_once(thread_context &ctx);
+			ROD_API_PUBLIC bool poll(thread_context &ctx, bool block = true);
+
+			void schedule(operation_base *node) noexcept;
+			void schedule_timer(timer_operation_base *node) noexcept;
 
 			std::mutex _mtx;
 			std::condition_variable _cnd;

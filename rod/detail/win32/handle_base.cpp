@@ -25,7 +25,7 @@ namespace rod::_handle
 			return result;
 	}
 
-	result<path> basic_handle::do_to_object_path() const noexcept
+	result<fs::path> basic_handle::do_to_object_path() const noexcept
 	{
 		try
 		{
@@ -47,7 +47,7 @@ namespace rod::_handle
 		}
 		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
-	result<path> basic_handle::do_to_native_path(native_path_format fmt, fs::dev_t dev, fs::ino_t ino) const noexcept
+	result<fs::path> basic_handle::do_to_native_path(native_path_format fmt, fs::dev_t dev, fs::ino_t ino) const noexcept
 	{
 		try
 		{
