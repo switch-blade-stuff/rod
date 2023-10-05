@@ -6,6 +6,10 @@
 
 #include <numeric>
 
+#ifndef FSCTL_DUPLICATE_EXTENTS
+#define FSCTL_DUPLICATE_EXTENTS CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 209, METHOD_BUFFERED, FILE_WRITE_DATA)
+#endif
+
 namespace rod::_file
 {
 	using namespace _win32;
@@ -270,5 +274,462 @@ namespace rod::_file
 	write_some_at_result_t<file_handle> file_handle::do_write_some_at(io_request<write_some_at_t> req, const fs::file_timeout &to) noexcept
 	{
 		return invoke_io_func<&ntapi::NtWriteFile>(std::forward<decltype(req)>(req), to);
+	}
+
+	static_assert(sizeof(extent_pair) == sizeof(FILE_ALLOCATED_RANGE_BUFFER));
+
+	enum operation_type
+	{
+		clone_extents,
+		erase_extents,
+		clone_bytes,
+		erase_bytes,
+	};
+	struct queue_item
+	{
+		extent_pair extent;
+		operation_type op;
+		bool is_new = {};
+	};
+	struct clone_info
+	{
+		void *handle;
+		LONGLONG src_off;
+		LONGLONG dst_off;
+		LONGLONG length;
+	};
+
+	inline static _handle::extent_type get_page_size() noexcept
+	{
+		static const _handle::extent_type result = []()
+		{
+			auto info = SYSTEM_INFO();
+			::GetSystemInfo(&info);
+			return info.dwPageSize;
+		}();
+		return result;
+	}
+	inline static _handle::extent_type get_block_size() noexcept
+	{
+		static const auto result = std::max<_handle::extent_type>(4096, get_page_size());
+		return result;
+	}
+	inline static _handle::extent_type page_align(_handle::extent_type n) noexcept
+	{
+		const auto page_size = get_page_size();
+		const auto rem = n % page_size;
+		return n + (rem ? page_size - rem : 0);
+	}
+
+	result<_handle::extent_type> file_handle::do_truncate(extent_type endp) noexcept
+	{
+		auto info = FILE_END_OF_FILE_INFO{.EndOfFile = {.QuadPart = LONGLONG(endp)}};
+		if (::SetFileInformationByHandle(native_handle(), FileEndOfFileInfo, &info, sizeof(info)) == 0)
+			return dos_error_code(::GetLastError());
+		if (bool(caching() & file_caching::sanity_barriers))
+			::FlushFileBuffers(native_handle());
+		return endp;
+	}
+	io_result<list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const fs::file_timeout &to) const noexcept
+	{
+		auto buff = FILE_ALLOCATED_RANGE_BUFFER{.Length = {.QuadPart = (extent_type(1) << 63) - 1}};
+		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
+		DWORD bytes = 0;
+
+		const auto abs_timeout = to.absolute();
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		try
+		{
+			req.buff.resize(64);
+			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buff.data(), DWORD(req.buff.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &bytes, &ol) == 0)
+			{
+				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
+				{
+					auto status = ntapi->wait_io(native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
+					if (is_status_failure(status)) [[unlikely]]
+						return status_error_code(status);
+				}
+				else if (err == ERROR_INSUFFICIENT_BUFFER || err == ERROR_MORE_DATA)
+					req.buff.resize(req.buff.size() * 2);
+				else if (err != ERROR_SUCCESS) [[unlikely]]
+					return dos_error_code(err);
+			}
+
+			req.buff.resize(bytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
+			return req.buff;
+		}
+		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+	}
+	io_result<zero_extents_t> file_handle::do_zero_extents(io_request<zero_extents_t> req, const fs::file_timeout &to) noexcept
+	{
+		if (req.extent.first + req.extent.second < req.extent.first) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		const auto abs_timeout = to.absolute();
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
+		auto info = FILE_ZERO_DATA_INFORMATION();
+		info.BeyondFinalZero.QuadPart = req.extent.first + req.extent.second;
+		info.FileOffset.QuadPart = req.extent.first;
+		DWORD bytes = 0;
+
+		if (::DeviceIoControl(native_handle(), FSCTL_SET_ZERO_DATA, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+		{
+			if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
+			{
+				auto status = ntapi->wait_io(native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
+				if (is_status_failure(status)) [[unlikely]]
+					return status_error_code(status);
+			}
+			else if (err != ERROR_SUCCESS && !req.emulate)
+				return dos_error_code(err);
+
+			const auto block_size = get_block_size();
+			const auto buff_size = page_align(block_size);
+			auto buff = make_malloc_ptr_for_overwrite<std::byte[]>(buff_size);
+			if (buff.get() == nullptr) [[unlikely]]
+				return std::make_error_code(std::errc::not_enough_memory);
+			else
+				std::memset(buff.get(), 0, std::size_t(buff_size));
+
+			/* Fall back to a regular 0-fill. */
+			auto result = extent_pair(req.extent.first, 0);
+			for (extent_type src_off = 0; src_off < req.extent.second; src_off += block_size)
+			{
+				const auto src_length = std::min(block_size, req.extent.second - src_off);
+				auto src_buff = const_byte_buffer(buff.get() + src_off, src_length);
+				if (auto write_res = write_some_at(*this, {.buffs = {&src_buff, 1}, .off = req.extent.first + src_off}, abs_timeout); write_res.has_error()) [[unlikely]]
+					return write_res.error();
+				else if (write_res->front().size() < src_length) [[unlikely]]
+					return std::make_error_code(std::errc::resource_unavailable_try_again);
+				else
+					result.second += src_length;
+			}
+			return result;
+		}
+		return req.extent;
+	}
+	io_result<clone_extents_t> file_handle::do_clone_extents(io_request<clone_extents_t> req, const fs::file_timeout &to) noexcept
+	{
+		constexpr auto stat_mask = stat::query::size | stat::query::ino | stat::query::dev;
+
+		if (!bool((flags() | req.dst.flags()) & file_flags::non_blocking) && to != timeout_type()) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		if ((req.dst.flags() & file_flags::write) != file_flags::write) [[unlikely]]
+			return std::make_error_code(std::errc::invalid_seek);
+
+		const auto block_size = get_block_size();
+		const auto page_size = get_page_size();
+		const auto abs_timeout = to.absolute();
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto src_stat = stat(nullptr), dst_stat = stat(nullptr);
+		if (auto res = get_stat(src_stat, *this, stat_mask); res.has_error()) [[unlikely]]
+			return res.error();
+		else if ((*res & stat_mask) != stat_mask) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		if (auto res = get_stat(dst_stat, req.dst, stat_mask); res.has_error()) [[unlikely]]
+			return res.error();
+		else if ((*res & stat_mask) != stat_mask) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+
+		/* {-1, -1} is special case indicating entire file. */
+		if (const auto npos = extent_type(-1); req.extent.first == npos && req.extent.second == npos)
+			req.extent = extent_pair(0, extent_type(src_stat.size));
+		if (req.extent.first + req.extent.second < req.extent.first || req.off + req.extent.second < req.off) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		/* Clamp extent to source file size. */
+		if (req.extent.first + req.extent.second > extent_type(src_stat.size))
+			req.extent.second = extent_type(src_stat.size) - req.extent.first;
+		if (req.extent.first >= extent_type(src_stat.size))
+			req.extent.second = 0;
+		if (req.extent.second == 0)
+			return req.extent;
+
+		const auto request_end = req.extent.first + req.extent.second;
+		extent_type bytes_done = 0, queue_size = 0, queue_cap = 64;
+		extent_pair extent_buff[64];
+
+		/* Use a malloc buffer instead of std::vector to enable realloc. */
+		auto queue = make_malloc_ptr_for_overwrite<queue_item[]>(queue_cap);
+		if (queue.get() == nullptr) [[unlikely]]
+			return std::make_error_code(std::errc::not_enough_memory);
+
+		const auto insert_queue = [&](std::size_t pos, auto... args) noexcept -> result<void>
+		{
+			if (queue_size == queue_cap) [[unlikely]]
+			{
+				void *old_mem = queue.release(), *new_mem = std::realloc(old_mem, queue_cap *= 2);
+				if (new_mem == nullptr) [[unlikely]]
+					return (std::free(old_mem), std::make_error_code(std::errc::not_enough_memory));
+				else
+					queue.reset(static_cast<queue_item *>(new_mem));
+			}
+			auto begin = queue.get(), end = begin + queue_size++;
+			std::move_backward(begin + pos, end, end + 1);
+			new (begin + pos) queue_item{args...};
+			return result<void>();
+		};
+		const auto push_queue = [&](auto... args) noexcept -> result<void>
+		{
+			return insert_queue(queue_size, args...);
+		};
+
+		/* Fill the queue with extent operations. */
+		for (auto curr_offset = req.extent.first; curr_offset < request_end;)
+		{
+			auto range_buff = FILE_ALLOCATED_RANGE_BUFFER();
+			auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
+			DWORD bytes = 0;
+
+			range_buff.Length.QuadPart = LONGLONG(request_end - curr_offset);
+			range_buff.FileOffset.QuadPart = LONGLONG(curr_offset);
+
+			if (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &range_buff, sizeof(range_buff), extent_buff, sizeof(extent_buff), &bytes, &ol) == 0)
+			{
+				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
+				{
+					auto status = ntapi->wait_io(native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
+					if (is_status_failure(status)) [[unlikely]]
+						return status_error_code(status);
+				}
+				else if (err != ERROR_SUCCESS && err != ERROR_MORE_DATA) [[unlikely]]
+					return dos_error_code(err);
+			}
+			if (bytes == 0) /* EOF */
+				break;
+
+			for (std::size_t i = 0; i < bytes / sizeof(extent_pair); ++i)
+			{
+				/* If the queue is not empty, insert an erase operation if we are not covering the full extent. */
+				if (queue_size != 0)
+				{
+					const auto [last_pos, last_len] = queue[queue_size - 1].extent;
+					const auto last_end = last_pos + last_len;
+					if (last_end != extent_buff[i].first)
+					{
+						const auto to_erase = extent_pair{last_end, extent_buff[i].first - last_end};
+						if (auto res = push_queue(to_erase, erase_extents); res.has_error()) [[unlikely]]
+							return res.error();
+					}
+				}
+				if (auto res = push_queue(extent_buff[i], clone_extents); res.has_value()) [[likely]]
+					curr_offset = extent_buff[i].first + extent_buff[i].second;
+				else
+					return res.error();
+			}
+		}
+
+		if (queue_size != 0)
+		{
+			auto &front = queue[0], &back = queue[queue_size - 1];
+			auto &[front_pos, front_len] = front.extent;
+			auto &[back_pos, back_len] = back.extent;
+
+			/* Truncate or add padding for the first extent. */
+			if (front_pos < req.extent.first)
+			{
+				auto diff = (req.extent.first - front_pos + page_size - 1) & ~(page_size - 1);
+				front.extent = extent_pair(front_pos - diff, front_len + diff);
+
+				if (front_pos != req.extent.first)
+				{
+					const auto to_fill = extent_pair(req.extent.first, front_pos - req.extent.first);
+					const auto op = front.op == clone_extents ? clone_bytes : erase_bytes;
+					if (auto res = insert_queue(0, to_fill, op); res.has_error()) [[unlikely]]
+						return res.error();
+				}
+			}
+			else if (front_pos > req.extent.first)
+			{
+				auto to_erase = extent_pair(req.extent.first, front_pos - req.extent.first);
+				if (auto res = insert_queue(0, to_erase, erase_extents); res.has_error()) [[unlikely]]
+					return res.error();
+			}
+
+			/* Truncate or add padding for the last extent. */
+			if (back_pos + back_len > request_end)
+			{
+				back_len -= (back_pos + back_len - request_end + page_size - 1) & ~(page_size - 1);
+				if (back_pos + back_len != request_end)
+				{
+					const auto to_fill = extent_pair(back_pos + back_len, request_end - (back_pos + back_len));
+					const auto op = queue[queue_size - 1].op == clone_extents ? clone_bytes : erase_bytes;
+					if (auto res = push_queue(to_fill, op); res.has_error()) [[unlikely]]
+						return res.error();
+				}
+			}
+			else if (back_pos + back_len < request_end)
+			{
+				auto to_erase = extent_pair(back_pos + back_len, request_end - (back_pos + back_len));
+				if (auto res = push_queue(to_erase, erase_extents); res.has_error()) [[unlikely]]
+					return res.error();
+			}
+		}
+		if (queue_size == 0)
+		{
+			auto res = push_queue(req.extent, erase_extents);
+			if (res.has_error()) [[unlikely]]
+				return res.error();
+		}
+
+		/* Reverse operation order if source and destination extents overlap. */
+		if (src_stat.dev == dst_stat.dev && src_stat.ino == dst_stat.ino)
+		{
+			using signed_extent = std::make_signed_t<extent_type>;
+			if (extent_type(std::abs(signed_extent(req.off - req.extent.first))) < block_size)
+				return std::make_error_code(std::errc::invalid_argument);
+			if (req.off > req.extent.first)
+				std::reverse(queue.get(), queue.get() + queue_size);
+		}
+
+		const auto dst_diff = req.off - req.extent.first;
+		if (req.off + req.extent.second > dst_stat.size)
+		{
+			/* Skip extents that overlap existing file data. */
+			std::size_t i = 0;
+			while (i < queue_size && queue[i].extent.first + queue[i].extent.second + dst_diff <= dst_stat.size)
+				++i;
+			if (i < queue_size && queue[i].extent.first + dst_diff < dst_stat.size)
+				++i;
+			/* The rest will be newly-allocated. */
+			for (; i < queue_size; ++i)
+				queue[i].is_new = true;
+		}
+
+		/* Truncate the destination file if needed. */
+		if (dst_stat.size < req.off + req.extent.second)
+		{
+			auto res = truncate(req.dst, req.off + req.extent.second);
+			if (res.has_error()) [[unlikely]]
+				return res.error();
+		}
+
+		auto restore_guard = defer_invoke([&]() { truncate(req.dst, dst_stat.size); });
+		bool do_clone_extents = !req.force_copy, do_erase_extents = true;
+		auto result = extent_pair(req.extent.first, 0);
+		malloc_ptr<std::byte[]> data_buff;
+		std::size_t buff_size = 0;
+
+		for (const auto &item : std::span(queue.get(), queue_size))
+		{
+			/* Process the extent operation block-by-block. */
+			for (extent_type src_off = 0; src_off < item.extent.second; src_off += block_size)
+			{
+				const auto src_length = std::min(block_size, item.extent.second - src_off);
+				if (item.op == clone_extents && do_clone_extents)
+				{
+					auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
+					auto info = clone_info
+					{
+						.handle = native_handle(),
+						.src_off = LONGLONG(item.extent.first + src_off),
+						.dst_off = LONGLONG(item.extent.first + src_off + dst_diff),
+						.length = LONGLONG(src_length),
+					};
+					DWORD bytes = 0;
+
+					if (::DeviceIoControl(req.dst.native_handle(), FSCTL_DUPLICATE_EXTENTS, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+					{
+						if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
+						{
+							auto status = ntapi->wait_io(req.dst.native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
+							if (is_status_failure(status)) [[unlikely]]
+								return status_error_code(status);
+						}
+						else if (err != ERROR_SUCCESS && !req.emulate)
+							return dos_error_code(err);
+						else
+							do_clone_extents = false;
+					}
+					else
+						goto item_complete;
+				}
+				if (item.op == erase_extents && do_erase_extents && !item.is_new)
+				{
+					auto info = FILE_ZERO_DATA_INFORMATION();
+					info.FileOffset.QuadPart = LONGLONG(item.extent.first + src_off + dst_diff);
+					info.BeyondFinalZero.QuadPart = info.FileOffset.QuadPart + src_length;
+					auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
+					DWORD bytes = 0;
+
+					if (::DeviceIoControl(req.dst.native_handle(), FSCTL_SET_ZERO_DATA, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+					{
+						if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
+						{
+							auto status = ntapi->wait_io(req.dst.native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
+							if (is_status_failure(status)) [[unlikely]]
+								return status_error_code(status);
+						}
+						else if (err != ERROR_SUCCESS && !req.emulate)
+							return dos_error_code(err);
+						else
+							do_erase_extents = false;
+					}
+					else
+						goto item_complete;
+				}
+
+				/* (Re)allocate the buffer needed for byte-wise operations. */
+				if (const auto aligned_len = page_align(std::max(src_length, extent_type(4096))); buff_size < aligned_len)
+				{
+					void *old_mem = data_buff.release(), *new_mem;
+					if (old_mem != nullptr)
+						new_mem = std::realloc(old_mem, buff_size = aligned_len);
+					else
+						new_mem = std::malloc(buff_size = aligned_len);
+
+					if (new_mem == nullptr) [[unlikely]]
+						return (std::free(old_mem), std::make_error_code(std::errc::not_enough_memory));
+					else
+						data_buff.reset(static_cast<std::byte *>(new_mem));
+				}
+
+				/* Fall back to byte-wise clone & erase if FSCTL failed or if force_copy is set. */
+				if (item.op == clone_bytes || (item.op == clone_extents && !do_clone_extents))
+				{
+					auto src_buff = byte_buffer(data_buff.get(), src_length);
+					auto read_res = read_some_at(*this, {.buffs = {&src_buff, 1}, .off = item.extent.first + src_off}, abs_timeout);
+					if (read_res.has_error()) [[unlikely]]
+						return read_res.error();
+					if (read_res->front().size() < src_length) [[unlikely]]
+						return std::make_error_code(std::errc::resource_unavailable_try_again);
+
+					auto dst_buff = const_byte_buffer(read_res->front().data(), src_length);
+					auto write_res = write_some_at(req.dst, {.buffs = {&dst_buff, 1}, .off = item.extent.first + src_off + dst_diff}, abs_timeout);
+					if (write_res.has_error()) [[unlikely]]
+						return write_res.error();
+					if (write_res->front().size() < src_length) [[unlikely]]
+						return std::make_error_code(std::errc::resource_unavailable_try_again);
+
+					goto item_complete;
+				}
+				if ((item.op == erase_bytes || (item.op == erase_extents && !do_erase_extents)) && !item.is_new)
+				{
+					auto dst_buff = const_byte_buffer(data_buff.get(), src_length);
+					std::memset(data_buff.get(), 0, std::size_t(src_length));
+
+					auto write_res = write_some_at(req.dst, {.buffs = {&dst_buff, 1}, .off = item.extent.first + src_off + dst_diff}, abs_timeout);
+					if (write_res.has_error()) [[unlikely]]
+						return write_res.error();
+					if (write_res->front().size() < src_length) [[unlikely]]
+						return std::make_error_code(std::errc::resource_unavailable_try_again);
+				}
+
+			item_complete:
+				result.second += src_off;
+				restore_guard.release();
+			}
+		}
+		return result;
 	}
 }

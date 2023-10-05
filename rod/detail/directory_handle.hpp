@@ -81,9 +81,7 @@ namespace rod
 		{
 			friend class directory_handle;
 
-			struct free_deleter { void operator()(auto *p) const noexcept { if (p) std::free(p); } };
-
-			using buff_type = std::unique_ptr<typename fs::path::value_type[], free_deleter>;
+			using buff_type = _detail::malloc_ptr<typename fs::path::value_type[]>;
 			using data_type = std::span<io_buffer<read_some_t>>;
 
 		public:

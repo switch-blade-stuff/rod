@@ -15,7 +15,7 @@ namespace rod
 	{
 		class file_handle;
 
-		struct  extent_pair { _handle::extent_type pos = 0; _handle::extent_type len = 0; };
+		using extent_pair = std::pair<_handle::extent_type, _handle::extent_type>;
 
 		template<typename Op>
 		struct select_io_buffer;
@@ -34,9 +34,9 @@ namespace rod
 		template<typename Op>
 		struct select_io_result;
 		template<one_of<zero_extents_t, clone_extents_t> Op>
-		struct select_io_result<Op> { using type = result<extent_pair, io_status_code>; };
+		struct select_io_result<Op> { using type = result<io_buffer<Op>, io_status_code>; };
 		template<std::same_as<list_extents_t> Op>
-		struct select_io_result<Op> { using type = result<std::vector<extent_pair>, io_status_code>; };
+		struct select_io_result<Op> { using type = result<std::vector<io_buffer<Op>>, io_status_code>; };
 		template<one_of<sync_at_t, read_some_t, read_some_at_t, write_some_t, write_some_at_t> Op>
 		struct select_io_result<Op> { using type = result<io_buffer_sequence<Op>, io_status_code>; };
 
@@ -68,22 +68,26 @@ namespace rod
 		{
 			std::vector<io_buffer<Op>> buff;
 		};
+		template<std::same_as<zero_extents_t> Op>
+		struct io_request<Op>
+		{
+			io_buffer<Op> extent = {};
+			bool emulate = true;
+		};
 		template<std::same_as<clone_extents_t> Op>
 		struct io_request<Op>
 		{
-			extent_pair extent = {};
+			io_buffer<Op> extent = {};
 
 			file_handle &dst;
 			_handle::extent_type off = 0;
 
-			bool force_copy = false;
 			bool emulate = true;
+			bool force_copy = false;
 		};
 
-		template<typename Hnd>
-		concept file_like = sparse_io_handle<Hnd> && std::convertible_to<const Hnd &, const file_handle &>;
 		template<typename Res>
-		concept file_like_result = instance_of<Res, result> && file_like<typename Res::value_type>;
+		concept file_like_result = instance_of<Res, result> && sparse_io_handle<typename Res::value_type>;
 
 		/** Handle to a sparse IO file. */
 		class file_handle : public fs::fs_handle_adaptor<file_handle, basic_handle>
@@ -169,6 +173,8 @@ namespace rod
 			template<decays_to_same<write_some_at_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
 			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_write_some_at(std::move(req), to); }
 
+			template<decays_to_same<truncate_t> Op, decays_to_same<file_handle> Hnd>
+			friend auto tag_invoke(Op, Hnd &&hnd, extent_type endp) noexcept { return hnd.do_truncate(endp); }
 			template<decays_to_same<list_extents_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
 			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_list_extents(std::move(req), to); }
 			template<decays_to_same<clone_extents_t> Op, decays_to_same<file_handle> Hnd, decays_to_same<io_request<Op>> Req>
@@ -190,8 +196,11 @@ namespace rod
 			ROD_API_PUBLIC io_result<read_some_at_t> do_read_some_at(io_request<read_some_at_t> req, const fs::file_timeout &to) noexcept;
 			ROD_API_PUBLIC io_result<write_some_at_t> do_write_some_at(io_request<write_some_at_t> req, const fs::file_timeout &to) noexcept;
 
+			/* NOTE: Following extent functions are most likely not going to have async versions. */
+			ROD_API_PUBLIC result<extent_type> do_truncate(extent_type endp) noexcept;
 			ROD_API_PUBLIC io_result<list_extents_t> do_list_extents(io_request<list_extents_t> req, const fs::file_timeout &to) const noexcept;
-			ROD_API_PUBLIC io_result<clone_extents_t> do_clone_extents(io_request<clone_extents_t> req, const fs::file_timeout &to) const noexcept;
+			ROD_API_PUBLIC io_result<zero_extents_t> do_zero_extents(io_request<zero_extents_t> req, const fs::file_timeout &to) noexcept;
+			ROD_API_PUBLIC io_result<clone_extents_t> do_clone_extents(io_request<clone_extents_t> req, const fs::file_timeout &to) noexcept;
 		};
 
 		template<typename Base>

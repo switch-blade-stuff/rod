@@ -113,7 +113,7 @@ namespace rod
 			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
 
 		public:
-			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const fs::path_handle &, fs::path_like Path = fs::path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<link_t, Hnd, Base, Path, bool, To>
+			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const fs::path_handle &, fs::path_like Path = fs::path_view, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<link_t, Hnd, Base, Path, bool, To>
 			link_result auto operator()(Hnd &&hnd, Base &&base, Path &&path, bool replace = false, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, std::forward<To>(to)); }
 		};
 		class relink_t
@@ -122,7 +122,7 @@ namespace rod
 			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
 
 		public:
-			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const fs::path_handle &, fs::path_like Path = fs::path_view, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<relink_t, Hnd, Base, Path, bool, To>
+			template<typename Hnd, std::convertible_to<const fs::path_handle &> Base = const fs::path_handle &, fs::path_like Path = fs::path_view, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<relink_t, Hnd, Base, Path, bool, To>
 			link_result auto operator()(Hnd &&hnd, Base &&base, Path path, bool replace = false, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), base, path, replace, std::forward<To>(to)); }
 		};
 		class unlink_t
@@ -131,19 +131,9 @@ namespace rod
 			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
 
 		public:
-			template<typename Hnd, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<unlink_t, Hnd, To>
+			template<typename Hnd, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<unlink_t, Hnd, To>
 			link_result auto operator()(Hnd &&hnd, To &&to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<To>(to)); }
 		};
-
-		template<typename T>
-		struct select_extent_type { using type = extent_type; };
-		template<typename T>
-		struct select_size_type { using type = size_type; };
-
-		template<typename T> requires(requires { typename T::extent_type; })
-		struct select_extent_type<T> { using type = typename T::extent_type; };
-		template<typename T> requires(requires { typename T::size_type; })
-		struct select_size_type<T> { using type = typename T::size_type; };
 
 		template<typename T>
 		struct fs_handle_timeout { using type = fs::file_timeout; };
@@ -163,10 +153,6 @@ namespace rod
 		public:
 			/** Timeout type used for handle operations. */
 			using timeout_type = typename fs_handle_timeout<adp_base>::type;
-			/** Integer type used for handle offsets. */
-			using extent_type = typename select_extent_type<Base>::type;
-			/** Integer type used for handle buffers. */
-			using size_type = typename select_size_type<Base>::type;
 
 		private:
 			template<typename T>

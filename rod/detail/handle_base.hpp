@@ -16,6 +16,21 @@ namespace rod
 		struct handle_timeout_impl;
 		template<typename Hnd> requires(requires { typename Hnd::timeout_type; })
 		struct handle_timeout_impl<Hnd> { using type = typename Hnd::timeout_type; };
+
+		template<typename T>
+		struct select_extent_type { using type = extent_type; };
+		template<typename T>
+		struct select_size_type { using type = size_type; };
+
+		template<typename Hnd>
+		struct handle_extent_impl;
+		template<typename Hnd> requires(requires { typename Hnd::extent_type; })
+		struct handle_extent_impl<Hnd> { using type = typename Hnd::extent_type; };
+
+		template<typename Hnd>
+		struct handle_size_impl;
+		template<typename Hnd> requires(requires { typename Hnd::size_type; })
+		struct handle_size_impl<Hnd> { using type = typename Hnd::size_type; };
 	}
 
 	/** Type trait used to obtain the timeout type of handle \a Hnd. */
@@ -24,6 +39,20 @@ namespace rod
 	/** Alias for `typename handle_timeout&lt;Hnd&gt;::type` */
 	template<typename Hnd>
 	using handle_timeout_t = typename handle_timeout<Hnd>::type;
+
+	/** Type trait used to obtain the extent type of handle \a Hnd. */
+	template<typename Hnd>
+	struct handle_extent : _handle::handle_extent_impl<Hnd> {};
+	/** Alias for `typename handle_extent&lt;Hnd&gt;::type` */
+	template<typename Hnd>
+	using handle_extent_t = typename handle_extent<Hnd>::type;
+
+	/** Type trait used to obtain the size type of handle \a Hnd. */
+	template<typename Hnd>
+	struct handle_size : _handle::handle_size_impl<Hnd> {};
+	/** Alias for `typename handle_size&lt;Hnd&gt;::type` */
+	template<typename Hnd>
+	using handle_size_t = typename handle_size<Hnd>::type;
 
 	namespace _close
 	{
@@ -92,7 +121,7 @@ namespace rod
 
 		struct sync_t
 		{
-			template<typename Hnd, typename To = handle_timeout_t<Hnd>> requires tag_invocable<sync_t, Hnd, sync_mode, const To &>
+			template<typename Hnd, typename To = handle_timeout_t<std::decay_t<Hnd>>> requires tag_invocable<sync_t, Hnd, sync_mode, const To &>
 			sync_result auto operator()(Hnd &&hnd, sync_mode mode = sync_mode::all, const To &to = To()) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), mode, to); }
 		};
 	}
@@ -160,6 +189,42 @@ namespace rod
 	inline constexpr auto to_object_path = to_object_path_t{};
 	/* TODO: Document usage */
 	inline constexpr auto to_native_path = to_native_path_t{};
+
+	namespace _extent
+	{
+		template<typename Res, typename Hnd>
+		concept extent_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<handle_extent_t<Hnd>>, Res>;
+
+		struct endpos_t
+		{
+			template<typename Hnd, typename To = handle_timeout_t<std::decay_t<Hnd>>> requires tag_invocable<endpos_t, const Hnd &>
+			[[nodiscard]] extent_result<Hnd> auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
+			template<typename Hnd, typename To = handle_timeout_t<std::decay_t<Hnd>>> requires(!tag_invocable<endpos_t, const Hnd &>)
+			[[nodiscard]] result<handle_extent_t<std::decay_t<Hnd>>> operator()(const Hnd &hnd) const noexcept
+			{
+				stat st;
+				if (auto res = get_stat(st, hnd, stat::query::size); res.has_error()) [[unlikely]]
+					return res.error();
+				else if ((*res & stat::query::size) != stat::query::size) [[unlikely]]
+					return std::make_error_code(std::errc::not_supported);
+				else
+					return handle_extent_t<Hnd>(st.size);
+			}
+		};
+		struct truncate_t
+		{
+			template<typename Hnd, typename Ext = handle_extent_t<std::decay_t<Hnd>>> requires tag_invocable<truncate_t, Hnd, Ext>
+			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Ext new_endpos) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), new_endpos); }
+		};
+	}
+
+	using _extent::endpos_t;
+	using _extent::truncate_t;
+
+	/* TODO: Document usage */
+	inline constexpr auto endpos = endpos_t{};
+	/* TODO: Document usage */
+	inline constexpr auto truncate = truncate_t{};
 
 	namespace _handle
 	{
@@ -299,6 +364,11 @@ namespace rod
 			using timeout_type = typename T::timeout_type;
 		};
 
+		template<typename T> requires(requires { typename T::extent_type; })
+		struct select_extent_type<T> { using type = typename T::extent_type; };
+		template<typename T> requires(requires { typename T::size_type; })
+		struct select_size_type<T> { using type = typename T::size_type; };
+
 		template<typename Child, typename Base>
 		struct handle_adaptor { class type; };
 		template<typename Child, typename Base>
@@ -308,6 +378,10 @@ namespace rod
 
 		public:
 			using native_handle_type = typename Base::native_handle_type;
+			/** Integer type used for handle offsets. */
+			using extent_type = typename select_extent_type<Base>::type;
+			/** Integer type used for handle buffers. */
+			using size_type = typename select_size_type<Base>::type;
 
 		private:
 			template<typename T>

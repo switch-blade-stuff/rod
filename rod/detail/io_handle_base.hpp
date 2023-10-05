@@ -11,16 +11,6 @@ namespace rod
 {
 	namespace _handle
 	{
-		template<typename Hnd>
-		struct handle_extent_impl;
-		template<typename Hnd> requires(requires { typename Hnd::extent_type; })
-		struct handle_extent_impl<Hnd> { using type = typename Hnd::extent_type; };
-
-		template<typename Hnd>
-		struct handle_size_impl;
-		template<typename Hnd> requires(requires { typename Hnd::size_type; })
-		struct handle_size_impl<Hnd> { using type = typename Hnd::size_type; };
-
 		template<typename Hnd, typename Op>
 		struct io_request_impl;
 		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_request<Op>; })
@@ -41,20 +31,6 @@ namespace rod
 		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_buffer<Op>; })
 		struct io_buffer_impl<Hnd, Op> { using type = typename Hnd::template io_buffer<Op>; };
 	}
-
-	/** Type trait used to obtain the extent type of handle \a Hnd. */
-	template<typename Hnd>
-	struct handle_extent : _handle::handle_extent_impl<Hnd> {};
-	/** Alias for `typename handle_extent&lt;Hnd&gt;::type` */
-	template<typename Hnd>
-	using handle_extent_t = typename handle_extent<Hnd>::type;
-
-	/** Type trait used to obtain the size type of handle \a Hnd. */
-	template<typename Hnd>
-	struct handle_size : _handle::handle_size_impl<Hnd> {};
-	/** Alias for `typename handle_size&lt;Hnd&gt;::type` */
-	template<typename Hnd>
-	using handle_size_t = typename handle_size<Hnd>::type;
 
 	/** Type trait used to obtain the IO buffer sequence type of handle \a Hnd for operation \a Op. */
 	template<typename Hnd, typename Op>
@@ -129,7 +105,7 @@ namespace rod
 			using extent_t = handle_extent_t<std::decay_t<Hnd>>;
 
 		public:
-			template<typename Hnd, decays_to_same<request_t<Hnd>> Req = request_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
+			template<typename Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
 			result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to = To()) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
 		};
 		template<typename Op>
@@ -149,7 +125,7 @@ namespace rod
 			{
 				return tag_invoke(Op{}, std::forward<Buff>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(off), std::forward<To>(to));
 			}
-			template<typename Hnd, decays_to_same<buffer_t<Hnd>> Buff = buffer_t<Hnd>, std::convertible_to<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
+			template<typename Hnd, std::convertible_to<buffer_t<Hnd>> Buff = buffer_t<Hnd>, std::convertible_to<extent_t<Hnd>> Ext = extent_t<Hnd>, decays_to_same<timeout_t<Hnd>> To = timeout_t<Hnd>>
 			buffer_io_result<Hnd> auto operator()(Hnd &&hnd, Buff &&buff, const Ext &off, To &&to = To()) const noexcept requires tag_invocable<Op, Hnd, Buff, const Ext &, To>
 			{
 				return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Buff>(buff), extent_t<Hnd>(off), std::forward<To>(to));
@@ -195,10 +171,7 @@ namespace rod
 		_detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, handle_timeout_t<Hnd>>;
 	};
 
-	namespace _sync
-	{
-		struct sync_at_t : _io_operation::adaptor<sync_at_t>::type {};
-	}
+	namespace _sync { struct sync_at_t : _io_operation::adaptor<sync_at_t>::type {}; }
 
 	using _sync::sync_at_t;
 
@@ -220,16 +193,16 @@ namespace rod
 	template<typename Hnd>
 	using sync_at_error_t = io_error_t<Hnd, sync_at_t>;
 
-	namespace _extents
+	namespace _extent
 	{
 		struct clone_extents_t : _io_operation::adaptor<clone_extents_t>::type {};
 		struct zero_extents_t : _io_operation::adaptor<zero_extents_t>::type {};
 		struct list_extents_t : _io_operation::adaptor<list_extents_t>::type {};
 	}
 
-	using _extents::clone_extents_t;
-	using _extents::zero_extents_t;
-	using _extents::list_extents_t;
+	using _extent::clone_extents_t;
+	using _extent::zero_extents_t;
+	using _extent::list_extents_t;
 
 	namespace _read_some
 	{
