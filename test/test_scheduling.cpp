@@ -60,10 +60,4 @@ int main()
 		rod::sync_wait(rod::transfer_when_all(sch, rod::schedule_at(sch, timeout), rod::on(sch, rod::just())) | rod::then([&]() { TEST_ASSERT(sch.now() >= timeout); }));
 		loop.finish();
 	}
-	{
-		std::size_t loops = 0;
-		rod::sync_wait(rod::recurse(rod::just() | rod::then([&]() { return ++loops; }), [](auto i) { return i < 5; }));
-
-		TEST_ASSERT(loops == 5);
-	}
 }

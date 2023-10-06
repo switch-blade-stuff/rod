@@ -102,7 +102,6 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/adaptors/stopped_as.hpp
         rod/detail/adaptors/transfer.hpp
         rod/detail/adaptors/when_all.hpp
-        rod/detail/adaptors/recurse.hpp
         rod/detail/adaptors/split.hpp
         rod/detail/adaptors/bulk.hpp
         rod/detail/adaptors/then.hpp
