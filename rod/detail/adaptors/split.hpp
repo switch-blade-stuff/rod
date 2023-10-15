@@ -77,7 +77,7 @@ namespace rod
 
 		private:
 			inline env_t get_env() const noexcept;
-			template<_detail::completion_channel C, typename... Args>
+			template<typename C, typename... Args>
 			inline void complete(C, Args &&...) noexcept;
 
 			shared_state_t *_state;
@@ -131,7 +131,7 @@ namespace rod
 			return typename env<Env>::type{_state->stop_src.get_token(), &_state->env()};
 		}
 		template<typename Snd, typename Env>
-		template<_detail::completion_channel C, typename... Args>
+		template<typename C, typename... Args>
 		void receiver<Snd, Env>::type::complete(C c, Args &&...args) noexcept
 		{
 			auto &state = *_state;
@@ -221,7 +221,7 @@ namespace rod
 			template<typename Err>
 			using error_signs_t = completion_signatures<set_error_t(const std::decay_t<Err> &)>;
 			template<typename T>
-			using signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, env_t, completion_signatures<set_error_t(const std::exception_ptr &), set_stopped_t()>, value_signs_t, error_signs_t>;
+			using signs_t = make_completion_signatures<copy_cvref_t<T, Snd>, env_t, completion_signatures<set_error_t(std::exception_ptr), set_stopped_t()>, value_signs_t, error_signs_t>;
 
 		public:
 			constexpr explicit type(Snd &&snd) : _state(new shared_state_t{std::forward<Snd>(snd)}) {}

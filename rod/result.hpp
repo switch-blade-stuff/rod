@@ -156,12 +156,33 @@ namespace rod
 			template<typename T, typename F>
 			using is_value_invocable = std::conditional_t<std::is_void_v<Val>, std::is_invocable<F>, std::is_invocable<F, copy_cvref_t<T, Val>>>;
 			template<typename T, typename F>
-			using is_nothrow_value_invocable = std::conjunction<is_value_invocable<T, F>, std::conditional_t<std::is_void_v<Val>, std::is_nothrow_invocable<F>, std::is_nothrow_invocable<F, copy_cvref_t<T, Val>>>>;
+			using is_error_invocable = std::conjunction<std::is_invocable<F, copy_cvref_t<T, Err>>, std::negation<std::is_void<std::invoke_result_t<F, copy_cvref_t<T, Err>>>>>;
 
 			template<typename T, typename F>
-			using transform_return_type = typename std::conditional_t<std::is_void_v<Val>, std::invoke_result<F>, std::invoke_result<F, copy_cvref_t<T, Val>>>::type;
+			using is_nothrow_value_invocable = std::conjunction<is_value_invocable<T, F>, std::conditional_t<std::is_void_v<Val>, std::is_nothrow_invocable<F>, std::is_nothrow_invocable<F, copy_cvref_t<T, Val>>>>;
 			template<typename T, typename F>
-			using transform_result = result<transform_return_type<T, F>, Err>;
+			using is_nothrow_error_invocable = std::conjunction<is_error_invocable<T, F>, std::is_nothrow_invocable<F, copy_cvref_t<T, Err>>>;
+
+			template<typename T, typename F>
+			using transform_value_type = typename std::conditional_t<std::is_void_v<Val>, std::invoke_result<F>, std::invoke_result<F, copy_cvref_t<T, Val>>>::type;
+			template<typename T, typename F>
+			using transform_error_type = std::invoke_result<F, copy_cvref_t<T, Err>>;
+
+			template<typename T, typename FVal, typename FErr>
+			using transform_result = result<transform_value_type<T, FVal>, transform_error_type<T, FErr>>;
+			template<typename T, typename F>
+			using transform_value_result = result<transform_value_type<T, F>, Err>;
+			template<typename T, typename F>
+			using transform_error_result = result<Val, transform_error_type<T, F>>;
+
+			template<typename F, typename... Args>
+			constexpr decltype(auto) transform_invoke(F &&func, Args &&...args) noexcept(std::is_nothrow_invocable_v<F, Args...>)
+			{
+				if constexpr (!std::is_void_v<std::invoke_result_t<F, Args...>>)
+					return std::invoke(std::forward<F>(func), std::forward<Args>(args)...);
+				else
+					std::invoke(std::forward<F>(func), std::forward<Args>(args)...);
+			}
 
 		public:
 			/** Initializes result with a default-constructed value state. */
@@ -525,67 +546,177 @@ namespace rod
 					return std::move(_storage.error);
 			}
 
-			/** If result contains a value, invokes \a func with the value, then returns result of the expression as `rod::result`. Otherwise, returns the contained error. */
+			/** Invokes either \a func_val with the contained value or \a func_err with the contained error, and returns result of the expression as `rod::result`. */
+			template<typename FVal, typename FErr> requires is_value_invocable<result &, FVal>::value && is_error_invocable<result &, FErr>::value
+			constexpr auto transform(FVal &&func_val, FErr &&func_err) & noexcept(is_nothrow_value_invocable<result &, FVal>::value && is_nothrow_error_invocable<result &, FErr>::value) -> transform_result<result &, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return transform_invoke(std::forward<FVal>(func_val), _storage.value);
+					else
+						return transform_invoke(std::forward<FVal>(func_val));
+				}
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), _storage.error)};
+				else
+					return {};
+			}
+			/** @copydoc transform */
+			template<typename FVal, typename FErr> requires is_value_invocable<result &&, FVal>::value && is_error_invocable<result &&, FErr>::value
+			constexpr auto transform(FVal &&func_val, FErr &&func_err) && noexcept(is_nothrow_value_invocable<result &&, FVal>::value && is_nothrow_error_invocable<result &&, FErr>::value) -> transform_result<result &&, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return transform_invoke(std::forward<FVal>(func_val), std::move(_storage.value));
+					else
+						return transform_invoke(std::forward<FVal>(func_val));
+				}
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), std::move(_storage.error))};
+				else
+					return {};
+			}
+			/** @copydoc transform */
+			template<typename FVal, typename FErr> requires is_value_invocable<const result &, FVal>::value && is_error_invocable<const result &, FErr>::value
+			constexpr auto transform(FVal &&func_val, FErr &&func_err) const & noexcept(is_nothrow_value_invocable<const result &, FVal>::value && is_nothrow_error_invocable<const result &, FErr>::value) -> transform_result<const result &, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return transform_invoke(std::forward<FVal>(func_val), _storage.value);
+					else
+						return transform_invoke(std::forward<FVal>(func_val));
+				}
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), _storage.error)};
+				else
+					return {};
+			}
+			/** @copydoc transform */
+			template<typename FVal, typename FErr> requires is_value_invocable<const result &&, FVal>::value && is_error_invocable<const result &&, FErr>::value
+			constexpr auto transform(FVal &&func_val, FErr &&func_err) const && noexcept(is_nothrow_value_invocable<const result &&, FVal>::value && is_nothrow_error_invocable<const result &&, FErr>::value) -> transform_result<const result &&, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return transform_invoke(std::forward<FVal>(func_val), std::move(_storage.value));
+					else
+						return transform_invoke(std::forward<FVal>(func_val));
+				}
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), std::move(_storage.error))};
+				else
+					return {};
+			}
+
+			/** Invokes either \a func with the contained value or forwards the contained error, and returns result of the expression as `rod::result`. */
 			template<typename F> requires is_value_invocable<result &, F>::value
-			constexpr auto transform(F &&func) & noexcept(is_nothrow_value_invocable<result &, F>::value) -> transform_result<result &, F>
+			constexpr auto transform_value(F &func) & noexcept(is_nothrow_value_invocable<result &, F>::value) -> transform_value_result<result &, F>
 			{
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return std::invoke(std::forward<F>(func), _storage.value);
+						return transform_invoke(std::forward<F>(func), _storage.value);
 					else
-						return std::invoke(std::forward<F>(func));
+						return transform_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
-					return _storage.error;
+					return {in_place_error_t{}, _storage.error};
 				else
 					return {};
 			}
-			/** @copydoc transform */
+			/** @copydoc transform_value */
 			template<typename F> requires is_value_invocable<result &&, F>::value
-			constexpr auto transform(F &&func) && noexcept(is_nothrow_value_invocable<result &&, F>::value) -> transform_result<result &&, F>
+			constexpr auto transform_value(F &&func) && noexcept(is_nothrow_value_invocable<result &&, F>::value) -> transform_value_result<result &&, F>
 			{
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return std::invoke(std::forward<F>(func), std::move(_storage.value));
+						return transform_invoke(std::forward<F>(func), std::move(_storage.value));
 					else
-						return std::invoke(std::forward<F>(func));
+						return transform_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
-					return std::move(_storage.error);
+					return {in_place_error_t{}, std::move(_storage.error)};
 				else
 					return {};
 			}
-			/** @copydoc transform */
+			/** @copydoc transform_value */
 			template<typename F> requires is_value_invocable<const result &, F>::value
-			constexpr auto transform(F &&func) const & noexcept(is_nothrow_value_invocable<const result &, F>::value) -> transform_result<const result &, F>
+			constexpr auto transform_value(F &&func) const & noexcept(is_nothrow_value_invocable<const result &, F>::value) -> transform_value_result<const result &, F>
 			{
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return std::invoke(std::forward<F>(func), _storage.value);
+						return transform_invoke(std::forward<F>(func), _storage.value);
 					else
-						return std::invoke(std::forward<F>(func));
+						return transform_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
-					return _storage.error;
+					return {in_place_error_t{}, _storage.error};
 				else
 					return {};
 			}
-			/** @copydoc transform */
+			/** @copydoc transform_value */
 			template<typename F> requires is_value_invocable<const result &&, F>::value
-			constexpr auto transform(F &&func) const && noexcept(is_nothrow_value_invocable<const result &&, F>::value) -> transform_result<const result &&, F>
+			constexpr auto transform_value(F &&func) const && noexcept(is_nothrow_value_invocable<const result &&, F>::value) -> transform_value_result<const result &&, F>
 			{
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return std::invoke(std::forward<F>(func), std::move(_storage.value));
+						return transform_invoke(std::forward<F>(func), std::move(_storage.value));
 					else
-						return std::invoke(std::forward<F>(func));
+						return transform_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
-					return std::move(_storage.error);
+					return {in_place_error_t{}, std::move(_storage.error)};
+				else
+					return {};
+			}
+
+			/** Forwards the contained value or invokes either \a func with the contained error, and returns result of the expression as `rod::result`. */
+			template<typename F> requires is_error_invocable<result &, F>::value
+			constexpr auto transform_error(F &func) & noexcept(is_nothrow_error_invocable<result &, F>::value) -> transform_error_result<result &, F>
+			{
+				if (has_value()) [[likely]]
+					return {in_place_value_t{}, _storage.value};
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<F>(func), _storage.error)};
+				else
+					return {};
+			}
+			/** @copydoc transform_error */
+			template<typename F> requires is_error_invocable<result &&, F>::value
+			constexpr auto transform_error(F &&func) && noexcept(is_nothrow_error_invocable<result &&, F>::value) -> transform_error_result<result &&, F>
+			{
+				if (has_value()) [[likely]]
+					return {in_place_value_t{}, std::move(_storage.value)};
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<F>(func), std::move(_storage.error))};
+				else
+					return {};
+			}
+			/** @copydoc transform_error */
+			template<typename F> requires is_error_invocable<const result &, F>::value
+			constexpr auto transform_error(F &&func) const & noexcept(is_nothrow_error_invocable<const result &, F>::value) -> transform_error_result<const result &, F>
+			{
+				if (has_value()) [[likely]]
+					return {in_place_value_t{}, _storage.value};
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<F>(func), _storage.error)};
+				else
+					return {};
+			}
+			/** @copydoc transform_error */
+			template<typename F> requires is_error_invocable<const result &&, F>::value
+			constexpr auto transform_error(F &&func) const && noexcept(is_nothrow_error_invocable<const result &&, F>::value) -> transform_error_result<const result &&, F>
+			{
+				if (has_value()) [[likely]]
+					return {in_place_value_t{}, std::move(_storage.value)};
+				else if (has_error())
+					return {in_place_error_t{}, std::invoke(std::forward<F>(func), std::move(_storage.error))};
 				else
 					return {};
 			}

@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.23)
 project(rod VERSION 0.0.0 LANGUAGES CXX)
 
-# Set CMake module search path
+# Set CMake module search path & system name
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake ${CMAKE_MODULE_PATH})
+string(TOLOWER ${CMAKE_SYSTEM_NAME} ROD_SYSTEM_NAME)
 
 # Library options
 option(ROD_NO_COROUTINES "Disables support for C++20 coroutines" OFF)
@@ -10,7 +11,7 @@ if (${ROD_NO_COROUTINES})
     add_compile_definitions(ROD_NO_COROUTINES)
 endif ()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
     option(ROD_NO_LIBURING "Disables support for io_uring" OFF)
     find_package(liburing)
 
@@ -24,7 +25,6 @@ option(BUILD_SHARED_LIBS "Toggles build as a shared library" ON)
 
 # Add library target
 add_library(${PROJECT_NAME})
-string(TOLOWER ${CMAKE_SYSTEM_NAME} ROD_SYSTEM_NAME)
 
 # Set C++ version
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)

@@ -23,7 +23,7 @@ namespace rod::fs
 			else
 				return std::move(path);
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 	result<void> current_path(path_view path) noexcept
 	{
@@ -104,7 +104,7 @@ namespace rod::fs
 			else
 				return std::move(res);
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 
 	inline static result<path> do_canonical(const ntapi &ntapi, unicode_string &upath) noexcept
@@ -124,7 +124,7 @@ namespace rod::fs
 		obj_attrib.name = &upath;
 
 		/* Open the target with backup semantics (i.e. do not care if directory or file). */
-		auto hnd = ntapi.open_file(obj_attrib, &iosb, access, share, opts).transform([](auto hnd) { return basic_handle(hnd); });
+		auto hnd = ntapi.open_file(obj_attrib, &iosb, access, share, opts).transform_value([](auto hnd) { return basic_handle(hnd); });
 		if (hnd.has_error() && is_error_file_not_found(hnd.error())) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 
@@ -185,7 +185,7 @@ namespace rod::fs
 				}
 			}
 		}
-		catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 		return res;
 	}
 

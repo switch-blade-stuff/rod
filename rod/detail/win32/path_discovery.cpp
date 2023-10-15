@@ -74,8 +74,7 @@ namespace rod::_detail
 			}
 			return {};
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
+		catch (...) { return _detail::current_error(); }
 	}
 	result<> find_data_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
@@ -112,8 +111,7 @@ namespace rod::_detail
 			path.resize(n);
 			return std::move(path);
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
+		catch (...) { return _detail::current_error(); }
 	}
 	/* Windows does not have a user-specific temporary runtime directory. */
 	result<fs::path> find_runtime_dir() noexcept { return {}; }
@@ -121,8 +119,7 @@ namespace rod::_detail
 	result<fs::path> find_temp_pipe_dir() noexcept
 	{
 		try { return fs::path(L"\\!!\\Device\\NamedPipe\\"); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-		catch (const std::system_error &e) { return e.code(); }
+		catch (...) { return _detail::current_error(); }
 	}
 
 	result<fs::path> find_user_home_dir() noexcept { return with_env_var(L"USERPROFILE", [](auto sv) { return fs::path(sv); }); }

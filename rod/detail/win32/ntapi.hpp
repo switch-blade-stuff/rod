@@ -29,6 +29,28 @@
 
 namespace rod::_win32
 {
+	inline static _handle::extent_type get_page_size() noexcept
+	{
+		static const _handle::extent_type result = []()
+		{
+			auto info = SYSTEM_INFO();
+			::GetSystemInfo(&info);
+			return info.dwPageSize;
+		}();
+		return result;
+	}
+	inline static _handle::extent_type get_block_size() noexcept
+	{
+		static const auto result = std::max<_handle::extent_type>(4096, get_page_size());
+		return result;
+	}
+	inline static _handle::extent_type page_align(_handle::extent_type n) noexcept
+	{
+		const auto page_size = get_page_size();
+		const auto rem = n % page_size;
+		return n + (rem ? page_size - rem : 0);
+	}
+
 	using ntstatus = ULONG;
 
 	inline constexpr ntstatus error_status_max = 0xffff'ffff;
@@ -171,7 +193,7 @@ namespace rod::_win32
 
 			return std::make_pair(std::move(upath), std::move(rpath));
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 
 	inline static FILETIME tp_to_filetime(typename fs::file_clock::time_point tp) noexcept

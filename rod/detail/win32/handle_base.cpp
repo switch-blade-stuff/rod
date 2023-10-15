@@ -45,7 +45,7 @@ namespace rod::_handle
 			else
 				return {};
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 	result<fs::path> basic_handle::do_to_native_path(native_path_format fmt, fs::dev_t dev, fs::ino_t ino) const noexcept
 	{
@@ -158,6 +158,6 @@ namespace rod::_handle
 			}
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 }

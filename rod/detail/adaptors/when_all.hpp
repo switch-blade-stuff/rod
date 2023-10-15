@@ -127,13 +127,10 @@ namespace rod
 				if (state.load(std::memory_order_acquire) != state_t::running)
 					return;
 
-				if constexpr ((_detail::nothrow_decay_copyable<Args>::value && ...))
-					emplace_value<I>(std::forward<Args>(args)...);
+				if constexpr (!(_detail::nothrow_decay_copyable<Args>::value && ...))
+					try { emplace_value<I>(std::forward<Args>(args)...); } catch (...) { set_error(std::current_exception()); }
 				else
-				{
-					try { emplace_value<I>(std::forward<Args>(args)...); }
-					catch (...) { set_error(std::current_exception()); }
-				}
+					emplace_value<I>(std::forward<Args>(args)...);
 			}
 			template<typename Err>
 			void set_error(Err &&err) noexcept
@@ -142,13 +139,10 @@ namespace rod
 					return;
 
 				stop_src.request_stop();
-				if constexpr (_detail::nothrow_decay_copyable<Err>::value)
-					emplace_error(std::forward<Err>(err));
+				if constexpr (!_detail::nothrow_decay_copyable<Err>::value)
+					try { emplace_error(std::forward<Err>(err)); } catch (...) { emplace_error(std::current_exception()); }
 				else
-				{
-					try { emplace_error(std::forward<Err>(err)); }
-					catch (...) { emplace_error(std::current_exception()); }
-				}
+					emplace_error(std::forward<Err>(err));
 			}
 			void set_stopped() noexcept
 			{
@@ -157,7 +151,11 @@ namespace rod
 					stop_src.request_stop();
 			}
 
-			void submit() noexcept { if (--count == 0) complete(); }
+			void submit() noexcept
+			{
+				if (count.fetch_sub(1, std::memory_order_acq_rel) == 1)
+					complete();
+			}
 			void complete() noexcept
 			{
 				stop_cb.reset();
@@ -268,7 +266,8 @@ namespace rod
 
 			friend void tag_invoke(start_t, type &op) noexcept
 			{
-				op.stop_cb.emplace(get_stop_token(get_env(op.rcv_base::value())), stop_trigger{op.stop_src});
+				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
+					op.stop_cb.emplace(get_stop_token(get_env(op.rcv_base::value())), stop_trigger{op.stop_src});
 
 				if (op.stop_src.stop_requested())
 					[[unlikely]] set_stopped(std::move(op.rcv_base::value()));
@@ -362,8 +361,7 @@ namespace rod
 				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Snds>(snds)...);
 			}
 			template<rod::scheduler Sch, rod::sender... Snds> requires(!tag_invocable<transfer_when_all_t, Sch, Snds...>)
-			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(
-			_detail::nothrow_callable<when_all_t, Snds...> && _detail::nothrow_callable<transfer_t, std::invoke_result_t<when_all_t, Snds...>, Sch>)
+			[[nodiscard]] constexpr rod::sender auto operator()(Sch &&sch, Snds &&...snds) const noexcept(_detail::nothrow_callable<when_all_t, Snds...> && _detail::nothrow_callable<transfer_t, std::invoke_result_t<when_all_t, Snds...>, Sch>)
 			{
 				return transfer(when_all_t{}(std::forward<Snds>(snds)...), std::forward<Sch>(sch));
 			}

@@ -30,8 +30,7 @@ namespace rod::_win32
 				return {};
 			}
 		}
-		catch (const std::bad_alloc &) { return Res(in_place_error, std::make_error_code(std::errc::not_enough_memory)); }
-		catch (const std::system_error &e) { return Res(in_place_error, e.code()); }
+		catch (...) { return _detail::current_error(); }
 	}
 	template<typename F, typename Res = result<std::invoke_result_t<F, std::wstring_view>>>
 	inline static Res with_shell_path(GUID id, F f) noexcept
@@ -55,7 +54,6 @@ namespace rod::_win32
 			}
 			return Res(in_place_error, dos_error_code(::GetLastError()));
 		}
-		catch (const std::bad_alloc &) { return Res(in_place_error, std::make_error_code(std::errc::not_enough_memory)); }
-		catch (const std::system_error &e) { return Res(in_place_error, e.code()); }
+		catch (...) { return _detail::current_error(); }
 	}
 }

@@ -162,17 +162,17 @@ namespace rod
 
 		const directory_handle &starting_working_directory() noexcept
 		{
-			static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::working_dir>(); }).value_or({});
+			static const auto value = discovery_cache::instance().transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::working_dir>(); }).value_or({});
 			return value;
 		}
 		const directory_handle &starting_install_directory() noexcept
 		{
-			static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::install_dir>(); }).value_or({});
+			static const auto value = discovery_cache::instance().transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::install_dir>(); }).value_or({});
 			return value;
 		}
 		const directory_handle &starting_runtime_directory() noexcept
 		{
-			static const auto value = discovery_cache::instance().transform([](auto &c) { return c.template open_cached_dir<&discovery_cache::runtime_dir>(); }).value_or({});
+			static const auto value = discovery_cache::instance().transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::runtime_dir>(); }).value_or({});
 			return value;
 		}
 
@@ -268,8 +268,7 @@ namespace rod
 
 				return std::move(result);
 			}
-			catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-			catch (const std::system_error &e) { return e.code(); }
+			catch (...) { return _detail::current_error(); }
 		}
 
 		const directory_handle &temporary_file_directory() noexcept

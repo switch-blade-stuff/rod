@@ -296,7 +296,7 @@ namespace rod::_dir
 			_entry._st = st;
 
 			try { str.assign(sv.data(), sv.size()); }
-			catch (const std::bad_alloc &) { res = std::make_error_code(std::errc::not_enough_memory); }
+			catch (...) { return _detail::current_error(); }
 			return false;
 		});
 

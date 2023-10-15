@@ -54,7 +54,7 @@ namespace rod::fs
 			return base_canon.error();
 
 		try { return path_canon->lexically_relative(*base_canon); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 	result<path> proximate(path_view path, path_view base) noexcept
 	{
@@ -67,7 +67,7 @@ namespace rod::fs
 			return base_canon.error();
 
 		try { return path_canon->lexically_proximate(*base_canon); }
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+		catch (...) { return _detail::current_error(); }
 	}
 
 	inline static result<std::size_t> do_create_directories(const path_handle &base, auto pos, auto end) noexcept
@@ -75,7 +75,7 @@ namespace rod::fs
 		if (pos == end)
 			return 0;
 		if (auto dir = directory_handle::open(base, *pos, file_flags::none, open_mode::always); dir.has_value()) [[likely]]
-			return do_create_directories(*dir, ++pos, end).transform([](auto n) noexcept { return n + 1; });
+			return do_create_directories(*dir, ++pos, end).transform_value([](auto n) noexcept { return n + 1; });
 		else
 			return dir.error();
 	}

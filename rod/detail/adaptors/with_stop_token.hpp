@@ -17,11 +17,11 @@ namespace rod
 	{
 		struct with_stop_token_t;
 
-		template<typename, typename>
+		template<typename Rcv, typename Tok>
 		struct receiver { class type; };
-		template<typename, typename>
+		template<typename Snd, typename Tok>
 		struct sender { class type; };
-		template<typename, typename>
+		template<typename Env, typename Tok>
 		struct env { class type; };
 
 		template<typename Env, typename Tok>
@@ -36,7 +36,6 @@ namespace rod
 
 			template<decays_to_same<type> E>
 			friend constexpr Tok tag_invoke(get_stop_token_t, E &&e) noexcept { return e.tok_base::value(); }
-
 			template<is_forwarding_query Q, decays_to_same<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
@@ -58,7 +57,16 @@ namespace rod
 		private:
 			constexpr env_t do_get_env() const noexcept(_detail::nothrow_callable<get_env_t, const Rcv &> && std::is_nothrow_copy_constructible_v<Tok>)
 			{
-				return env_t{rod::get_env(receiver_adaptor<type, Rcv>::base()), tok_base::value()};
+				return env_t(rod::get_env(receiver_adaptor<type, Rcv>::base()), tok_base::value());
+			}
+
+			template<typename Err>
+			constexpr void do_set_error(Err err) noexcept
+			{
+				if (!tok_base::value().stop_requested())
+					rod::set_error(std::move(receiver_adaptor<type, Rcv>::base()), std::forward<Err>(err));
+				else
+					rod::set_stopped(std::move(receiver_adaptor<type, Rcv>::base()));
 			}
 			template<typename... Args>
 			constexpr void do_set_value(Args &&...args) noexcept
@@ -91,17 +99,17 @@ namespace rod
 			template<typename Snd2>
 			constexpr explicit type(Snd2 &&snd, Tok tok) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_move_constructible_v<Tok>) : snd_base(std::forward<Snd2>(snd)), tok_base(std::move(tok)) {}
 
-			friend constexpr env_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &> && std::is_nothrow_constructible_v<env_t<Snd>, env_of_t<Snd>, const Tok &>)
+			friend constexpr env_t<env_of_t<Snd>> tag_invoke(get_env_t, const type &s) noexcept(_detail::nothrow_callable<get_env_t, const Snd &> && std::is_nothrow_copy_constructible_v<Tok>)
 			{
-				return env_t(get_env(s.snd_base::value()), s.tok_base::value());
+				return env_t<env_of_t<Snd>>(get_env(s.snd_base::value()), s.tok_base::value());
 			}
 			template<decays_to_same<type> T, typename Env>
 			friend constexpr signs_t<Env> tag_invoke(get_completion_signatures_t, T &&, Env) noexcept { return {}; }
 
-			template<decays_to_same<type> T, typename Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<Rcv>>
+			template<decays_to_same<type> T, typename Rcv> requires sender_to<copy_cvref_t<T, Snd>, receiver_t<Rcv>, env_t<env_of_t<Rcv>>>
 			friend constexpr auto tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<receiver_t<Rcv>, copy_cvref_t<T, Snd>, Rcv, copy_cvref_t<T, Snd>>)
 			{
-				return connect(std::forward<T>(s).snd_base::value(), receiver_t<Rcv>{std::move(rcv), std::forward<T>(s).tok_base::value()});
+				return connect(std::forward<T>(s).snd_base::value(), receiver_t<Rcv>(std::move(rcv), std::forward<T>(s).tok_base::value()));
 			}
 		};
 

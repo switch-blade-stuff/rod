@@ -51,14 +51,8 @@ namespace rod
 		template<typename V>
 		using visitor_values = _detail::concat_tuples_t<result_values<visitor_result<V>>>;
 
-		/* Metafunctions to deduce a tuple of error types as a combination of scheduler errors, visitor errors, handle error and exception status. */
-		template<typename V>
-		using nothrow_visitor_status = std::conjunction<_detail::apply_tuple_t<_detail::all_nothrow_decay_copyable, visitor_errors<V>>, std::bool_constant<noexcept(std::declval<V>().result())>>;
-		template<typename V>
-		using exception_error = std::conditional_t<nothrow_visitor_status<V>::value, std::tuple<>, std::tuple<std::exception_ptr>>;
-
-		template<typename V, typename Snd, typename Env, template<typename...> typename Tuple = std::tuple>
-		using errors_list = unique_tuple_t<_detail::apply_tuple_t<Tuple, _detail::concat_tuples_t<error_types_of_t<Snd, Env, std::tuple>, std::tuple<handle_error>, exception_error<V>, visitor_errors<V>>>>;
+		template<typename V, typename Sch, typename Env, template<typename...> typename Tuple = std::tuple>
+		using errors_list = unique_tuple_t<_detail::apply_tuple_t<Tuple, _detail::concat_tuples_t<error_types_of_t<schedule_result_t<Sch>, Env, std::tuple>, visitor_errors<V>, std::tuple<handle_error, std::exception_ptr>>>>;
 		template<typename V, template<typename...> typename Tuple = std::tuple>
 		using values_list = unique_tuple_t<_detail::apply_tuple_t<Tuple, visitor_values<V>>>;
 
@@ -81,56 +75,70 @@ namespace rod
 
 	namespace _traverse
 	{
-		template<typename Snd, typename V>
+		template<typename Sch>
+		struct env { class type; };
+		template<typename Sch, typename Vst>
 		struct sender { class type; };
-		template<typename Snd, typename Rcv, typename V>
+		template<typename Sch, typename Rcv, typename Vst>
 		struct receiver { class type; };
-		template<typename Snd, typename Rcv, typename V>
+		template<typename Sch, typename Rcv, typename Vst>
 		struct operation { class type; };
 
-		template<typename C, typename...>
+		template<typename Sch>
+		class env<Sch>::type : empty_base<Sch>
+		{
+		public:
+			template<typename Sch2>
+			constexpr explicit type(Sch2 &&sch) noexcept(std::is_nothrow_constructible_v<Sch, Sch2>) : empty_base<Sch>(std::forward<Sch2>(sch)) {}
+
+			template<decays_to_same<type> E, _detail::completion_channel C>
+			friend constexpr Sch tag_invoke(get_completion_scheduler_t<C>, E &&e) noexcept(std::is_nothrow_copy_constructible_v<Sch>) { return e.sch_base::value(); }
+		};
+
+		template<typename, typename...>
 		struct channel_result
 		{
 			constexpr channel_result() noexcept = default;
 
 			constexpr std::tuple<> operator()() const noexcept { return {}; }
 		};
-		template<typename V>
-		struct channel_result<set_value_t, V> : empty_base<V>
+		template<typename Vst>
+		struct channel_result<set_value_t, Vst> : empty_base<Vst>
 		{
 			channel_result() = delete;
-			template<typename V2>
-			explicit channel_result(V2 &&v) noexcept(std::is_nothrow_constructible_v<V, V2>) : empty_base<V>(std::forward<V2>(v)) {}
+			template<typename Vst2>
+			explicit channel_result(Vst2 &&vst) noexcept(std::is_nothrow_constructible_v<Vst, Vst2>) : empty_base<Vst>(std::forward<Vst2>(vst)) {}
 
-			decltype(auto) operator()() noexcept(noexcept(empty_base<V>::value().result())) { return empty_base<V>::value().result(); }
+			decltype(auto) operator()() noexcept(noexcept(empty_base<Vst>::value().result())) { return empty_base<Vst>::value().result(); }
 		};
-		template<typename E>
-		struct channel_result<set_error_t, E> : empty_base<E>
+		template<typename Err>
+		struct channel_result<set_error_t, Err> : empty_base<Err>
 		{
 			channel_result() = delete;
-			template<typename E2>
-			explicit channel_result(E2 &&e) noexcept(std::is_nothrow_constructible_v<E, E2>) : empty_base<E>(std::forward<E2>(e)) {}
+			template<typename Err2>
+			explicit channel_result(Err2 &&err) noexcept(std::is_nothrow_constructible_v<Err, Err2>) : empty_base<Err>(std::forward<Err2>(err)) {}
 
-			decltype(auto) operator()() && noexcept { return std::forward_as_tuple(std::move(empty_base<E>::value())); }
+			decltype(auto) operator()() && noexcept { return std::forward_as_tuple(std::move(empty_base<Err>::value())); }
 		};
 
-		template<typename Snd, typename Rcv, typename V>
-		class receiver<Snd, Rcv, V>::type : public receiver_adaptor<type>
+		template<typename Sch, typename Rcv, typename Vst>
+		class receiver<Sch, Rcv, Vst>::type : public receiver_adaptor<type>
 		{
 			friend receiver_adaptor<type>;
 
-			using operation_t = typename operation<Snd, Rcv, V>::type;
-			using next_state_t = connect_result_t<const Snd &, type>;
+			using operation_t = typename operation<Sch, Rcv, Vst>::type;
+			using next_state_t = connect_result_t<schedule_result_t<Sch>, type>;
 
 		public:
 			type(const type &) = delete;
 			type &operator=(const type &) = delete;
 
-			type(type &&) = delete;
-			type &operator=(type &&) = delete;
+			constexpr type(type &&other) noexcept : type(std::exchange(other.next, {}), other._op, std::move(other._dir), other.level) {}
 
-			type(operation_t *op, fs::directory_handle &&dir) : type(nullptr, op, std::forward<fs::directory_handle>(dir), 0) {}
-			type(next_state_t *next, operation_t *op, fs::directory_handle &&dir, std::size_t level) : _next(next), _op(op), _dir(std::move(dir)), _level(level) {}
+			template<typename Dir2>
+			explicit type(operation_t *op, Dir2 &&dir) : type(nullptr, op, std::forward<Dir2>(dir), 0) {}
+			template<typename Dir2>
+			explicit type(next_state_t *next, operation_t *op, Dir2 &&dir, std::size_t level) : _next(next), _op(op), _dir(std::forward<Dir2>(dir)), _level(level) {}
 
 			~type() { delete _next; }
 
@@ -167,23 +175,23 @@ namespace rod
 			std::size_t _level;
 		};
 
-		template<typename Snd, typename Rcv, typename V>
-		class operation<Snd, Rcv, V>::type : empty_base<Snd>, empty_base<Rcv>, connect_result_t<const Snd &, typename receiver<Snd, Rcv, V>::type>
+		template<typename Sch, typename Rcv, typename Vst>
+		class operation<Sch, Rcv, Vst>::type : empty_base<Sch>, empty_base<Rcv>, connect_result_t<schedule_result_t<Sch>, typename receiver<Sch, Rcv, Vst>::type>
 		{
-			friend class receiver<Snd, Rcv, V>::type;
+			friend class receiver<Sch, Rcv, Vst>::type;
 
-			using worker_base = connect_result_t<const Snd &, typename receiver<Snd, Rcv, V>::type>;
+			using worker_base = connect_result_t<schedule_result_t<Sch>, typename receiver<Sch, Rcv, Vst>::type>;
 
 			template<typename... Errs>
 			using make_error_variant = std::variant<channel_result<set_error_t, std::decay_t<Errs>>...>;
-			using data_t = _detail::concat_tuples_t<std::variant<channel_result<set_value_t, V>, channel_result<set_stopped_t>>, errors_list<V, Snd, env_of_t<Snd>, make_error_variant>>;
+			using data_t = _detail::concat_tuples_t<std::variant<channel_result<set_value_t, Vst>, channel_result<set_stopped_t>>, errors_list<Vst, Sch, env_of_t<schedule_result_t<Sch>>, make_error_variant>>;
 
 		public:
 			type(type &&) = delete;
 			type &operator=(type &&) = delete;
 
-			template<typename Snd2, typename Rcv2, typename V2>
-			type(Snd2 &&snd, Rcv2 &&rcv, V2 &&v, fs::directory_handle &&dir) : empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), worker_base(connect(snd(), receiver_t(this, std::move(dir)))), _workers(1), _data(std::forward<V2>(v)) {}
+			template<typename Sch2, typename Rcv2, typename Vst2, typename Dir2>
+			type(Sch2 &&sch, Rcv2 &&rcv, Vst2 &&vst, Dir2 &&dir) : empty_base<Sch>(std::forward<Sch2>(sch)), empty_base<Rcv>(std::forward<Rcv2>(rcv)), worker_base(connect(schedule(sch()), receiver_t(this, std::forward<Dir2>(dir)))), _workers(1), _data(std::forward<Vst2>(vst)) {}
 
 			friend void tag_invoke(start_t, type &op) noexcept
 			{
@@ -197,7 +205,7 @@ namespace rod
 		private:
 			[[nodiscard]] auto &rcv() noexcept { return empty_base<Rcv>::value(); }
 			[[nodiscard]] const auto &rcv() const noexcept { return empty_base<Rcv>::value(); }
-			[[nodiscard]] const auto &snd() const noexcept { return empty_base<Snd>::value(); }
+			[[nodiscard]] const auto &sch() const noexcept { return empty_base<Sch>::value(); }
 
 			[[nodiscard]] auto &visitor() noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
 			[[nodiscard]] auto &visitor() const noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
@@ -288,13 +296,16 @@ namespace rod
 				if (workers == 1) [[unlikely]]
 					complete_next();
 			}
-			template<typename Err> requires std::constructible_from<data_t, channel_result<set_error_t, std::decay_t<Err>>>
+			template<typename Err>
 			void complete_error(Err &&err) noexcept
 			{
+				using err_value = channel_result<set_error_t, std::decay_t<Err>>;
+				static_assert(requires { _data.template emplace<err_value>(std::forward<Err>(err)); });
+
 				const auto [workers, _] = decref_guard();
 				/* Switch to the error state on first error. */
 				if (_data.index() == 0) [[likely]]
-					_data.template emplace<channel_result<set_error_t, std::decay_t<Err>>>(std::forward<Err>(err));
+					_data.template emplace<err_value>(std::forward<Err>(err));
 				/* Last worker completes the operation. */
 				if (workers == 1) [[unlikely]]
 					complete_next();
@@ -304,17 +315,17 @@ namespace rod
 			data_t _data;
 		};
 
-		template<typename Snd, typename Rcv, typename V>
-		env_of_t<Rcv> receiver<Snd, Rcv, V>::type::do_get_env() const noexcept { return get_env(_op->rcv()); }
+		template<typename Sch, typename Rcv, typename Vst>
+		env_of_t<Rcv> receiver<Sch, Rcv, Vst>::type::do_get_env() const noexcept { return get_env(_op->rcv()); }
 
-		template<typename Snd, typename Rcv, typename V>
-		void receiver<Snd, Rcv, V>::type::do_set_stopped() noexcept { _op->complete_stop(); }
-		template<typename Snd, typename Rcv, typename V>
+		template<typename Sch, typename Rcv, typename Vst>
+		void receiver<Sch, Rcv, Vst>::type::do_set_stopped() noexcept { _op->complete_stop(); }
+		template<typename Sch, typename Rcv, typename Vst>
 		template<typename Err>
-		void receiver<Snd, Rcv, V>::type::do_set_error(Err &&err) noexcept { _op->complete_error(std::forward<Err>(err)); }
+		void receiver<Sch, Rcv, Vst>::type::do_set_error(Err &&err) noexcept { _op->complete_error(std::forward<Err>(err)); }
 
-		template<typename Snd, typename Rcv, typename V>
-		void receiver<Snd, Rcv, V>::type::run() noexcept
+		template<typename Sch, typename Rcv, typename Vst>
+		void receiver<Sch, Rcv, Vst>::type::run() noexcept
 		{
 			auto buffs = std::vector<read_some_buffer_t<fs::directory_handle>>(64);
 			auto req = read_some_request_t<fs::directory_handle>{.buffs = buffs};
@@ -415,10 +426,10 @@ namespace rod
 					if (_op->_data.index() != 0) [[unlikely]]
 						break;
 
-					try { _next = new next_state_t(connect(_op->snd(), type(_next, this, std::move(*subdir), _level + 1))); }
-					catch (const std::bad_alloc &)
+					try { _next = new next_state_t(connect(schedule(_op->sch()), type(_next, this, std::move(*subdir), _level + 1))); }
+					catch (...)
 					{
-						_op->complete_error(handle_error(std::make_error_code(std::errc::not_enough_memory)));
+						_op->complete_error(handle_error(_detail::current_error()));
 						return;
 					}
 				}
@@ -429,13 +440,19 @@ namespace rod
 			_op->complete_value();
 		}
 
-		template<typename Snd, typename V>
-		class sender<Snd, V>::type : empty_base<Snd>, empty_base<V>
+		template<typename Sch, typename Vst>
+		class sender<Sch, Vst>::type : empty_base<Sch>, empty_base<Vst>
 		{
+			using vst_base = empty_base<Vst>;
+
+		public:
+			using is_sender = std::true_type;
+
+		private:
 			template<typename Rcv>
-			using operation_t = typename operation<Snd, std::decay_t<Rcv>, V>::type;
+			using operation_t = typename operation<Sch, std::decay_t<Rcv>, Vst>::type;
 			template<typename Rcv>
-			using receiver_t = typename receiver<Snd, std::decay_t<Rcv>, V>::type;
+			using receiver_t = typename receiver<Sch, std::decay_t<Rcv>, Vst>::type;
 
 			template<typename... Ts>
 			using bind_set_stopped = set_stopped_t();
@@ -447,27 +464,28 @@ namespace rod
 			template<typename S, typename E>
 			using stop_signs_t = _detail::gather_signatures_t<set_stopped_t, S, E, bind_set_stopped, completion_signatures>;
 			template<typename S, typename E>
-			using error_signs_t = errors_list<V, S, E, make_error_signs>;
-			using value_signs_t = values_list<V, make_value_signs>;
+			using error_signs_t = errors_list<Vst, S, E, make_error_signs>;
+			using value_signs_t = values_list<Vst, make_value_signs>;
 
-			template<typename E>
-			using signs_t = _detail::concat_tuples_t<value_signs_t, error_signs_t<Snd, E>, stop_signs_t<Snd, E>>;
-
-		public:
-			template<typename Snd2, typename V2>
-			explicit type(Snd2 &&snd, V2 &&visitor, fs::directory_handle &&dir) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<V, V2>)
-					: empty_base<Snd>(std::forward<Snd2>(snd)), empty_base<V>(std::forward<V2>(visitor)), _dir(std::move(dir)) {}
+			template<typename Env>
+			using signs_t = _detail::concat_tuples_t<value_signs_t, error_signs_t<Sch, Env>, stop_signs_t<Sch, Env>>;
+			using env_t = env_of_t<schedule_result_t<Sch>>;
 
 		public:
-			friend constexpr env_of_t<Snd> tag_invoke(get_env_t, const type &s) noexcept(nothrow_tag_invocable<get_env_t, const Snd &>) { return get_env(s.empty_base<Snd>::value()); }
+			template<typename Sch2, typename Vst2, typename Dir2>
+			explicit type(Sch2 &&sch, Vst2 &&vst, Dir2 &&dir) noexcept(std::is_nothrow_constructible_v<Sch, Sch2> && std::is_nothrow_constructible_v<Vst, Vst2> && std::is_nothrow_constructible_v<fs::directory_handle, Dir2>)
+					: empty_base<Sch>(std::forward<Sch2>(sch)), empty_base<Vst>(std::forward<Vst2>(vst)), _dir(std::forward<Dir2>(dir)) {}
+
+		public:
+			friend constexpr env_t tag_invoke(get_env_t, const type &s) noexcept(noexcept(get_env(schedule(s.empty_base<Sch>::value())))) { return get_env(schedule(s.empty_base<Sch>::value())); }
 			template<typename E>
 			friend constexpr signs_t<E> tag_invoke(get_completion_signatures_t, type &&, E) noexcept { return {}; }
 
 			/* Since directory_handle is not copyable, connect should not accept a const-qualified sender. */
-			template<rod::receiver Rcv> requires receiver_of<receiver_t<Rcv>, signs_t<env_of_t<Snd>>>
-			friend operation_t<Rcv> tag_invoke(connect_t, type &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, Snd, Rcv, V, fs::directory_handle>)
+			template<rod::receiver Rcv> requires receiver_of<Rcv, signs_t<env_of_t<receiver_t<Rcv>>>>
+			friend operation_t<Rcv> tag_invoke(connect_t, type &&s, Rcv &&rcv) noexcept(std::is_nothrow_constructible_v<operation_t<Rcv>, Sch, Rcv, Vst, fs::directory_handle>)
 			{
-				return operation_t<Rcv>(std::move(s.empty_base<Snd>::value()), std::forward<Rcv>(rcv), std::move(s.empty_base<V>::value()), std::move(s._dir));
+				return operation_t<Rcv>(std::move(s.empty_base<Sch>::value()), std::forward<Rcv>(rcv), std::move(s.vst_base::value()), std::move(s._dir));
 			}
 
 		private:
@@ -476,43 +494,19 @@ namespace rod
 
 		class traverse_t
 		{
-			template<typename Snd>
-			using value_scheduler = decltype(get_completion_scheduler<set_value_t>(get_env(std::declval<Snd>())));
-			template<typename V>
-			using back_adaptor = _detail::back_adaptor<traverse_t, std::decay_t<V>, fs::directory_handle>;
-			template<typename Snd, typename V>
-			using sender_t = typename sender<Snd, std::decay_t<V>>::type;
+			template<typename Sch, typename Vst>
+			using sender_t = typename sender<Sch, std::decay_t<Vst>>::type;
 
 		public:
-			template<rod::sender_of<set_value_t()> Snd, fs::traverse_visitor V> requires _detail::tag_invocable_with_completion_scheduler<traverse_t, set_value_t, Snd, Snd, V, fs::directory_handle>
-			[[nodiscard]] rod::sender auto operator()(Snd &&snd, V &&visitor, fs::directory_handle dir) const noexcept(nothrow_tag_invocable<traverse_t, value_scheduler<Snd>, Snd, V, fs::directory_handle>)
+			template<rod::scheduler Sch, fs::traverse_visitor Vst, std::convertible_to<fs::directory_handle> Dir> requires tag_invocable<traverse_t, Sch, Vst, Dir>
+			[[nodiscard]] rod::sender auto operator()(Sch &&sch, Vst &&vst, Dir &&dir) const noexcept(nothrow_tag_invocable<traverse_t, Sch, Vst, Dir>)
 			{
-				return tag_invoke(*this, get_completion_scheduler<set_value_t>(get_env(snd)), std::forward<Snd>(snd), std::forward<V>(visitor), std::move(dir));
+				return tag_invoke(*this, std::forward<Sch>(sch), std::forward<Vst>(vst), std::forward<Dir>(dir));
 			}
-			template<rod::sender_of<set_value_t()> Snd, fs::traverse_visitor V> requires(!_detail::tag_invocable_with_completion_scheduler<traverse_t, set_value_t, Snd, Snd, V, fs::directory_handle> && tag_invocable<traverse_t, Snd, V, fs::directory_handle>)
-			[[nodiscard]] rod::sender auto operator()(Snd &&snd, V &&visitor, fs::directory_handle dir) const noexcept(nothrow_tag_invocable<traverse_t, Snd, V, fs::directory_handle>)
+			template<rod::scheduler Sch, fs::traverse_visitor Vst, std::convertible_to<fs::directory_handle> Dir> requires(!tag_invocable<traverse_t, Sch, Vst, Dir>)
+			[[nodiscard]] sender_t<Sch, Vst> operator()(Sch &&sch, Vst &&vst, Dir &&dir) const noexcept(std::is_nothrow_constructible_v<sender_t<Sch, Vst>, Sch, Vst, Dir>)
 			{
-				return tag_invoke(*this, std::forward<Snd>(snd), std::forward<V>(visitor), std::move(dir));
-			}
-			template<rod::sender_of<set_value_t()> Snd, fs::traverse_visitor V> requires(!_detail::tag_invocable_with_completion_scheduler<traverse_t, set_value_t, Snd, Snd, V, fs::directory_handle> && !tag_invocable<traverse_t, Snd, V, fs::directory_handle>)
-			[[nodiscard]] sender_t<Snd, V> operator()(Snd &&snd, V &&visitor, fs::directory_handle dir) const noexcept(std::is_nothrow_constructible_v<sender_t<Snd, V>, Snd, V, fs::directory_handle>)
-			{
-				return sender_t<Snd, V>(schedule(std::forward<Snd>(snd)), std::forward<V>(visitor), std::forward<fs::directory_handle>(dir));
-			}
-
-			template<fs::traverse_visitor V>
-			[[nodiscard]] back_adaptor<V> operator()(V &&visitor, fs::directory_handle dir) const noexcept(std::is_nothrow_constructible_v<back_adaptor<V>, traverse_t, V, fs::directory_handle>)
-			{
-				return back_adaptor<V>{*this, {std::forward<V>(visitor), std::move(dir)}};
-			}
-		};
-		class schedule_traverse_t : traverse_t
-		{
-		public:
-			template<rod::scheduler Sch, fs::traverse_visitor V> requires _detail::callable<traverse_t, schedule_result_t<Sch>, V, fs::directory_handle>
-			[[nodiscard]] rod::sender auto operator()(Sch &&sch, V &&visitor, fs::directory_handle dir) const noexcept(_detail::nothrow_callable<traverse_t, schedule_result_t<Sch>, V, fs::directory_handle>)
-			{
-				return traverse_t::operator()(schedule(std::forward<Sch>(sch)), std::forward<V>(visitor), std::move(dir));
+				return sender_t<Sch, Vst>(std::forward<Sch>(sch), std::forward<Vst>(vst), std::forward<Dir>(dir));
 			}
 		};
 	}
@@ -523,10 +517,5 @@ namespace rod
 
 		/* TODO: Document usage. */
 		inline constexpr auto traverse = traverse_t{};
-
-		using _traverse::schedule_traverse_t;
-
-		/* TODO: Document usage. */
-		inline constexpr auto schedule_traverse = schedule_traverse_t{};
 	}
 }

@@ -513,8 +513,7 @@ namespace rod::_handle
 					if (bool(q & fs_stat::query::fs_type))
 						st.fs_type = std::move(type);
 				}
-				catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-				catch (const std::system_error &e) { return e.code(); }
+				catch (...) { return _detail::current_error(); }
 				done |= q & (fs_stat::query::fs_type | fs_stat::query::flags);
 			}
 			if (bool(q & fs_stat::query::filename_max))
@@ -609,8 +608,7 @@ namespace rod::_handle
 					q &= ~fs_stat::query::fs_path;
 				}
 			}
-			catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
-			catch (const std::system_error &e) { return e.code(); }
+			catch (...) { return _detail::current_error(); }
 		}
 		/* Query filesystem ID. */
 		if (bool(q & fs_stat::query::fs_id))

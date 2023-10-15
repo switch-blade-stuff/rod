@@ -13,7 +13,7 @@ namespace rod::fs
 	 * @note `time_point` is guaranteed to be convertible to and from `system_clock::time_point`. */
 	struct file_clock
 	{
-		using duration = std::chrono::duration<std::int64_t , std::ratio<1, 10'000'000>>;
+		using duration = std::chrono::duration<std::int64_t, std::ratio<1, 10'000'000>>;
 		using period = typename duration::period;
 		using rep = typename duration::rep;
 

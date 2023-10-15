@@ -87,21 +87,26 @@ namespace rod
 
 	namespace _handle
 	{
-		[[nodiscard]] inline static typename fs::path::string_type generate_unique_name()
+		[[nodiscard]] inline static result<typename fs::path::string_type> generate_unique_name() noexcept
 		{
 			constexpr typename fs::path::value_type alphabet[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
-			auto str = typename fs::path::string_type(64, '\0');
-			auto gen = system_random(str.data(), str.size() * sizeof(typename fs::path::value_type));
-			for (std::size_t i = 0; i < str.size(); ++i)
+			try
 			{
-				/* std::rand fallback is fine since it's not used it for cryptography. */
-				if (i >= gen) [[unlikely]]
-					str[i] = alphabet[std::rand() % 16];
-				else
-					str[i] = alphabet[str[i] % 16];
+				auto str = typename fs::path::string_type(64, '\0');
+				auto gen = system_random(str.data(), str.size() * sizeof(typename fs::path::value_type));
+				for (std::size_t i = 0; i < str.size(); ++i)
+				{
+					/* std::rand fallback is fine since it's not used it for cryptography. */
+					if (i >= gen)
+						[[unlikely]]
+								str[i] = alphabet[std::rand() % 16];
+					else
+						str[i] = alphabet[str[i] % 16];
+				}
+				return str;
 			}
-			return str;
+			catch (...) { return _detail::current_error(); }
 		}
 
 		template<typename Res>
@@ -166,23 +171,29 @@ namespace rod
 			type(type &&other) noexcept : adp_base(std::forward<adp_base>(other)), _dev(std::exchange(other._dev, 0)), _ino(std::exchange(other._ino, 0)) {}
 			type &operator=(type &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), std::swap(_dev, other._dev), std::swap(_ino, other._ino), *this); }
 
-			explicit type(typename adp_base::native_handle_type hnd) noexcept : adp_base(hnd) {}
-			explicit type(typename adp_base::native_handle_type hnd, dev_t dev, ino_t ino) noexcept : adp_base(hnd), _dev(dev), _ino(ino) {}
+			template<typename... Args> requires std::constructible_from<adp_base, typename adp_base::native_handle_type, Args...>
+			explicit type(typename adp_base::native_handle_type hnd, Args &&...args) noexcept : adp_base(hnd, std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adp_base, typename adp_base::native_handle_type, Args...>
+			explicit type(typename adp_base::native_handle_type hnd, Args &&...args, dev_t dev, ino_t ino) noexcept : adp_base(hnd, std::forward<Args>(args)...), _dev(dev), _ino(ino) {}
 
-			explicit type(Base &&other) noexcept : adp_base(std::forward<Base>(other)) {}
-			explicit type(Base &&other, dev_t dev, ino_t ino) noexcept : adp_base(std::forward<Base>(other)), _dev(dev), _ino(ino) {}
+			template<typename... Args> requires std::constructible_from<adp_base, Base, Args...>
+			explicit type(Base &&hnd, Args &&...args) noexcept : adp_base(std::forward<Base>(hnd), std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adp_base, Base, Args...>
+			explicit type(Base &&hnd, Args &&...args, dev_t dev, ino_t ino) noexcept : adp_base(std::forward<Base>(hnd), std::forward<Args>(args)...), _dev(dev), _ino(ino) {}
 
 			using adp_base::release;
 			using adp_base::is_open;
 			using adp_base::native_handle;
 
-			constexpr void swap(type &other) noexcept
+			template<decays_to_same_or_derived<Child> Hnd = Child>
+			constexpr void swap(Hnd &&other) noexcept
 			{
-				adl_swap(adp_base::base(), other.base());
+				adl_swap(static_cast<adp_base &>(*this), static_cast<adp_base &>(get_adaptor(other)));
 				std::swap(_dev, other._dev);
 				std::swap(_ino, other._ino);
 			}
-			friend constexpr void swap(type &a, type &b) noexcept { a.swap(b); }
+			template<decays_to_same_or_derived<Child> Hnd0 = Child, decays_to_same_or_derived<Child> Hnd1 = Child>
+			friend constexpr void swap(Hnd0 &&a, Hnd1 &&b) noexcept { get_adaptor(std::forward<Hnd0>(a)).swap(std::forward<Hnd1>(b)); }
 
 		private:
 			static constexpr int do_link = 1;
@@ -213,19 +224,19 @@ namespace rod
 			}
 
 		public:
-			template<std::same_as<link_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_link<Hnd>())
+			template<std::same_as<link_t> T, decays_to_same_or_derived<Child> Hnd> requires(has_link<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const fs::path_handle &base, fs::path_view path, bool replace, const timeout_type &to) noexcept { return dispatch_link(std::forward<Hnd>(hnd), base, path, replace, to); }
-			template<std::same_as<link_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_link<Hnd>())
+			template<std::same_as<link_t> T, decays_to_same_or_derived<Child> Hnd> requires(!has_link<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const fs::path_handle &base, fs::path_view path, bool replace, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), base, path, replace, to); }
 
 			template<std::same_as<relink_t> T, decays_to_same_or_derived<Child> Hnd> requires(has_relink<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const fs::path_handle &base, fs::path_view path, bool replace, const timeout_type &to) noexcept { return dispatch_relink(std::forward<Hnd>(hnd), base, path, replace, to); }
-			template<std::same_as<relink_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_relink<Hnd>())
+			template<std::same_as<relink_t> T, decays_to_same_or_derived<Child> Hnd> requires(!has_relink<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const fs::path_handle &base, fs::path_view path, bool replace, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), base, path, replace, to); }
 
-			template<std::same_as<unlink_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_unlink<Hnd>())
+			template<std::same_as<unlink_t> T, decays_to_same_or_derived<Child> Hnd> requires(has_unlink<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const timeout_type &to) noexcept { return dispatch_unlink(std::forward<Hnd>(hnd), to); }
-			template<std::same_as<unlink_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_unlink<Hnd>())
+			template<std::same_as<unlink_t> T, decays_to_same_or_derived<Child> Hnd> requires(!has_unlink<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), to); }
 
 		private:
@@ -240,9 +251,9 @@ namespace rod
 			constexpr static auto dispatch_get_stat(stat &st, const Hnd &hnd, stat::query q) noexcept -> decltype(hnd.get_stat(st, hnd, q)) { return hnd.do_get_stat(st, hnd, q); }
 
 		public:
-			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(has_get_stat<Hnd>())
+			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd> requires(has_get_stat<Hnd>())
 			friend auto tag_invoke(T, stat &st, Hnd &&hnd, stat::query q) noexcept { return get_adaptor(std::forward<Hnd>(hnd)).cache_stat(st, std::forward<Hnd>(hnd), q, dispatch_get_stat<Hnd>); }
-			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd = Child> requires(!has_get_stat<Hnd>())
+			template<std::same_as<get_stat_t> T, decays_to_same_or_derived<Child> Hnd> requires(!has_get_stat<Hnd>())
 			friend auto tag_invoke(T, stat &st, Hnd &&hnd, stat::query q) noexcept { return get_adaptor(std::forward<Hnd>(hnd)).cache_stat(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q, get_stat_t{}); }
 
 		private:

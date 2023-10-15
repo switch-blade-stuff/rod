@@ -372,6 +372,13 @@ namespace rod
 
 	namespace _detail
 	{
+		[[nodiscard]] inline static std::error_code current_error() noexcept
+		{
+			try { std::rethrow_exception(std::current_exception()); }
+			catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+			catch (const std::system_error &e) { return e.code(); }
+		}
+
 		[[noreturn]] inline void throw_error_code(const std::error_code &err, const std::string &msg = {})
 		{
 			if (err.category() != std::generic_category() || err.value() != int(std::errc::not_enough_memory))

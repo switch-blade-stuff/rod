@@ -235,8 +235,10 @@ namespace rod
 			 * @return Handle to the directory or a status code on failure. */
 			[[nodiscard]] static result<directory_handle> open_unique(const fs::path_handle &base, fs::file_flags flags = fs::file_flags::read | fs::file_flags::write) noexcept
 			{
-				try { return open(base, _handle::generate_unique_name(), flags, open_mode::always); }
-				catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
+				if (auto name = _handle::generate_unique_name(); name.has_value()) [[likely]]
+					return open(base, *name, flags, open_mode::always);
+				else
+					return name.error();
 			}
 			/** Opens or creates a directory inside the system's temporary files directory.
 			 * @note The following values of \a flags are not supported:
@@ -321,7 +323,7 @@ namespace rod
 					std::atomic_ref(_read_guard).wait(true);
 			}
 
-			result<directory_handle> do_clone() const noexcept { return clone(base()).transform([&](_path::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
+			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](_path::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
 			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
 			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;

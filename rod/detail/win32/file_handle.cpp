@@ -6,8 +6,8 @@
 
 #include <numeric>
 
-#ifndef FSCTL_DUPLICATE_EXTENTS
-#define FSCTL_DUPLICATE_EXTENTS CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 209, METHOD_BUFFERED, FILE_WRITE_DATA)
+#ifndef FSCTL_DUPLICATE_EXTENTS_TO_FILE
+#define FSCTL_DUPLICATE_EXTENTS_TO_FILE CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 209, METHOD_BUFFERED, FILE_WRITE_DATA)
 #endif
 
 namespace rod::_file
@@ -131,16 +131,13 @@ namespace rod::_file
 			return {};
 	}
 
-	result<void, io_status_code> file_handle::do_sync(sync_mode mode, const fs::file_timeout &to) noexcept
+	result<void, io_status_code> file_handle::do_sync(sync_mode mode) noexcept
 	{
 		/* WinNT does not have sparse flush, so do_sync and do_sync_at are identical. */
-		return do_sync_at({.mode = mode}, to);
+		return do_sync_at({.mode = mode});
 	}
-	io_result<sync_at_t> file_handle::do_sync_at(io_request<sync_at_t> req, const fs::file_timeout &to) noexcept
+	io_result<sync_at_t> file_handle::do_sync_at(io_request<sync_at_t> req) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
-			return std::make_error_code(std::errc::not_supported);
-
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -160,13 +157,7 @@ namespace rod::_file
 		else
 			status = ntapi->NtFlushBuffersFile(native_handle(), &iosb);
 
-		if (status == STATUS_PENDING)
-			status = ntapi->wait_io(native_handle(), &iosb, to);
-		if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]
-			return std::make_error_code(std::errc::operation_canceled);
-		else if (status == STATUS_TIMEOUT) [[unlikely]]
-			return std::make_error_code(std::errc::timed_out);
-		else if (is_status_failure(status)) [[unlikely]]
+		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return req.buffs;
@@ -299,28 +290,6 @@ namespace rod::_file
 		LONGLONG length;
 	};
 
-	inline static _handle::extent_type get_page_size() noexcept
-	{
-		static const _handle::extent_type result = []()
-		{
-			auto info = SYSTEM_INFO();
-			::GetSystemInfo(&info);
-			return info.dwPageSize;
-		}();
-		return result;
-	}
-	inline static _handle::extent_type get_block_size() noexcept
-	{
-		static const auto result = std::max<_handle::extent_type>(4096, get_page_size());
-		return result;
-	}
-	inline static _handle::extent_type page_align(_handle::extent_type n) noexcept
-	{
-		const auto page_size = get_page_size();
-		const auto rem = n % page_size;
-		return n + (rem ? page_size - rem : 0);
-	}
-
 	result<_handle::extent_type> file_handle::do_truncate(extent_type endp) noexcept
 	{
 		auto info = FILE_END_OF_FILE_INFO{.EndOfFile = {.QuadPart = LONGLONG(endp)}};
@@ -329,39 +298,6 @@ namespace rod::_file
 		if (bool(caching() & file_caching::sanity_barriers))
 			::FlushFileBuffers(native_handle());
 		return endp;
-	}
-	io_result<list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const fs::file_timeout &to) const noexcept
-	{
-		auto buff = FILE_ALLOCATED_RANGE_BUFFER{.Length = {.QuadPart = (extent_type(1) << 63) - 1}};
-		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
-		DWORD bytes = 0;
-
-		const auto abs_timeout = to.absolute();
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
-		try
-		{
-			req.buff.resize(64);
-			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buff.data(), DWORD(req.buff.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &bytes, &ol) == 0)
-			{
-				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
-				{
-					auto status = ntapi->wait_io(native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
-					if (is_status_failure(status)) [[unlikely]]
-						return status_error_code(status);
-				}
-				else if (err == ERROR_INSUFFICIENT_BUFFER || err == ERROR_MORE_DATA)
-					req.buff.resize(req.buff.size() * 2);
-				else if (err != ERROR_SUCCESS) [[unlikely]]
-					return dos_error_code(err);
-			}
-
-			req.buff.resize(bytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
-			return req.buff;
-		}
-		catch (const std::bad_alloc &) { return std::make_error_code(std::errc::not_enough_memory); }
 	}
 	io_result<zero_extents_t> file_handle::do_zero_extents(io_request<zero_extents_t> req, const fs::file_timeout &to) noexcept
 	{
@@ -415,7 +351,40 @@ namespace rod::_file
 		}
 		return req.extent;
 	}
-	io_result<clone_extents_t> file_handle::do_clone_extents(io_request<clone_extents_t> req, const fs::file_timeout &to) noexcept
+	io_result<list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const fs::file_timeout &to) const noexcept
+	{
+		auto buff = FILE_ALLOCATED_RANGE_BUFFER{.Length = {.QuadPart = (extent_type(1) << 63) - 1}};
+		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
+		DWORD bytes = 0;
+
+		const auto abs_timeout = to.absolute();
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		try
+		{
+			req.buff.resize(64);
+			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buff.data(), DWORD(req.buff.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &bytes, &ol) == 0)
+			{
+				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
+				{
+					auto status = ntapi->wait_io(native_handle(), reinterpret_cast<io_status_block *>(&ol), abs_timeout);
+					if (is_status_failure(status)) [[unlikely]]
+						return status_error_code(status);
+				}
+				else if (err == ERROR_INSUFFICIENT_BUFFER || err == ERROR_MORE_DATA)
+					req.buff.resize(req.buff.size() * 2);
+				else if (err != ERROR_SUCCESS) [[unlikely]]
+					return dos_error_code(err);
+			}
+
+			req.buff.resize(bytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
+			return req.buff;
+		}
+		catch (...) { return _detail::current_error(); }
+	}
+	io_result<clone_extents_to_t> file_handle::do_clone_extents_to(io_request<clone_extents_to_t> req, const fs::file_timeout &to) noexcept
 	{
 		constexpr auto stat_mask = stat::query::size | stat::query::ino | stat::query::dev;
 
@@ -638,7 +607,7 @@ namespace rod::_file
 					};
 					DWORD bytes = 0;
 
-					if (::DeviceIoControl(req.dst.native_handle(), FSCTL_DUPLICATE_EXTENTS, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+					if (::DeviceIoControl(req.dst.native_handle(), FSCTL_DUPLICATE_EXTENTS_TO_FILE, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
 					{
 						if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 						{
