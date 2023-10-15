@@ -26,16 +26,17 @@ namespace rod
 		struct env { class type; };
 
 		template<typename Sch, typename Env>
-		class env<Sch, Env>::type : empty_base<Env>
+		class env<Sch, Env>::type : empty_base<Sch>, empty_base<Env>
 		{
+			using sch_base = empty_base<Sch>;
 			using env_base = empty_base<Env>;
 
 		public:
-			template<typename Env2>
-			constexpr explicit type(Env2 &&env) noexcept(std::is_nothrow_constructible_v<Env, Env2>) : env_base(std::forward<Env2>(env)) {}
+			template<typename Sch2, typename Env2>
+			constexpr explicit type(Sch2 &&sch, Env2 &&env) noexcept(std::is_nothrow_constructible_v<Sch, Sch2> && std::is_nothrow_constructible_v<Env, Env2>) : sch_base(std::forward<Sch2>(sch)), env_base(std::forward<Env2>(env)) {}
 
 			template<decays_to_same<type> E>
-			friend constexpr Sch tag_invoke(get_scheduler_t, E &&e) noexcept { return get_scheduler(e.env_base::value()); }
+			friend constexpr Sch tag_invoke(get_scheduler_t, E &&e) noexcept { return e.sch_base::value(); }
 			template<is_forwarding_query Q, decays_to_same<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
 			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>)
 			{
@@ -129,7 +130,7 @@ namespace rod
 		template<typename Sch, typename Snd, typename Rcv>
 		env_of_t<Rcv> receiver<Sch, Snd, Rcv>::type::get_env() const { return rod::get_env(_op->rcv_base::value()); }
 		template<typename Sch, typename Snd, typename Rcv>
-		typename env<Sch, env_of_t<Rcv>>::type receiver_ref<Sch, Snd, Rcv>::type::get_env() const { return typename env<Sch, env_of_t<Rcv>>::type{rod::get_env(_op->rcv_base::value())}; }
+		typename env<Sch, env_of_t<Rcv>>::type receiver_ref<Sch, Snd, Rcv>::type::get_env() const { return typename env<Sch, env_of_t<Rcv>>::type(_op->sch_base::value(), rod::get_env(_op->rcv_base::value())); }
 
 		template<typename Sch, typename Snd, typename Rcv>
 		void receiver<Sch, Snd, Rcv>::type::complete_value() noexcept

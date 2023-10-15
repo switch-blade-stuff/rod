@@ -4,11 +4,31 @@
 
 #pragma once
 
+#include "queries/scheduler.hpp"
 #include "io_status_code.hpp"
 #include "handle_base.hpp"
 
 namespace rod
 {
+	inline namespace _get_io_scheduler
+	{
+		struct get_io_scheduler_t
+		{
+			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_io_scheduler_t) noexcept { return true; }
+
+			template<typename Q> requires tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &>
+			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return tag_invoke(*this, std::as_const(q)); }
+			template<typename Q> requires(!tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &> && _detail::callable<get_completion_scheduler_t<set_value_t>, const std::remove_cvref_t<Q> &>)
+			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return get_completion_scheduler<set_value_t>(std::as_const(q)); }
+			template<typename Q> requires(!tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &> && !_detail::callable<get_completion_scheduler_t<set_value_t>, const std::remove_cvref_t<Q> &> && _detail::callable<get_scheduler_t, const std::remove_cvref_t<Q> &>)
+			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return get_scheduler(std::as_const(q)); }
+			[[nodiscard]] constexpr decltype(auto) operator()() const noexcept { return read(*this); }
+		};
+	}
+
+	/** Customization point object used to obtain a scheduler that can be used to schedule IO operations. Falls back to `get_completion_scheduler&lt;set_value_t&gt;` and `get_scheduler`. */
+	inline constexpr auto get_io_scheduler = get_io_scheduler_t{};
+
 	namespace _handle
 	{
 		template<typename Child, typename Base, template <typename, typename> typename BaseAdaptor>

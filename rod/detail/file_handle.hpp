@@ -13,6 +13,8 @@ namespace rod
 {
 	namespace _file
 	{
+		using namespace fs;
+
 		template<typename FileBase>
 		struct streamable_file_adaptor { class type; };
 		class file_handle;
@@ -112,13 +114,6 @@ namespace rod
 			using io_request = _file::io_request<Op>;
 
 		private:
-			using path_view = fs::path_view;
-			using path_handle = fs::path_handle;
-
-			using file_perm = fs::file_perm;
-			using file_flags = fs::file_flags;
-			using file_caching = fs::file_caching;
-
 			[[nodiscard]] static ROD_API_PUBLIC result<file_handle> do_reopen(const file_handle &other, file_flags flags, file_caching caching) noexcept;
 			[[nodiscard]] static ROD_API_PUBLIC result<file_handle> do_open(const path_handle &base, path_view path, file_flags flags, open_mode mode, file_caching caching, file_perm perm) noexcept;
 
@@ -344,17 +339,5 @@ namespace rod
 
 		static_assert(io_handle<streamable_file, read_some_at_t> && io_handle_with_timeout<streamable_file, read_some_at_t, file_timeout>);
 		static_assert(io_handle<streamable_file, write_some_at_t> && io_handle_with_timeout<streamable_file, write_some_at_t, file_timeout>);
-
-//		/** `std::basic_streambuf` handle adaptor. */
-//		template<typename Ch, typename Handle = file_handle>
-//		using basic_streambuf = typename _file::basic_streambuf<Ch, Handle>::type;
-//		/** `std::basic_ios` handle adaptor. */
-//		template<typename Ch, typename Handle = file_handle>
-//		using basic_stream = typename _file::basic_stream<Ch, Handle>::type;
-//
-//		/** Alias for `basic_stream&lt;std::byte, file_handle&gt;`. */
-//		using byte_stream = basic_stream<std::byte, file_handle>;
-//		/** Alias for `basic_stream&lt;char, file_handle&gt;`. */
-//		using char_stream = basic_stream<char, file_handle>;
 	}
 }
