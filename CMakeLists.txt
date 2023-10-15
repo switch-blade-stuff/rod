@@ -17,6 +17,8 @@ if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
 
     if (NOT LIBURING_FOUND)
         set(ROD_NO_LIBURING ON CACHE BOOL "liburing was not found" FORCE)
+    endif ()
+    if (ROD_NO_LIBURING)
         add_compile_definitions(ROD_NO_LIBURING)
     endif ()
 endif ()
@@ -39,7 +41,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURR
 target_include_directories(${PROJECT_NAME} PUBLIC $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
 # Link dependencies
-if (${LIBURING_FOUND})
+if (LIBURING_FOUND AND NOT ROD_NO_LIBURING)
     target_include_directories(${PROJECT_NAME} PRIVATE ${LIBURING_INCLUDE_DIR})
     target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBURING_LIBRARY})
 endif ()
