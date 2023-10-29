@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-27.
+ * Created by switchblade on 2023-08-27.
  */
 
 #include "directory_handle.hpp"
@@ -7,39 +7,15 @@
 namespace rod::_dir
 {
 	using namespace _win32;
+	using namespace fs;
 
 	inline constexpr auto stats_mask = stat::query::ino | stat::query::type | stat::query::atime | stat::query::mtime | stat::query::ctime | stat::query::btime | stat::query::size | stat::query::alloc | stat::query::is_sparse | stat::query::is_compressed | stat::query::is_reparse_point;
 	inline constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 	inline constexpr std::size_t buff_size = 65536;
 
-	result<directory_handle> directory_handle::reopen(const fs::path_handle &other, fs::file_flags flags) noexcept
+	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
-		/* Try to clone if possible. */
-		if (flags == fs::file_flags(other.native_handle().flags))
-		{
-			if (auto hnd = clone(other); hnd.has_value()) [[likely]]
-				return directory_handle(std::move(*hnd), flags);
-			else
-				return hnd.error();
-		}
-
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
-		auto access = flags_to_access(flags) & ~DELETE;
-		auto opts = flags_to_opts(flags);
-		auto iosb = io_status_block();
-
-		auto hnd = ntapi->reopen_file(other.native_handle(), &iosb, access, share, opts);
-		if (hnd.has_value()) [[likely]]
-			return directory_handle(*hnd, flags);
-		else
-			return hnd.error();
-	}
-	result<directory_handle> directory_handle::open(const fs::path_handle &base, fs::path_view path, fs::file_flags flags, open_mode mode) noexcept
-	{
-		if (bool(flags & (fs::file_flags::unlink_on_close | fs::file_flags::no_sparse_files))) [[unlikely]]
+		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files))) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
 		if (mode == open_mode::truncate || mode == open_mode::supersede) [[unlikely]]
 			return std::make_error_code(std::errc::is_a_directory);
@@ -82,17 +58,42 @@ namespace rod::_dir
 		}
 
 		/* Optionally set case-sensitive flag on newly created directories if requested. */
-		if (bool(flags & fs::file_flags::case_sensitive) && mode == open_mode::create || (mode == open_mode::always && iosb.info == 2 /*FILE_CREATED*/))
+		if (bool(flags & file_flags::case_sensitive) && mode == open_mode::create || (mode == open_mode::always && iosb.info == 2 /*FILE_CREATED*/))
 		{
 			auto case_info = file_case_sensitive_information{.flags = 1 /*FILE_CS_FLAG_CASE_SENSITIVE_DIR*/};
 			ntapi->set_file_info(*hnd, &iosb, &case_info, FileCaseSensitiveInformation);
 		}
 		return directory_handle(*hnd, flags);
 	}
-
-	result<> directory_handle::do_link(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept
+	result<directory_handle> directory_handle::reopen(const path_handle &other, file_flags flags) noexcept
 	{
-		if (!bool(flags() & fs::file_flags::non_blocking) && to != timeout_type())
+		/* Try to clone if possible. */
+		if (flags == file_flags(other.native_handle().flags))
+		{
+			if (auto hnd = clone(other); hnd.has_value()) [[likely]]
+				return directory_handle(std::move(*hnd), flags);
+			else
+				return hnd.error();
+		}
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto access = flags_to_access(flags) & ~DELETE;
+		auto opts = flags_to_opts(flags);
+		auto iosb = io_status_block();
+
+		auto hnd = ntapi->reopen_file(other.native_handle(), &iosb, access, share, opts);
+		if (hnd.has_value()) [[likely]]
+			return directory_handle(*hnd, flags);
+		else
+			return hnd.error();
+	}
+
+	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
+	{
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
 
 		const auto abs_timeout = to.absolute();
@@ -114,9 +115,9 @@ namespace rod::_dir
 		else
 			return {};
 	}
-	result<> directory_handle::do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept
+	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & fs::file_flags::non_blocking) && to != timeout_type())
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
 
 		const auto abs_timeout = to.absolute();
@@ -138,9 +139,9 @@ namespace rod::_dir
 		else
 			return {};
 	}
-	result<> directory_handle::do_unlink(const fs::file_timeout &to) noexcept
+	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & fs::file_flags::non_blocking) && to != timeout_type())
+		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
 			return std::make_error_code(std::errc::not_supported);
 
 		const auto abs_timeout = to.absolute();
@@ -153,13 +154,13 @@ namespace rod::_dir
 			return del_hnd.error();
 
 		auto iosb = io_status_block();
-		if (auto status = ntapi->unlink_file(del_hnd->native_handle(), &iosb, !bool(flags() & fs::file_flags::unlink_on_close), abs_timeout); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->unlink_file(del_hnd->native_handle(), &iosb, !bool(flags() & file_flags::unlink_on_close), abs_timeout); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
 	}
 
-	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const fs::file_timeout &to) noexcept
+	io_result_t<directory_handle, read_some_t> directory_handle::do_read_some(io_request<read_some_t> &&req, const file_timeout &to) noexcept
 	{
 		if (req.buffs.empty()) [[unlikely]]
 			return std::make_pair(std::move(req.buffs), false);
@@ -183,12 +184,12 @@ namespace rod::_dir
 		wchar_t *result_buff = req.buffs._buff.release();
 		auto &ufilter = rfilter->first;
 		bool reset_pos = !req.resume;
-		ntstatus status = 0;
+		result<bool> eof_result;
 
-		while (result_size < req.buffs.size() && !is_status_failure(status))
+		while (result_size < req.buffs.size() && !eof_result.value_or(false))
 		{
 			auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
-			status = ntapi->query_directory(native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st)
+			eof_result = ntapi->query_directory(native_handle(), bytes, req.filter.empty() ? nullptr : &ufilter, reset_pos, abs_timeout, [&](auto sv, auto &st) noexcept -> result<bool>
 			{
 				auto &entry = req.buffs[result_size++];
 				if (entry._buff.size() >= sv.size())
@@ -212,7 +213,7 @@ namespace rod::_dir
 						else
 							new_buff = static_cast<wchar_t *>(std::malloc(new_size * sizeof(wchar_t)));
 						if (new_buff == nullptr) [[unlikely]]
-							return true;
+							return {in_place_error, std::make_error_code(std::errc::not_enough_memory)};
 					}
 
 					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
@@ -227,7 +228,7 @@ namespace rod::_dir
 
 				entry._query = stats_mask;
 				entry._st = st;
-				return false;
+				return {in_place_value, false};
 			});
 		}
 
@@ -249,37 +250,31 @@ namespace rod::_dir
 		req.buffs._buff_max = std::max(req.buffs._buff_max, buffer_size);
 		req.buffs._buff.reset(result_buff);
 
-		if (is_status_failure(status))
-		{
-			/* Treat errors during a partial result as EOF. */
-			if (result_size != 0 || status == 0x80000006 /*STATUS_NO_MORE_FILES*/) [[likely]]
-				return std::make_pair(std::move(req.buffs), true);
-			else
-				return status_error_code(status);
-		}
-		return std::make_pair(std::move(req.buffs), false);
+		if (eof_result.has_value()) [[likely]]
+			return std::make_pair(std::move(req.buffs), *eof_result);
+		else
+			return eof_result.error();
 	}
 
-	result<directory_iterator> directory_iterator::from_handle(const fs::path_handle &other) noexcept
+	result<directory_iterator> directory_iterator::from_handle(const path_handle &other) noexcept
 	{
-		if (auto hnd = directory_handle::reopen(other, fs::file_flags::read); hnd.has_value()) [[likely]]
+		if (auto hnd = directory_handle::reopen(other, file_flags::read); hnd.has_value()) [[likely]]
 			return directory_iterator(hnd->release());
 		else
 			return hnd.error();
 	}
-	result<directory_iterator> directory_iterator::from_path(const fs::path_handle &base, fs::path_view path) noexcept
+	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view path) noexcept
 	{
-		if (auto hnd = directory_handle::open(base, path, fs::file_flags::read); hnd.has_value()) [[likely]]
+		if (auto hnd = directory_handle::open(base, path, file_flags::read); hnd.has_value()) [[likely]]
 			return directory_iterator(hnd->release());
 		else
 			return hnd.error();
 	}
 
-	result<> directory_iterator::next(const fs::file_timeout &to) noexcept
+	result<> directory_iterator::next(const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to.absolute();
 		auto &&str = _entry.to_path_string();
-		auto res = result<>();
 
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -290,26 +285,21 @@ namespace rod::_dir
 			return std::make_error_code(std::errc::not_enough_memory);
 
 		auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
-		auto status = ntapi->query_directory(_dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st)
+		auto eof_result = ntapi->query_directory(_dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st) -> result<bool>
 		{
 			_entry._query = stats_mask;
 			_entry._st = st;
 
 			try { str.assign(sv.data(), sv.size()); }
-			catch (...) { return _detail::current_error(); }
-			return false;
+			catch (...) { return {in_place_error, _detail::current_error()}; }
+			return {in_place_value, false};
 		});
+		if (eof_result.has_error()) [[unlikely]]
+			return eof_result.error();
 
 		/* Reset the iterator to sentinel on EOF so that end iterator comparisons are equal. */
-		if (status == 0x80000006 /*STATUS_NO_MORE_FILES*/)
-		{
-			_entry = directory_entry{};
-			_dir_hnd = basic_handle{};
-			return {};
-		}
-		if (status != 0) [[unlikely]]
-			return status_error_code(status);
-		else
-			return res;
+		if (*eof_result)
+			*this = end();
+		return {};
 	}
 }

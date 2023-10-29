@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-20.
+ * Created by switchblade on 2023-08-20.
  */
 
 #include "path_discovery.hpp"

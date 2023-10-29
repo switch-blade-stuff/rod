@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-07-30.
+ * Created by switchblade on 2023-07-30.
  */
 
 #include "path_base.hpp"

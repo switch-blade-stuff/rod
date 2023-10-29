@@ -198,7 +198,7 @@ namespace rod
 	 *
 	 * For ABI compatibility purposes, all sink types are layout-compatible with the following struct:
 	 * @code{cpp}
-	 * struct sink { void *internal; };
+	 * typedef void *sink;
 	 * @endcode
 	 *
 	 * @tparam Signal Signal type associated with the sink. */

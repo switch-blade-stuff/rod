@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-27.
+ * Created by switchblade on 2023-08-27.
  */
 
 #pragma once
@@ -10,6 +10,58 @@
 
 namespace rod
 {
+	namespace _extent
+	{
+		template<typename Hnd>
+		concept has_extent = handle<Hnd> && requires { typename Hnd::extent_type; };
+		template<typename Hnd>
+		concept decay_has_extent = has_extent<std::decay_t<Hnd>>;
+
+		template<typename Res, typename Hnd>
+		concept extent_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<handle_extent_t<Hnd>>, Res>;
+
+		struct endpos_t
+		{
+			template<decay_has_extent Hnd> requires tag_invocable<endpos_t, const Hnd &>
+			[[nodiscard]] extent_result<std::decay_t<Hnd>> auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
+			template<decay_has_extent Hnd> requires(!tag_invocable<endpos_t, const Hnd &> && _detail::callable<get_stat_t, stat &, const Hnd &, stat::query>)
+			[[nodiscard]] extent_result<std::decay_t<Hnd>> auto operator()(const Hnd &hnd) const noexcept
+			{
+				using extent_type = handle_extent_t<std::decay_t<Hnd>>;
+				using result_type = typename decltype(get_stat(std::declval<stat &>(), hnd, stat::query::size))::template rebind_value<extent_type>;
+
+				result_type res;
+				stat st;
+
+				if (auto stat_res = get_stat(st, hnd, stat::query::size); stat_res.has_error()) [[unlikely]]
+					res.emplace_error(std::move(stat_res.error()));
+				else if ((*stat_res & stat::query::size) != stat::query::size) [[unlikely]]
+					res.emplace_error(std::make_error_code(std::errc::not_supported));
+				else
+					res.emplace_value(extent_type(st.size));
+
+				return res;
+			}
+		};
+		struct truncate_t
+		{
+			template<decay_has_extent Hnd, typename Ext = handle_extent_t<std::decay_t<Hnd>>> requires tag_invocable<truncate_t, Hnd, Ext>
+			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Ext endp) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), endp); }
+		};
+	}
+
+	using _extent::endpos_t;
+	using _extent::truncate_t;
+
+	/* TODO: Document usage */
+	inline constexpr auto endpos = endpos_t{};
+	/* TODO: Document usage */
+	inline constexpr auto truncate = truncate_t{};
+
+	/** Concept used to define a handle that supports size queries and resizing. */
+	template<typename Hnd>
+	concept sized_handle = _extent::has_extent<Hnd> && _detail::callable<endpos_t, const Hnd &> && _detail::callable<truncate_t, Hnd &, handle_extent_t<Hnd>>;
+
 	inline namespace _get_io_scheduler
 	{
 		struct get_io_scheduler_t
@@ -20,13 +72,11 @@ namespace rod
 			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return tag_invoke(*this, std::as_const(q)); }
 			template<typename Q> requires(!tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &> && _detail::callable<get_completion_scheduler_t<set_value_t>, const std::remove_cvref_t<Q> &>)
 			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return get_completion_scheduler<set_value_t>(std::as_const(q)); }
-			template<typename Q> requires(!tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &> && !_detail::callable<get_completion_scheduler_t<set_value_t>, const std::remove_cvref_t<Q> &> && _detail::callable<get_scheduler_t, const std::remove_cvref_t<Q> &>)
-			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return get_scheduler(std::as_const(q)); }
 			[[nodiscard]] constexpr decltype(auto) operator()() const noexcept { return read(*this); }
 		};
 	}
 
-	/** Customization point object used to obtain a scheduler that can be used to schedule IO operations. Falls back to `get_completion_scheduler&lt;set_value_t&gt;` and `get_scheduler`. */
+	/** Customization point object used to obtain a scheduler that can be used to schedule IO operations. Falls back to `get_completion_scheduler&lt;set_value_t&gt;`. */
 	inline constexpr auto get_io_scheduler = get_io_scheduler_t{};
 
 	namespace _handle
@@ -100,20 +150,22 @@ namespace rod
 	namespace _io_operation
 	{
 		template<typename Hnd, typename Op>
-		concept has_required_definitions = requires
-		{
-			typename Hnd::template io_buffer_sequence<Op>;
-			typename Hnd::template io_buffer<Op>;
-
-			typename Hnd::template io_request<Op>;
-			typename Hnd::template io_result<Op>;
-
-			typename Hnd::timeout_type;
-			typename Hnd::extent_type;
-			typename Hnd::size_type;
-		};
+		concept has_io_buffer_sequence = requires { typename Hnd::template io_buffer_sequence<Op>; };
 		template<typename Hnd, typename Op>
-		concept decay_required_definitions = has_required_definitions<std::decay_t<Hnd>, Op>;
+		concept has_io_buffer = requires { typename Hnd::template io_buffer<Op>; };
+
+		template<typename Hnd, typename Op>
+		concept has_io_request = requires { typename Hnd::template io_request<Op>; };
+		template<typename Hnd, typename Op>
+		concept has_io_result = requires { typename Hnd::template io_result<Op>; };
+
+		template<typename Hnd>
+		concept has_timeout = requires { typename Hnd::timeout_type; };
+
+		template<typename Hnd, typename Op>
+		concept has_io_definitions = _extent::has_extent<Hnd> && has_timeout<Hnd> && has_io_buffer_sequence<Hnd, Op> && has_io_buffer<Hnd, Op> && has_io_request<Hnd, Op> && has_io_result<Hnd, Op>;
+		template<typename Hnd, typename Op>
+		concept decay_has_io_definitions = has_io_definitions<std::decay_t<Hnd>, Op>;
 
 		template<typename T, typename Hnd>
 		concept buffer_io_result = instance_of<std::decay_t<T>, result> && std::constructible_from<typename T::template rebind_value<handle_size_t<std::decay_t<Hnd>>>, std::decay_t<T>>;
@@ -125,31 +177,31 @@ namespace rod
 		template<typename Op>
 		class adaptor<Op>::type
 		{
-			template<typename Hnd>
+			template<typename Hnd> requires has_io_request<std::decay_t<Hnd>, Op>
 			using request_t = io_request_t<std::decay_t<Hnd>, Op>;
-			template<typename Hnd>
+			template<typename Hnd> requires has_io_result<std::decay_t<Hnd>, Op>
 			using result_t = io_result_t<std::decay_t<Hnd>, Op>;
-			template<typename Hnd>
+			template<typename Hnd> requires has_io_buffer<std::decay_t<Hnd>, Op>
 			using buffer_t = io_buffer_t<std::decay_t<Hnd>, Op>;
 
-			template<typename Hnd>
+			template<typename Hnd> requires has_timeout<std::decay_t<Hnd>>
 			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
-			template<typename Hnd>
+			template<typename Hnd> requires _extent::decay_has_extent<Hnd>
 			using extent_t = handle_extent_t<std::decay_t<Hnd>>;
 
 		public:
-			template<decay_required_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
 			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
-			template<decay_required_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires(!tag_invocable<Op, Hnd, Req> && tag_invocable<Op, Hnd, Req, timeout_t<Hnd>>)
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires(!tag_invocable<Op, Hnd, Req> && tag_invocable<Op, Hnd, Req, timeout_t<Hnd>>)
 			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), timeout_t<Hnd>()); }
-			template<decay_required_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires tag_invocable<Op, Hnd, Req>
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires tag_invocable<Op, Hnd, Req>
 			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req)); }
 		};
 	}
 
 	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op. */
 	template<typename Hnd, typename Op>
-	concept io_handle = handle<Hnd> && _io_operation::has_required_definitions<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>>;
+	concept io_handle = _io_operation::has_io_definitions<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>>;
 	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op with timeout argument \a To. */
 	template<typename Hnd, typename Op, typename To = handle_timeout_t<Hnd>>
 	concept io_handle_with_timeout = io_handle<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, To>;
@@ -316,6 +368,57 @@ namespace rod
 
 	/* TODO: Implement async IO operations. */
 
+	namespace _extent
+	{
+		template<typename Hnd>
+		concept has_offset = has_extent<Hnd> && requires { typename Hnd::offset_type; };
+		template<typename Hnd>
+		concept decay_has_offset = has_offset<std::decay_t<Hnd>>;
+
+		/** Enumeration defining seek direction for the `seekpos` CBO. */
+		enum class seek_dir
+		{
+			/** Seek from the starting position. */
+			beg = SEEK_SET,
+			/** Seek from the current position. */
+			cur = SEEK_CUR,
+			/** Seek from the end position. */
+			end = SEEK_END,
+		};
+
+		struct getpos_t
+		{
+			template<decay_has_offset Hnd> requires tag_invocable<getpos_t, const Hnd &>
+			[[nodiscard]] extent_result<std::decay_t<Hnd>> auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
+		};
+		struct setpos_t
+		{
+			template<decay_has_offset Hnd, typename Ext = handle_extent_t<std::decay_t<Hnd>>> requires tag_invocable<setpos_t, Hnd, Ext>
+			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Ext pos) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), pos); }
+		};
+		struct seekpos_t
+		{
+			template<decay_has_offset Hnd, typename Off = handle_offset_t<std::decay_t<Hnd>>> requires tag_invocable<seekpos_t, Hnd, Off, seek_dir>
+			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Off off, seek_dir dir) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), off, dir); }
+		};
+	}
+
+	using _extent::seek_dir;
+	using _extent::getpos_t;
+	using _extent::setpos_t;
+	using _extent::seekpos_t;
+
+	/* TODO: Document usage */
+	inline constexpr auto getpos = getpos_t{};
+	/* TODO: Document usage */
+	inline constexpr auto setpos = setpos_t{};
+	/* TODO: Document usage */
+	inline constexpr auto seekpos = seekpos_t{};
+
+	/** Concept used to define a sized handle that supports seeking IO operations. */
+	template<typename Hnd>
+	concept seekable_handle = sized_handle<Hnd> && _extent::has_offset<Hnd> && _detail::callable<getpos_t, const Hnd &> && _detail::callable<setpos_t, Hnd &, handle_extent_t<Hnd>> && _detail::callable<seekpos_t, Hnd &, handle_offset_t<Hnd>, seek_dir>;
+
 	namespace _handle
 	{
 		template<typename Child, typename Base, template <typename, typename> typename BaseAdaptor>
@@ -380,58 +483,73 @@ namespace rod
 		public:
 			template<decays_to_same<sync_t> Op, decays_to_same_or_derived<Child> Hnd> requires(has_sync<Hnd>())
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, sync_mode mode) noexcept { return dispatch_sync(std::forward<Hnd>(hnd), mode); }
-			template<decays_to_same<sync_t> Op, decays_to_same_or_derived<Child> Hnd> requires(!has_sync<Hnd>())
+			template<decays_to_same<sync_t> Op, decays_to_same_or_derived<Child> Hnd> requires(!has_sync<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, sync_mode>)
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, sync_mode mode) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), mode); }
 
 			template<decays_to_same<sync_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req> requires(has_sync<Hnd>())
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept { return dispatch_sync_at(std::forward<Hnd>(hnd), std::forward<Req>(req)); }
-			template<decays_to_same<sync_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req> requires(!has_sync<Hnd>())
+			template<decays_to_same<sync_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req> requires(!has_sync<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req)); }
 
 		private:
 			static constexpr int do_endpos = 1;
-			static constexpr int do_getpos = 1;
-			static constexpr int do_setpos = 1;
 			static constexpr int do_truncate = 1;
 
 			template<typename Hnd>
 			static constexpr bool has_endpos() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_endpos)); }; }
 			template<typename Hnd>
-			static constexpr bool has_getpos() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_getpos)); }; }
-			template<typename Hnd>
-			static constexpr bool has_setpos() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_setpos)); }; }
-			template<typename Hnd>
 			static constexpr bool has_truncate() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_truncate)); }; }
 
 			template<typename Hnd>
 			constexpr static auto dispatch_endpos(Hnd &&hnd) noexcept -> decltype(std::forward<Hnd>(hnd).do_endpos()) { return std::forward<Hnd>(hnd).do_endpos(); }
-			template<typename Hnd>
-			constexpr static auto dispatch_getpos(Hnd &&hnd) noexcept -> decltype(std::forward<Hnd>(hnd).do_getpos()) { return std::forward<Hnd>(hnd).do_getpos(); }
-			template<typename Hnd, typename Ext>
-			constexpr static auto dispatch_setpos(Hnd &&hnd, Ext &&newp) noexcept -> decltype(std::forward<Hnd>(hnd).do_setpos(std::forward<Ext>(newp))) { return std::forward<Hnd>(hnd).do_setpos(std::forward<Ext>(newp)); }
 			template<typename Hnd, typename Ext>
 			constexpr static auto dispatch_truncate(Hnd &&hnd, Ext &&endp) noexcept -> decltype(std::forward<Hnd>(hnd).do_truncate(std::forward<Ext>(endp))) { return std::forward<Hnd>(hnd).do_truncate(std::forward<Ext>(endp)); }
 
 		public:
 			template<decays_to_same<endpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(has_endpos<Hnd>())
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd) noexcept { return dispatch_endpos(std::forward<Hnd>(hnd)); }
-			template<decays_to_same<endpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(!has_endpos<Hnd>())
+			template<decays_to_same<endpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(!has_endpos<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>>)
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base()); }
-
-			template<decays_to_same<getpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(has_getpos<Hnd>())
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd) noexcept { return dispatch_getpos(std::forward<Hnd>(hnd)); }
-			template<decays_to_same<getpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(!has_getpos<Hnd>())
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base()); }
-
-			template<decays_to_same<setpos_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(has_setpos<Hnd>())
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&newp) noexcept { return dispatch_setpos(std::forward<Hnd>(hnd), std::forward<Ext>(newp)); }
-			template<decays_to_same<setpos_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(!has_setpos<Hnd>())
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&newp) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Ext>(newp)); }
 
 			template<decays_to_same<truncate_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(has_truncate<Hnd>())
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&endp) noexcept { return dispatch_truncate(std::forward<Hnd>(hnd), std::forward<Ext>(endp)); }
-			template<decays_to_same<truncate_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(!has_truncate<Hnd>())
+			template<decays_to_same<truncate_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(!has_truncate<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Ext>)
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&endp) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Ext>(endp)); }
+
+		private:
+			static constexpr int do_getpos = 1;
+			static constexpr int do_setpos = 1;
+			static constexpr int do_seekpos = 1;
+
+			template<typename Hnd>
+			static constexpr bool has_getpos() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_getpos)); }; }
+			template<typename Hnd>
+			static constexpr bool has_setpos() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_setpos)); }; }
+			template<typename Hnd>
+			static constexpr bool has_seekpos() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_seekpos)); }; }
+
+			template<typename Hnd>
+			constexpr static auto dispatch_getpos(Hnd &&hnd) noexcept -> decltype(std::forward<Hnd>(hnd).do_getpos()) { return std::forward<Hnd>(hnd).do_getpos(); }
+			template<typename Hnd>
+			constexpr static auto dispatch_setpos(Hnd &&hnd, auto pos) noexcept -> decltype(std::forward<Hnd>(hnd).do_setpos(pos)) { return std::forward<Hnd>(hnd).do_setpos(pos); }
+			template<typename Hnd>
+			constexpr static auto dispatch_seekpos(Hnd &&hnd, auto off, auto dir) noexcept -> decltype(std::forward<Hnd>(hnd).do_seekpos(off, dir)) { return std::forward<Hnd>(hnd).do_seekpos(off, dir); }
+
+		public:
+			template<decays_to_same<getpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(has_getpos<Hnd>())
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd) noexcept { return dispatch_getpos(std::forward<Hnd>(hnd)); }
+			template<decays_to_same<getpos_t> Op, decays_to_same_or_derived<Child> Hnd> requires(!has_getpos<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base()); }
+
+			template<decays_to_same<setpos_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(has_setpos<Hnd>())
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&pos) noexcept { return dispatch_setpos(std::forward<Hnd>(hnd), std::forward<Ext>(pos)); }
+			template<decays_to_same<setpos_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_extent_t<std::decay_t<Hnd>>> Ext> requires(!has_setpos<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Ext>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&pos) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Ext>(pos)); }
+
+			template<decays_to_same<seekpos_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_offset_t<std::decay_t<Hnd>>> Off> requires(has_seekpos<Hnd>())
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Off &&off, seek_dir dir) noexcept { return dispatch_seekpos(std::forward<Hnd>(hnd), std::forward<Off>(off), dir); }
+			template<decays_to_same<seekpos_t> Op, decays_to_same_or_derived<Child> Hnd, std::convertible_to<handle_offset_t<std::decay_t<Hnd>>> Off> requires(!has_seekpos<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Off, seek_dir>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Off &&off, seek_dir dir) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Off>(off), dir); }
 
 		private:
 			static constexpr int do_list_extents = 1;
@@ -449,9 +567,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_list_extents(std::forward<Req>(req));
 			}
 			template<decays_to_same<list_extents_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_list_extents<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_list_extents<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
 			}
 
 			template<decays_to_same<clone_extents_to_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
@@ -460,9 +578,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_clone_extents_to(std::forward<Req>(req));
 			}
 			template<decays_to_same<clone_extents_to_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_clone_extents_to<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_clone_extents_to<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
 			}
 
 			template<decays_to_same<list_extents_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
@@ -471,9 +589,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_list_extents(std::forward<Req>(req), to);
 			}
 			template<decays_to_same<list_extents_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_list_extents<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_list_extents<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
 			}
 
 			template<decays_to_same<clone_extents_to_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
@@ -482,9 +600,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_clone_extents_to(std::forward<Req>(req), to);
 			}
 			template<decays_to_same<clone_extents_to_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_clone_extents_to<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_clone_extents_to<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
 			}
 
 		private:
@@ -503,9 +621,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_read_some(std::forward<Req>(req));
 			}
 			template<decays_to_same<read_some_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_read_some<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_read_some<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
 			}
 
 			template<decays_to_same<read_some_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
@@ -514,9 +632,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_read_some(std::forward<Req>(req), to);
 			}
 			template<decays_to_same<read_some_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_read_some<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_read_some<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
 			}
 
 			template<decays_to_same<read_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
@@ -525,9 +643,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_read_some_at(std::forward<Req>(req));
 			}
 			template<decays_to_same<read_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_read_some_at<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_read_some_at<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
 			}
 
 			template<decays_to_same<read_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
@@ -536,9 +654,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_read_some_at(std::forward<Req>(req), to);
 			}
 			template<decays_to_same<read_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_read_some_at<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_read_some_at<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
 			}
 
 		private:
@@ -557,9 +675,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_write_some(std::forward<Req>(req));
 			}
 			template<decays_to_same<write_some_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_write_some<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_write_some<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
 			}
 
 			template<decays_to_same<write_some_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
@@ -568,9 +686,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_write_some(std::forward<Req>(req), to);
 			}
 			template<decays_to_same<write_some_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_write_some<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_write_some<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
 			}
 
 			template<decays_to_same<write_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
@@ -579,9 +697,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_write_some_at(std::forward<Req>(req));
 			}
 			template<decays_to_same<write_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_write_some_at<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept requires(!has_write_some_at<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req));
 			}
 
 			template<decays_to_same<write_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
@@ -590,9 +708,9 @@ namespace rod
 				return std::forward<Hnd>(hnd).do_write_some_at(std::forward<Req>(req), to);
 			}
 			template<decays_to_same<write_some_at_t> Op, decays_to_same_or_derived<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_write_some_at<Hnd>() && tag_invocable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_write_some_at<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
-				return tag_invoke(Op{}, get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
+				return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req), to);
 			}
 
 			/* TODO: Implement async IO operations. */

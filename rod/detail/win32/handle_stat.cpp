@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-29.
+ * Created by switchblade on 2023-08-29.
  */
 
 #include "../handle_stat.hpp"

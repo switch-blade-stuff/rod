@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-06-10.
+ * Created by switchblade on 2023-06-10.
  */
 
 #pragma once
@@ -25,8 +25,8 @@ namespace rod
 
 		template<typename>
 		struct operation { class type; };
-
-		struct env { thread_pool *_pool; };
+		template<typename = void>
+		struct env { class type; };
 
 		struct operation_base
 		{
@@ -81,17 +81,20 @@ namespace rod
 			template<typename... Args> requires(!std::same_as<data_t, _detail::empty_variant<>>)
 			constexpr void start_bulk(Args &&...args) noexcept
 			{
-				const auto emplace = [&]() { data_base::value().template emplace<_detail::decayed_tuple<Args...>>(std::forward<Args>(args)...); };
+				const auto emplace_and_start = [&]()
+				{
+					data_base::value().template emplace<_detail::decayed_tuple<Args...>>(std::forward<Args>(args)...);
+
+					if (shape == Shape{0})
+						apply([&](auto &...vs) { set_value(std::move(rcv_base::value()), std::move(vs)...); });
+					else
+						start();
+				};
 
 				if constexpr (ThrowTag::value)
-					try { emplace(); } catch (...) { set_error(std::move(rcv_base::value()), std::current_exception()); }
+					try { emplace_and_start(); } catch (...) { set_error(std::move(rcv_base::value()), std::current_exception()); }
 				else
-					emplace();
-
-				if (shape == Shape{0})
-					apply([&](auto &...vs) { set_value(std::move(rcv_base::value()), std::move(vs)...); });
-				else
-					start();
+					emplace_and_start();
 			}
 			template<typename... Args> requires std::same_as<data_t, _detail::empty_variant<>>
 			constexpr void start_bulk(Args &&...) noexcept
@@ -298,6 +301,67 @@ namespace rod
 			in_place_stop_source _stop_src;
 		};
 
+		class scheduler
+		{
+			template<typename Snd, typename Shape, typename Fn>
+			using bulk_sender_t = typename bulk_sender<std::decay_t<Snd>, Shape, std::decay_t<Fn>>::type;
+
+		public:
+			constexpr explicit scheduler(thread_pool *pool) noexcept : _pool(pool) {}
+
+			[[nodiscard]] friend constexpr bool operator==(const scheduler &, const scheduler &) noexcept = default;
+
+			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
+			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
+
+			template<decays_to_same<scheduler> T>
+			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
+			template<decays_to_same<scheduler> T, typename Snd, typename Shape, typename Fn>
+			friend constexpr auto tag_invoke(bulk_t, T &&s, Snd &&snd, Shape shape, Fn &&fn) noexcept { return s.schedule_bulk(std::forward<Snd>(snd), shape, std::forward<Fn>(fn)); }
+
+		private:
+			inline auto schedule() noexcept;
+			template<typename Snd, typename Shape, typename Fn>
+			inline auto schedule_bulk(Snd &&snd, Shape shape, Fn &&fn) noexcept;
+
+			thread_pool *_pool;
+		};
+
+		constexpr scheduler thread_pool::get_scheduler() noexcept { return scheduler(this); }
+
+		template<>
+		class env<>::type
+		{
+		public:
+			constexpr explicit type(thread_pool *pool) noexcept : _pool(pool) {}
+
+			friend constexpr in_place_stop_token tag_invoke(get_stop_token_t, const type &e) noexcept { return e._pool->get_stop_token(); }
+			template<typename T>
+			friend constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const type &e) noexcept { return e._pool->get_scheduler(); }
+
+		private:
+			thread_pool *_pool;
+		};
+		template<typename Env>
+		class env<Env>::type : empty_base<Env>
+		{
+			using env_base = empty_base<Env>;
+
+		public:
+			template<typename Env2>
+			constexpr explicit type(thread_pool *pool, Env2 &&env) noexcept(std::is_nothrow_constructible_v<Env, Env2>) : env_base(std::forward<Env2>(env)), _pool(pool) {}
+
+			template<is_forwarding_query Q, decays_to_same<type> E, typename... Args> requires _detail::callable<Q, Env, Args...>
+			friend constexpr decltype(auto) tag_invoke(Q, E &&e, Args &&...args) noexcept(_detail::nothrow_callable<Q, Env, Args...>) { return Q{}(std::forward<E>(e).env_base::value(), std::forward<Args>(args)...); }
+
+			friend constexpr in_place_stop_token tag_invoke(get_stop_token_t, const type &e) noexcept { return e._pool->get_stop_token(); }
+			template<typename T>
+			friend constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const type &e) noexcept { return e._pool->get_scheduler(); }
+
+		private:
+			thread_pool *_pool;
+		};
+
 		class sender
 		{
 		public:
@@ -311,12 +375,12 @@ namespace rod
 		public:
 			constexpr explicit sender(thread_pool *pool) noexcept : _pool(pool) {}
 
-			friend constexpr env tag_invoke(get_env_t, const sender &s) noexcept { return {s._pool}; }
+			friend constexpr typename env<>::type tag_invoke(get_env_t, const sender &s) noexcept { return typename env<>::type(s._pool); }
 			template<decays_to_same<sender> T, typename E>
 			friend constexpr signs_t tag_invoke(get_completion_signatures_t, T &&, E) { return {}; }
 
 			template<decays_to_same<sender> T, receiver_of<signs_t> Rcv>
-			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_decay_copyable<Rcv>::value) { return operation_t<Rcv>{s._pool, std::move(rcv)}; }
+			friend constexpr operation_t<Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(_detail::nothrow_decay_copyable<Rcv>::value) { return operation_t<Rcv>(s._pool, std::move(rcv)); }
 
 		private:
 			thread_pool *_pool;
@@ -353,45 +417,19 @@ namespace rod
 			constexpr explicit type(thread_pool *pool, Snd2 &&snd, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Snd, Snd2> && std::is_nothrow_constructible_v<Fn, Fn2>)
 					: snd_base(std::forward<Snd2>(snd)), func_base(std::forward<Fn2>(fn)), _pool(pool), _shape(shape) {}
 
-			friend constexpr env_of_t<const Snd &> tag_invoke(get_env_t, const type &s) noexcept { return get_env(s.snd_base::value()); }
+			friend constexpr typename env<env_of_t<Snd>>::type tag_invoke(get_env_t, const type &s) noexcept { return typename env<env_of_t<Snd>>::type(s._pool, get_env(s.snd_base::value())); }
 			template<decays_to_same<type> T, typename Env>
 			friend constexpr signs_t<T, Env> tag_invoke(get_completion_signatures_t, T &&, Env &&) noexcept { return {}; }
 
-			template<decays_to_same<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<const Snd &>>>
+			template<decays_to_same<type> T, rod::receiver Rcv> requires receiver_of<Rcv, signs_t<T, env_of_t<Rcv>>>
 			friend constexpr operation_t<T, Rcv> tag_invoke(connect_t, T &&s, Rcv rcv) noexcept(std::is_nothrow_constructible_v<operation_t<T, Rcv>, thread_pool *, copy_cvref_t<T, Snd>, Rcv, Shape, copy_cvref_t<T, Fn>>)
 			{
-				return operation_t<T, Rcv>{s._pool,  std::forward<T>(s).snd_base::value(), std::move(rcv), s._shape, std::forward<T>(s).func_base::value()};
+				return operation_t<T, Rcv>(s._pool,  std::forward<T>(s).snd_base::value(), std::move(rcv), s._shape, std::forward<T>(s).func_base::value());
 			}
 
 		private:
 			thread_pool *_pool;
 			Shape _shape;
-		};
-
-		class scheduler
-		{
-			template<typename Snd, typename Shape, typename Fn>
-			using bulk_sender_t = typename bulk_sender<std::decay_t<Snd>, Shape, std::decay_t<Fn>>::type;
-
-		public:
-			constexpr explicit scheduler(thread_pool *pool) noexcept : _pool(pool) {}
-
-			[[nodiscard]] friend constexpr bool operator==(const scheduler &, const scheduler &) noexcept = default;
-
-			friend constexpr bool tag_invoke(execute_may_block_caller_t, const scheduler &) noexcept { return false; }
-			friend constexpr auto tag_invoke(get_forward_progress_guarantee_t, const scheduler &) noexcept { return forward_progress_guarantee::parallel; }
-
-			template<decays_to_same<scheduler> T>
-			friend constexpr auto tag_invoke(schedule_t, T &&s) noexcept { return s.schedule(); }
-			template<decays_to_same<scheduler> T, typename Snd, typename Shape, typename Fn>
-			friend constexpr auto tag_invoke(bulk_t, T &&s, Snd &&snd, Shape shape, Fn &&fn) noexcept { return s.schedule_bulk(std::forward<Snd>(snd), shape, std::forward<Fn>(fn)); }
-
-		private:
-			auto schedule() noexcept { return sender{_pool}; }
-			template<typename Snd, typename Shape, typename Fn>
-			auto schedule_bulk(Snd &&snd, Shape shape, Fn &&fn) noexcept { return bulk_sender_t<Snd, Shape, Fn>{_pool, std::forward<Snd>(snd), shape, std::forward<Fn>(fn)}; }
-
-			thread_pool *_pool;
 		};
 
 		template<typename Rcv>
@@ -402,11 +440,9 @@ namespace rod
 		template<typename Snd, typename Rcv, typename Shape, typename Fn, typename ThrowTag>
 		constexpr std::size_t bulk_shared_state<Snd, Rcv, Shape, Fn, ThrowTag>::required_threads() const noexcept { return std::min(shape, static_cast<Shape>(pool->size())); }
 
-		constexpr in_place_stop_token tag_invoke(get_stop_token_t, const env &s) noexcept { return s._pool->get_stop_token(); }
-		template<typename T>
-		constexpr scheduler tag_invoke(get_completion_scheduler_t<T>, const env &e) noexcept { return e._pool->get_scheduler(); }
-
-		constexpr scheduler thread_pool::get_scheduler() noexcept { return scheduler{this}; }
+		auto scheduler::schedule() noexcept { return sender(_pool); }
+		template<typename Snd, typename Shape, typename Fn>
+		auto scheduler::schedule_bulk(Snd &&snd, Shape shape, Fn &&fn) noexcept { return bulk_sender_t<Snd, Shape, Fn>(_pool, std::forward<Snd>(snd), shape, std::forward<Fn>(fn)); }
 	}
 
 	using _thread_pool::thread_pool;

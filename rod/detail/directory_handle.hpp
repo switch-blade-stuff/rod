@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-09-01.
+ * Created by switchblade on 2023-09-01.
  */
 
 #pragma once
@@ -63,7 +63,7 @@ namespace rod
 
 			/** Returns the data of the directory entry buffer as a `path_view`. */
 			[[nodiscard]] constexpr fs::path_view path() const noexcept { return static_cast<fs::path_view>(*this); }
-			/** Converts directory entry buffer to a `path_view`. Equivalent to `path()`. */
+			/** Converts directory entry buffer to `path_view`. Equivalent to `path()`. */
 			[[nodiscard]] constexpr explicit operator fs::path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, fs::path_view::native_format}; }
 
 			/** Returns a pair of directory entry stats and a mask of initialized fields. */
@@ -81,7 +81,7 @@ namespace rod
 		{
 			friend class directory_handle;
 
-			using buff_type = _detail::malloc_ptr<typename fs::path::value_type[]>;
+			using buff_type = malloc_ptr<typename fs::path::value_type[]>;
 			using data_type = std::span<io_buffer<read_some_t>>;
 
 		public:
@@ -296,7 +296,7 @@ namespace rod
 			explicit directory_handle(fs::path_handle &&hnd, fs::file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
 
 			/** Returns the flags of the directory handle. */
-			[[nodiscard]] fs::file_flags flags() const noexcept { return fs::file_flags(native_handle().flags); }
+			[[nodiscard]] constexpr fs::file_flags flags() const noexcept { return fs::file_flags(native_handle().flags); }
 
 			[[nodiscard]] constexpr explicit operator fs::path_handle &() & noexcept { return static_cast<fs::path_handle &>(adp_base::base()); }
 			[[nodiscard]] constexpr operator const fs::path_handle &() const & noexcept { return static_cast<const fs::path_handle &>(adp_base::base()); }
@@ -323,7 +323,7 @@ namespace rod
 					std::atomic_ref(_read_guard).wait(true);
 			}
 
-			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](_path::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
+			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](fs::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
 			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
 			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;

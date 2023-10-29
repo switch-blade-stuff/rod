@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-19.
+ * Created by switchblade on 2023-08-19.
  */
 
 #pragma once
@@ -78,7 +78,9 @@ namespace rod
 		[[nodiscard]] constexpr const_pointer data() const noexcept { return _data; }
 
 		/** Converts the byte buffer to a span of bytes. */
-		[[nodiscard]] constexpr std::span<element_type> as_span() const noexcept { return std::span(_data, _len); }
+		[[nodiscard]] constexpr std::span<element_type> as_span() const noexcept { return *this; }
+		/** @copydoc as_span */
+		[[nodiscard]] constexpr operator std::span<element_type>() const noexcept { return std::span(_data, _len); }
 
 	private:
 		pointer _data;
@@ -100,8 +102,9 @@ namespace rod
 	template<std::ranges::contiguous_range R> requires(!std::is_const_v<std::remove_reference_t<std::ranges::range_reference_t<R>>>)
 	[[nodiscard]] inline byte_buffer as_bytes(R &&data) noexcept(noexcept(rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)))) { return rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)); }
 
+	static_assert(requires (int *ptr) { { rod::as_bytes(ptr, ptr) } noexcept -> std::same_as<byte_buffer>; });
 	static_assert(requires (std::span<int> s) { { rod::as_bytes(s) } noexcept -> std::same_as<byte_buffer>; });
-	static_assert(requires (float *ptr) { { rod::as_bytes(ptr, ptr) } noexcept -> std::same_as<byte_buffer>; });
+	static_assert(requires (std::array<int, 2> s) { { rod::as_bytes(s) } noexcept -> std::same_as<byte_buffer>; });
 
 	/** Trivial contiguous range used as input IO buffer by file and socket handles.
 	 * @note For the purposes of ABI compatibility, `const_byte_buffer` is layout-compatible with `struct iov`. */
@@ -176,7 +179,9 @@ namespace rod
 		[[nodiscard]] constexpr const_pointer data() const noexcept { return _data; }
 
 		/** Converts the byte buffer to a span of bytes. */
-		[[nodiscard]] constexpr std::span<element_type> as_span() const noexcept { return std::span(_data, _len); }
+		[[nodiscard]] constexpr std::span<element_type> as_span() const noexcept { return *this; }
+		/** @copydoc as_span */
+		[[nodiscard]] constexpr operator std::span<element_type>() const noexcept { return std::span(_data, _len); }
 
 	private:
 		pointer _data;
@@ -199,8 +204,9 @@ namespace rod
 	template<std::ranges::contiguous_range R> requires std::is_const_v<std::remove_reference_t<std::ranges::range_reference_t<R>>>
 	[[nodiscard]] inline const_byte_buffer as_bytes(R &&data) noexcept(noexcept(rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)))) { return rod::as_bytes(std::ranges::begin(data), std::ranges::end(data)); }
 
+	static_assert(requires (const int *ptr) { { rod::as_bytes(ptr, ptr) } noexcept -> std::same_as<const_byte_buffer>; });
 	static_assert(requires (std::span<const int> s) { { rod::as_bytes(s) } noexcept -> std::same_as<const_byte_buffer>; });
-	static_assert(requires (const float *ptr) { { rod::as_bytes(ptr, ptr) } noexcept -> std::same_as<const_byte_buffer>; });
+	static_assert(requires (std::array<const int, 2> s) { { rod::as_bytes(s) } noexcept -> std::same_as<const_byte_buffer>; });
 }
 
 template<>

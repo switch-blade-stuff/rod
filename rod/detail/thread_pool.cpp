@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-06-10.
+ * Created by switchblade on 2023-06-10.
  */
 
 #include "thread_pool.hpp"

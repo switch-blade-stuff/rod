@@ -7,6 +7,7 @@
 #include <system_error>
 #include <exception>
 #include <variant>
+#include <memory>
 #include <array>
 
 #include <cstring>
@@ -74,19 +75,25 @@ namespace rod
 		using decayed_ref = std::decay_t<T> &;
 
 		template<typename T, typename... Args>
-		concept callable = requires(T t, Args &&...args) { t(std::forward<Args>(args)...); };
+		concept callable = requires { T{}(std::declval<Args>()...); };
 		template<typename T, typename... Args>
-		concept nothrow_callable = callable<T, Args...> && requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } noexcept; };
+		concept nothrow_callable = callable<T, Args...> && requires { { T{}(std::declval<Args>()...) } noexcept; };
 
 		template<typename R, typename T, typename... Args>
-		concept callable_r = requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } -> std::convertible_to<R>; };
+		concept callable_r = requires { { T{}(std::declval<Args>()...) } -> std::convertible_to<R>; };
 		template<typename R, typename T, typename... Args>
-		concept nothrow_callable_r = callable_r<R, T, Args...> && requires(T t, Args &&...args) { { t(std::forward<Args>(args)...) } noexcept; };
+		concept nothrow_callable_r = callable_r<R, T, Args...> && requires { { T{}(std::declval<Args>()...) } noexcept; };
+
+		template<typename T>
+		using decay_copyable = std::is_constructible<std::decay_t<T>, T>;
+		template<typename... Ts>
+		using all_decay_copyable = std::conjunction<decay_copyable<Ts>...>;
 
 		template<typename T>
 		using nothrow_decay_copyable = std::is_nothrow_constructible<std::decay_t<T>, T>;
 		template<typename... Ts>
 		using all_nothrow_decay_copyable = std::conjunction<nothrow_decay_copyable<Ts>...>;
+
 		template<typename T>
 		concept class_type = decays_to_same<T, T> && std::is_class_v<T>;
 

@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-09.
+ * Created by switchblade on 2023-08-09.
  */
 
 #include "../path_ahandle.hpp"

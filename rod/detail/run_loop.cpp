@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-09-29.
+ * Created by switchblade on 2023-09-29.
  */
 
 #include "run_loop.hpp"

@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-24.
+ * Created by switchblade on 2023-08-24.
  */
 
 #pragma once
@@ -298,11 +298,9 @@ namespace rod
 			typename Hnd::timeout_type;
 			typename Hnd::extent_type;
 			typename Hnd::size_type;
-
-			_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &>;
-			_detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &>;
-			_detail::callable<_handle::unlink_t, Hnd &, const typename Hnd::timeout_type &>;
-		};
+		} && _detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&
+		     _detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&
+		     _detail::callable<_handle::unlink_t, Hnd &, const typename Hnd::timeout_type &>;;
 
 		/** Handle adaptor used to implement filesystem object handles. */
 		template<typename Child, handle Base = basic_handle>

@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-09-15.
+ * Created by switchblade on 2023-09-15.
  */
 
 #include "file_handle.hpp"
@@ -72,6 +72,29 @@ namespace rod::_file
 			::FlushFileBuffers(*hnd);
 
 		return file_handle(*hnd, flags, caching);
+	}
+	result<file_handle> file_handle::do_reopen(const file_handle &other, file_flags flags, file_caching caching) noexcept
+	{
+		/* Try to clone if possible. */
+		if (flags == other.flags() && caching == other.caching())
+			return clone(other);
+		/* NtCreateFile does not support append access without IO buffering. */
+		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append))
+			return std::make_error_code(std::errc::not_supported);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto opts = make_handle_opts(flags, caching) | 0x40 /*FILE_NON_DIRECTORY_FILE*/;
+		auto access = flags_to_access(flags);
+		auto iosb = io_status_block();
+
+		auto hnd = ntapi->reopen_file(other.native_handle(), &iosb, access, share, opts);
+		if (hnd.has_value()) [[likely]]
+			return file_handle(*hnd, flags, caching);
+		else
+			return hnd.error();
 	}
 
 	result<> file_handle::do_link(const path_handle &base, path_view path, bool replace, const fs::file_timeout &to) noexcept
@@ -364,8 +387,8 @@ namespace rod::_file
 
 		try
 		{
-			req.buff.resize(64);
-			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buff.data(), DWORD(req.buff.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &bytes, &ol) == 0)
+			req.buffs.resize(64);
+			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buffs.data(), DWORD(req.buffs.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &bytes, &ol) == 0)
 			{
 				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 				{
@@ -374,13 +397,13 @@ namespace rod::_file
 						return status_error_code(status);
 				}
 				else if (err == ERROR_INSUFFICIENT_BUFFER || err == ERROR_MORE_DATA)
-					req.buff.resize(req.buff.size() * 2);
+					req.buffs.resize(req.buffs.size() * 2);
 				else if (err != ERROR_SUCCESS) [[unlikely]]
 					return dos_error_code(err);
 			}
 
-			req.buff.resize(bytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
-			return req.buff;
+			req.buffs.resize(bytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
+			return req.buffs;
 		}
 		catch (...) { return _detail::current_error(); }
 	}

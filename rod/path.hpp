@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-07-20.
+ * Created by switchblade on 2023-07-20.
  */
 
 #pragma once

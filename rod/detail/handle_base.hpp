@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-08-15.
+ * Created by switchblade on 2023-08-15.
  */
 
 #pragma once
@@ -18,7 +18,9 @@ namespace rod
 		struct handle_timeout_impl<Hnd> { using type = typename Hnd::timeout_type; };
 
 		template<typename T>
-		struct select_extent_type { using type = extent_type; };
+		struct select_extent_type { using type = std::make_unsigned_t<extent_type>; };
+		template<typename T>
+		struct select_offset_type { using type = std::make_signed_t<extent_type>; };
 		template<typename T>
 		struct select_size_type { using type = size_type; };
 
@@ -26,6 +28,11 @@ namespace rod
 		struct handle_extent_impl;
 		template<typename Hnd> requires(requires { typename Hnd::extent_type; })
 		struct handle_extent_impl<Hnd> { using type = typename Hnd::extent_type; };
+
+		template<typename Hnd>
+		struct handle_offset_impl;
+		template<typename Hnd> requires(requires { typename Hnd::offset_type; })
+		struct handle_offset_impl<Hnd> { using type = typename Hnd::offset_type; };
 
 		template<typename Hnd>
 		struct handle_size_impl;
@@ -46,6 +53,13 @@ namespace rod
 	/** Alias for `typename handle_extent&lt;Hnd&gt;::type` */
 	template<typename Hnd>
 	using handle_extent_t = typename handle_extent<Hnd>::type;
+
+	/** Type trait used to obtain the offset type of handle \a Hnd. */
+	template<typename Hnd>
+	struct handle_offset : _handle::handle_offset_impl<Hnd> {};
+	/** Alias for `typename handle_offset&lt;Hnd&gt;::type` */
+	template<typename Hnd>
+	using handle_offset_t = typename handle_offset<Hnd>::type;
 
 	/** Type trait used to obtain the size type of handle \a Hnd. */
 	template<typename Hnd>
@@ -190,58 +204,6 @@ namespace rod
 	/* TODO: Document usage */
 	inline constexpr auto to_native_path = to_native_path_t{};
 
-	namespace _extent
-	{
-		template<typename Res, typename Hnd>
-		concept extent_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<handle_extent_t<Hnd>>, Res>;
-
-		struct endpos_t
-		{
-			template<typename Hnd> requires tag_invocable<endpos_t, const Hnd &>
-			[[nodiscard]] extent_result<Hnd> auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
-			template<typename Hnd> requires(!tag_invocable<endpos_t, const Hnd &>)
-			[[nodiscard]] result<handle_extent_t<std::decay_t<Hnd>>> operator()(const Hnd &hnd) const noexcept
-			{
-				stat st;
-				if (auto res = get_stat(st, hnd, stat::query::size); res.has_error()) [[unlikely]]
-					return res.error();
-				else if ((*res & stat::query::size) != stat::query::size) [[unlikely]]
-					return std::make_error_code(std::errc::not_supported);
-				else
-					return handle_extent_t<Hnd>(st.size);
-			}
-		};
-		struct getpos_t
-		{
-			template<typename Hnd> requires tag_invocable<getpos_t, const Hnd &>
-			[[nodiscard]] extent_result<Hnd> auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
-		};
-		struct setpos_t
-		{
-			template<typename Hnd, typename Ext = handle_extent_t<std::decay_t<Hnd>>> requires tag_invocable<setpos_t, Hnd, Ext>
-			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Ext newp) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), newp); }
-		};
-		struct truncate_t
-		{
-			template<typename Hnd, typename Ext = handle_extent_t<std::decay_t<Hnd>>> requires tag_invocable<truncate_t, Hnd, Ext>
-			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Ext endp) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), endp); }
-		};
-	}
-
-	using _extent::endpos_t;
-	using _extent::getpos_t;
-	using _extent::setpos_t;
-	using _extent::truncate_t;
-
-	/* TODO: Document usage */
-	inline constexpr auto endpos = endpos_t{};
-	/* TODO: Document usage */
-	inline constexpr auto getpos = getpos_t{};
-	/* TODO: Document usage */
-	inline constexpr auto setpos = setpos_t{};
-	/* TODO: Document usage */
-	inline constexpr auto truncate = truncate_t{};
-
 	namespace _handle
 	{
 		/** Enumeration used to control behavior of handle open functions. */
@@ -280,10 +242,10 @@ namespace rod
 				native_handle_type() noexcept : value(-1) {}
 #endif
 
-				native_handle_type(const native_handle_type &) noexcept = default;
-				native_handle_type &operator=(const native_handle_type &) noexcept = default;
+				constexpr native_handle_type(const native_handle_type &) noexcept = default;
+				constexpr native_handle_type &operator=(const native_handle_type &) noexcept = default;
 
-				native_handle_type(native_handle_type &&other) noexcept { swap(other); }
+				native_handle_type(native_handle_type &&other) noexcept : native_handle_type() { swap(other); }
 				native_handle_type &operator=(native_handle_type &&other) noexcept { return (swap(other), *this); }
 
 				constexpr native_handle_type(value_type value) noexcept : value(value), flags() {}
@@ -382,6 +344,8 @@ namespace rod
 
 		template<typename T> requires(requires { typename T::extent_type; })
 		struct select_extent_type<T> { using type = typename T::extent_type; };
+		template<typename T> requires(requires { typename T::offset_type; })
+		struct select_offset_type<T> { using type = typename T::offset_type; };
 		template<typename T> requires(requires { typename T::size_type; })
 		struct select_size_type<T> { using type = typename T::size_type; };
 
@@ -394,8 +358,10 @@ namespace rod
 
 		public:
 			using native_handle_type = typename Base::native_handle_type;
-			/** Integer type used for handle offsets. */
+			/** Integer type used for absolute handle offsets. */
 			using extent_type = typename select_extent_type<Base>::type;
+			/** Integer type used for relative handle offsets. */
+			using offset_type = typename select_offset_type<Base>::type;
 			/** Integer type used for handle buffers. */
 			using size_type = typename select_size_type<Base>::type;
 
@@ -419,7 +385,7 @@ namespace rod
 			/** Checks if the handle is open. */
 			[[nodiscard]] bool is_open() const noexcept { return _base.is_open(); }
 			/** Returns the underlying native handle. */
-			[[nodiscard]] native_handle_type native_handle() const noexcept { return _base.native_handle(); }
+			[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return _base.native_handle(); }
 
 			/** Releases the underlying native handle. */
 			native_handle_type release() noexcept { return _base.release(); }
@@ -543,16 +509,12 @@ namespace rod
 
 		{ mut_hnd.release() } -> std::convertible_to<typename Hnd::native_handle_type>;
 		{ mut_hnd.release(std::declval<typename Hnd::native_handle_type>()) } -> std::convertible_to<typename Hnd::native_handle_type>;
-
-		_detail::callable<close_t, Hnd &>;
-		_detail::callable<clone_t, const Hnd &>;
-
-		_detail::callable<to_object_path_t, const Hnd &>;
-		_detail::callable<to_native_path_t, const Hnd &, native_path_format>;
-
-		_detail::callable<get_stat_t, stat &, const Hnd &, stat::query>;
-		_detail::callable<set_stat_t, const stat &, Hnd &, stat::query>;
-	};
+	} && _detail::callable<close_t, Hnd &> &&
+		 _detail::callable<clone_t, const Hnd &> &&
+		 _detail::callable<to_object_path_t, const Hnd &> &&
+		 _detail::callable<to_native_path_t, const Hnd &, native_path_format> &&
+		 _detail::callable<get_stat_t, stat &, const Hnd &, stat::query> &&
+		 _detail::callable<set_stat_t, const stat &, Hnd &, stat::query>;
 
 	/** Handle adaptor used to implement basic handle functionality. */
 	template<typename Child, handle Base = _handle::basic_handle>
@@ -569,6 +531,7 @@ namespace rod
 			using adp_base::adp_base;
 		};
 
+		static_assert(std::is_base_of_v<basic_handle, dummy_handle>);
 		static_assert(handle<dummy_handle>, "Child of `hande_adaptor` must satisfy `handle`");
 		static_assert(handle<basic_handle>, "`basic_handle` must satisfy `handle`");
 	}

@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-07-04.
+ * Created by switchblade on 2023-07-04.
  */
 
 #pragma once
@@ -709,14 +709,14 @@ namespace rod::_win32
 		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
 
 		template<typename F>
-		ntstatus query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const fs::file_timeout &to, F &&f) const noexcept
+		result<bool> query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const fs::file_timeout &to, F &&f) const noexcept
 		{
 			auto iosb = io_status_block();
 			auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), ULONG(buff.size()), FileIdFullDirectoryInformation, false, filter, reset);
 			if (status == STATUS_PENDING)
 				status = wait_io(handle, &iosb, to);
-			if (is_status_failure(status))
-				return status;
+			if (is_status_failure(status)) [[unlikely]]
+				return {in_place_error, status_error_code(status)};
 
 			bool eof = false;
 			for (auto pos = buff.data(); !eof;)
@@ -743,13 +743,12 @@ namespace rod::_win32
 				st.is_compressed = full_info->attributes & FILE_ATTRIBUTE_COMPRESSED;
 				st.is_reparse_point = full_info->attributes & FILE_ATTRIBUTE_REPARSE_POINT;
 
-				if (!f(name, st))
+				if (auto res = f(name, st); res.has_error()) [[unlikely]]
+					return {in_place_error, std::move(res.error())};
+				else if (!(*res))
 					break;
 			}
-			if (eof)
-				return 0x80000006 /*STATUS_NO_MORE_FILES*/;
-			else
-				return 0;
+			return {in_place_value, eof};
 		}
 
 		ntstatus link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept;

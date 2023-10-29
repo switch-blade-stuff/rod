@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-07-04.
+ * Created by switchblade on 2023-07-04.
  */
 
 #include "ntapi.hpp"
@@ -349,11 +349,14 @@ namespace rod::_win32
 
 	result<void *> ntapi::reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to) const noexcept
 	{
-		/* Hack to re-open a file by using root handle empty path. */
 		auto attr = object_attributes();
 		auto path = unicode_string();
+
+		/* Hack to re-open a file by using root handle empty path. */
+		attr.length = sizeof(object_attributes);
 		attr.root_dir = handle;
 		attr.name = &path;
+
 		return open_file(attr, iosb, access, share, opts, to);
 	}
 	result<void *> ntapi::open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to) const noexcept

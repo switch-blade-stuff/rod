@@ -6,7 +6,7 @@
 
 #include <tuple>
 
-#include "../async_base.hpp"
+#include "../queries/scheduler.hpp"
 
 namespace rod
 {

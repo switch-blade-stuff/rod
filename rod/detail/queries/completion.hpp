@@ -44,11 +44,6 @@ namespace rod
 
 	namespace _detail
 	{
-		template<typename S, typename C>
-		concept has_completion_scheduler = callable<get_completion_scheduler_t<C>, env_of_t<S>>;
-		template<typename T, typename C, typename S, typename... Ts>
-		concept tag_invocable_with_completion_scheduler = has_completion_scheduler<S, C> && tag_invocable<T, std::invoke_result_t<get_completion_scheduler_t<C>, env_of_t<S>>, Ts...>;
-
 		template<typename>
 		struct sender_of_helper;
 		template<typename R, typename... Ts>

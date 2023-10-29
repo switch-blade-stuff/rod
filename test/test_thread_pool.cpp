@@ -1,5 +1,5 @@
 /*
- * Created by switch_blade on 2023-06-14.
+ * Created by switchblade on 2023-06-14.
  */
 
 #include <rod/scheduling.hpp>
