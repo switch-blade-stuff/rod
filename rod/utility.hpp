@@ -295,6 +295,10 @@ namespace rod
 			std::forward<T0>(a).swap(std::forward<T1>(b));
 	}
 
+	/** Utility function used to preform an implicit-only cast of \a value to type \a T. */
+	template<typename T>
+	inline constexpr T implicit_cast(std::type_identity_t<T> value) noexcept(std::is_nothrow_convertible_v<std::type_identity_t<T>, T>) { return value; }
+
 	namespace _detail
 	{
 		template<typename T>

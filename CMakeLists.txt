@@ -75,6 +75,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/packed_pair.hpp
         rod/array_list.hpp
         rod/delegate.hpp
+        rod/property.hpp
         rod/signal.hpp
         rod/result.hpp
         rod/hash.hpp
