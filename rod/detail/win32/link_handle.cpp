@@ -56,6 +56,28 @@ namespace rod::_link
 		}
 		return link_handle(*hnd, flags);
 	}
+	result<link_handle> link_handle::reopen(const link_handle &other, file_flags flags) noexcept
+	{
+		if (bool(flags & (file_flags::append | file_flags::no_sparse_files | file_flags::non_blocking | file_flags::case_sensitive))) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		/* Try to clone if possible. */
+		if (flags == other.flags())
+			return clone(other);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto opts = flags_to_opts(flags) | 0x4000 | 0x200000; /*FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REPARSE_POINT*/
+		auto access = flags_to_access(flags);
+		auto iosb = io_status_block();
+
+		auto hnd = ntapi->reopen_file(other.native_handle(), &iosb, access, share, opts);
+		if (hnd.has_value()) [[likely]]
+			return link_handle(*hnd, flags);
+		else
+			return hnd.error();
+	}
 
 	result<> link_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{

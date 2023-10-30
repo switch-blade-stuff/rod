@@ -88,7 +88,7 @@ namespace rod::_file
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto opts = make_handle_opts(flags, caching) | 0x40 /*FILE_NON_DIRECTORY_FILE*/;
+		auto opts = make_handle_opts(flags, caching);
 		auto access = flags_to_access(flags);
 		auto iosb = io_status_block();
 

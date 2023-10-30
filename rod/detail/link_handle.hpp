@@ -213,6 +213,20 @@ namespace rod
 			using io_result = result<io_buffer_sequence<Op>>;
 
 		public:
+			/** Re-opens the filesystem link referenced by \a other.
+			 * @note The following values of \a flags are not supported:
+			 * <ul>
+			 * <li>`append`</li>
+			 * <li>`no_sparse_files`</li>
+			 * <li>`non_blocking`</li>
+			 * <li>`case_sensitive`</li>
+			 * </ul>
+			 *
+			 * @param other Handle to the filesystem link to be re-opened.
+			 * @param flags Handle flags to re-open the handle with.
+			 * @return Handle to the filesystem link or a status code on failure. */
+			[[nodiscard]] static ROD_API_PUBLIC result<link_handle> reopen(const link_handle &other, file_flags flags = file_flags::read) noexcept;
+
 			/** Opens or creates a filesystem link.
 			 * @note The following values of \a flags are not supported:
 			 * <ul>

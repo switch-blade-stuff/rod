@@ -210,7 +210,7 @@ namespace rod
 			using io_request = _dir::io_request<Op>;
 
 		public:
-			/** Re-opens the directory handle referenced by \a other.
+			/** Re-opens the directory referenced by \a other.
 			 * @note The following values of \a flags are not supported:
 			 * <ul>
 			 * <li>`unlink_on_close`</li>

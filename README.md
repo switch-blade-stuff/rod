@@ -18,11 +18,12 @@
    * [x] Filesystem handle adaptor
    * [ ] Filesystem utilities
    * [x] `path_handle`
+   * [x] `link_handle`
    * [x] `directory_handle`
    * [ ] Extended attributes
    * [x] Directory iterators
    * [ ] Path discovery
-   * [ ] `file_handle`
+   * [x] `file_handle`
    * [ ] `file_stream`
    * [ ] `mapping_source`
    * [ ] `mapping_handle`
