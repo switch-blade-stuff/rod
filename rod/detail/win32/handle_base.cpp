@@ -2,8 +2,7 @@
  * Created by switchblade on 2023-05-20.
  */
 
-#include "../handle_base.hpp"
-#include "ntapi.hpp"
+#include "handle_base.hpp"
 
 namespace rod::_handle
 {

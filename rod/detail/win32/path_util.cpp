@@ -2,8 +2,7 @@
  * Created by switchblade on 2023-08-31.
  */
 
-#include "../path_util.hpp"
-#include "ntapi.hpp"
+#include "path_util.hpp"
 
 namespace rod::fs
 {

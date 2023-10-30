@@ -4,5 +4,5 @@
 
 #pragma once
 
-#include "../symlink_handle.hpp"
+#include "../link_handle.hpp"
 #include "ntapi.hpp"

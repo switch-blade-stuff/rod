@@ -4,10 +4,9 @@
 
 #pragma once
 
-#include "directory_handle.hpp"
-#include "path_discovery.hpp"
-#include "byte_buffer.hpp"
-#include "async_base.hpp"
+#include "fs_handle_base.hpp"
+#include "io_handle_base.hpp"
+#include "path_handle.hpp"
 
 #if !defined(ROD_HAS_SYMLINK_HANDLE) && (defined(ROD_WIN32) || defined(__linux__))
 #define ROD_HAS_SYMLINK_HANDLE

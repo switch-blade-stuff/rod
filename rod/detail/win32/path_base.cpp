@@ -2,8 +2,7 @@
  * Created by switchblade on 2023-07-30.
  */
 
-#include "../path_base.hpp"
-#include "ntapi.hpp"
+#include "path_base.hpp"
 
 namespace rod::_path
 {
