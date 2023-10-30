@@ -95,9 +95,8 @@ namespace rod::_handle
 			{
 				auto buffer = FILE_OBJECTID_BUFFER();
 				auto *id = (GUID *) buffer.ObjectId;
-				DWORD bytes;
 
-				if(!::DeviceIoControl(_hnd, FSCTL_CREATE_OR_GET_OBJECT_ID, nullptr, 0, &buffer, sizeof(buffer), &bytes, nullptr)) [[unlikely]]
+				if (DWORD written = 0; !::DeviceIoControl(_hnd, FSCTL_CREATE_OR_GET_OBJECT_ID, nullptr, 0, &buffer, sizeof(buffer), &written, nullptr)) [[unlikely]]
 					return dos_error_code(::GetLastError());
 
 				result.resize(87);

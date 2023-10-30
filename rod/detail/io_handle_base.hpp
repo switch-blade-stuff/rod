@@ -191,20 +191,13 @@ namespace rod
 
 		public:
 			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
-			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
-			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires(!tag_invocable<Op, Hnd, Req> && tag_invocable<Op, Hnd, Req, timeout_t<Hnd>>)
-			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), timeout_t<Hnd>()); }
-			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires tag_invocable<Op, Hnd, Req>
-			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req)); }
+			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to = To()) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
 		};
 	}
 
-	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op. */
-	template<typename Hnd, typename Op>
-	concept io_handle = _io_operation::has_io_definitions<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>>;
-	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op with timeout argument \a To. */
+	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op with timeout \a To. */
 	template<typename Hnd, typename Op, typename To = handle_timeout_t<Hnd>>
-	concept io_handle_with_timeout = io_handle<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, To>;
+	concept io_handle = _io_operation::has_io_definitions<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, To>;
 
 	namespace _sync { struct sync_at_t : _io_operation::adaptor<sync_at_t>::type {}; }
 

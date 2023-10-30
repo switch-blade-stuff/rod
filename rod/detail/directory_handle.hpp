@@ -215,6 +215,7 @@ namespace rod
 			 * <ul>
 			 * <li>`unlink_on_close`</li>
 			 * <li>`no_sparse_files`</li>
+			 * <li>`non_blocking`</li>
 			 * <li>`case_sensitive`</li>
 			 * </ul>
 			 *
@@ -228,6 +229,7 @@ namespace rod
 			 * <ul>
 			 * <li>`unlink_on_close`</li>
 			 * <li>`no_sparse_files`</li>
+			 * <li>`non_blocking`</li>
 			 * </ul>
 			 *
 			 * @param base Handle to the parent location. If set to an invalid handle, generates a unique directory within the current working directory.
@@ -245,6 +247,7 @@ namespace rod
 			 * <ul>
 			 * <li>`unlink_on_close`</li>
 			 * <li>`no_sparse_files`</li>
+			 * <li>`non_blocking`</li>
 			 * </ul>
 			 * @note The following values of \a mode are not supported:
 			 * <ul>
@@ -262,6 +265,7 @@ namespace rod
 			 * <ul>
 			 * <li>`unlink_on_close`</li>
 			 * <li>`no_sparse_files`</li>
+			 * <li>`non_blocking`</li>
 			 * </ul>
 			 * @note The following values of \a mode are not supported:
 			 * <ul>

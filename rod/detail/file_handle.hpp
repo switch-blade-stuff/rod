@@ -437,13 +437,8 @@ namespace rod
 	{
 		using _file::file_handle;
 
-		static_assert(sized_handle<file_handle>);
-		static_assert(io_handle<file_handle, read_some_at_t> && io_handle_with_timeout<file_handle, read_some_at_t, file_timeout>);
-		static_assert(io_handle<file_handle, write_some_at_t> && io_handle_with_timeout<file_handle, write_some_at_t, file_timeout>);
-
-		static_assert(!seekable_handle<file_handle>);
-		static_assert(!io_handle<file_handle, read_some_t> && !io_handle_with_timeout<file_handle, read_some_t, file_timeout>);
-		static_assert(!io_handle<file_handle, write_some_t> && !io_handle_with_timeout<file_handle, write_some_t, file_timeout>);
+		static_assert(sized_handle<file_handle> && sparse_io_handle<file_handle>);
+		static_assert(!seekable_handle<file_handle> && !stream_io_handle<file_handle>);
 
 		static_assert(_file::file_handle_like<file_handle> && _file::file_handle_like_result<decltype(file_handle::open({}, {}))>);
 		static_assert(!_file::streamable_file_like<file_handle> && !_file::streamable_file_like_result<decltype(file_handle::open({}, {}))>);
@@ -454,13 +449,8 @@ namespace rod
 		/** Alias for `streamable_file_adaptor&lt;file_handle&gt;`. */
 		using streamable_file = streamable_file_adaptor<file_handle>;
 
-		static_assert(sized_handle<streamable_file>);
-		static_assert(io_handle<streamable_file, read_some_at_t> && io_handle_with_timeout<streamable_file, read_some_at_t, file_timeout>);
-		static_assert(io_handle<streamable_file, write_some_at_t> && io_handle_with_timeout<streamable_file, write_some_at_t, file_timeout>);
-
-		static_assert(seekable_handle<streamable_file>);
-		static_assert(io_handle<streamable_file, read_some_t> && io_handle_with_timeout<streamable_file, read_some_t, file_timeout>);
-		static_assert(io_handle<streamable_file, write_some_t> && io_handle_with_timeout<streamable_file, write_some_t, file_timeout>);
+		static_assert(sized_handle<streamable_file> && sparse_io_handle<streamable_file>);
+		static_assert(seekable_handle<streamable_file> && stream_io_handle<streamable_file>);
 
 		static_assert(_file::file_handle_like<streamable_file> && _file::file_handle_like_result<decltype(streamable_file::open({}, {}))>);
 		static_assert(_file::streamable_file_like<streamable_file> && _file::streamable_file_like_result<decltype(streamable_file::open({}, {}))>);

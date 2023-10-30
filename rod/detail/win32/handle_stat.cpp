@@ -25,9 +25,8 @@ namespace rod::_handle
 
 			auto reparse_data = reinterpret_cast<reparse_data_buffer *>(buff.get());
 			std::memset(reparse_data, 0, sizeof(reparse_data_buffer));
-			DWORD written = 0;
 
-			if (!::DeviceIoControl(hnd, FSCTL_GET_REPARSE_POINT, nullptr, 0, reparse_data, sizeof(reparse_data_buffer) + buff_size * sizeof(wchar_t), &written, nullptr)) [[unlikely]]
+			if (DWORD written = 0; !::DeviceIoControl(hnd, FSCTL_GET_REPARSE_POINT, nullptr, 0, reparse_data, sizeof(reparse_data_buffer) + buff_size * sizeof(wchar_t), &written, nullptr)) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
 				reparse_tag = reparse_data->reparse_tag;

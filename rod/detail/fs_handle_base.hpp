@@ -33,7 +33,7 @@ namespace rod
 
 			/** Disable creation of native sparse files, and instead emulate extents via padding. */
 			no_sparse_files = 0x20,
-			/** File referenced by the handle will be unlinked once the last handle to it is closed. */
+			/** File referenced by the handle will be unlinked once the handle is closed. */
 			unlink_on_close = 0x40,
 
 			/** File will be opened in non-blocking mode (`O_NONBLOCK` or `OVERLAPPED`).

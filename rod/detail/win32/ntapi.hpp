@@ -403,8 +403,8 @@ namespace rod::_win32
 		{
 			struct
 			{
-				USHORT subs_name_off;
-				USHORT subs_name_len;
+				USHORT subst_name_off;
+				USHORT subst_name_len;
 				USHORT print_name_off;
 				USHORT print_name_len;
 				ULONG flags;
@@ -412,8 +412,8 @@ namespace rod::_win32
 			} symlink;
 			struct
 			{
-				USHORT subs_name_off;
-				USHORT subs_name_len;
+				USHORT subst_name_off;
+				USHORT subst_name_len;
 				USHORT print_name_off;
 				USHORT print_name_len;
 				WCHAR path[1];

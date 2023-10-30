@@ -18,8 +18,9 @@ namespace rod::_file
 
 	result<file_handle> file_handle::do_open(const path_handle &base, path_view path, file_flags flags, open_mode mode, file_caching caching, file_perm perm) noexcept
 	{
-		/* NtCreateFile does not support append access without IO buffering. */
-		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append))
+		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append)) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		if (bool(flags & file_flags::case_sensitive)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
 
 		const auto &ntapi = ntapi::instance();
@@ -52,8 +53,6 @@ namespace rod::_file
 			/* Map known error codes. */
 			if (auto err = hnd.error(); is_error_file_not_found(err))
 				return std::make_error_code(std::errc::no_such_file_or_directory);
-			else if (is_error_not_a_directory(err))
-				return std::make_error_code(std::errc::not_a_directory);
 			else if (is_error_file_exists(err) && mode == open_mode::create)
 				return std::make_error_code(std::errc::file_exists);
 			else
@@ -63,9 +62,9 @@ namespace rod::_file
 		/* Make sparse if created a new file. */
 		if (!bool(flags & file_flags::no_sparse_files) && (mode == open_mode::truncate || mode == open_mode::supersede || iosb.info == 2 /*FILE_CREATED*/))
 		{
-			DWORD bytes = 0;
+			DWORD written = 0;
 			auto buffer = FILE_SET_SPARSE_BUFFER{.SetSparse = 1};
-			::DeviceIoControl(*hnd, FSCTL_SET_SPARSE, &buffer, sizeof(buffer), nullptr, 0, &bytes, nullptr);
+			::DeviceIoControl(*hnd, FSCTL_SET_SPARSE, &buffer, sizeof(buffer), nullptr, 0, &written, nullptr);
 		}
 		/* Flush the file if additional sanity barriers are requested. */
 		if (mode == open_mode::truncate && bool(caching & file_caching::sanity_barriers))
@@ -75,12 +74,15 @@ namespace rod::_file
 	}
 	result<file_handle> file_handle::do_reopen(const file_handle &other, file_flags flags, file_caching caching) noexcept
 	{
-		/* Try to clone if possible. */
-		if (flags == other.flags() && caching == other.caching())
-			return clone(other);
 		/* NtCreateFile does not support append access without IO buffering. */
 		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append))
 			return std::make_error_code(std::errc::not_supported);
+		if (bool(flags & file_flags::case_sensitive)) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+
+		/* Try to clone if possible. */
+		if (flags == other.flags() && caching == other.caching())
+			return clone(other);
 
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -336,9 +338,8 @@ namespace rod::_file
 		auto info = FILE_ZERO_DATA_INFORMATION();
 		info.BeyondFinalZero.QuadPart = req.extent.first + req.extent.second;
 		info.FileOffset.QuadPart = req.extent.first;
-		DWORD bytes = 0;
 
-		if (::DeviceIoControl(native_handle(), FSCTL_SET_ZERO_DATA, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+		if (DWORD written = 0; ::DeviceIoControl(native_handle(), FSCTL_SET_ZERO_DATA, &info, sizeof(info), nullptr, 0, &written, &ol) == 0)
 		{
 			if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 			{
@@ -378,7 +379,7 @@ namespace rod::_file
 	{
 		auto buff = FILE_ALLOCATED_RANGE_BUFFER{.Length = {.QuadPart = (extent_type(1) << 63) - 1}};
 		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
-		DWORD bytes = 0;
+		DWORD written = 0;
 
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
@@ -388,7 +389,7 @@ namespace rod::_file
 		try
 		{
 			req.buffs.resize(64);
-			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buffs.data(), DWORD(req.buffs.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &bytes, &ol) == 0)
+			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buffs.data(), DWORD(req.buffs.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &written, &ol) == 0)
 			{
 				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 				{
@@ -402,7 +403,7 @@ namespace rod::_file
 					return dos_error_code(err);
 			}
 
-			req.buffs.resize(bytes / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
+			req.buffs.resize(written / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
 			return req.buffs;
 		}
 		catch (...) { return _detail::current_error(); }
@@ -481,12 +482,12 @@ namespace rod::_file
 		{
 			auto range_buff = FILE_ALLOCATED_RANGE_BUFFER();
 			auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
-			DWORD bytes = 0;
+			DWORD written = 0;
 
 			range_buff.Length.QuadPart = LONGLONG(request_end - curr_offset);
 			range_buff.FileOffset.QuadPart = LONGLONG(curr_offset);
 
-			if (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &range_buff, sizeof(range_buff), extent_buff, sizeof(extent_buff), &bytes, &ol) == 0)
+			if (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &range_buff, sizeof(range_buff), extent_buff, sizeof(extent_buff), &written, &ol) == 0)
 			{
 				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 				{
@@ -497,10 +498,10 @@ namespace rod::_file
 				else if (err != ERROR_SUCCESS && err != ERROR_MORE_DATA) [[unlikely]]
 					return dos_error_code(err);
 			}
-			if (bytes == 0) /* EOF */
+			if (written == 0) /* EOF */
 				break;
 
-			for (std::size_t i = 0; i < bytes / sizeof(extent_pair); ++i)
+			for (std::size_t i = 0; i < written / sizeof(extent_pair); ++i)
 			{
 				/* If the queue is not empty, insert an erase operation if we are not covering the full extent. */
 				if (queue_size != 0)
@@ -628,9 +629,8 @@ namespace rod::_file
 						.dst_off = LONGLONG(item.extent.first + src_off + dst_diff),
 						.length = LONGLONG(src_length),
 					};
-					DWORD bytes = 0;
 
-					if (::DeviceIoControl(req.dst.native_handle(), FSCTL_DUPLICATE_EXTENTS_TO_FILE, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+					if (DWORD written = 0; ::DeviceIoControl(req.dst.native_handle(), FSCTL_DUPLICATE_EXTENTS_TO_FILE, &info, sizeof(info), nullptr, 0, &written, &ol) == 0)
 					{
 						if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 						{
@@ -652,9 +652,8 @@ namespace rod::_file
 					info.FileOffset.QuadPart = LONGLONG(item.extent.first + src_off + dst_diff);
 					info.BeyondFinalZero.QuadPart = info.FileOffset.QuadPart + src_length;
 					auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
-					DWORD bytes = 0;
 
-					if (::DeviceIoControl(req.dst.native_handle(), FSCTL_SET_ZERO_DATA, &info, sizeof(info), nullptr, 0, &bytes, &ol) == 0)
+					if (DWORD written = 0; ::DeviceIoControl(req.dst.native_handle(), FSCTL_SET_ZERO_DATA, &info, sizeof(info), nullptr, 0, &written, &ol) == 0)
 					{
 						if (auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 						{

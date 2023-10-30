@@ -140,6 +140,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/path_util.hpp
         rod/detail/path_handle.hpp
         rod/detail/path_discovery.hpp
+        rod/detail/symlink_handle.hpp
         rod/detail/directory_handle.hpp
 
         # Filesystem IO
@@ -198,6 +199,8 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/path_handle.cpp
             rod/detail/win32/path_discovery.hpp
             rod/detail/win32/path_discovery.cpp
+            rod/detail/win32/symlink_handle.hpp
+            rod/detail/win32/symlink_handle.cpp
             rod/detail/win32/directory_handle.hpp
             rod/detail/win32/directory_handle.cpp
             rod/detail/win32/file_handle.hpp

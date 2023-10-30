@@ -15,7 +15,7 @@ namespace rod::_dir
 
 	result<directory_handle> directory_handle::open(const path_handle &base, path_view path, file_flags flags, open_mode mode) noexcept
 	{
-		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files))) [[unlikely]]
+		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files | file_flags::non_blocking))) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
 		if (mode == open_mode::truncate || mode == open_mode::supersede) [[unlikely]]
 			return std::make_error_code(std::errc::is_a_directory);
@@ -67,6 +67,9 @@ namespace rod::_dir
 	}
 	result<directory_handle> directory_handle::reopen(const path_handle &other, file_flags flags) noexcept
 	{
+		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files | file_flags::non_blocking | file_flags::case_sensitive))) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+
 		/* Try to clone if possible. */
 		if (flags == file_flags(other.native_handle().flags))
 		{
@@ -93,9 +96,6 @@ namespace rod::_dir
 
 	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
-			return std::make_error_code(std::errc::not_supported);
-
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -117,9 +117,6 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
-			return std::make_error_code(std::errc::not_supported);
-
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -141,9 +138,6 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
-			return std::make_error_code(std::errc::not_supported);
-
 		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -154,7 +148,7 @@ namespace rod::_dir
 			return del_hnd.error();
 
 		auto iosb = io_status_block();
-		if (auto status = ntapi->unlink_file(del_hnd->native_handle(), &iosb, !bool(flags() & file_flags::unlink_on_close), abs_timeout); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->unlink_file(del_hnd->native_handle(), &iosb, true, abs_timeout); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
@@ -204,16 +198,16 @@ namespace rod::_dir
 				else
 				{
 					auto old_size = buffer_size, new_size = buffer_size + sv.size() + 1;
-					auto old_buff = result_buff, new_buff = result_buff;
+					void *old_buff = result_buff, *new_buff;
 
 					if (new_size > old_size)
 					{
 						if (old_buff)
-							new_buff = static_cast<wchar_t *>(std::realloc(old_buff, new_size * sizeof(wchar_t)));
+							new_buff = std::realloc(old_buff, new_size * sizeof(wchar_t));
 						else
-							new_buff = static_cast<wchar_t *>(std::malloc(new_size * sizeof(wchar_t)));
+							new_buff = std::malloc(new_size * sizeof(wchar_t));
 						if (new_buff == nullptr) [[unlikely]]
-							return {in_place_error, std::make_error_code(std::errc::not_enough_memory)};
+							return (std::free(old_buff), result<bool>(in_place_error, std::make_error_code(std::errc::not_enough_memory)));
 					}
 
 					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
@@ -222,7 +216,7 @@ namespace rod::_dir
 					auto len = ULONG(-LONG(sv.size()));
 					entry._buff = std::span(off, len);
 
-					result_buff = new_buff;
+					result_buff = static_cast<wchar_t *>(new_buff);
 					buffer_size = new_size;
 				}
 

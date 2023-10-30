@@ -583,7 +583,7 @@ namespace rod
 
 	namespace _detail
 	{
-		struct free_deleter { void operator()(auto *p) const noexcept { if (p) std::free(p); } };
+		struct free_deleter { void operator()(auto *p) const noexcept { std::free(p); } };
 	}
 
 	/** Specialization of `std::unique_ptr` for use with `malloc` & `free`. */
