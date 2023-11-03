@@ -27,11 +27,11 @@ namespace rod::_file
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
@@ -74,13 +74,10 @@ namespace rod::_file
 	}
 	result<file_handle> file_handle::do_reopen(const file_handle &other, file_flags flags, file_caching caching) noexcept
 	{
-		/* NtCreateFile does not support append access without IO buffering. */
 		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append))
 			return std::make_error_code(std::errc::not_supported);
 		if (bool(flags & file_flags::case_sensitive)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
-
-		/* Try to clone if possible. */
 		if (flags == other.flags() && caching == other.caching())
 			return clone(other);
 
@@ -109,12 +106,13 @@ namespace rod::_file
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<false>(path);
+		auto rpath = render_as_wchar<false>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
+		auto upath = make_ustring(rpath->as_span());
 		auto iosb = io_status_block();
-		if (auto status = ntapi->link_file(native_handle(), &iosb, base.native_handle(), rpath->first, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->link_file(native_handle(), &iosb, base.native_handle(), upath, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
@@ -129,12 +127,13 @@ namespace rod::_file
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<false>(path);
+		auto rpath = render_as_wchar<false>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
+		auto upath = make_ustring(rpath->as_span());
 		auto iosb = io_status_block();
-		if (auto status = ntapi->relink_file(native_handle(), &iosb, base.native_handle(), rpath->first, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->relink_file(native_handle(), &iosb, base.native_handle(), upath, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};

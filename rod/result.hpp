@@ -176,7 +176,7 @@ namespace rod
 			using transform_error_result = result<Val, transform_error_type<T, F>>;
 
 			template<typename F, typename... Args>
-			constexpr decltype(auto) transform_invoke(F &&func, Args &&...args) noexcept(std::is_nothrow_invocable_v<F, Args...>)
+			static constexpr decltype(auto) transform_invoke(F &&func, Args &&...args) noexcept(std::is_nothrow_invocable_v<F, Args...>)
 			{
 				if constexpr (!std::is_void_v<std::invoke_result_t<F, Args...>>)
 					return std::invoke(std::forward<F>(func), std::forward<Args>(args)...);
@@ -448,7 +448,7 @@ namespace rod
 					return _storage.value;
 			}
 			/** @copydoc value_or */
-			template<typename Val2 = Val> requires std::constructible_from<Val, std::add_const_t<Val> &> &&std::constructible_from<Val, Val2>
+			template<typename Val2 = Val> requires std::constructible_from<Val, Val> &&std::constructible_from<Val, Val2>
 			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
@@ -457,7 +457,7 @@ namespace rod
 					return std::move(_storage.value);
 			}
 			/** @copydoc value_or */
-			template<typename Val2 = Val> requires std::constructible_from<Val, Val> && std::constructible_from<Val, Val2>
+			template<typename Val2 = Val> requires std::constructible_from<Val, std::add_const_t<Val> &> && std::constructible_from<Val, Val2>
 			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) const & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
@@ -510,7 +510,7 @@ namespace rod
 			}
 
 			/** Returns the error state or \a err if result does not contain a value. */
-			template<typename Err2 = Err> requires std::move_constructible<Err> && std::constructible_from<Err, Err2>
+			template<typename Err2 = Err> requires std::constructible_from<Err, Err &> && std::constructible_from<Err, Err2>
 			[[nodiscard]] constexpr Err error_or(Err2 &&err) & noexcept(std::is_nothrow_constructible_v<Err, std::add_lvalue_reference_t<Err>> && std::is_nothrow_constructible_v<Err, Err2>)
 			{
 				if (!has_error()) [[unlikely]]
@@ -519,7 +519,7 @@ namespace rod
 					return _storage.error;
 			}
 			/** @copydoc error_or */
-			template<typename Err2 = Err> requires std::move_constructible<Err> && std::constructible_from<Err, Err2>
+			template<typename Err2 = Err> requires std::constructible_from<Err, Err> && std::constructible_from<Err, Err2>
 			[[nodiscard]] constexpr Err error_or(Err2 &&err) && noexcept(std::is_nothrow_constructible_v<Err, std::add_rvalue_reference_t<Err>> && std::is_nothrow_constructible_v<Err, Err2>)
 			{
 				if (!has_error()) [[unlikely]]
@@ -528,7 +528,7 @@ namespace rod
 					return std::move(_storage.error);
 			}
 			/** @copydoc error_or */
-			template<typename Err2 = Err> requires std::copy_constructible<Err> && std::constructible_from<Err, Err2>
+			template<typename Err2 = Err> requires std::constructible_from<Err, std::add_const_t<Err> &> && std::constructible_from<Err, Err2>
 			[[nodiscard]] constexpr Err error_or(Err2 &&err) const & noexcept(std::is_nothrow_constructible_v<Err, std::add_lvalue_reference_t<std::add_const_t<Err>>> && std::is_nothrow_constructible_v<Err, Err2>)
 			{
 				if (!has_error()) [[unlikely]]
@@ -537,7 +537,7 @@ namespace rod
 					return _storage.error;
 			}
 			/** @copydoc error_or */
-			template<typename Err2 = Err> requires std::copy_constructible<Err> && std::constructible_from<Err, Err2>
+			template<typename Err2 = Err> requires std::constructible_from<Err, std::add_const_t<Err>> && std::constructible_from<Err, Err2>
 			[[nodiscard]] constexpr Err error_or(Err2 &&err) const && noexcept(std::is_nothrow_constructible_v<Err, std::add_rvalue_reference_t<std::add_const_t<Err>>> && std::is_nothrow_constructible_v<Err, Err2>)
 			{
 				if (!has_error()) [[unlikely]]

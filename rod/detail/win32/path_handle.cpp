@@ -17,11 +17,11 @@ namespace rod::_path
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);

@@ -248,11 +248,11 @@ namespace rod::_handle
 		auto iosb = io_status_block();
 		bool is_dir = false;
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
@@ -268,7 +268,7 @@ namespace rod::_handle
 		if (auto status = ntapi->NtQueryAttributesFile(&obj_attrib, &basic_info); is_status_failure(status)) [[unlikely]]
 		{
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
-			if (!ntapi->RtlIsDosDeviceName_Ustr(&upath))
+			if (!ntapi->RtlIsDosDeviceName_U(upath.buff))
 				return status_error_code(status);
 			else
 				goto stat_handle;
@@ -326,9 +326,8 @@ namespace rod::_handle
 		auto hnd = ntapi->create_file(obj_attrib, &iosb, SYNCHRONIZE | FILE_READ_ATTRIBUTES, 0, share, file_open, opts);
 		if (hnd.has_error()) [[unlikely]]
 			return hnd.error();
-
 		if (auto res = get_stat(st, basic_handle(*hnd), q); res.has_value()) [[likely]]
-			return *res | done;
+			return done | *res;
 		else
 			return res;
 	}

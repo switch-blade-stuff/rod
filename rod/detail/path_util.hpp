@@ -11,7 +11,7 @@ namespace rod::fs
 	/** Returns path of the current directory as if via `getcwd`. */
 	[[nodiscard]] ROD_API_PUBLIC result<path> current_path() noexcept;
 	/** Changes path of the current directory to \a path as if via `chdir`. */
-	[[nodiscard]] ROD_API_PUBLIC result<void> current_path(path_view path) noexcept;
+	ROD_API_PUBLIC result<void> current_path(path_view path) noexcept;
 
 	/** Checks if \a path references a valid filesystem location.
 	 * @errors
@@ -64,7 +64,7 @@ namespace rod::fs
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 	 * @return Amount of directories created or a status code on failure. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> create_directories(const path_handle &base, path_view path) noexcept;
+	ROD_API_PUBLIC result<std::size_t> create_directories(const path_handle &base, path_view path) noexcept;
 
 //	/** Flags used to control behavior of the `copy_all` function. */
 //	enum class copy_mode : int
@@ -120,7 +120,7 @@ namespace rod::fs
 	 * <li>`std::errc::bad_alloc` on failure to allocate internal buffers.</li>
 	 * <li>Errors returned by `rmdir` on POSIX or `NtGetInformationFile` and `NtSetInformationFile` on Windows.</li>
 	 * </ul> */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
+	ROD_API_PUBLIC result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
@@ -131,5 +131,5 @@ namespace rod::fs
 	 * <li>`std::errc::bad_alloc` on failure to allocate internal buffers.</li>
 	 * <li>Errors returned by `rmdir` on POSIX or `NtQueryDirectoryFile`, `NtGetInformationFile`, and `NtSetInformationFile` on Windows.</li>
 	 * </ul> */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
+	ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 }

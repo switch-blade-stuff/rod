@@ -77,9 +77,9 @@ namespace rod
 
 			using empty_base<Base>::empty_base;
 
-			template<std::same_as<get_env_t> Q, decays_to_same_or_derived<Child> T = Child> requires(has_get_env<T>())
+			template<std::same_as<get_env_t> Q, decays_to_same<Child> T = Child> requires(has_get_env<T>())
 			friend decltype(auto) tag_invoke(Q, T &&r) noexcept { return dispatch_get_env(std::forward<T>(r)); }
-			template<std::same_as<get_env_t> Q, decays_to_same_or_derived<Child> T = Child> requires(!has_get_env<T>())
+			template<std::same_as<get_env_t> Q, decays_to_same<Child> T = Child> requires(!has_get_env<T>())
 			friend decltype(auto) tag_invoke(Q, T &&r) noexcept { return Q{}(get_base(std::forward<T>(r)).base()); }
 
 			template<std::same_as<set_value_t> C, is_same_or_derived<Child> T = Child, typename... Args> requires(has_set_value<T>())

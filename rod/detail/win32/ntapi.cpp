@@ -144,12 +144,12 @@ namespace rod::_win32
 			else
 				return hnd.error();
 
-			if (auto sym = load_sym<RtlNtStatusToDosError_t>(result.ntdll, "RtlNtStatusToDosError"); sym.has_value()) [[likely]]
-				result.RtlNtStatusToDosError = *sym;
+			if (auto sym = load_sym<RtlIsDosDeviceName_U_t>(result.ntdll, "RtlIsDosDeviceName_U"); sym.has_value()) [[likely]]
+				result.RtlIsDosDeviceName_U = *sym;
 			else
 				return sym.error();
-			if (auto sym = load_sym<RtlIsDosDeviceName_Ustr_t>(result.ntdll, "RtlIsDosDeviceName_Ustr"); sym.has_value()) [[likely]]
-				result.RtlIsDosDeviceName_Ustr = *sym;
+			if (auto sym = load_sym<RtlNtStatusToDosError_t>(result.ntdll, "RtlNtStatusToDosError"); sym.has_value()) [[likely]]
+				result.RtlNtStatusToDosError = *sym;
 			else
 				return sym.error();
 			if (auto sym = load_sym<RtlDosPathNameToNtPathName_U_t>(result.ntdll, "RtlDosPathNameToNtPathName_U"); sym.has_value()) [[likely]]
@@ -496,7 +496,7 @@ namespace rod::_win32
 	ntstatus ntapi::wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to) const noexcept
 	{
 		auto time_end = std::chrono::steady_clock::time_point();
-		auto timeout_ft = FILETIME();
+		auto timeout_ft = filetime();
 		auto timeout = &timeout_ft;
 
 		if (to.is_relative() && to.relative() != fs::file_clock::duration::max())
@@ -513,7 +513,7 @@ namespace rod::_win32
 				if (auto time_left = time_end - std::chrono::steady_clock::now(); time_left.count() >= 0)
 					timeout_ft = tp_to_filetime(time_left.count() / -100);
 				else
-					timeout_ft = FILETIME();
+					timeout_ft = filetime();
 			}
 
 			auto status = NtWaitForSingleObject(handle, true, timeout);

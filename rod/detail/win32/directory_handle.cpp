@@ -24,11 +24,11 @@ namespace rod::_dir
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
@@ -69,8 +69,6 @@ namespace rod::_dir
 	{
 		if (bool(flags & (file_flags::unlink_on_close | file_flags::no_sparse_files | file_flags::non_blocking | file_flags::case_sensitive))) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
-
-		/* Try to clone if possible. */
 		if (flags == file_flags(other.native_handle().flags))
 		{
 			if (auto hnd = clone(other); hnd.has_value()) [[likely]]
@@ -101,7 +99,7 @@ namespace rod::_dir
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<false>(path);
+		auto rpath = render_as_wchar<false>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
@@ -109,8 +107,9 @@ namespace rod::_dir
 		if (del_hnd.has_error()) [[unlikely]]
 			return del_hnd.error();
 
+		auto upath = make_ustring(rpath->as_span());
 		auto iosb = io_status_block();
-		if (auto status = ntapi->link_file(del_hnd->native_handle(), &iosb, base.native_handle(), rpath->first, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->link_file(del_hnd->native_handle(), &iosb, base.native_handle(), upath, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
@@ -122,7 +121,7 @@ namespace rod::_dir
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<false>(path);
+		auto rpath = render_as_wchar<false>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
@@ -130,8 +129,9 @@ namespace rod::_dir
 		if (del_hnd.has_error()) [[unlikely]]
 			return del_hnd.error();
 
+		auto upath = make_ustring(rpath->as_span());
 		auto iosb = io_status_block();
-		if (auto status = ntapi->relink_file(del_hnd->native_handle(), &iosb, base.native_handle(), rpath->first, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->relink_file(del_hnd->native_handle(), &iosb, base.native_handle(), upath, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
@@ -170,13 +170,13 @@ namespace rod::_dir
 		if (buff.get() == nullptr) [[unlikely]]
 			return std::make_error_code(std::errc::not_enough_memory);
 
-		auto rfilter = render_as_ustring<true>(req.filter);
+		auto rfilter = render_as_wchar<true>(req.filter);
 		if (rfilter.has_error()) [[unlikely]]
 			return rfilter.error();
 
 		std::size_t buffer_size = req.buffs._buff_max, result_size = 0;
 		wchar_t *result_buff = req.buffs._buff.release();
-		auto &ufilter = rfilter->first;
+		auto ufilter = make_ustring(rfilter->as_span());
 		bool reset_pos = !req.resume;
 		result<bool> eof_result;
 
@@ -207,7 +207,15 @@ namespace rod::_dir
 						else
 							new_buff = std::malloc(new_size * sizeof(wchar_t));
 						if (new_buff == nullptr) [[unlikely]]
-							return (std::free(old_buff), result<bool>(in_place_error, std::make_error_code(std::errc::not_enough_memory)));
+						{
+							std::free(old_buff);
+							return result<bool>(in_place_error, std::make_error_code(std::errc::not_enough_memory));
+						}
+						else
+						{
+							buffer_size = new_size;
+							result_buff = static_cast<wchar_t *>(new_buff);
+						}
 					}
 
 					/* Since WinNT paths are 32767 chars max, we can use a negative number to indicate an offset. */
@@ -227,9 +235,8 @@ namespace rod::_dir
 		}
 
 		/* Restore placeholder offsets. */
-		for (std::size_t i = 0; i < result_size; ++i)
+		for (auto &entry : req.buffs)
 		{
-			auto &entry = req.buffs[result_size];
 			if (LONG(entry._buff.size()) >= 0)
 				continue;
 

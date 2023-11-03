@@ -23,11 +23,11 @@ namespace rod::_link
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error()) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
@@ -60,7 +60,6 @@ namespace rod::_link
 	{
 		if (bool(flags & (file_flags::append | file_flags::no_sparse_files | file_flags::non_blocking | file_flags::case_sensitive))) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
-		/* Try to clone if possible. */
 		if (flags == other.flags())
 			return clone(other);
 
@@ -85,12 +84,13 @@ namespace rod::_link
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<false>(path);
+		auto rpath = render_as_wchar<false>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
+		auto upath = make_ustring(rpath->as_span());
 		auto iosb = io_status_block();
-		if (auto status = ntapi->link_file(native_handle(), &iosb, base.native_handle(), rpath->first, replace, to); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->link_file(native_handle(), &iosb, base.native_handle(), upath, replace, to); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
@@ -101,12 +101,13 @@ namespace rod::_link
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<false>(path);
+		auto rpath = render_as_wchar<false>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
+		auto upath = make_ustring(rpath->as_span());
 		auto iosb = io_status_block();
-		if (auto status = ntapi->relink_file(native_handle(), &iosb, base.native_handle(), rpath->first, replace, to); is_status_failure(status)) [[unlikely]]
+		if (auto status = ntapi->relink_file(native_handle(), &iosb, base.native_handle(), upath, replace, to); is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
 			return {};
@@ -255,7 +256,7 @@ namespace rod::_link
 		wchar_t *dst_path, *dst_name;
 		if (req.buffs._type == link_type::symbolic)
 		{
-			buff_data->data_size = buff_size - offsetof(reparse_data_buffer, symlink);
+			buff_data->data_size = USHORT(buff_size - offsetof(reparse_data_buffer, symlink));
 			buff_data->reparse_tag = IO_REPARSE_TAG_SYMLINK;
 
 			buff_data->symlink.subst_name_off = 0;
@@ -268,7 +269,7 @@ namespace rod::_link
 		}
 		else
 		{
-			buff_data->data_size = buff_size - offsetof(reparse_data_buffer, mount_point);
+			buff_data->data_size = USHORT(buff_size - offsetof(reparse_data_buffer, mount_point));
 			buff_data->reparse_tag = IO_REPARSE_TAG_MOUNT_POINT;
 
 			buff_data->mount_point.subst_name_off = 0;
@@ -280,11 +281,9 @@ namespace rod::_link
 			dst_path = buff_data->mount_point.path;
 		}
 
-
 		/* Fill the reparse_data_buffer with contents of the request. */
-		for (std::size_t i = 0; i < req.buffs.size(); ++i)
+		for (const auto &src : req.buffs)
 		{
-			const auto &src = req.buffs[i];
 			const auto src_path_data = src.data() + front_off;
 			const auto src_path_size = src.size() - front_off;
 			const auto src_name_data = src.data();
@@ -297,7 +296,7 @@ namespace rod::_link
 		*dst_path = '\0';
 		*dst_name = '\0';
 
-		if (DWORD written = 0; !::DeviceIoControl(native_handle(), FSCTL_SET_REPARSE_POINT, buff_data, buff_size, nullptr, 0, &written, nullptr)) [[unlikely]]
+		if (DWORD written = 0; !::DeviceIoControl(native_handle(), FSCTL_SET_REPARSE_POINT, buff_data, DWORD(buff_size), nullptr, 0, &written, nullptr)) [[unlikely]]
 			return dos_error_code(::GetLastError());
 		else
 			return std::move(req.buffs);

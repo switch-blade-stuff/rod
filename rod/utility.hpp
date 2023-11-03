@@ -75,14 +75,14 @@ namespace rod
 		using decayed_ref = std::decay_t<T> &;
 
 		template<typename T, typename... Args>
-		concept callable = requires { T{}(std::declval<Args>()...); };
+		concept callable = requires(T func, Args ...args) { func(std::forward<Args>(args)...); };
 		template<typename T, typename... Args>
-		concept nothrow_callable = callable<T, Args...> && requires { { T{}(std::declval<Args>()...) } noexcept; };
+		concept nothrow_callable = callable<T, Args...> && requires(T func, Args ...args) { { func(std::forward<Args>(args)...) } noexcept; };
 
 		template<typename R, typename T, typename... Args>
-		concept callable_r = requires { { T{}(std::declval<Args>()...) } -> std::convertible_to<R>; };
+		concept callable_r = callable<T, Args...> && requires(T func, Args ...args) { { func(std::forward<Args>(args)...) } -> std::convertible_to<R>; };
 		template<typename R, typename T, typename... Args>
-		concept nothrow_callable_r = callable_r<R, T, Args...> && requires { { T{}(std::declval<Args>()...) } noexcept; };
+		concept nothrow_callable_r = callable_r<R, T, Args...> && nothrow_callable<T, Args...>;
 
 		template<typename T>
 		using decay_copyable = std::is_constructible<std::decay_t<T>, T>;

@@ -207,8 +207,8 @@ namespace rod
 			[[nodiscard]] const auto &rcv() const noexcept { return empty_base<Rcv>::value(); }
 			[[nodiscard]] const auto &sch() const noexcept { return empty_base<Sch>::value(); }
 
-			[[nodiscard]] auto &visitor() noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
-			[[nodiscard]] auto &visitor() const noexcept { return std::get<channel_result<set_value_t, V>>(_data).empty_base<V>::value(); }
+			[[nodiscard]] auto &visitor() noexcept { return std::get<channel_result<set_value_t, Vst>>(_data).empty_base<Vst>::value(); }
+			[[nodiscard]] auto &visitor() const noexcept { return std::get<channel_result<set_value_t, Vst>>(_data).empty_base<Vst>::value(); }
 
 			std::size_t lock() noexcept
 			{

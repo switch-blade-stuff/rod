@@ -176,36 +176,46 @@ namespace rod::_win32
 		USHORT max;
 		PWCHAR buff;
 	};
+	struct filetime
+	{
+		constexpr filetime() noexcept : ft() {}
+		constexpr filetime(FILETIME ft) noexcept : ft(ft) {}
+		constexpr filetime(std::int64_t tp) noexcept : tp(tp) {}
+		constexpr filetime(LARGE_INTEGER tp) noexcept : tp(tp.QuadPart) {}
+
+		constexpr filetime(const filetime &other) noexcept : ft(other.ft) {}
+		constexpr filetime(filetime &&other) noexcept : ft(std::move(other.ft)) {}
+
+		constexpr filetime &operator=(const filetime &other) noexcept { return (ft = other.ft, *this); }
+		constexpr filetime &operator=(filetime &&other) noexcept { return (ft = std::move(other.ft), *this); }
+
+		constexpr operator FILETIME() const noexcept { return ft; }
+		constexpr operator std::int64_t() const noexcept { return tp; }
+		constexpr operator LARGE_INTEGER() const noexcept { return {.QuadPart = tp}; }
+
+		union { FILETIME ft; std::int64_t tp; };
+	};
 
 	template<bool Term = true>
-	inline constexpr auto render_as_ustring(fs::path_view_component path) noexcept -> result<std::pair<unicode_string, fs::path_view_component::rendered_path<Term, wchar_t>>>
+	inline constexpr auto render_as_wchar(fs::path_view_component path) noexcept -> result<fs::path_view_component::rendered_path<Term, wchar_t>>
 	{
 		if (path.empty())
 			return {};
 
-		try
-		{
-			auto rpath = fs::path_view_component::rendered_path<Term, wchar_t>(path);
-			auto upath = unicode_string();
-
-			upath.max = (upath.size = USHORT(rpath.size() * sizeof(wchar_t))) + sizeof(wchar_t);
-			upath.buff = const_cast<wchar_t *>(rpath.data());
-
-			return std::make_pair(std::move(upath), std::move(rpath));
-		}
+		try { return fs::path_view_component::rendered_path<Term, wchar_t>(path); }
 		catch (...) { return _detail::current_error(); }
 	}
+	template<std::ranges::contiguous_range Rng>
+	inline constexpr auto make_ustring(Rng path) noexcept
+	{
+		unicode_string upath;
+		upath.max = (upath.size = USHORT(std::ranges::size(path) * sizeof(wchar_t))) + sizeof(wchar_t);
+		upath.buff = const_cast<wchar_t *>(std::ranges::data(path));
+		return upath;
+	}
 
-	inline static FILETIME tp_to_filetime(typename fs::file_clock::time_point tp) noexcept
-	{
-		union { FILETIME _ft; std::int64_t _tp; };
-		return (_tp = tp.time_since_epoch().count(), _ft);
-	}
-	inline static typename fs::file_clock::time_point filetime_to_tp(FILETIME ft) noexcept
-	{
-		union { FILETIME _ft; std::int64_t _tp; };
-		return (_ft = ft, fs::file_clock::time_point(_tp));
-	}
+	inline static filetime tp_to_filetime(typename fs::file_clock::time_point tp) noexcept { return tp.time_since_epoch().count(); }
+	inline static typename fs::file_clock::time_point filetime_to_tp(filetime ft) noexcept { return fs::file_clock::time_point(ft); }
 
 	template<typename T>
 	struct malloca_deleter { void operator()(T *p) const noexcept { _freea(p); } };
@@ -241,7 +251,7 @@ namespace rod::_win32
 	};
 
 	using RtlNtStatusToDosError_t = ULONG (ROD_NTAPI *)(_In_ ntstatus status);
-	using RtlIsDosDeviceName_Ustr_t = ULONG (ROD_NTAPI *)(_In_ const unicode_string *ustr);
+	using RtlIsDosDeviceName_U_t = ULONG (ROD_NTAPI *)(_In_ const wchar_t *str);
 	using RtlNtPathNameToDosPathName_t = ULONG (ROD_NTAPI *)(_In_ ULONG flags, _Inout_ unicode_string_buffer *path, _Out_ ULONG *type, PULONG);
 	using RtlDosPathNameToNtPathName_U_t = bool (ROD_NTAPI *)(_In_ const wchar_t *dos_name, _Out_ unicode_string *nt_name, _Out_ const wchar_t **part, _Out_ rtl_relative_name_u *relative);
 
@@ -433,10 +443,10 @@ namespace rod::_win32
 	};
 	struct file_basic_information
 	{
-		FILETIME btime;
-		FILETIME atime;
-		FILETIME mtime;
-		FILETIME ctime;
+		filetime btime;
+		filetime atime;
+		filetime mtime;
+		filetime ctime;
 		ULONG attributes;
 	};
 
@@ -539,10 +549,10 @@ namespace rod::_win32
 	{
 		ULONG next_off;
 		ULONG file_idx;
-		FILETIME btime;
-		FILETIME atime;
-		FILETIME mtime;
-		FILETIME ctime;
+		filetime btime;
+		filetime atime;
+		filetime mtime;
+		filetime ctime;
 		LONGLONG eof;
 		LONGLONG alloc_size;
 		ULONG attributes;
@@ -559,10 +569,10 @@ namespace rod::_win32
 	{
 		ULONG next_off;
 		ULONG file_idx;
-		FILETIME btime;
-		FILETIME atime;
-		FILETIME mtime;
-		FILETIME ctime;
+		filetime btime;
+		filetime atime;
+		filetime mtime;
+		filetime ctime;
 		LONGLONG endpos;
 		LONGLONG allocation;
 		ULONG attributes;
@@ -580,10 +590,10 @@ namespace rod::_win32
 	struct file_stat_information
 	{
 		LONGLONG file_id;
-		FILETIME btime;
-		FILETIME atime;
-		FILETIME mtime;
-		FILETIME ctime;
+		filetime btime;
+		filetime atime;
+		filetime mtime;
+		filetime ctime;
 		LONGLONG allocation;
 		LONGLONG endpos;
 		ULONG attributes;
@@ -611,7 +621,7 @@ namespace rod::_win32
 	using NtQueryInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ file_info_type type);
 	using NtQueryVolumeInformationFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb, _Out_ void *info, _In_ ULONG len, _In_ fs_info_type type);
 
-	using NtWaitForSingleObject_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ const FILETIME *timeout);
+	using NtWaitForSingleObject_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ const filetime *timeout);
 	using NtCancelIoFileEx_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *req, _Out_ io_status_block *iosb);
 	using NtSetIoCompletion_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ ULONG key_ctx, _In_ ULONG_PTR apc_ctx, _In_ long status, _In_ ULONG info);
 	using NtRemoveIoCompletionEx_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ULONG count, _Out_ ULONG *removed, _In_opt_ LARGE_INTEGER *timeout, _In_ bool alert);
@@ -666,6 +676,17 @@ namespace rod::_win32
 			/* POSIX errors */
 			std::make_error_condition(std::errc::no_such_file_or_directory),
 		};
+		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
+	}
+	inline static bool is_error_access_denied(std::error_code err) noexcept
+	{
+		static const auto cnds = std::array
+				{
+						/* DOS errors */
+						std::error_condition(ERROR_ACCESS_DENIED, std::system_category()),
+						/* POSIX errors */
+						std::make_error_condition(std::errc::permission_denied),
+				};
 		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
 	}
 	inline static bool is_error_file_exists(std::error_code err) noexcept
@@ -726,7 +747,7 @@ namespace rod::_win32
 				pos += full_info->next_off;
 
 				/* Skip directory wildcards. */
-				const auto name = std::wstring_view(full_info->name, full_info->name_len);
+				const auto name = std::wstring_view(full_info->name, full_info->name_len / sizeof(wchar_t));
 				if (name.size() >= 1 && name[0] == '.' && (name.size() == 1 || (name.size() == 2 && name[1] == '.')))
 					continue;
 
@@ -775,8 +796,8 @@ namespace rod::_win32
 		void *ntdll;
 		void *bcrypt;
 
+		RtlIsDosDeviceName_U_t RtlIsDosDeviceName_U;
 		RtlNtStatusToDosError_t RtlNtStatusToDosError;
-		RtlIsDosDeviceName_Ustr_t RtlIsDosDeviceName_Ustr;
 		RtlNtPathNameToDosPathName_t RtlNtPathNameToDosPathName;
 		RtlDosPathNameToNtPathName_U_t RtlDosPathNameToNtPathName_U;
 

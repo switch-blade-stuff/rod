@@ -16,7 +16,7 @@ namespace rod::fs
 			if (const auto n = ::GetCurrentDirectoryW(0, nullptr); !n) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
-				path.resize(n);
+				path.resize(n - 1);
 			if (!::GetCurrentDirectoryW(DWORD(path.size() + 1), path.data())) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
@@ -51,11 +51,11 @@ namespace rod::fs
 		if (ntapi.has_error()) [[unlikely]]
 			return {in_place_error, ntapi.error()};
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return {in_place_error, rpath.error()};
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, false);
 		if (guard.has_error())
 			return false;
@@ -72,33 +72,33 @@ namespace rod::fs
 				return false;
 
 			/* NtQueryAttributesFile may fail in case the path is a DOS device name. */
-			return ntapi->RtlIsDosDeviceName_Ustr(&upath);
+			return ntapi->RtlIsDosDeviceName_U(upath.buff);
 		}
 		return true;
 	}
-
 	result<path> absolute(path_view path) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto guard = ntapi->canonize_win32_path(rpath->first, false);
+		auto upath = make_ustring(rpath->as_span());
+		auto guard = ntapi->canonize_win32_path(upath, false);
 		if (guard.has_error()) [[unlikely]]
 			return guard.error();
 
 		try
 		{
 			std::wstring res;
-			if (const auto n = ::GetFullPathNameW(rpath->first.buff, 0, nullptr, nullptr); !n) [[unlikely]]
+			if (const auto n = ::GetFullPathNameW(upath.buff, 0, nullptr, nullptr); !n) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
 				res.resize(n);
-			if (!::GetFullPathNameW(rpath->first.buff, DWORD(res.size() + 1), res.data(), nullptr)) [[unlikely]]
+			if (!::GetFullPathNameW(upath.buff, DWORD(res.size() + 1), res.data(), nullptr)) [[unlikely]]
 				return dos_error_code(::GetLastError());
 			else
 				return std::move(res);
@@ -137,11 +137,12 @@ namespace rod::fs
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		return do_canonical(*ntapi, rpath->first);
+		auto upath = make_ustring(rpath->as_span());
+		return do_canonical(*ntapi, upath);
 	}
 	result<path> weakly_canonical(path_view path) noexcept
 	{
@@ -149,11 +150,11 @@ namespace rod::fs
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto res = do_canonical(*ntapi, upath);
 		if (res.has_value() || !is_error_file_not_found(res.error()))
 			return res;
@@ -171,8 +172,7 @@ namespace rod::fs
 				res->append(comp);
 				if (canonize)
 				{
-					upath.max = (upath.size = USHORT(res->native_size() * sizeof(wchar_t))) + sizeof(wchar_t);
-					upath.buff = const_cast<wchar_t *>(res->c_str());
+					upath = make_ustring(res->native());
 					auto tmp = do_canonical(*ntapi, upath);
 
 					if (tmp.has_value()) [[likely]]
@@ -186,6 +186,77 @@ namespace rod::fs
 		}
 		catch (...) { return _detail::current_error(); }
 		return res;
+	}
+
+	inline static result<directory_handle> try_create_dir(const path_handle &base, path_view path) noexcept
+	{
+		/* Try to create a new directory. If failed, try to get the path's type. If it is a directory, return success. */
+		if (auto res = directory_handle::open(base, path, file_flags::read, open_mode::create); res.has_value())
+			return std::move(*res);
+
+		stat st;
+		if (auto res = get_stat(st, base, path, stat::query::type); res.has_error() || !bool(*res & stat::query::type) || st.type != file_type::directory)
+			return res.error_or(std::make_error_code(std::errc::file_exists));
+		else
+			return {};
+	}
+	template<typename Str>
+	inline static result<std::size_t> do_create(const path_handle &base, Str view, auto fmt) noexcept
+	{
+		const auto sep_pred = [fmt](auto ch) { return is_separator(ch, fmt); };
+		const auto root_end = std::find_if_not(view.begin() + root_name_size(view, fmt), view.end(), sep_pred);
+		auto cmp_off = std::distance(view.begin(), root_end);
+		auto cmp_pos = view.begin() + cmp_off;
+
+		/* Remove drive leter if there is a \\?\ prefix. */
+		if (cmp_off && view.size() - cmp_off >= 3 && root_end[1] == ':' && _path::is_drive_letter(*root_end) && is_separator(root_end[2], fmt))
+			cmp_pos += 2;
+
+		/* Go through every component and create the directory. Capture only the relevant error. */
+		std::error_code errs[2] = {};
+		std::size_t new_dirs = 0;
+		directory_handle dir_hnd;
+		auto *base_ptr = &base;
+
+		for (auto path_pos = view.begin(); cmp_pos != view.end();)
+		{
+			const auto cmp_end = std::find_if(std::find_if_not(cmp_pos, view.end(), sep_pred), view.end(), sep_pred);
+			const auto path = path_view(std::to_address(path_pos), std::size_t(cmp_end - path_pos), false, fmt);
+			cmp_pos = std::find_if_not(cmp_end, view.end(), sep_pred);
+
+			auto create_res = try_create_dir(*base_ptr, path);
+			if (create_res.has_error()) [[unlikely]]
+			{
+				errs[0] = create_res.error();
+				if (!is_error_file_not_found(errs[0]))
+					errs[1] = errs[0];
+			}
+
+			if (create_res->is_open())
+			{
+				base_ptr = &implicit_cast<const path_handle &>(dir_hnd);
+				dir_hnd = std::move(*create_res);
+				path_pos = cmp_pos;
+				new_dirs++;
+			}
+		}
+		if (errs[0]) [[unlikely]]
+			return errs[1] ? errs[1] : errs[0];
+		else
+			return new_dirs;
+	}
+	template<typename Str> requires decays_to_same<std::ranges::range_value_t<Str>, std::byte>
+	inline static result<std::size_t> do_create(const path_handle &base, Str view, auto fmt) noexcept
+	{
+		return try_create_dir(base, path_view(view.data(), view.size(), false, fmt)).transform_value([](auto &hnd) { return std::size_t(hnd.is_open()); });
+	}
+
+	result<std::size_t> create_directories(const path_handle &base, path_view path) noexcept
+	{
+		if (!path.empty()) [[likely]]
+			return visit([&](auto v) { return do_create(base, v, path.format()); }, path);
+		else
+			return std::make_error_code(std::errc::no_such_file_or_directory);
 	}
 
 	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
@@ -235,7 +306,7 @@ namespace rod::fs
 
 	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const directory_handle &dir, const file_timeout &to) noexcept
 	{
-		/* Try to unlink with POSIX semantics via the Win10 API. */
+		/* Try to unlink with POSIX semantics. */
 		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2 | 0x10}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS | FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE*/
 		auto status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx, to);
 		if (!is_status_failure(status))
@@ -255,7 +326,7 @@ namespace rod::fs
 
 		/* If FILE_ATTRIBUTE_READONLY is not set, STATUS_ACCESS_DENIED was caused by something else. */
 		if (!(basic_info.attributes & FILE_ATTRIBUTE_READONLY)) [[unlikely]]
-			return std::make_error_code(std::errc::permission_denied); /* EPERM, not STATUS_ACCESS_DENIED */
+			return std::make_error_code(std::errc::permission_denied);
 
 		basic_info.attributes ^= FILE_ATTRIBUTE_READONLY;
 		status = ntapi.set_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
@@ -280,20 +351,25 @@ namespace rod::fs
  	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		auto hnd = open_deletable_dir(ntapi, iosb, base, upath, to);
-		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
-			return 0;
-		else if (err) [[unlikely]]
-			return err;
+		if (hnd.has_value()) [[likely]]
+			return do_remove(ntapi, iosb, *hnd, to);
 
-		return do_remove(ntapi, iosb, *hnd, to);
+		auto err = hnd.error();
+		if (err.category() != std::generic_category() || err.value() != int(std::errc::no_such_file_or_directory))
+			return err;
+		else
+			return 0;
 	}
 	inline static result<std::size_t> do_remove_all(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		auto hnd = open_readable_dir(ntapi, iosb, base, upath, to);
-		if (auto err = hnd.error_or({}); err.category() == std::generic_category() && err.value() == int(std::errc::no_such_file_or_directory))
-			return 0;
-		else if (err) [[unlikely]]
-			return err;
+		if (hnd.has_error()) [[unlikely]]
+		{
+			if (auto err = hnd.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory))
+				return err;
+			else
+				return 0;
+		}
 
 		auto ent = std::array{read_some_buffer_t<directory_handle>()};
 		auto seq = read_some_buffer_sequence_t<directory_handle>(ent);
@@ -301,15 +377,11 @@ namespace rod::fs
 
 		for (;;)
 		{
-			auto req = read_some_request_t<directory_handle>
-			{
-				.buffs = std::move(seq),
-				.resume = true,
-			};
-			if (auto res = read_some(*hnd, req, to); res.has_error()) [[unlikely]]
-				return res.error();
-			else if (!res->first.empty())
-				seq = std::move(res->first);
+			auto read_res = read_some(*hnd, {.buffs = std::move(seq), .resume = true}, to);
+			if (read_res.has_error()) [[unlikely]]
+				return read_res.error();
+			else if (!read_res->first.empty())
+				seq = std::move(read_res->first);
 			else
 				break;
 
@@ -322,16 +394,20 @@ namespace rod::fs
 			uleaf.buff = seq.front().data();
 
 			/* Recursively call remove on the subdirectory. */
-			result<std::size_t> res;
+			result<std::size_t> remove_res;
 			if (st.type == file_type::directory)
-				res = do_remove_all(ntapi, iosb, *hnd, uleaf, to);
+				remove_res = do_remove_all(ntapi, iosb, *hnd, uleaf, to);
 			else
-				res = do_remove(ntapi, iosb, *hnd, uleaf, to);
+				remove_res = do_remove(ntapi, iosb, *hnd, uleaf, to);
 
-			if (res.has_value()) [[likely]]
-				removed += *res;
+			if (remove_res.has_value()) [[likely]]
+				removed += *remove_res;
 			else
-				return res;
+				return remove_res;
+
+			/* Handle EOF. */
+			if (read_res->second)
+				break;
 		}
 
 		/* Finally, try to remove the directory itself. */
@@ -358,11 +434,11 @@ namespace rod::fs
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error())
 			return 0;
@@ -385,11 +461,11 @@ namespace rod::fs
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto rpath = render_as_ustring<true>(path);
+		auto rpath = render_as_wchar<true>(path);
 		if (rpath.has_error()) [[unlikely]]
 			return rpath.error();
 
-		auto &upath = rpath->first;
+		auto upath = make_ustring(rpath->as_span());
 		auto guard = ntapi->dos_path_to_nt_path(upath, base.is_open());
 		if (guard.has_error())
 			return 0;

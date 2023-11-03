@@ -7,6 +7,8 @@
 #include <condition_variable>
 #include <chrono>
 
+#include "../stop_token.hpp"
+
 #include "queries/may_block.hpp"
 #include "queries/scheduler.hpp"
 #include "queries/progress.hpp"

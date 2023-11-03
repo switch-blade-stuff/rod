@@ -32,7 +32,7 @@ namespace rod
 		enum class discovery_mode : int
 		{
 			/** Storage-backed directories will be considered for discovery.
-			 * @note Networked storage-backed directories will not be included unless `network_backed` flag is set. */
+			 * @note Networked directories will not be included unless `network_backed` flag is set. */
 			storage_backed = 1,
 			/** Network-backed directories will be considered for discovery. */
 			network_backed = 2,
@@ -110,7 +110,7 @@ namespace rod
 			template<auto discovery_cache::*Dirs, typename F>
 			[[nodiscard]] auto refresh_dirs(F &&) noexcept -> result<>;
 
-			bool busy;
+			bool busy = false;
 
 			typename fs::path::string_type working_dir;
 			typename fs::path::string_type install_dir;

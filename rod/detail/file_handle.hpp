@@ -222,15 +222,12 @@ namespace rod
 			file_handle(file_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
 			file_handle &operator=(file_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
 
-			/** Initializes file handle from a native handle, file flags, and caching mode. */
-			explicit file_handle(typename adp_base::native_handle_type hnd, file_flags flags, file_caching caching) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags) | (std::uint32_t(caching) << 16))) {}
-			/** Initializes file handle from a native handle, file flags, caching mode, and explicit device & inode IDs. */
-			explicit file_handle(typename adp_base::native_handle_type hnd, file_flags flags, file_caching caching, dev_t dev, ino_t ino) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags) | (std::uint32_t(caching) << 16)), dev, ino) {}
-
 			/** Initializes file handle from a basic handle rvalue, file flags, and caching mode. */
 			explicit file_handle(basic_handle &&hnd, file_flags flags, file_caching caching) noexcept : file_handle(hnd.release(), flags, caching) {}
-			/** Initializes file handle from a basic handle rvalue, file flags, caching mode, and explicit device & inode IDs. */
-			explicit file_handle(basic_handle &&hnd, file_flags flags, file_caching caching, dev_t dev, ino_t ino) noexcept : file_handle(hnd.release(), flags, caching, dev, ino) {}
+			/** Initializes file handle from a native handle, file flags, and caching mode. */
+			explicit file_handle(typename adp_base::native_handle_type hnd, file_flags flags, file_caching caching) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags) | (std::uint32_t(caching) << 16))) {}
+
+			~file_handle() { if (is_open()) do_close(); }
 
 			/** Returns the flags of the file handle. */
 			[[nodiscard]] constexpr file_flags flags() const noexcept { return file_flags(native_handle().flags & 0xffff); }
@@ -241,7 +238,17 @@ namespace rod
 			friend constexpr void swap(file_handle &a, file_handle &b) noexcept { a.swap(b); }
 
 		private:
-			result<file_handle> do_clone() const noexcept { return clone(base()).transform_value([&](basic_handle &&hnd) { return file_handle(std::move(hnd), flags(), caching()); }); }
+			auto do_close() noexcept -> decltype(close(base()))
+			{
+				if (bool(flags() & file_flags::unlink_on_close))
+				{
+					const auto res = unlink(*this);
+					if (res.has_error() && res.error() != std::make_error_condition(std::errc::no_such_file_or_directory))
+						return res.error();
+				}
+				return close(base());
+			}
+			auto do_clone() const noexcept { return clone(base()).transform_value([&](basic_handle &&hnd) { return file_handle(std::move(hnd), flags(), caching()); }); }
 
 			ROD_API_PUBLIC result<> do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;
 			ROD_API_PUBLIC result<> do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;
@@ -268,7 +275,7 @@ namespace rod
 		concept streamable_file_like_result = instance_of<Res, result> && streamable_file_like<typename Res::value_type>;
 
 		template<typename FileBase>
-		struct streamable_file_adaptor<FileBase>::type : public io_handle_adaptor<type, FileBase, fs_handle_adaptor>
+		class streamable_file_adaptor<FileBase>::type : public io_handle_adaptor<type, FileBase, fs_handle_adaptor>
 		{
 			using adp_base = io_handle_adaptor<type, FileBase, fs_handle_adaptor>;
 

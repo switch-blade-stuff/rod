@@ -450,7 +450,7 @@ namespace rod
 			/** Checks if the rendered path is empty. */
 			[[nodiscard]] constexpr bool empty() const noexcept { return size() == 0; }
 			/** Checks if the rendered path is a non-owning reference to the path source. */
-			[[nodiscard]] constexpr bool references_source() const noexcept { return data_base::cap && data() != buff_data(); }
+			[[nodiscard]] constexpr bool references_source() const noexcept { return data() != buff_data() && !data_base::cap; }
 
 			/** Returns the maximum possible size the data of the rendered path in bytes or code-points. */
 			[[nodiscard]] constexpr size_type max_size() const noexcept { return std::numeric_limits<size_type>::max() - static_cast<size_type>(Term); }

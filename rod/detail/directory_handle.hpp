@@ -289,15 +289,10 @@ namespace rod
 			directory_handle(directory_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
 			directory_handle &operator=(directory_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
 
-			/** Initializes directory handle from a native handle. */
-			explicit directory_handle(typename adp_base::native_handle_type hnd, fs::file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, flags)) {}
-			/** Initializes directory handle from a native handle and explicit device & inode IDs. */
-			explicit directory_handle(typename adp_base::native_handle_type hnd, fs::file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(typename adp_base::native_handle_type(hnd, flags), dev, ino) {}
-
 			/** Initializes directory handle from a path handle rvalue and file flags. */
 			explicit directory_handle(fs::path_handle &&hnd, fs::file_flags flags) noexcept : directory_handle(hnd.release(), flags) {}
-			/** Initializes directory handle from a path handle rvalue, file flags and explicit device & inode IDs. */
-			explicit directory_handle(fs::path_handle &&hnd, fs::file_flags flags, dev_t dev, ino_t ino) noexcept : directory_handle(hnd.release(), flags, dev, ino) {}
+			/** Initializes directory handle from a native handle. */
+			explicit directory_handle(typename adp_base::native_handle_type hnd, fs::file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, flags)) {}
 
 			/** Returns the flags of the directory handle. */
 			[[nodiscard]] constexpr fs::file_flags flags() const noexcept { return fs::file_flags(native_handle().flags); }

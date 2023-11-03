@@ -487,7 +487,7 @@ namespace rod
 
 		[[nodiscard]] inline static bool has_illegal_path_sequences(std::wstring_view sv) noexcept
 		{
-			constexpr std::wstring_view reserved_names[] = {L"CON", L"PRN", L"AUX", L"NUL"};
+			constexpr std::wstring_view reserved_names[] = {L"CON", L"CONIN$", L"CONOUT$", L"PRN", L"AUX", L"NUL"};
 			constexpr std::wstring_view reserved_chars = L"\"*/:<>?|";
 
 			if (sv.size() > 260)
@@ -593,7 +593,7 @@ namespace rod
 			constexpr component_iterator() noexcept(std::is_nothrow_default_constructible_v<value_type>) = default;
 
 			constexpr explicit component_iterator(const value_type &comp, pointer base, BaseIter pos) noexcept(std::is_nothrow_copy_constructible_v<value_type>) : _comp(comp), _base(base), _pos(pos) {}
-			constexpr explicit component_iterator(value_type &&comp, pointer  base, BaseIter pos) noexcept(std::is_nothrow_move_constructible_v<value_type>) : _comp(std::move(comp)), _base(base), _pos(pos) {}
+			constexpr explicit component_iterator(value_type &&comp, pointer base, BaseIter pos) noexcept(std::is_nothrow_move_constructible_v<value_type>) : _comp(std::move(comp)), _base(base), _pos(pos) {}
 
 			constexpr component_iterator &operator++() noexcept(nothrow_next)
 			{
@@ -643,12 +643,10 @@ namespace rod
 		{
 			if (pos += comp.size(); pos == base.data())
 			{
-				const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-				const auto root_name_end = base.data() + root_name_size(base, fmt);
-				const auto root_path_end = std::find_if_not(root_name_end, base.data() + base.size(), pred);
-
-				if (root_name_end != base.data() && root_name_end != root_path_end)
-					return {root_name_end, root_path_end};
+				const auto name_end = base.data() + root_name_size(base, fmt);
+				const auto root_end = std::find_if_not(name_end, base.data() + base.size(), [fmt](auto ch) { return is_separator(ch, fmt); });
+				if (name_end != base.data() && name_end != root_end)
+					return {name_end, root_end};
 			}
 			if (is_separator(*pos, fmt) && comp.empty())
 			{
@@ -674,16 +672,16 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr std::basic_string_view<C> iter_prev(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, format_type fmt) noexcept
 		{
-			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-			const auto root_name_end = base.data() + root_name_size(base, fmt);
-			const auto root_path_end = std::find_if_not(root_name_end, base.data() + base.size(), pred);
+			const auto sep_pred = [fmt](auto ch) { return is_separator(ch, fmt); };
+			const auto name_end = base.data() + root_name_size(base, fmt);
+			const auto root_end = std::find_if_not(name_end, base.data() + base.size(), sep_pred);
 
 			/* Root directory component. */
-			if (root_name_end != root_path_end && pos == root_path_end)
-				return {pos = root_name_end, root_path_end};
+			if (name_end != root_end && pos == root_end)
+				return {pos = name_end, root_end};
 			/* Root name component. */
-			if (root_name_end != base.data() && pos == root_name_end)
-				return {pos = base.data(), root_name_end};
+			if (name_end != base.data() && pos == name_end)
+				return {pos = base.data(), name_end};
 
 			/* Relative path component. */
 			if (pos == base.data() + base.size() && is_separator(pos[-1], fmt))
@@ -692,10 +690,10 @@ namespace rod
 				return {};
 			}
 
-			while (pos != root_path_end && is_separator(pos[-1], fmt))
+			while (pos != root_end && is_separator(pos[-1], fmt))
 				--pos;
 			const auto end = pos;
-			while (pos != root_path_end && !is_separator(pos[-1], fmt))
+			while (pos != root_end && !is_separator(pos[-1], fmt))
 				--pos;
 
 			return {pos, end};
@@ -703,18 +701,18 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr std::size_t iter_begin(std::basic_string_view<C> base, format_type fmt) noexcept
 		{
-			const auto root_name_end = base.data() + root_name_size(base, fmt);
-			if (base.data() == root_name_end)
+			const auto name_end = base.data() + root_name_size(base, fmt);
+			if (base.data() == name_end)
 			{
 				const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-				const auto root_path_end = std::find_if_not(root_name_end, base.data() + base.size(), pred);
+				const auto root_end = std::find_if_not(name_end, base.data() + base.size(), pred);
 
-				if (base.data() == root_path_end)
-					return std::find_if(root_path_end, base.data() + base.size(), pred) - base.data();
+				if (base.data() == root_end)
+					return std::find_if(root_end, base.data() + base.size(), pred) - base.data();
 				else
-					return root_path_end - base.data();
+					return root_end - base.data();
 			}
-			return root_name_end - base.data();
+			return name_end - base.data();
 		}
 
 		template<typename C = value_type>
@@ -753,19 +751,19 @@ namespace rod
 			};
 
 			/* Compare root names. */
-			const auto a_root_name_end = a_str.begin() + root_name_size(a_str, a_fmt);
-			const auto b_root_name_end = b_str.begin() + root_name_size(b_str, b_fmt);
-			if (auto cmp = do_compare(a_str.begin(), a_root_name_end, b_str.begin(), b_root_name_end); cmp != 0)
+			const auto a_name_end = a_str.begin() + root_name_size(a_str, a_fmt);
+			const auto b_name_end = b_str.begin() + root_name_size(b_str, b_fmt);
+			if (auto cmp = do_compare(a_str.begin(), a_name_end, b_str.begin(), b_name_end); cmp != 0)
 				return cmp;
 
 			/* Compare root directories. */
-			const auto a_root_path_end = std::find_if_not(a_root_name_end, a_str.end(), a_pred);
-			const auto b_root_path_end = std::find_if_not(b_root_name_end, b_str.end(), b_pred);
-			if (const auto a_empty = a_root_name_end >= a_root_path_end, b_empty = b_root_name_end >= b_root_path_end; a_empty != b_empty)
+			const auto a_root_end = std::find_if_not(a_name_end, a_str.end(), a_pred);
+			const auto b_root_end = std::find_if_not(b_name_end, b_str.end(), b_pred);
+			if (const auto a_empty = a_name_end >= a_root_end, b_empty = b_name_end >= b_root_end; a_empty != b_empty)
 				return a_empty - b_empty;
 
 			/* Compare element-wise. */
-			return do_compare(a_root_path_end, a_str.end(), b_root_path_end, b_str.end());
+			return do_compare(a_root_end, a_str.end(), b_root_end, b_str.end());
 		}
 		inline constexpr int compare_bytes(std::span<const std::uint8_t> a_bytes, std::span<const std::uint8_t> b_bytes) noexcept
 		{
@@ -789,11 +787,11 @@ namespace rod
 		inline constexpr std::size_t hash_string(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
 			fnv1a_builder builder;
-			const auto root_name_end = path.begin() + root_name_size(path, fmt);
-			builder.write(path.data(), root_name_end - path.begin());
+			const auto name_end = path.begin() + root_name_size(path, fmt);
+			builder.write(path.data(), name_end - path.begin());
 
 			bool skip_separator = false;
-			for (auto pos = root_name_end; pos != path.end(); ++pos)
+			for (auto pos = name_end; pos != path.end(); ++pos)
 			{
 				if (!is_separator(*pos, fmt))
 				{
@@ -812,10 +810,10 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr std::size_t find_relative_path(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
-			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-			const auto root_name_end = path.begin() + root_name_size(path, fmt);
-			const auto root_path_end = std::find_if_not(root_name_end, path.end(), pred);
-			return static_cast<std::size_t>(std::distance(path.begin(), root_path_end));
+			const auto sep_pred = [=](auto ch) { return is_separator(ch, fmt); };
+			const auto name_end = path.begin() + root_name_size(path, fmt);
+			const auto root_end = std::find_if_not(name_end, path.end(), sep_pred);
+			return static_cast<std::size_t>(std::distance(path.begin(), root_end));
 		}
 		template<typename C = value_type>
 		inline constexpr std::size_t parent_path_size(std::basic_string_view<C> path, format_type fmt) noexcept
@@ -870,10 +868,10 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr std::basic_string_view<C> root_directory_substr(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
-			const auto pred = [&](auto ch) { return is_separator(ch, fmt); };
-			const auto root_name_end = path.begin() + root_name_size(path, fmt);
-			const auto root_path_end = std::find_if_not(root_name_end, path.end(), pred);
-			return std::basic_string_view<C>(root_name_end, root_path_end);
+			const auto sep_pred = [fmt](auto ch) { return is_separator(ch, fmt); };
+			const auto name_end = path.begin() + root_name_size(path, fmt);
+			const auto root_end = std::find_if_not(name_end, path.end(), sep_pred);
+			return std::basic_string_view<C>(name_end, root_end);
 		}
 		template<typename C = value_type>
 		inline constexpr std::basic_string_view<C> root_path_substr(std::basic_string_view<C> path, format_type fmt) noexcept

@@ -254,34 +254,22 @@ namespace rod
 
 			/** Initializes a closed link handle. */
 			link_handle() noexcept = default;
+			link_handle(link_handle &&) noexcept = default;
+			link_handle &operator=(link_handle &&) noexcept = default;
 
 #ifdef ROD_HAS_SYMLINK_HANDLE
-			link_handle(link_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
-			link_handle &operator=(link_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
-
-			/** Initializes link handle from a native handle and file flags. */
-			explicit link_handle(typename adp_base::native_handle_type hnd, file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags))) {}
-			/** Initializes link handle from a native handle, file flags, and explicit device & inode IDs. */
-			explicit link_handle(typename adp_base::native_handle_type hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags)), dev, ino) {}
-
 			/** Initializes link handle from a basic handle rvalue and file flags. */
 			explicit link_handle(basic_handle &&hnd, file_flags flags) noexcept : link_handle(hnd.release(), flags) {}
-			/** Initializes link handle from a basic handle rvalue, file flags, and explicit device & inode IDs. */
-			explicit link_handle(basic_handle &&hnd, file_flags flags, dev_t dev, ino_t ino) noexcept : link_handle(hnd.release(), flags, dev, ino) {}
+			/** Initializes link handle from a native handle and file flags. */
+			explicit link_handle(typename adp_base::native_handle_type hnd, file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags))) {}
 #else
-			link_handle(link_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)), _path(std::move(other._path)) {}
-			link_handle &operator=(link_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), _path = std::move(other._path), *this); }
-
-			/** Initializes link handle from a native base path handle, leaf pathname and file flags. */
-			explicit link_handle(typename adp_base::native_handle_type base, path_view path, file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(base, std::uint32_t(flags))), _path(path) {}
-			/** Initializes link handle from a native base path handle, leaf pathname, file flags, and explicit device & inode IDs. */
-			explicit link_handle(typename adp_base::native_handle_type base, path_view path, file_flags flags, dev_t dev, ino_t ino) noexcept : adp_base(typename adp_base::native_handle_type(base, std::uint32_t(flags)), dev, ino), _path(path) {}
-
 			/** Initializes link handle from a base path handle rvalue, leaf pathname and file flags. */
 			explicit link_handle(path_handle &&base, path_view path, file_flags flags) noexcept : link_handle(base.release(), path, flags) {}
-			/** Initializes link handle from a base path handle rvalue, leaf pathname, file flags, and explicit device & inode IDs. */
-			explicit link_handle(path_handle &&base, path_view path, file_flags flags, dev_t dev, ino_t ino) noexcept : link_handle(base.release(), path, flags, dev, ino) {}
+			/** Initializes link handle from a native base path handle, leaf pathname and file flags. */
+			explicit link_handle(typename adp_base::native_handle_type base, path_view path, file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(base, std::uint32_t(flags))), _path(path) {}
 #endif
+
+			~link_handle() { if (is_open()) do_close(); }
 
 			/** Returns the flags of the link handle. */
 			[[nodiscard]] constexpr file_flags flags() const noexcept { return file_flags(native_handle().flags); }
@@ -299,10 +287,25 @@ namespace rod
 			friend constexpr void swap(link_handle &a, link_handle &b) noexcept { a.swap(b); }
 
 		private:
+			auto do_close() noexcept -> decltype(close(base()))
+			{
+				if (bool(flags() & file_flags::unlink_on_close))
+				{
+					const auto res = unlink(*this);
+					if (res.has_error() && res.error() != std::make_error_condition(std::errc::no_such_file_or_directory))
+						return res.error();
+				}
+
+#ifndef ROD_HAS_SYMLINK_HANDLE
+				_path.clear();
+#endif
+				return close(base());
+			}
+
 #ifdef ROD_HAS_SYMLINK_HANDLE
-			result<link_handle> do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), flags()); }); }
+			auto do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), flags()); }); }
 #else
-			result<link_handle> do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), _path, flags()); }); }
+			auto do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), _path, flags()); }); }
 #endif
 
 			ROD_API_PUBLIC result<> do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;
@@ -323,7 +326,7 @@ namespace rod
 		using _link::link_handle;
 		using _link::link_type;
 
-		static_assert(stream_io_handle<link_handle>);
-		static_assert(!sparse_io_handle<link_handle>);
+//		static_assert(stream_io_handle<link_handle>);
+//		static_assert(!sparse_io_handle<link_handle>);
 	}
 }

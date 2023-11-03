@@ -333,7 +333,7 @@ namespace rod
 				else
 					co_await complete(set_value, std::move(r), co_await std::move(s));
 			}
-			catch(...) { err = std::current_exception(); }
+			catch (...) { err = std::current_exception(); }
 			co_await complete(set_error, std::move(r), std::move(err));
 		}
 	}
