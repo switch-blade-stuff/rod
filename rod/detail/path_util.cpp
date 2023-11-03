@@ -69,18 +69,4 @@ namespace rod::fs
 		try { return path_canon->lexically_proximate(*base_canon); }
 		catch (...) { return _detail::current_error(); }
 	}
-
-	inline static result<std::size_t> do_create_directories(const path_handle &base, auto pos, auto end) noexcept
-	{
-		if (pos == end)
-			return 0;
-		if (auto dir = directory_handle::open(base, *pos, file_flags::none, open_mode::always); dir.has_value()) [[likely]]
-			return do_create_directories(*dir, ++pos, end).transform_value([](auto n) noexcept { return n + 1; });
-		else
-			return dir.error();
-	}
-	result<std::size_t> create_directories(const path_handle &base, path_view path, const file_timeout &to) noexcept
-	{
-		return do_create_directories(base, path.begin(), path.end());
-	}
 }
