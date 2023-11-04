@@ -206,22 +206,6 @@ namespace rod
 
 	namespace _handle
 	{
-		/** Enumeration used to control behavior of handle open functions. */
-		enum class open_mode : std::uint8_t
-		{
-			/** Open if exists or create if missing. */
-			always,
-			/** Create only if does not exist and fail otherwise. */
-			create,
-
-			/** Open only if already exists and fail otherwise. */
-			existing,
-			/** Open and overwrite contents only if already exists and fail otherwise. */
-			truncate,
-			/** Replace if already exists or create if missing. */
-			supersede,
-		};
-
 		/** Basic system handle type. */
 		class basic_handle
 		{
@@ -515,7 +499,6 @@ namespace rod
 	using handle_adaptor = typename _handle::handle_adaptor<Child, Base>::type;
 
 	using _handle::basic_handle;
-	using _handle::open_mode;
 
 	namespace _handle
 	{

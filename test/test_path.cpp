@@ -2,6 +2,7 @@
  * Created by switchblade on 2023-08-04.
  */
 
+#include <rod/file.hpp>
 #include <rod/path.hpp>
 
 #include "common.hpp"
@@ -95,17 +96,4 @@ int main()
 	TEST_ASSERT(rod::fs::path("a/b").lexically_relative("c/d") == "../../a/b");
 	TEST_ASSERT(rod::fs::path("a/b").lexically_proximate("/a/b") == "a/b");
 	TEST_ASSERT(rod::fs::path("a/b").lexically_relative("/a/b") == "");
-
-	auto curr_path = rod::fs::current_path();
-	TEST_ASSERT(curr_path.has_value());
-	auto curr_dir = rod::fs::path_handle::open({}, *curr_path);
-	TEST_ASSERT(curr_dir.has_value() && curr_dir->is_open());
-
-	auto created = rod::fs::create_directories({}, *curr_path / "dir-a/dir-b");
-	TEST_ASSERT(created.has_value() && *created == 2);
-	created = rod::fs::create_directories(*curr_dir, "dir-a/dir-b");
-	TEST_ASSERT(created.has_value() && *created == 0);
-
-	auto removed = rod::fs::remove_all(*curr_dir, "dir-a");
-	TEST_ASSERT(removed.has_value() && *removed == 2);
 }

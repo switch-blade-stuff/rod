@@ -233,6 +233,13 @@ namespace rod
 	using _extent::zero_extents_t;
 	using _extent::list_extents_t;
 
+	/* TODO: Document usage. */
+	inline constexpr auto clone_extents_to = clone_extents_to_t{};
+	/* TODO: Document usage. */
+	inline constexpr auto zero_extents = zero_extents_t{};
+	/* TODO: Document usage. */
+	inline constexpr auto list_extents = list_extents_t{};
+
 	namespace _read_some
 	{
 		struct read_some_at_t : _io_operation::adaptor<read_some_at_t>::type {};

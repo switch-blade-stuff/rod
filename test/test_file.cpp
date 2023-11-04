@@ -6,83 +6,41 @@
 
 #include "common.hpp"
 
-const auto path = std::filesystem::path{"test.txt"};
-const auto data = std::string_view{"hello, world"};
-auto buff = std::string(data.size() * 2, '\0');
-
-void test_file(auto mode)
-{
-	mode |= rod::basic_file::in | rod::basic_file::out;
-	if (mode & rod::basic_file::noreplace)
-		std::filesystem::remove(path);
-
-	auto file = rod::basic_file(path, mode);
-	TEST_ASSERT(file.is_open());
-	TEST_ASSERT(std::filesystem::equivalent(file.path().value(), path));
-
-	{
-		const auto write_n = rod::write_some(file, rod::as_byte_buffer(data));
-		TEST_ASSERT(file.size().value() == data.size());
-		TEST_ASSERT(write_n.value() == data.size());
-
-		auto pos = file.tell().value();
-		TEST_ASSERT(pos == data.size());
-		pos = file.seek(0, rod::basic_file::beg).value();
-		TEST_ASSERT(pos == 0);
-
-		const auto read_n = rod::read_some(file, rod::as_byte_buffer(buff));
-		TEST_ASSERT(read_n.value() == file.size().value());
-		TEST_ASSERT(read_n.value() == data.size());
-		TEST_ASSERT(buff.find(data) == 0);
-
-		pos = file.tell().value();
-		TEST_ASSERT(pos == data.size());
-	}
-	{
-		const auto write_n = rod::write_some_at(file, data.size(), rod::as_byte_buffer(data));
-		TEST_ASSERT(file.size().value() == data.size() * 2);
-		TEST_ASSERT(write_n.value() == data.size());
-
-		std::fill(buff.begin(), buff.end(), '\0');
-		const auto read_n = rod::read_some_at(file, 0, rod::as_byte_buffer(buff));
-		TEST_ASSERT(buff.find(data) != buff.rfind(data));
-		TEST_ASSERT(read_n.value() == file.size().value());
-		TEST_ASSERT(read_n.value() == data.size() * 2);
-		TEST_ASSERT(buff.find(data) == 0);
-	}
-
-	std::filesystem::remove(path);
-}
-void test_async_file(auto mode)
-{
-	auto ctx = rod::system_context{};
-	auto trd = std::jthread{[&]() { ctx.run(); }};
-
-	mode |= rod::basic_file::in | rod::basic_file::out;
-	if (mode & rod::basic_file::noreplace)
-		std::filesystem::remove(path);
-
-	auto file = rod::open_file(ctx.get_scheduler(), path, mode).value();
-	TEST_ASSERT(file.is_open());
-	TEST_ASSERT(std::filesystem::equivalent(file.path().value(), file.path().value()));
-
-	{
-		rod::sync_wait(rod::async_write_some(file, rod::as_byte_buffer(data))
-		               | rod::then([&](auto n) { TEST_ASSERT(n == data.size()); })
-		               | rod::then([&]() { TEST_ASSERT(file.setpos(0)); }));
-		rod::sync_wait(rod::async_read_some(file, rod::as_byte_buffer(buff))
-		               | rod::then([&](auto n) { TEST_ASSERT(n == file.size().value()); })
-		               | rod::then([&]() { TEST_ASSERT(buff.find(data) == 0); }));
-	}
-
-	std::filesystem::remove(path);
-	ctx.finish();
-}
-
 int main()
 {
-	test_file(rod::basic_file::trunc);
-	test_file(rod::basic_file::noreplace);
-	test_async_file(rod::basic_file::trunc);
-	test_async_file(rod::basic_file::noreplace);
+	auto curr_path = rod::fs::current_path().value();
+	auto curr_dir = rod::fs::path_handle::open({}, curr_path).value();
+	TEST_ASSERT(curr_dir.is_open());
+
+	auto g = rod::defer_invoke([&]()
+	{
+		auto removed = rod::fs::remove_all(curr_dir, "dir-a").value();
+		TEST_ASSERT(removed == 4);
+	});
+
+	auto created = rod::fs::create_directories({}, curr_path / "dir-a/dir-b").value();
+	TEST_ASSERT(created == 2);
+	created = rod::fs::create_directories(curr_dir, "dir-a/dir-b").value();
+	TEST_ASSERT(created == 0);
+
+	auto file_src = rod::fs::file_handle::open(curr_dir, "dir-a/dir-b/test.txt", rod::fs::file_flags::read | rod::fs::file_flags::write /*| rod::fs::file_flags::unlink_on_close*/, rod::fs::open_mode::always).value();
+	auto file_dst = rod::fs::file_handle::open(curr_dir, "dir-a/test.txt", rod::fs::file_flags::read | rod::fs::file_flags::write /*| rod::fs::file_flags::unlink_on_close*/, rod::fs::open_mode::always).value();
+
+	auto iter = rod::fs::directory_iterator::from_path(curr_dir, "dir-a").value();
+	TEST_ASSERT(std::distance(iter.begin(), iter.end()) == 2);
+	iter = rod::fs::directory_iterator::from_path(curr_dir, "dir-a/dir-b").value();
+	TEST_ASSERT(std::distance(iter.begin(), iter.end()) == 1);
+
+	auto str_src = std::string_view("hello, world");
+	auto str_dst = std::string(str_src.size(), 0);
+	auto buff_src = rod::as_bytes(str_src);
+	auto buff_dst = rod::as_bytes(str_dst);
+
+	auto write_res = rod::write_some_at(file_src, {.buffs = {&buff_src, 1}, .off = 0}).value();
+	TEST_ASSERT(write_res.front().size() == buff_src.size());
+	auto clone_res = rod::clone_extents_to(file_src, {.extent = {0, -1}, .dst = file_dst, .off = 0, .emulate = true}).value();
+	TEST_ASSERT(clone_res.second == buff_src.size());
+
+	auto read_res = rod::read_some_at(file_dst, {.buffs = {&buff_dst, 1}, .off = 0}).value();
+	TEST_ASSERT(read_res.front().size() == buff_dst.size() && str_dst == str_src);
 }

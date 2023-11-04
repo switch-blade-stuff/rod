@@ -213,11 +213,11 @@ namespace rod
 		[[nodiscard]] ROD_API_PUBLIC result<path> find_system_file(path_view filter, std::span<const path_view> dirs = {}) noexcept;
 	}
 
-	result<fs::directory_handle> fs::directory_handle::open_temporary(fs::path_view path, fs::file_flags flags, open_mode mode) noexcept
+	result<fs::directory_handle> fs::directory_handle::open_temporary(fs::path_view path, fs::file_flags flags, fs::open_mode mode) noexcept
 	{
 		if (!path.empty())
 			return open(fs::temporary_file_directory(), path, flags, mode);
-		else if (mode != open_mode::existing)
+		else if (mode != fs::open_mode::existing)
 			return open_unique(fs::temporary_file_directory(), flags);
 		else
 			return std::make_error_code(std::errc::invalid_argument);

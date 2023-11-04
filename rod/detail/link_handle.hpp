@@ -326,7 +326,7 @@ namespace rod
 		using _link::link_handle;
 		using _link::link_type;
 
-//		static_assert(stream_io_handle<link_handle>);
-//		static_assert(!sparse_io_handle<link_handle>);
+		static_assert(stream_io_handle<link_handle>);
+		static_assert(!sparse_io_handle<link_handle>);
 	}
 }

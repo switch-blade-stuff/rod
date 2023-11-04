@@ -96,12 +96,12 @@ namespace rod::_file
 			return hnd.error();
 	}
 
-	result<> file_handle::do_link(const path_handle &base, path_view path, bool replace, const fs::file_timeout &to) noexcept
+	result<> file_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -117,12 +117,12 @@ namespace rod::_file
 		else
 			return {};
 	}
-	result<> file_handle::do_relink(const path_handle &base, path_view path, bool replace, const fs::file_timeout &to) noexcept
+	result<> file_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -138,12 +138,12 @@ namespace rod::_file
 		else
 			return {};
 	}
-	result<> file_handle::do_unlink(const fs::file_timeout &to) noexcept
+	result<> file_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -188,12 +188,12 @@ namespace rod::_file
 	}
 
 	template<auto IoFunc, typename Op>
-	typename file_handle::io_result<Op> file_handle::invoke_io_func(io_request<Op> req, const fs::file_timeout &to) noexcept
+	typename file_handle::io_result<Op> file_handle::invoke_io_func(io_request<Op> req, const file_timeout &to) noexcept
 	{
-		if (!bool(flags() & file_flags::non_blocking) && to != timeout_type())
+		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to.absolute();
+		const file_timeout abs_timeout = to == file_timeout() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -323,12 +323,12 @@ namespace rod::_file
 			::FlushFileBuffers(native_handle());
 		return endp;
 	}
-	io_result<zero_extents_t> file_handle::do_zero_extents(io_request<zero_extents_t> req, const fs::file_timeout &to) noexcept
+	io_result<zero_extents_t> file_handle::do_zero_extents(io_request<zero_extents_t> req, const file_timeout &to) noexcept
 	{
 		if (req.extent.first + req.extent.second < req.extent.first) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);
 
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -374,13 +374,13 @@ namespace rod::_file
 		}
 		return req.extent;
 	}
-	io_result<list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const fs::file_timeout &to) const noexcept
+	io_result<list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const file_timeout &to) const noexcept
 	{
 		auto buff = FILE_ALLOCATED_RANGE_BUFFER{.Length = {.QuadPart = (extent_type(1) << 63) - 1}};
 		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
 		DWORD written = 0;
 
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -407,18 +407,18 @@ namespace rod::_file
 		}
 		catch (...) { return _detail::current_error(); }
 	}
-	io_result<clone_extents_to_t> file_handle::do_clone_extents_to(io_request<clone_extents_to_t> req, const fs::file_timeout &to) noexcept
+	io_result<clone_extents_to_t> file_handle::do_clone_extents_to(io_request<clone_extents_to_t> req, const file_timeout &to) noexcept
 	{
 		constexpr auto stat_mask = stat::query::size | stat::query::ino | stat::query::dev;
 
-		if (!bool((flags() | req.dst.flags()) & file_flags::non_blocking) && to != timeout_type()) [[unlikely]]
+		if (!bool((flags() | req.dst.flags()) & file_flags::non_blocking) && to != file_timeout()) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
 		if ((req.dst.flags() & file_flags::write) != file_flags::write) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_seek);
 
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto block_size = get_block_size();
 		const auto page_size = get_page_size();
-		const auto abs_timeout = to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -716,7 +716,7 @@ namespace rod::_file
 				}
 
 			item_complete:
-				result.second += src_off;
+				result.second += src_off + src_length;
 				restore_guard.release();
 			}
 		}

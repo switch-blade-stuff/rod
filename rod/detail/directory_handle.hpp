@@ -238,7 +238,7 @@ namespace rod
 			[[nodiscard]] static result<directory_handle> open_unique(const fs::path_handle &base, fs::file_flags flags = fs::file_flags::read | fs::file_flags::write) noexcept
 			{
 				if (auto name = _handle::generate_unique_name(); name.has_value()) [[likely]]
-					return open(base, *name, flags, open_mode::always);
+					return open(base, *name, flags, fs::open_mode::always);
 				else
 					return name.error();
 			}
@@ -259,7 +259,7 @@ namespace rod
 			 * @param flags Handle flags to open the handle with. `fs::file_flags::read | fs::file_flags::write` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::always` by default.
 			 * @return Handle to the directory or a status code on failure. */
-			[[nodiscard]] inline static result<directory_handle> open_temporary(fs::path_view path, fs::file_flags flags = fs::file_flags::read | fs::file_flags::write, open_mode mode = open_mode::always) noexcept;
+			[[nodiscard]] inline static result<directory_handle> open_temporary(fs::path_view path, fs::file_flags flags = fs::file_flags::read | fs::file_flags::write, fs::open_mode mode = fs::open_mode::always) noexcept;
 			/** Opens or creates a directory.
 			 * @note The following values of \a flags are not supported:
 			 * <ul>
@@ -278,7 +278,7 @@ namespace rod
 			 * @param flags Handle flags to open the handle with. `fs::file_flags::read` by default.
 			 * @param mode Mode to use when opening or creating the handle. `open_mode::existing` by default.
 			 * @return Handle to the directory or a status code on failure. */
-			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> open(const fs::path_handle &base, fs::path_view path, fs::file_flags flags = fs::file_flags::read, open_mode mode = open_mode::existing) noexcept;
+			[[nodiscard]] static ROD_API_PUBLIC result<directory_handle> open(const fs::path_handle &base, fs::path_view path, fs::file_flags flags = fs::file_flags::read, fs::open_mode mode = fs::open_mode::existing) noexcept;
 
 		public:
 			directory_handle(const directory_handle &) = delete;
@@ -324,11 +324,11 @@ namespace rod
 
 			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](fs::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
-			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
-			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const typename adp_base::timeout_type &to) noexcept;
-			ROD_API_PUBLIC result<> do_unlink(const typename adp_base::timeout_type &to) noexcept;
+			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept;
+			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept;
+			ROD_API_PUBLIC result<> do_unlink(const fs::file_timeout &to) noexcept;
 
-			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const typename adp_base::timeout_type &to) noexcept;
+			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const fs::file_timeout &to) noexcept;
 
 			bool _read_guard = {};
 		};
@@ -393,7 +393,7 @@ namespace rod
 			[[nodiscard]] static ROD_API_PUBLIC result<directory_iterator> from_path(const fs::path_handle &base, fs::path_view path) noexcept;
 
 		private:
-			explicit directory_iterator(typename basic_handle::native_handle_type &&hnd) noexcept : _dir_hnd(std::forward<decltype(hnd)>(hnd)) {}
+			explicit directory_iterator(typename basic_handle::native_handle_type &&hnd) noexcept : _base_hnd(std::forward<decltype(hnd)>(hnd)) {}
 
 		public:
 			/** Initializes an empty (sentinel) iterator. */
@@ -409,7 +409,7 @@ namespace rod
 			 * @throw std::bad_alloc On failure to copy the path buffer. */
 			directory_iterator(const directory_iterator &other)
 			{
-				_dir_hnd = clone(other._dir_hnd).value();
+				_base_hnd = clone(other._base_hnd).value();
 				_entry = other._entry;
 			}
 			/** Copy-assigns the iterator from \a other.
@@ -420,7 +420,7 @@ namespace rod
 			{
 				if (this != &other)
 				{
-					_dir_hnd = clone(other._dir_hnd).value();
+					_base_hnd = clone(other._base_hnd).value();
 					_entry = other._entry;
 				}
 				return *this;
@@ -448,7 +448,7 @@ namespace rod
 			{
 				auto tmp = *this;
 				next().value();
-				return *this;
+				return tmp;
 			}
 
 			/** Returns reference to the internal directory entry. */
@@ -458,17 +458,17 @@ namespace rod
 
 			constexpr void swap(directory_iterator &other) noexcept
 			{
-				_dir_hnd.swap(other._dir_hnd);
+				_base_hnd.swap(other._base_hnd);
 				_entry.swap(other._entry);
 			}
 			friend constexpr void swap(directory_iterator &a, directory_iterator &b) noexcept { a.swap(b); }
 
-			constexpr bool operator==(const directory_iterator &other) const noexcept { return _dir_hnd == other._dir_hnd; }
-			constexpr bool operator!=(const directory_iterator &other) const noexcept { return _dir_hnd != other._dir_hnd; }
+			constexpr bool operator==(const directory_iterator &other) const noexcept { return _base_hnd == other._base_hnd; }
+			constexpr bool operator!=(const directory_iterator &other) const noexcept { return _base_hnd != other._base_hnd; }
 
 		private:
 			/* Duplicate of the original handle with read access only. */
-			basic_handle _dir_hnd;
+			basic_handle _base_hnd;
 			directory_entry _entry;
 		};
 	}

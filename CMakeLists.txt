@@ -188,9 +188,20 @@ endif ()
 
 # Win32 implementation
 if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
+    # Create NTSTATUS table generator executable
+    add_executable(${PROJECT_NAME}-ntstatus-gen rod/detail/win32/status_table.cpp)
+    target_compile_features(${PROJECT_NAME}-ntstatus-gen PRIVATE cxx_std_20)
+
+    add_custom_command(
+            COMMAND $<TARGET_FILE:${PROJECT_NAME}-ntstatus-gen> ${CMAKE_CURRENT_SOURCE_DIR}/rod/detail/win32/nttab.gen.hpp ntstatus_table
+            OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/rod/detail/win32/nttab.gen.hpp
+            DEPENDS ${PROJECT_NAME}-ntstatus-gen
+            VERBATIM)
+
     target_sources(${PROJECT_NAME} PRIVATE
             rod/detail/win32/ntapi.hpp
             rod/detail/win32/ntapi.cpp
+            rod/detail/win32/nttab.gen.hpp
             rod/detail/win32/path_base.hpp
             rod/detail/win32/path_base.cpp
             rod/detail/win32/path_util.hpp

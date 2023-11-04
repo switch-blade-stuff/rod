@@ -29,6 +29,15 @@
 
 namespace rod::_win32
 {
+	using ntstatus = ULONG;
+
+	inline constexpr ntstatus error_status_max = 0xffff'ffff;
+	inline constexpr ntstatus warning_status_max = 0x8fff'ffff;
+	inline constexpr ntstatus message_status_max = 0x7fff'ffff;
+	inline constexpr ntstatus success_status_max = 0x3fff'ffff;
+
+	[[nodiscard]] inline constexpr bool is_status_failure(ntstatus st) noexcept { return st > message_status_max; }
+
 	inline static _handle::extent_type get_page_size() noexcept
 	{
 		static const _handle::extent_type result = []()
@@ -51,15 +60,6 @@ namespace rod::_win32
 		return n + (rem ? page_size - rem : 0);
 	}
 
-	using ntstatus = ULONG;
-
-	inline constexpr ntstatus error_status_max = 0xffff'ffff;
-	inline constexpr ntstatus warning_status_max = 0x8fff'ffff;
-	inline constexpr ntstatus message_status_max = 0x7fff'ffff;
-	inline constexpr ntstatus success_status_max = 0x3fff'ffff;
-
-	[[nodiscard]] inline constexpr bool is_status_failure(ntstatus st) noexcept { return st > message_status_max; }
-
 	enum disposition : ULONG
 	{
 		file_supersede = 0,
@@ -70,15 +70,15 @@ namespace rod::_win32
 		file_overwrite_if,
 	};
 
-	inline constexpr auto mode_to_disp(open_mode mode) noexcept
+	inline constexpr auto mode_to_disp(fs::open_mode mode) noexcept
 	{
 		switch (mode)
 		{
-		case open_mode::always: return file_open_if;
-		case open_mode::create: return file_create;
-		case open_mode::existing: return file_open;
-		case open_mode::truncate: return file_overwrite;
-		case open_mode::supersede: return file_supersede;
+		case fs::open_mode::always: return file_open_if;
+		case fs::open_mode::create: return file_create;
+		case fs::open_mode::existing: return file_open;
+		case fs::open_mode::truncate: return file_overwrite;
+		case fs::open_mode::supersede: return file_supersede;
 		}
 		return disposition();
 	}
@@ -681,12 +681,12 @@ namespace rod::_win32
 	inline static bool is_error_access_denied(std::error_code err) noexcept
 	{
 		static const auto cnds = std::array
-				{
-						/* DOS errors */
-						std::error_condition(ERROR_ACCESS_DENIED, std::system_category()),
-						/* POSIX errors */
-						std::make_error_condition(std::errc::permission_denied),
-				};
+		{
+			/* DOS errors */
+			std::error_condition(ERROR_ACCESS_DENIED, std::system_category()),
+			/* POSIX errors */
+			std::make_error_condition(std::errc::permission_denied),
+		};
 		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
 	}
 	inline static bool is_error_file_exists(std::error_code err) noexcept
@@ -732,22 +732,22 @@ namespace rod::_win32
 		template<typename F>
 		result<bool> query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const fs::file_timeout &to, F &&f) const noexcept
 		{
-			auto iosb = io_status_block();
-			auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), ULONG(buff.size()), FileIdFullDirectoryInformation, false, filter, reset);
-			if (status == STATUS_PENDING)
-				status = wait_io(handle, &iosb, to);
-			if (is_status_failure(status)) [[unlikely]]
-				return {in_place_error, status_error_code(status)};
-
-			bool eof = false;
-			for (auto pos = buff.data(); !eof;)
+			for (;;)
 			{
-				auto full_info = reinterpret_cast<const file_id_full_dir_information *>(pos);
-				eof = (full_info->next_off == 0);
-				pos += full_info->next_off;
+				auto iosb = io_status_block();
+				auto status = NtQueryDirectoryFile(handle, nullptr, nullptr, 0, &iosb, buff.data(), ULONG(buff.size()), FileIdFullDirectoryInformation, true, filter, reset);
+				if (status == STATUS_PENDING)
+					status = wait_io(handle, &iosb, to);
+				if (status == 0x80000006 /*STATUS_NO_MORE_FILES*/)
+					return {in_place_value, true};
+				if (is_status_failure(status)) [[unlikely]]
+					return {in_place_error, status_error_code(status)};
+
+				const auto *full_info = reinterpret_cast<const file_id_full_dir_information *>(buff.data());
+				const auto name = std::wstring_view(full_info->name, full_info->name_len / sizeof(wchar_t));
+				reset = false;
 
 				/* Skip directory wildcards. */
-				const auto name = std::wstring_view(full_info->name, full_info->name_len / sizeof(wchar_t));
 				if (name.size() >= 1 && name[0] == '.' && (name.size() == 1 || (name.size() == 2 && name[1] == '.')))
 					continue;
 
@@ -767,9 +767,8 @@ namespace rod::_win32
 				if (auto res = f(name, st); res.has_error()) [[unlikely]]
 					return {in_place_error, std::move(res.error())};
 				else if (!(*res))
-					break;
+					return {in_place_value, false};
 			}
-			return {in_place_value, eof};
 		}
 
 		ntstatus link_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept;

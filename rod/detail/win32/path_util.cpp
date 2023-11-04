@@ -377,7 +377,7 @@ namespace rod::fs
 
 		for (;;)
 		{
-			auto read_res = read_some(*hnd, {.buffs = std::move(seq), .resume = true}, to);
+			auto read_res = read_some(*hnd, {.buffs = std::move(seq), .resume = false}, to);
 			if (read_res.has_error()) [[unlikely]]
 				return read_res.error();
 			else if (!read_res->first.empty())
@@ -429,7 +429,7 @@ namespace rod::fs
 
 	result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -456,7 +456,7 @@ namespace rod::fs
 	}
 	result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();

@@ -94,7 +94,7 @@ namespace rod::_dir
 
 	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -116,7 +116,7 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -138,7 +138,7 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -159,7 +159,7 @@ namespace rod::_dir
 		if (req.buffs.empty()) [[unlikely]]
 			return std::make_pair(std::move(req.buffs), false);
 
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		auto g = std::lock_guard(*this);
 
 		const auto &ntapi = ntapi::instance();
@@ -259,22 +259,32 @@ namespace rod::_dir
 
 	result<directory_iterator> directory_iterator::from_handle(const path_handle &other) noexcept
 	{
-		if (auto hnd = directory_handle::reopen(other, file_flags::read); hnd.has_value()) [[likely]]
-			return directory_iterator(hnd->release());
-		else
+		auto hnd = directory_handle::reopen(other, file_flags::read);
+		if (hnd.has_error()) [[unlikely]]
 			return hnd.error();
+
+		auto iter = directory_iterator(hnd->release());
+		if (auto res = iter.next(); res.has_value()) [[likely]]
+			return std::move(iter);
+		else
+			return res.error();
 	}
 	result<directory_iterator> directory_iterator::from_path(const path_handle &base, path_view path) noexcept
 	{
-		if (auto hnd = directory_handle::open(base, path, file_flags::read); hnd.has_value()) [[likely]]
-			return directory_iterator(hnd->release());
-		else
+		auto hnd = directory_handle::open(base, path, file_flags::read);
+		if (hnd.has_error()) [[unlikely]]
 			return hnd.error();
+
+		auto iter = directory_iterator(hnd->release());
+		if (auto res = iter.next(); res.has_value()) [[likely]]
+			return std::move(iter);
+		else
+			return res.error();
 	}
 
 	result<> directory_iterator::next(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.absolute();
+		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
 		auto &&str = _entry.to_path_string();
 
 		const auto &ntapi = ntapi::instance();
@@ -286,7 +296,7 @@ namespace rod::_dir
 			return std::make_error_code(std::errc::not_enough_memory);
 
 		auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
-		auto eof_result = ntapi->query_directory(_dir_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st) -> result<bool>
+		auto eof_result = ntapi->query_directory(_base_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st) -> result<bool>
 		{
 			_entry._query = stats_mask;
 			_entry._st = st;
@@ -300,7 +310,10 @@ namespace rod::_dir
 
 		/* Reset the iterator to sentinel on EOF so that end iterator comparisons are equal. */
 		if (*eof_result)
-			*this = end();
+		{
+			_base_hnd = {};
+			_entry = {};
+		}
 		return {};
 	}
 }

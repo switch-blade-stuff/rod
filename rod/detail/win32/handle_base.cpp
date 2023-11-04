@@ -18,7 +18,7 @@ namespace rod::_handle
 	auto basic_handle::do_clone() const noexcept -> result<basic_handle>
 	{
 		typename basic_handle::native_handle_type result = INVALID_HANDLE_VALUE;
-		if (::DuplicateHandle(::GetCurrentProcess(), _hnd, ::GetCurrentProcess(), &result.value, 0, 0, DUPLICATE_SAME_ACCESS) == 0)
+		if (is_open() && ::DuplicateHandle(::GetCurrentProcess(), _hnd, ::GetCurrentProcess(), &result.value, 0, 0, DUPLICATE_SAME_ACCESS) == 0)
 			return dos_error_code(::GetLastError());
 		else
 			return result;

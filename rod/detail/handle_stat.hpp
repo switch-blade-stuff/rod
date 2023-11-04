@@ -15,6 +15,22 @@ namespace rod
 
 	namespace fs
 	{
+		/** Enumeration used to control behavior of handle open functions. */
+		enum class open_mode : std::uint8_t
+		{
+			/** Open if exists or create if missing. */
+			always,
+			/** Create only if does not exist and fail otherwise. */
+			create,
+
+			/** Open only if already exists and fail otherwise. */
+			existing,
+			/** Open and overwrite contents only if already exists and fail otherwise. */
+			truncate,
+			/** Replace if already exists or create if missing. */
+			supersede,
+		};
+
 		/** Filesystem device ID type. */
 		using dev_t = std::uint64_t;
 		/** Filesystem inode ID type. */

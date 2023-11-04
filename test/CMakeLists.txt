@@ -21,6 +21,7 @@ function(make_test NAME FILE)
     add_test(NAME ${NAME} COMMAND "$<TARGET_FILE:${TEST_PROJECT}>")
 endfunction()
 
+make_test(path ${CMAKE_CURRENT_LIST_DIR}/test_path.cpp)
 make_test(file ${CMAKE_CURRENT_LIST_DIR}/test_file.cpp)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -31,7 +32,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     make_test(io_uring ${CMAKE_CURRENT_LIST_DIR}/test_io_uring.cpp)
 endif ()
 
-make_test(path ${CMAKE_CURRENT_LIST_DIR}/test_path.cpp)
 make_test(signal ${CMAKE_CURRENT_LIST_DIR}/test_signal.cpp)
 make_test(coroutine ${CMAKE_CURRENT_LIST_DIR}/test_coroutine.cpp)
 make_test(stop-token ${CMAKE_CURRENT_LIST_DIR}/test_stop_token.cpp)

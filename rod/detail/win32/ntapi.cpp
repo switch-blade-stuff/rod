@@ -4,72 +4,32 @@
 
 #include "ntapi.hpp"
 
-#include <vector>
+#if !__has_include("nttab.gen.hpp")
+#error NTSTATUS table must be generated first!
+#else
+#include "nttab.gen.hpp"
+#endif
 
 namespace rod::_win32
 {
-	struct status_entry
-	{
-		ntstatus status = {};
-		ULONG dos_err = {};
-		int posix_err = {};
-		std::string msg = {};
-	};
-
-	const status_entry *find_status(long status) noexcept
-	{
-		/* Load NT status table at runtime to use current locale strings. */
-		static const auto table = []()
-		{
-			constexpr std::pair<ULONG, ULONG> err_ranges[] = {{0x0000'0000, 0x0000'ffff}, {0x4000'0000, 0x4000'ffff}, {0x8000'0001, 0x8000'ffff}, {0xc000'0001, 0xc000'ffff}};
-			constexpr std::size_t buff_size = 32768;
-
-			const auto &ntapi = ntapi::instance().value();
-			auto tmp_buffer = std::make_unique<wchar_t[]>(buff_size);
-			auto msg_buffer = std::make_unique<char[]>(buff_size);
-			std::vector<status_entry> result;
-
-			for (const auto &range : err_ranges)
-				for (ULONG i = range.first; i < range.second; ++i)
-				{
-					/* Decode message string from NT status. Assume status code does not exist if FormatMessageW fails. */
-					const auto flags = FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-					const auto tmp_length = ::FormatMessageW(flags, ntapi.ntdll, i, 0, tmp_buffer.get(), buff_size, nullptr);
-					if (tmp_length == 0) [[unlikely]]
-						continue;
-					const auto msg_length = ::WideCharToMultiByte(65001 /* UTF8 */, WC_ERR_INVALID_CHARS, tmp_buffer.get(), int(tmp_length), msg_buffer.get(), buff_size, nullptr, nullptr);
-					if (msg_length < 0) [[unlikely]]
-						continue;
-
-					/* Decode Win32 & POSIX error codes from NT status. */
-					int posix_err = 0;
-					const auto win32_err = ntapi.RtlNtStatusToDosError(i);
-					const auto cnd = std::error_code(int(win32_err), std::system_category()).default_error_condition();
-					if (cnd.category() == std::generic_category())
-						posix_err = cnd.value();
-
-					/* Create the resulting entry. */
-					result.emplace_back(i, win32_err, posix_err, std::string(msg_buffer.get(), msg_length));
-				}
-
-			return result;
-		}();
-
-		const auto pos = std::ranges::find_if(table, [=](auto &e) { return e.status == status; });
-		return pos == table.end() ? nullptr : std::to_address(pos);
-	}
 	const std::error_category &status_category() noexcept
 	{
 		static const status_category_type value;
 		return value;
 	}
+	const auto *find_status(long status) noexcept
+	{
+		/* Load NT status table at runtime to use current locale strings. */
+		const auto pos = std::ranges::find_if(ntstatus_table, [=](auto &e) { return e.status == status; });
+		return pos == std::ranges::end(ntstatus_table) ? nullptr : std::to_address(pos);
+	}
 
 	std::string status_category_type::message(int value) const
 	{
 		if (const auto e = find_status(value); e != nullptr && !e->msg.empty()) [[likely]]
-			return e->msg;
+			return std::string(e->msg);
 
-		const auto status = static_cast<ULONG>(value);
+		const auto status = ULONG(value);
 		if (status <= success_status_max)
 			return "Unknown NT success code";
 		else if (status <= message_status_max)
