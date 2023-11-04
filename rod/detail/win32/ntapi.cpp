@@ -4,10 +4,10 @@
 
 #include "ntapi.hpp"
 
-#if !__has_include("nttab.gen.hpp")
-#error NTSTATUS table must be generated first!
-#else
+#if __has_include("nttab.gen.hpp")
 #include "nttab.gen.hpp"
+#else
+#error NTSTATUS table must be generated first!
 #endif
 
 namespace rod::_win32

@@ -189,7 +189,7 @@ endif ()
 # Win32 implementation
 if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
     # Create NTSTATUS table generator executable
-    add_executable(${PROJECT_NAME}-ntstatus-gen rod/detail/win32/status_table.cpp)
+    add_executable(${PROJECT_NAME}-ntstatus-gen rod/detail/win32/status_table.hpp rod/detail/win32/status_table.cpp)
     target_compile_features(${PROJECT_NAME}-ntstatus-gen PRIVATE cxx_std_20)
 
     add_custom_command(
