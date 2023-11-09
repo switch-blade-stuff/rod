@@ -29,24 +29,24 @@ namespace rod
 				else
 					return _win32::status_error_code(status);
 			}();
-			if (algo.has_value() && !ntapi->BCryptGenRandom(algo->get(), buff, DWORD(max), 0)) [[unlikely]]
+			if (algo.has_value() && !ntapi->BCryptGenRandom(algo->get(), buff, DWORD(max), 0)) [[likely]]
 				return DWORD(max);
 		}
 #elif defined(ROD_POSIX)
-		static auto random = []() -> result<file_handle>
+		static auto random = []() -> result<fs::file_handle>
 		{
 			/* Fall back to /dev/random if urandom is not available. */
-			if (auto random = open_file("/dev/urandom", open_mode::in); random.has_error()) [[unlikely]]
-				return open_file("/dev/random", open_mode::in);
+			if (auto random = fs::file_handle::open({}, "/dev/urandom"); random.has_error()) [[unlikely]]
+				return fs::file_handle::open({}, "/dev/random");
 			else
 				return random;
-		};
+		}();
 		if (random.has_value()) [[likely]]
 		{
-			auto bytes = basic_file_handle::buffer_type(buff, max);
-			auto result = read_some_at(random, bytes, 0);
+			auto bytes = byte_buffer(static_cast<std::byte *>(buff), max);
+			auto result = read_some_at(*random, {.buffs = {&bytes, 1}, .off = 0});
 			if (result.has_value()) [[likely]]
-				return *result;
+				return result->front().size();
 		}
 #endif
 		return 0;

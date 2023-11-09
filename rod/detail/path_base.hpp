@@ -498,7 +498,7 @@ namespace rod
 				if (sv[i] >= 1 && sv[i] <= 31)
 					return true;
 				/* Test for reserved characters. */
-				for (std::size_t j = 0; j < sizeof(reserved_chars); ++j)
+				for (std::size_t j = 0; j < reserved_chars.size(); ++j)
 					if (sv[i] == reserved_chars[j]) return true;
 			}
 

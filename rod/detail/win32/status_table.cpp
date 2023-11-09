@@ -4,7 +4,7 @@
 
 #include "status_table.hpp"
 
-#if defined(_WIN32)
+#if defined(_MSC_VER)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
 	    << "#include <string_view>\n\nnamespace\n{\nstatic const struct { unsigned long status; unsigned long dos_err; int posix_err; std::string_view msg; } "
 	    << argv[2] << "[] = {\n";
 
-#if defined(_WIN32)
+#if defined(_MSC_VER)
 	auto ntdll = ::LoadLibraryA("ntdll.dll");
 	auto RtlNtStatusToDosError = reinterpret_cast<ULONG (__stdcall *)(_In_ ULONG)>(::GetProcAddress(ntdll, "RtlNtStatusToDosError"));
 	if (ntdll && RtlNtStatusToDosError)

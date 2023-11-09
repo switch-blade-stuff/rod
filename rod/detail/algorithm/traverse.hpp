@@ -349,9 +349,9 @@ namespace rod
 			/* Enumerate directory entries. */
 			for (auto &entry : req.buffs)
 			{
-				auto [st, st_mask] = entry.st();
+				auto [st, mask] = entry.st();
 #if !defined(ROD_WIN32) && !defined(ROD_POSIX) /* Explicit query check is only needed for unknown systems where entry type is not guaranteed. */
-				if (!bool(st_mask & stat::query::type))
+				if (!bool(mask & stat::query::type))
 				{
 					auto st_res = get_stat(st, _dir, entry.path(), stat::query::type);
 					if (st_res.has_error()) [[unlikely]]
@@ -359,12 +359,12 @@ namespace rod
 						_op->complete_error(st_res.error());
 						return;
 					}
-					st_mask |= *st_res;
+					mask |= *st_res;
 				}
 #endif
 
 				{ /* Report entry to the visitor. */
-					auto accept_res = _op->visitor().accept_entry(_dir, entry.path(), st, st_mask, _level);
+					auto accept_res = _op->visitor().accept_entry(_dir, entry.path(), st, mask, _level);
 					bool accept = bool(accept_res);
 					if constexpr (decays_to_instance_of<decltype(accept_res), result>)
 					{

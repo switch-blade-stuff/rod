@@ -166,7 +166,7 @@ namespace rod
 			template<typename T, typename F>
 			using transform_value_type = typename std::conditional_t<std::is_void_v<Val>, std::invoke_result<F>, std::invoke_result<F, copy_cvref_t<T, Val>>>::type;
 			template<typename T, typename F>
-			using transform_error_type = std::invoke_result<F, copy_cvref_t<T, Err>>;
+			using transform_error_type = std::invoke_result_t<F, copy_cvref_t<T, Err>>;
 
 			template<typename T, typename FVal, typename FErr>
 			using transform_result = result<transform_value_type<T, FVal>, transform_error_type<T, FErr>>;
@@ -175,8 +175,16 @@ namespace rod
 			template<typename T, typename F>
 			using transform_error_result = result<Val, transform_error_type<T, F>>;
 
+			template<typename T, typename F>
+			using into_value_type = std::decay_t<typename std::conditional_t<std::is_void_v<Val>, std::invoke_result<F>, std::invoke_result<F, copy_cvref_t<T, Val>>>::type>;
+			template<typename T, typename F>
+			using into_error_type = std::decay_t<std::invoke_result_t<F, copy_cvref_t<T, Err>>>;
+
+			template<typename T, typename FVal, typename FErr>
+			using into_result = std::common_type_t<into_value_type<T, FVal>, into_error_type<T, FErr>>;
+
 			template<typename F, typename... Args>
-			static constexpr decltype(auto) transform_invoke(F &&func, Args &&...args) noexcept(std::is_nothrow_invocable_v<F, Args...>)
+			static constexpr decltype(auto) dispatch_invoke(F &&func, Args &&...args) noexcept(std::is_nothrow_invocable_v<F, Args...>)
 			{
 				if constexpr (!std::is_void_v<std::invoke_result_t<F, Args...>>)
 					return std::invoke(std::forward<F>(func), std::forward<Args>(args)...);
@@ -238,24 +246,24 @@ namespace rod
 			template<typename Val2, typename Err2, typename = std::enable_if_t<!std::same_as<result, result<Val2, Err2>>>> requires is_constructible<const Val2 &, const Err2 &>::value
 			constexpr explicit(!is_convertible<Val2, Err2>::value) result(const result<Val2, Err2> &other) noexcept(is_nothrow_constructible<const Val2 &, const Err2 &>::value)
 			{
-				if (has_value())
+				if (other.has_value())
 				{
 					if constexpr (!std::is_void_v<Val>)
 						new (&_storage.value) value_type(other._storage.value);
 				}
-				else if (has_error())
+				else if (other.has_error())
 					new (&_storage.error) error_type(other._storage.error);
 				_state = other._state;
 			}
 			template<typename Val2, typename Err2, typename = std::enable_if_t<!std::same_as<result, result<Val2, Err2>>>> requires is_constructible<Val2, Err2>::value
 			constexpr explicit(!is_convertible<Val2, Err2>::value) result(result<Val2, Err2> &&other) noexcept(is_nothrow_constructible<Val2 &&, Err2 &&>::value)
 			{
-				if (has_value())
+				if (other.has_value())
 				{
 					if constexpr (!std::is_void_v<Val>)
 						new (&_storage.value) value_type(std::move(other._storage.value));
 				}
-				else if (has_error())
+				else if (other.has_error())
 					new (&_storage.error) error_type(std::move(other._storage.error));
 				_state = other._state;
 			}
@@ -553,9 +561,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<FVal>(func_val), _storage.value);
+						return dispatch_invoke(std::forward<FVal>(func_val), _storage.value);
 					else
-						return transform_invoke(std::forward<FVal>(func_val));
+						return dispatch_invoke(std::forward<FVal>(func_val));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), _storage.error)};
@@ -569,9 +577,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<FVal>(func_val), std::move(_storage.value));
+						return dispatch_invoke(std::forward<FVal>(func_val), std::move(_storage.value));
 					else
-						return transform_invoke(std::forward<FVal>(func_val));
+						return dispatch_invoke(std::forward<FVal>(func_val));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), std::move(_storage.error))};
@@ -585,9 +593,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<FVal>(func_val), _storage.value);
+						return dispatch_invoke(std::forward<FVal>(func_val), _storage.value);
 					else
-						return transform_invoke(std::forward<FVal>(func_val));
+						return dispatch_invoke(std::forward<FVal>(func_val));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), _storage.error)};
@@ -601,9 +609,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<FVal>(func_val), std::move(_storage.value));
+						return dispatch_invoke(std::forward<FVal>(func_val), std::move(_storage.value));
 					else
-						return transform_invoke(std::forward<FVal>(func_val));
+						return dispatch_invoke(std::forward<FVal>(func_val));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, std::invoke(std::forward<FErr>(func_err), std::move(_storage.error))};
@@ -613,14 +621,14 @@ namespace rod
 
 			/** Invokes either \a func with the contained value or forwards the contained error, and returns result of the expression as `rod::result`. */
 			template<typename F> requires is_value_invocable<result &, F>::value
-			constexpr auto transform_value(F &func) & noexcept(is_nothrow_value_invocable<result &, F>::value) -> transform_value_result<result &, F>
+			constexpr auto transform_value(F &&func) & noexcept(is_nothrow_value_invocable<result &, F>::value) -> transform_value_result<result &, F>
 			{
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<F>(func), _storage.value);
+						return dispatch_invoke(std::forward<F>(func), _storage.value);
 					else
-						return transform_invoke(std::forward<F>(func));
+						return dispatch_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, _storage.error};
@@ -634,9 +642,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<F>(func), std::move(_storage.value));
+						return dispatch_invoke(std::forward<F>(func), std::move(_storage.value));
 					else
-						return transform_invoke(std::forward<F>(func));
+						return dispatch_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, std::move(_storage.error)};
@@ -650,9 +658,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<F>(func), _storage.value);
+						return dispatch_invoke(std::forward<F>(func), _storage.value);
 					else
-						return transform_invoke(std::forward<F>(func));
+						return dispatch_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, _storage.error};
@@ -666,9 +674,9 @@ namespace rod
 				if (has_value()) [[likely]]
 				{
 					if constexpr (!std::is_void_v<Val>)
-						return transform_invoke(std::forward<F>(func), std::move(_storage.value));
+						return dispatch_invoke(std::forward<F>(func), std::move(_storage.value));
 					else
-						return transform_invoke(std::forward<F>(func));
+						return dispatch_invoke(std::forward<F>(func));
 				}
 				else if (has_error())
 					return {in_place_error_t{}, std::move(_storage.error)};
@@ -720,6 +728,97 @@ namespace rod
 				else
 					return {};
 			}
+
+			/** Invokes either \a func_val with the contained value or \a func_err with the contained error, and returns the result as the common type. */
+			template<typename FVal, typename FErr> requires is_value_invocable<result &, FVal>::value && is_error_invocable<result &, FErr>::value
+			constexpr auto into(FVal &&func_val, FErr &&func_err) & noexcept(is_nothrow_value_invocable<result &, FVal>::value && is_nothrow_error_invocable<result &, FErr>::value) -> into_result<result &, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return into_result<result &, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val), _storage.value));
+					else
+						return into_result<result &, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val)));
+				}
+				else if (has_error())
+					return into_result<result &, FVal, FErr>(std::invoke(std::forward<FErr>(func_err), _storage.error));
+				else
+					return into_result<result &, FVal, FErr>();
+			}
+			/** @copydoc into */
+			template<typename FVal, typename FErr> requires is_value_invocable<result &&, FVal>::value && is_error_invocable<result &&, FErr>::value
+			constexpr auto into(FVal &&func_val, FErr &&func_err) && noexcept(is_nothrow_value_invocable<result &&, FVal>::value && is_nothrow_error_invocable<result &&, FErr>::value) -> into_result<result &&, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return into_result<result &&, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val), std::move(_storage.value)));
+					else
+						return into_result<result &&, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val)));
+				}
+				else if (has_error())
+					return into_result<result &&, FVal, FErr>(std::invoke(std::forward<FErr>(func_err), std::move(_storage.error)));
+				else
+					return into_result<result &&, FVal, FErr>();
+			}
+			/** @copydoc into */
+			template<typename FVal, typename FErr> requires is_value_invocable<const result &, FVal>::value && is_error_invocable<const result &, FErr>::value
+			constexpr auto into(FVal &&func_val, FErr &&func_err) const & noexcept(is_nothrow_value_invocable<const result &, FVal>::value && is_nothrow_error_invocable<const result &, FErr>::value) -> into_result<const result &, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return into_result<const result &, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val), _storage.value));
+					else
+						return into_result<const result &, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val)));
+				}
+				else if (has_error())
+					return into_result<const result &, FVal, FErr>(std::invoke(std::forward<FErr>(func_err), _storage.error));
+				else
+					return into_result<const result &, FVal, FErr>();
+			}
+			/** @copydoc into */
+			template<typename FVal, typename FErr> requires is_value_invocable<const result &&, FVal>::value && is_error_invocable<const result &&, FErr>::value
+			constexpr auto into(FVal &&func_val, FErr &&func_err) const && noexcept(is_nothrow_value_invocable<const result &&, FVal>::value && is_nothrow_error_invocable<const result &&, FErr>::value) -> into_result<const result &&, FVal, FErr>
+			{
+				if (has_value()) [[likely]]
+				{
+					if constexpr (!std::is_void_v<Val>)
+						return into_result<const result &&, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val), std::move(_storage.value)));
+					else
+						return into_result<const result &&, FVal, FErr>(dispatch_invoke(std::forward<FVal>(func_val)));
+				}
+				else if (has_error())
+					return into_result<const result &&, FVal, FErr>(std::invoke(std::forward<FErr>(func_err), std::move(_storage.error)));
+				else
+					return into_result<const result &&, FVal, FErr>();
+			}
+
+			/** Invokes either \a func with the contained value or forwards `this`, returning the common type of the two. */
+			template<typename F> requires is_value_invocable<result &, F>::value
+			constexpr decltype(auto) into_value(F &&func) & noexcept(is_nothrow_value_invocable<result &, F>::value) { return into(std::forward<F>(func), [this](auto &&) noexcept -> result & { return *this; }); }
+			/** @copydoc into_value */
+			template<typename F> requires is_value_invocable<result &&, F>::value
+			constexpr decltype(auto) into_value(F &&func) && noexcept(is_nothrow_value_invocable<result &&, F>::value) { return into(std::forward<F>(func), [this](auto &&) noexcept -> result && { return std::move(*this); }); }
+			/** @copydoc into_value */
+			template<typename F> requires is_value_invocable<const result &, F>::value
+			constexpr decltype(auto) into_value(F &&func) const & noexcept(is_nothrow_value_invocable<const result &, F>::value) { return into(std::forward<F>(func), [this](auto &&) noexcept -> const result & { return *this; }); }
+			/** @copydoc into_value */
+			template<typename F> requires is_value_invocable<const result &&, F>::value
+			constexpr decltype(auto) into_value(F &&func) const && noexcept(is_nothrow_value_invocable<const result &&, F>::value) { return into(std::forward<F>(func), [this](auto &&) noexcept -> const result && { return std::move(*this); }); }
+
+			/** Invokes either \a func with the contained error or forwards `this`, returning the common type of the two. */
+			template<typename F> requires is_error_invocable<result &, F>::value
+			constexpr decltype(auto) into_error(F &&func) & noexcept(is_nothrow_error_invocable<result &, F>::value) { return into([this](auto &&) noexcept -> result & { return *this; }, std::forward<F>(func)); }
+			/** @copydoc into_value */
+			template<typename F> requires is_error_invocable<result &&, F>::value
+			constexpr decltype(auto) into_error(F &&func) && noexcept(is_nothrow_error_invocable<result &&, F>::value) { return into([this](auto &&) noexcept -> result && { return std::move(*this); }, std::forward<F>(func)); }
+			/** @copydoc into_value */
+			template<typename F> requires is_error_invocable<const result &, F>::value
+			constexpr decltype(auto) into_error(F &&func) const & noexcept(is_nothrow_error_invocable<const result &, F>::value) { return into([this](auto &&) noexcept -> const result & { return *this; }, std::forward<F>(func)); }
+			/** @copydoc into_value */
+			template<typename F> requires is_error_invocable<const result &&, F>::value
+			constexpr decltype(auto) into_error(F &&func) const && noexcept(is_nothrow_error_invocable<const result &&, F>::value) { return into([this](auto &&) noexcept -> const result && { return std::move(*this); }, std::forward<F>(func)); }
 
 			/** Returns the contained value or the result of invocation of \a func.
 			 * @note `std::invoke_result_t&ltF;&gt;` must decay to either `Val` or `rod::result&ltVal, Err&gt;` */

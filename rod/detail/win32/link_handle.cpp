@@ -180,7 +180,7 @@ namespace rod::_link
 				req.buffs._type = link_type::symbolic;
 				break;
 			case IO_REPARSE_TAG_MOUNT_POINT:
-				path_data = std::span(buff_data->mount_point.path + buff_data->mount_point.subst_name_off / sizeof(wchar_t), buff_data->mount_point.subst_name_len / sizeof(wchar_t));
+				path_data = std::span(buff_data->junction.path + buff_data->junction.subst_name_off / sizeof(wchar_t), buff_data->junction.subst_name_len / sizeof(wchar_t));
 				req.buffs._type = link_type::junction;
 				break;
 			}
@@ -269,16 +269,16 @@ namespace rod::_link
 		}
 		else
 		{
-			buff_data->data_size = USHORT(buff_size - offsetof(reparse_data_buffer, mount_point));
+			buff_data->data_size = USHORT(buff_size - offsetof(reparse_data_buffer, junction));
 			buff_data->reparse_tag = IO_REPARSE_TAG_MOUNT_POINT;
 
-			buff_data->mount_point.subst_name_off = 0;
-			buff_data->mount_point.print_name_off = USHORT(path_len + 1) * sizeof(wchar_t);
-			buff_data->mount_point.subst_name_len = USHORT(path_len) * sizeof(wchar_t);
-			buff_data->mount_point.print_name_len = USHORT(name_len) * sizeof(wchar_t);
+			buff_data->junction.subst_name_off = 0;
+			buff_data->junction.print_name_off = USHORT(path_len + 1) * sizeof(wchar_t);
+			buff_data->junction.subst_name_len = USHORT(path_len) * sizeof(wchar_t);
+			buff_data->junction.print_name_len = USHORT(name_len) * sizeof(wchar_t);
 
-			dst_name = buff_data->mount_point.path + buff_data->mount_point.print_name_off / sizeof(wchar_t);
-			dst_path = buff_data->mount_point.path;
+			dst_name = buff_data->junction.path + buff_data->junction.print_name_off / sizeof(wchar_t);
+			dst_path = buff_data->junction.path;
 		}
 
 		/* Fill the reparse_data_buffer with contents of the request. */

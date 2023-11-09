@@ -317,7 +317,7 @@ namespace rod::_win32
 		attr.root_dir = handle;
 		attr.name = &path;
 
-		return open_file(attr, iosb, access, share, opts | 0x40 /*FILE_NON_DIRECTORY_FILE*/, to);
+		return open_file(attr, iosb, access, share, opts, to);
 	}
 	result<void *> ntapi::open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to) const noexcept
 	{

@@ -75,7 +75,7 @@ namespace rod::_handle
 				const auto len = ::GetFinalPathNameByHandleW(_hnd, result.data(), USHORT(result.size()), flags);
 				if (len) [[likely]]
 				{
-					result.resize(len + 3);
+					result.resize(len);
 					break;
 				}
 
@@ -108,7 +108,7 @@ namespace rod::_handle
 				if (result.compare(0, 9, LR"(\Global??\)") == 0)
 					result.replace(1, 9, std::wstring_view(LR"(\?\)"));
 				else if (result.compare(0, 8, LR"(\Device\)") == 0)
-					result.replace(1, 8, std::wstring_view(LR"(\.\)"));
+					result.replace(1, 7, std::wstring_view(LR"(\.\)"));
 				else if (result.starts_with(L'\\'))
 					result.insert(0, std::wstring_view(LR"(\\?\GLOBALROOT)"));
 				return std::move(result);

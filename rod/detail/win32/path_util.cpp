@@ -259,6 +259,28 @@ namespace rod::fs
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 	}
 
+	inline static result<basic_handle> open_deletable_handle(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
+	{
+		constexpr auto opts = 0x20 | 0x4000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT*/;
+		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES;
+		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+
+		auto obj_attrib = object_attributes();
+		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
+		obj_attrib.length = sizeof(object_attributes);
+		obj_attrib.name = &upath;
+
+		/* Open the target with backup semantics. */
+		auto hnd = ntapi.open_file(obj_attrib, iosb, access, share, opts, to);
+		/* Re-try without attribute permissions. */
+		if (auto err = hnd.error_or({}); err.category() == status_category() && err.value() == 0xc0000022 /*STATUS_ACCESS_DENIED*/) [[unlikely]]
+			hnd = ntapi.open_file(obj_attrib, iosb, DELETE | SYNCHRONIZE, share, opts, to);
+
+		if (hnd.has_value()) [[likely]]
+			return basic_handle(*hnd);
+		else
+			return hnd.error();
+	}
 	inline static result<directory_handle> open_readable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
 		constexpr auto opts = 0x20 | 1 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_DIRECTORY_FILE*/;
@@ -270,7 +292,7 @@ namespace rod::fs
 		obj_attrib.length = sizeof(object_attributes);
 		obj_attrib.name = &upath;
 
-		/* Open the target with backup semantics (i.e. do not care if directory or file). */
+		/* Open the target with backup semantics. */
 		auto hnd = ntapi.open_file(obj_attrib, iosb, access, share, opts, to);
 		/* Re-try without attribute permissions. */
 		if (auto err = hnd.error_or({}); err.category() == status_category() && err.value() == 0xc0000022 /*STATUS_ACCESS_DENIED*/) [[unlikely]]
@@ -281,46 +303,24 @@ namespace rod::fs
 		else
 			return hnd.error();
 	}
-	inline static result<directory_handle> open_deletable_dir(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
-	{
-		constexpr auto opts = 0x20 | 0x4000 | 0x200000 /*FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REPARSE_POINT*/;
-		constexpr auto access = SYNCHRONIZE | DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES;
-		constexpr auto share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
-		auto obj_attrib = object_attributes();
-		obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
-		obj_attrib.length = sizeof(object_attributes);
-		obj_attrib.name = &upath;
-
-		/* Open the target with backup semantics (i.e. do not care if directory or file). */
-		auto hnd = ntapi.open_file(obj_attrib, iosb, access, share, opts, to);
-		/* Re-try without attribute permissions. */
-		if (auto err = hnd.error_or({}); err.category() == status_category() && err.value() == 0xc0000022 /*STATUS_ACCESS_DENIED*/) [[unlikely]]
-			hnd = ntapi.open_file(obj_attrib, iosb, DELETE | SYNCHRONIZE, share, opts, to);
-
-		if (hnd.has_value()) [[likely]]
-			return directory_handle(*hnd, file_flags::attr_read | file_flags::attr_write);
-		else
-			return hnd.error();
-	}
-
-	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const directory_handle &dir, const file_timeout &to) noexcept
+	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, typename basic_handle::native_handle_type hnd, const file_timeout &to) noexcept
 	{
 		/* Try to unlink with POSIX semantics. */
 		auto disp_info_ex = file_disposition_information_ex{.flags = 0x1 | 0x2 | 0x10}; /*FILE_DISPOSITION_DELETE | FILE_DISPOSITION_POSIX_SEMANTICS | FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE*/
-		auto status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx, to);
+		auto status = ntapi.set_file_info(hnd, iosb, &disp_info_ex, FileBasicInformation, FileDispositionInformationEx, to);
 		if (!is_status_failure(status))
 			return 1;
 
 		/* Fallback to Win10 API. */
 		auto disp_info = file_disposition_information{.del = true};
-		status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info, FileDispositionInformation, to);
+		status = ntapi.set_file_info(hnd, iosb, &disp_info, FileDispositionInformation, to);
 		if (is_status_failure(status) && status != 0xc0000022 /*STATUS_ACCESS_DENIED*/)
 			return status_error_code(status);
 
 		/* If returned STATUS_ACCESS_DENIED, try to clear the readonly flag. */
 		auto basic_info = file_basic_information();
-		status = ntapi.get_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
+		status = ntapi.get_file_info(hnd, iosb, &basic_info, FileBasicInformation, to);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 
@@ -329,18 +329,18 @@ namespace rod::fs
 			return std::make_error_code(std::errc::permission_denied);
 
 		basic_info.attributes ^= FILE_ATTRIBUTE_READONLY;
-		status = ntapi.set_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
+		status = ntapi.set_file_info(hnd, iosb, &basic_info, FileBasicInformation, to);
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 
 		/* Re-try to set delete flag. If failed again, restore the readonly flag and report error. */
-		status = ntapi.set_file_info(dir.native_handle(), iosb, &disp_info, FileDispositionInformation, to);
+		status = ntapi.set_file_info(hnd, iosb, &disp_info, FileDispositionInformation, to);
 		if (is_status_failure(status)) [[unlikely]]
 		{
 			basic_info.attributes |= FILE_ATTRIBUTE_READONLY;
 			auto old_status = status;
 
-			status = ntapi.set_file_info(dir.native_handle(), iosb, &basic_info, FileBasicInformation, to);
+			status = ntapi.set_file_info(hnd, iosb, &basic_info, FileBasicInformation, to);
 			if (!is_status_failure(status)) [[likely]]
 				return status_error_code(old_status);
 			else
@@ -350,9 +350,9 @@ namespace rod::fs
 	}
  	inline static result<std::size_t> do_remove(const ntapi &ntapi, io_status_block *iosb, const path_handle &base, unicode_string &upath, const file_timeout &to) noexcept
 	{
-		auto hnd = open_deletable_dir(ntapi, iosb, base, upath, to);
+		auto hnd = open_deletable_handle(ntapi, iosb, base, upath, to);
 		if (hnd.has_value()) [[likely]]
-			return do_remove(ntapi, iosb, *hnd, to);
+			return do_remove(ntapi, iosb, hnd->native_handle(), to);
 
 		auto err = hnd.error();
 		if (err.category() != std::generic_category() || err.value() != int(std::errc::no_such_file_or_directory))
@@ -404,8 +404,6 @@ namespace rod::fs
 				removed += *remove_res;
 			else
 				return remove_res;
-
-			/* Handle EOF. */
 			if (read_res->second)
 				break;
 		}
@@ -415,13 +413,13 @@ namespace rod::fs
 		{
 			constexpr std::size_t retry_max = 10;
 
-			auto res = do_remove(ntapi, iosb, *hnd, to);
+			auto res = do_remove(ntapi, iosb, hnd->native_handle(), to);
 			if (res.has_value()) [[likely]]
 				return removed + *res;
 
 			/* Mirror MSVC STL behavior and retry in the following cases:
 			 * STATUS_DIRECTORY_NOT_EMPTY: 0xc0000101 - directory entries might not be deleted yet.
-			 * ERROR_ACCESS_DENIED: 0xc0000022 - directory might be marked for deletion. */
+			 * STATUS_ACCESS_DENIED: 0xc0000022 - directory might be marked for deletion. */
 			if (auto err = res.error(); i++ == retry_max || err.category() != status_category() || (err.value() != 0xc0000101 && err.value() != 0xc0000022))
 				return err;
 		}

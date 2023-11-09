@@ -33,16 +33,17 @@ namespace rod
 			unknown = 0,
 			/** Standard symbolic link. */
 			symbolic = 1,
-			/** NTFS directory junction (Windows only). */
+			/** Windows mount junction. */
 			junction = 2,
 		};
 
+		template<one_of<read_some_t, write_some_t> Op>
 		class io_buffer
 		{
 			friend class link_handle;
 
 		public:
-			using value_type = typename path::value_type;
+			using value_type = std::conditional_t<std::same_as<Op, read_some_t>, typename path::value_type, std::add_const_t<typename path::value_type>>;
 			using size_type = typename path::size_type;
 
 		public:
@@ -73,12 +74,15 @@ namespace rod
 			std::span<value_type> _buff;
 			bool _is_terminated = false;
 		};
+		template<one_of<read_some_t, write_some_t> Op>
 		class io_buffer_sequence
 		{
+			template<one_of<read_some_t, write_some_t>>
+			friend class io_buffer_sequence;
 			friend class link_handle;
 
 			using buff_type = malloc_ptr<typename path::value_type[]>;
-			using data_type = std::span<io_buffer>;
+			using data_type = std::span<io_buffer<Op>>;
 
 		public:
 			using value_type = typename data_type::value_type;
@@ -118,13 +122,14 @@ namespace rod
 			io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_max = std::exchange(other._buff_max, {}), *this); }
 
 			/** Initializes the buffer sequence from a pointer to an entry buffer of characters, size, and an optional link type, using internal character buffer of \a other. */
-			io_buffer_sequence(io_buffer_sequence &&other, value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _type(type), _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+			template<typename OtherOp = Op>
+			io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _type(type), _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
 			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end) and an optional link type, using internal character buffer of \a other. */
-			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-			io_buffer_sequence(io_buffer_sequence &&other, I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _type(type), _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+			template<typename OtherOp = Op, std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
+			io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _type(type), _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
 			/** Initializes the buffer sequence from a contiguous range of entry buffers and an optional link type, using internal character buffer of \a other. */
-			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-			io_buffer_sequence(io_buffer_sequence &&other, Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _type(type), _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+			template<typename OtherOp = Op, std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
+			io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _type(type), _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
 
 			/** Returns iterator to the first buffer of the buffer sequence. */
 			[[nodiscard]] constexpr iterator begin() const noexcept { return _data.begin(); }
@@ -170,28 +175,14 @@ namespace rod
 			link_type _type = link_type::symbolic;
 		};
 
-		template<typename>
-		struct select_io_buffer;
-		template<typename>
-		struct select_io_buffer_sequence;
-
 		template<one_of<read_some_t, write_some_t> Op>
-		struct select_io_buffer<Op> { using type = io_buffer; };
-		template<one_of<read_some_t, write_some_t> Op>
-		struct select_io_buffer_sequence<Op> { using type = io_buffer_sequence; };
-
 		struct io_request
 		{
 			/** Sequence of link content buffers containing (or receiving) the link path and type, and an optional internal buffer used between calls to IO operations.
 			 * @note `read_some` will return a truncated copy of the buffer sequence which may also contain an internally-allocated character buffer.
 			 * This internal buffer can be re-used by passing the returned buffer sequence as \a buffs to the next call of `read_some`. */
-			io_buffer_sequence buffs;
+			io_buffer_sequence<Op> buffs;
 		};
-
-		template<typename>
-		struct select_io_request;
-		template<one_of<read_some_t, write_some_t> Op>
-		struct select_io_request<Op> { using type = io_request; };
 
 		class link_handle : public io_handle_adaptor<link_handle, handle_base, fs_handle_adaptor>
 		{
@@ -202,15 +193,15 @@ namespace rod
 			friend handle_adaptor<link_handle, handle_base>;
 
 		public:
-			template<one_of<read_some_t, write_some_t> Op>
-			using io_buffer_sequence = _link::io_buffer_sequence;
-			template<one_of<read_some_t, write_some_t> Op>
-			using io_buffer = _link::io_buffer;
+			template<typename Op>
+			using io_buffer_sequence = _link::io_buffer_sequence<Op>;
+			template<typename Op>
+			using io_buffer = _link::io_buffer<Op>;
 
-			template<one_of<read_some_t, write_some_t> Op>
-			using io_request = _link::io_request;
-			template<one_of<read_some_t, write_some_t> Op>
+			template<typename Op>
 			using io_result = result<io_buffer_sequence<Op>>;
+			template<typename Op>
+			using io_request = _link::io_request<Op>;
 
 		public:
 			/** Re-opens the filesystem link referenced by \a other.

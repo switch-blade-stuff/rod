@@ -66,47 +66,49 @@ namespace rod::fs
 	 * @return Amount of directories created or a status code on failure. */
 	ROD_API_PUBLIC result<std::size_t> create_directories(const path_handle &base, path_view path) noexcept;
 
-//	/** Flags used to control behavior of the `copy_all` function. */
-//	enum class copy_mode : int
-//	{
-//		none = 0,
-//
-//		/** Enable copying of files. */
-//		files = 0x1,
-//		/** Enable copying of directories. */
-//		directories = 0x2,
-//		/** Ignore all symlinks. */
-//		ignore_links = 0x4,
-//		/** Copy the target of symlinks. */
-//		follow_links = 0x8,
-//
-//		/** Overwrite existing files and directories. */
-//		overwrite = 0x10,
-//		/** Recursively copy content of subdirectories. */
-//		recursive = 0x20,
-//
-//		/** Create symlinks instead of copying contents. Mutually exclusive with `create_hardlinks`. */
-//		create_symlinks = 0x40,
-//		/** Create hardlinks instead of copying contents. Mutually exclusive with `create_symlinks`. */
-//		create_hardlinks = 0x80,
-//	};
-//
-//	[[nodiscard]] constexpr copy_mode operator~(copy_mode h) noexcept { return copy_mode(~int(h)); }
-//	[[nodiscard]] constexpr copy_mode operator&(copy_mode a, copy_mode b) noexcept { return copy_mode(int(a) & int(b)); }
-//	[[nodiscard]] constexpr copy_mode operator|(copy_mode a, copy_mode b) noexcept { return copy_mode(int(a) | int(b)); }
-//	[[nodiscard]] constexpr copy_mode operator^(copy_mode a, copy_mode b) noexcept { return copy_mode(int(a) ^ int(b)); }
-//	constexpr copy_mode &operator&=(copy_mode &a, copy_mode b) noexcept { return a = a & b; }
-//	constexpr copy_mode &operator|=(copy_mode &a, copy_mode b) noexcept { return a = a | b; }
-//	constexpr copy_mode &operator^=(copy_mode &a, copy_mode b) noexcept { return a = a ^ b; }
-//
-//	/* TODO: Implement.
-//	 * Requires file & symlink support. */
-//	/** Duplicates all directories, files and symlinks specified by \a path relative to parent location \a base using mode flags \a mode.
-//	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
-//	 * @param path Path to the target file or directory relative to \a base if it is a valid handle, otherwise a fully-qualified path.
-//	 * @param to Optional timeout to use when copying the filesystem object.
-//	 * @return Amount of elements copied or a status code on failure. */
-//	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &from_base, path_view from_path, const path_handle &to_base, path_view to_path, copy_mode mode, const file_timeout &to = file_timeout()) noexcept;
+	/** Flags used to control behavior of the `copy_all` function. */
+	enum class copy_mode : int
+	{
+		none = 0,
+
+		/** Enable copying of files. */
+		files = 0x1,
+		/** Enable copying of directories.
+		 * @note Mutually exclusive with and `copy_mode::create_hardlinks`. */
+		directories = 0x2,
+
+		/** Overwrite existing files and directories. */
+		overwrite = 0x4,
+		/** Recursively copy subdirectory contents. */
+		recursive = 0x8,
+
+		/** Ignore links instead of copying. */
+		ignore_links = 0x10,
+		/** Copy the content of link targets. */
+		follow_links = 0x20,
+
+		/** Create symlinks instead of cloning contents.
+		 * @note Mutually exclusive with and `copy_mode::create_hardlinks`. */
+		create_symlinks = 0x40,
+		/** Create hardlinks instead of cloning contents.
+		 * @note Mutually exclusive with `copy_mode::create_symlinks` and `copy_mode::directories`. */
+		create_hardlinks = 0x80,
+	};
+
+	[[nodiscard]] constexpr copy_mode operator~(copy_mode h) noexcept { return copy_mode(~int(h)); }
+	[[nodiscard]] constexpr copy_mode operator&(copy_mode a, copy_mode b) noexcept { return copy_mode(int(a) & int(b)); }
+	[[nodiscard]] constexpr copy_mode operator|(copy_mode a, copy_mode b) noexcept { return copy_mode(int(a) | int(b)); }
+	[[nodiscard]] constexpr copy_mode operator^(copy_mode a, copy_mode b) noexcept { return copy_mode(int(a) ^ int(b)); }
+	constexpr copy_mode &operator&=(copy_mode &a, copy_mode b) noexcept { return a = a & b; }
+	constexpr copy_mode &operator|=(copy_mode &a, copy_mode b) noexcept { return a = a | b; }
+	constexpr copy_mode &operator^=(copy_mode &a, copy_mode b) noexcept { return a = a ^ b; }
+
+	/** TODO: Document usage.
+	 * @brief Copies the file, directory or symlink specified by \a src_base and \a src_path to location specified by \a dst_base and \a dst_path. */
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to = file_timeout()) noexcept;
+	/** TODO: Document usage.
+	 * @brief Copies the file, directory or symlink specified by \a src_base and \a src_path to location specified by \a dst_base and \a dst_path. Unlike `copy`, directory contents are copied as well. */
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to = file_timeout()) noexcept;
 
 	/** Removes the directory, file, or symlink specified by \a path relative to parent location \a base.
 	 * Equivalent to opening the target object handle with sufficient permissions and calling `unlink`.

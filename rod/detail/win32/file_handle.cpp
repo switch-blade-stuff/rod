@@ -59,16 +59,19 @@ namespace rod::_file
 				return err;
 		}
 
-		/* Make sparse if created a new file. */
-		if (!bool(flags & file_flags::no_sparse_files) && (mode == open_mode::truncate || mode == open_mode::supersede || iosb.info == 2 /*FILE_CREATED*/))
+		if (mode == open_mode::truncate || mode == open_mode::supersede || iosb.info == 2 /*FILE_CREATED*/)
 		{
-			DWORD written = 0;
-			auto buffer = FILE_SET_SPARSE_BUFFER{.SetSparse = 1};
-			::DeviceIoControl(*hnd, FSCTL_SET_SPARSE, &buffer, sizeof(buffer), nullptr, 0, &written, nullptr);
+			/* Make sparse if created a new file. */
+			if (!bool(flags & file_flags::no_sparse_files))
+			{
+				DWORD written = 0;
+				auto buffer = FILE_SET_SPARSE_BUFFER{.SetSparse = 1};
+				::DeviceIoControl(*hnd, FSCTL_SET_SPARSE, &buffer, sizeof(buffer), nullptr, 0, &written, nullptr);
+			}
+			/* Flush the file if additional sanity barriers are requested. */
+			if (bool(caching & file_caching::sanity_barriers))
+				::FlushFileBuffers(*hnd);
 		}
-		/* Flush the file if additional sanity barriers are requested. */
-		if (mode == open_mode::truncate && bool(caching & file_caching::sanity_barriers))
-			::FlushFileBuffers(*hnd);
 
 		return file_handle(*hnd, flags, caching);
 	}

@@ -3,6 +3,8 @@
  */
 
 #include "path_util.hpp"
+#include "file_handle.hpp"
+#include "link_handle.hpp"
 
 namespace rod::fs
 {
@@ -68,5 +70,237 @@ namespace rod::fs
 
 		try { return path_canon->lexically_proximate(*base_canon); }
 		catch (...) { return _detail::current_error(); }
+	}
+
+	inline constexpr auto copy_stats_mask = stat::query::type | stat::query::dev | stat::query::ino | stat::query::perm;
+
+	inline static result<std::size_t> do_copy(const path_handle &, path_view, const path_handle &, path_view, copy_mode, const file_timeout &, bool) noexcept;
+	inline static result<std::size_t> do_copy(const path_handle &, path_view, stat, const path_handle &, path_view, stat, copy_mode, const file_timeout &, bool) noexcept;
+
+	inline static result<std::size_t> make_symlink(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, stat dst_st, const file_timeout &to) noexcept
+	{
+		if (dst_st.type != file_type::symlink && dst_st.type != file_type::none)
+			return std::make_error_code(std::errc::file_exists);
+
+		/* Get the full target path from the source handle. */
+		path full_path;
+		if (src_base.is_open())
+		{
+			if (auto res = to_native_path(src_base, native_path_format::generic); res.has_value()) [[likely]]
+				full_path = std::move(*res) / path(src_path);
+			else
+				return res.error();
+		}
+		else
+		{
+			if (auto res = canonical(src_path); res.has_value()) [[likely]]
+				full_path = std::move(*res);
+			else
+				return res.error();
+		}
+	}
+
+	inline static result<std::size_t> copy_symlink(const path_handle &src_base, path_view src_path, stat src_st, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to) noexcept
+	{
+		if (bool(mode & copy_mode::ignore_links))
+			return 0;
+
+		const auto transform = [](auto &&...) noexcept -> std::size_t { return 1; };
+		const auto overwrite = bool(mode & copy_mode::overwrite);
+
+		if (dst_st.type != file_type::none || (overwrite && dst_st.type != file_type::symlink))
+			return std::make_error_code(std::errc::file_exists);
+
+		auto src_hnd = link_handle::open(src_base, src_path, file_flags::read, open_mode::existing);
+		if (src_hnd.has_error()) [[unlikely]]
+			return src_hnd.error();
+
+		auto src_buff = read_some_buffer_t<link_handle>();
+		auto src_res = read_some(*src_hnd, {{&src_buff, 1}}, to);
+		if (src_res.has_error()) [[unlikely]]
+			return src_res.error();
+
+		auto dst_buff = write_some_buffer_t<link_handle>(src_buff.data(), src_buff.size());
+		if (auto dst_hnd = link_handle::open(dst_base, dst_path, file_flags::write, overwrite ? open_mode::always : open_mode::create); dst_hnd.has_value())
+			return write_some(*dst_hnd, {{std::move(*src_res), &dst_buff, 1, src_res->type()}}, to).transform_value(transform);
+		else if (dst_hnd.error() != std::make_error_condition(std::errc::file_exists) || overwrite)
+			return dst_hnd.error();
+		else
+			return 0;
+	}
+	inline static result<std::size_t> copy_regular(const path_handle &src_base, path_view src_path, stat src_st, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to) noexcept
+	{
+		constexpr auto src_caching = file_caching::meta | file_caching::force_precache | file_caching::read;
+		constexpr auto dst_caching = file_caching::meta | file_caching::force_precache | file_caching::write;
+
+		if (!bool(mode & copy_mode::files))
+			return 0;
+
+		const auto transform = [](auto &&...) noexcept -> std::size_t { return 1; };
+		const auto overwrite = bool(mode & copy_mode::overwrite);
+
+		auto src_hnd = file_handle::open(src_base, src_path, file_flags::read, open_mode::existing, src_caching);
+		if (src_hnd.has_error()) [[unlikely]]
+			return src_hnd.error();
+
+		if (bool(mode & copy_mode::create_hardlinks))
+		{
+			if (auto link_res = link(*src_hnd, dst_base, dst_path, overwrite, to); link_res.has_value())
+				return 1;
+			else if (link_res.error() != std::make_error_condition(std::errc::file_exists) || overwrite)
+				return link_res.error();
+		}
+		else if (bool(mode & copy_mode::create_symlinks))
+		{
+			if (dst_st.type != file_type::none || (overwrite && dst_st.type != file_type::symlink))
+				return std::make_error_code(std::errc::file_exists);
+
+			auto full_path = to_object_path(*src_hnd);
+			if (full_path.has_error()) [[unlikely]]
+				return full_path.error();
+
+			auto dst_buff = write_some_buffer_t<link_handle>(full_path->native());
+			if (auto dst_hnd = link_handle::open(dst_base, dst_path, file_flags::write ^ file_flags::append, overwrite ? open_mode::always : open_mode::create); dst_hnd.has_value())
+				return write_some(*dst_hnd, {{&dst_buff, 1, link_type::symbolic}}, to).transform_value(transform);
+			else if (dst_hnd.error() != std::make_error_condition(std::errc::file_exists) || overwrite)
+				return dst_hnd.error();
+		}
+		else
+		{
+			if (dst_st.type != file_type::none || (overwrite && dst_st.type != file_type::regular))
+				return std::make_error_code(std::errc::file_exists);
+
+#if defined(ROD_WIN32) && 0
+			const auto dst_perm = src_st.perm | file_perm::write;
+#else
+			const auto dst_perm = src_st.perm;
+#endif
+
+			if (auto dst_hnd = file_handle::open(dst_base, dst_path, file_flags::attr_read | file_flags::write, overwrite ? open_mode::supersede : open_mode::create, dst_caching, dst_perm); dst_hnd.has_value())
+				return clone_extents_to(*src_hnd, {.extent = {-1, -1}, .dst = *dst_hnd}, to).transform_value(transform);
+			else if (dst_hnd.error() != std::make_error_condition(std::errc::file_exists) || overwrite)
+				return dst_hnd.error();
+		}
+		return 0;
+	}
+	inline static result<std::size_t> copy_directory(const path_handle &src_base, path_view src_path, stat src_st, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to, bool enter) noexcept
+	{
+		if (!bool(mode & copy_mode::directories))
+			return 0;
+
+		const auto nofollow = !bool(mode & copy_mode::follow_links);
+		const auto overwrite = bool(mode & copy_mode::overwrite);
+		const auto recursive = bool(mode & copy_mode::recursive);
+
+		if (dst_st.type != file_type::none || (overwrite && dst_st.type != file_type::directory))
+			return std::make_error_code(std::errc::file_exists);
+
+		/* Create destination first, source is ignored unless we need to copy contents. */
+		auto dst_hnd = directory_handle::open(dst_base, dst_path, file_flags::write, overwrite ? open_mode::supersede : open_mode::create);
+		if (dst_hnd.has_error()) [[unlikely]]
+			return dst_hnd.error();
+		else if (!enter)
+			return 1;
+
+		auto src_hnd = directory_handle::open(src_base, src_path, file_flags::read, open_mode::existing);
+		if (src_hnd.has_error()) [[unlikely]]
+			return src_hnd.error();
+
+		auto buff = read_some_buffer_t<directory_handle>(copy_stats_mask);
+		auto seq = read_some_buffer_sequence_t<directory_handle>(&buff, 1);
+		auto num = std::size_t(1);
+
+		for (;;)
+		{
+			auto read_res = read_some(*src_hnd, {.buffs = std::move(seq), .resume = true}, to);
+			if (read_res.has_error()) [[unlikely]]
+				return read_res.error();
+			else if (!read_res->first.empty())
+				seq = std::move(read_res->first);
+			else
+				break;
+
+			auto [src_entry_st, src_entry_mask] = seq.front().st();
+			auto src_entry_path = seq.front().path();
+
+			/* Get the stats for the source & destination entries. */
+			if ((src_entry_mask & copy_stats_mask) != copy_stats_mask) [[unlikely]]
+			{
+				if (auto res = get_stat(src_entry_st, *src_hnd, src_entry_path, copy_stats_mask, nofollow); res.has_error()) [[unlikely]]
+					return res.error();
+				else if ((*res & copy_stats_mask) != copy_stats_mask) [[unlikely]]
+					return std::make_error_code(std::errc::not_supported);
+			}
+			auto dst_entry_st = stat(nullptr);
+			if (auto res = get_stat(dst_entry_st, *dst_hnd, src_entry_path, copy_stats_mask, true); res.has_error()) [[unlikely]]
+			{
+				/* Destination file may not exist, in which case we will create it instead of failing. */
+				if (auto err = res.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory)) [[unlikely]]
+					return err;
+			}
+			else if ((*res & copy_stats_mask) != copy_stats_mask) [[unlikely]]
+				return std::make_error_code(std::errc::not_supported);
+
+			/* Recursively copy the directory entry. */
+			auto copy_res = do_copy(*src_hnd, src_entry_path, src_entry_st, *dst_hnd, src_entry_path, dst_entry_st, mode, to, recursive);
+			if (copy_res.has_error()) [[unlikely]]
+				return copy_res.error();
+			else
+				num += *copy_res;
+			if (read_res->second)
+				break;
+		}
+		return num;
+	}
+
+	inline static result<std::size_t> do_copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to, bool enter) noexcept
+	{
+		/* Assert mutually exclusive flags. */
+		if (bool(mode & copy_mode::create_hardlinks) && bool(mode & (copy_mode::create_symlinks | copy_mode::directories)))
+			return std::make_error_code(std::errc::invalid_argument);
+
+		auto src_st = stat(nullptr);
+		if (auto res = get_stat(src_st, src_base, src_path, copy_stats_mask, !bool(mode & copy_mode::follow_links)); res.has_error()) [[unlikely]]
+			return res.error();
+		else if ((*res & copy_stats_mask) != copy_stats_mask) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+
+		auto dst_st = stat(nullptr);
+		if (auto res = get_stat(dst_st, dst_base, dst_path, copy_stats_mask, true); res.has_error()) [[unlikely]]
+		{
+			/* Destination file may not exist, in which case we will create it instead of failing. */
+			if (auto err = res.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory)) [[unlikely]]
+				return err;
+		}
+		else if ((*res & copy_stats_mask) != copy_stats_mask) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+
+		return do_copy(src_base, src_path, src_st, dst_base, dst_path, dst_st, mode, to, enter);
+	}
+	inline static result<std::size_t> do_copy(const path_handle &src_base, path_view src_path, stat src_st, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to, bool enter) noexcept
+	{
+		/* Make sure file types are valid. */
+		if (src_st.type != file_type::regular && src_st.type != file_type::symlink && src_st.type != file_type::directory) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		/* There is nothing to do if the files are equivalent. */
+		if (src_st.dev != dst_st.dev || src_st.ino != dst_st.ino)
+		{
+			if (src_st.type == file_type::regular)
+				return copy_regular(src_base, src_path, src_st, dst_base, dst_path, dst_st, mode, to);
+			if (src_st.type == file_type::symlink)
+				return copy_symlink(src_base, src_path, src_st, dst_base, dst_path, dst_st, mode, to);
+			if (src_st.type == file_type::directory)
+				return copy_directory(src_base, src_path, src_st, dst_base, dst_path, dst_st, mode, to, enter);
+		}
+		return 0;
+	}
+
+	result<std::size_t> copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to) noexcept
+	{
+		return do_copy(src_base, src_path, dst_base, dst_path, mode, to != file_timeout() ? to.absolute() : file_timeout(), false);
+	}
+	result<std::size_t> copy_all(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to) noexcept
+	{
+		return do_copy(src_base, src_path, dst_base, dst_path, mode, to != file_timeout() ? to.absolute() : file_timeout(), true);
 	}
 }

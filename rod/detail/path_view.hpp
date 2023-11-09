@@ -149,13 +149,12 @@ namespace rod
 			{
 				switch (_encoding)
 				{
+				default: return std::invoke(std::forward<F>(f), view<std::byte>());
 				case encoding::cchar: return std::invoke(std::forward<F>(f), view<char>());
 				case encoding::wchar: return std::invoke(std::forward<F>(f), view<wchar_t>());
 				case encoding::char8: return std::invoke(std::forward<F>(f), view<char8_t>());
 				case encoding::char16: return std::invoke(std::forward<F>(f), view<char16_t>());
 				case encoding::char32: return std::invoke(std::forward<F>(f), view<char32_t>());
-				case encoding::byte: return std::invoke(std::forward<F>(f), view<std::byte>());
-				default: unreachable();
 				}
 			}
 

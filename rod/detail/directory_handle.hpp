@@ -324,7 +324,6 @@ namespace rod
 
 			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](fs::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
-			ROD_API_PUBLIC result<> do_link(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept;
 			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept;
 			ROD_API_PUBLIC result<> do_unlink(const fs::file_timeout &to) noexcept;
 

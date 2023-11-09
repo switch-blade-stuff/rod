@@ -295,10 +295,6 @@ namespace rod
 			std::forward<T0>(a).swap(std::forward<T1>(b));
 	}
 
-	/** Utility function used to preform an implicit-only cast of \a value to type \a T. */
-	template<typename T>
-	inline constexpr T implicit_cast(std::type_identity_t<T> value) noexcept(std::is_nothrow_convertible_v<std::type_identity_t<T>, T>) { return value; }
-
 	namespace _detail
 	{
 		template<typename T>
@@ -392,40 +388,37 @@ namespace rod
 
 		[[noreturn]] inline void throw_error_code(const std::error_code &err, const std::string &msg = {})
 		{
-			if (err.category() != std::generic_category() || err.value() != int(std::errc::not_enough_memory))
+			if (err != std::make_error_condition(std::errc::not_enough_memory))
 				ROD_THROW(std::system_error(err, msg));
 			else
 				ROD_THROW(std::bad_alloc());
 		}
 
-		template<typename Err>
-		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(!requires { error.throw_exception(); } && std::derived_from<std::decay_t<Err>, std::exception>)
+		template<typename Err> requires(!requires (Err e) { e.throw_exception(); } && std::derived_from<std::decay_t<Err>, std::exception>)
+		[[noreturn]] inline constexpr void throw_exception(Err &&error)
 		{
 			ROD_THROW(std::forward<Err>(error));
 		}
-		template<typename Err>
-		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(requires { error.throw_exception(); })
+		template<typename Err> requires(requires (Err e) { e.throw_exception(); })
+		[[noreturn]] inline constexpr void throw_exception(Err &&error)
 		{
 			error.throw_exception();
 		}
-		template<typename Err>
-		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to_same<Err, std::exception_ptr>)
+		template<typename Err> requires decays_to_same<Err, std::exception_ptr>
+		[[noreturn]] inline constexpr void throw_exception(Err &&error)
 		{
 			std::rethrow_exception(std::forward<Err>(error));
 		}
-		template<typename Err>
-		[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(decays_to_same<Err, std::error_code>)
+		template<typename Err> requires decays_to_same<Err, std::error_code>
+		[[noreturn]] inline constexpr void throw_exception(Err &&error)
 		{
 			throw_error_code(error);
 		}
 	}
 
-	/** Throws an exception from \a error either using an ADL- or member-selected overload or an implementation-defined method. */
+	/** Throws an exception from \a error either using an ADL or member overload or an implementation-defined method. */
 	template<typename Err>
-	inline constexpr void throw_exception(Err &&error) requires(requires { _detail::throw_exception(std::forward<Err>(error)); })
-	{
-		_detail::throw_exception(std::forward<Err>(error));
-	}
+	inline constexpr void throw_exception(Err &&error) requires(requires { _detail::throw_exception(std::forward<Err>(error)); }) { _detail::throw_exception(std::forward<Err>(error)); }
 
 	namespace _detail
 	{
@@ -538,6 +531,10 @@ namespace rod
 	template<typename Func>
 	[[nodiscard]] inline static auto defer_invoke(Func &&func) noexcept(std::is_nothrow_constructible_v<std::decay_t<Func>, Func>) { return _detail::defer_guard<std::decay_t<Func>>(std::forward<Func>(func)); }
 
+	/** Utility function used to preform an implicit-only cast of \a value to type \a T. */
+	template<typename T>
+	inline constexpr T implicit_cast(std::type_identity_t<T> value) noexcept(std::is_nothrow_convertible_v<std::type_identity_t<T>, T>) { return value; }
+
 	/** Utility function used to preform a copy of an input range into an output range via `const_cast`. */
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
 	inline constexpr Out const_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = const_cast<To>(*first)))
@@ -554,6 +551,14 @@ namespace rod
 			*out = static_cast<To>(*first);
 		return out;
 	}
+	/** Utility function used to preform a copy of an input range into an output range via `implicit_cast`. */
+	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
+	inline constexpr Out implicit_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = implicit_cast<To>(*first)))
+	{
+		for (; first != last; ++first, ++out)
+			*out = implicit_cast<To>(*first);
+		return out;
+	}
 	/** Utility function used to preform a copy of an input range into an output range via `reinterpret_cast`. */
 	template<std::forward_iterator In, std::sentinel_for<In> S, std::forward_iterator Out, typename From = std::iter_value_t<In>, typename To = std::iter_value_t<Out>>
 	inline static Out reinterpret_cast_copy(In first, S last, Out out) noexcept(noexcept(++first) && noexcept(first != last) && noexcept(++out) && noexcept(*out = reinterpret_cast<To>(*first)))
@@ -561,18 +566,6 @@ namespace rod
 		for (; first != last; ++first, ++out)
 			*out = reinterpret_cast<To>(*first);
 		return out;
-	}
-
-	/** Utility function used to mark a portion of code as unreachable. */
-	[[noreturn]] inline static void unreachable() noexcept
-	{
-#if defined(__GNUC__)
-		__builtin_unreachable();
-#elif defined(_MSC_VER)
-		__assume(false);
-#elif !defined(NDEBUG)
-		std::terminate();
-#endif
 	}
 
 	/** Generates up to \a max bytes into \a dst buffer using a platform-specific cryptographic source such as `/dev/urandom` or `BCrypt`.

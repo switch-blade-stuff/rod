@@ -92,28 +92,6 @@ namespace rod::_dir
 			return hnd.error();
 	}
 
-	result<> directory_handle::do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
-	{
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
-		const auto &ntapi = ntapi::instance();
-		if (ntapi.has_error()) [[unlikely]]
-			return ntapi.error();
-
-		auto rpath = render_as_wchar<false>(path);
-		if (rpath.has_error()) [[unlikely]]
-			return rpath.error();
-
-		auto del_hnd = reopen_as_deletable(*ntapi, *this, abs_timeout);
-		if (del_hnd.has_error()) [[unlikely]]
-			return del_hnd.error();
-
-		auto upath = make_ustring(rpath->as_span());
-		auto iosb = io_status_block();
-		if (auto status = ntapi->link_file(del_hnd->native_handle(), &iosb, base.native_handle(), upath, replace, abs_timeout); is_status_failure(status)) [[unlikely]]
-			return status_error_code(status);
-		else
-			return {};
-	}
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
 		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();

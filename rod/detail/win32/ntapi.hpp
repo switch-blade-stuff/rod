@@ -22,7 +22,11 @@
 #define _Out_writes_bytes_(A)
 #endif
 
+#ifdef _MSC_VER
 #define ROD_NTAPI __stdcall
+#else
+#define ROD_NTAPI __attribute__((__stdcall__))
+#endif
 
 #include "../fs_handle_base.hpp"
 #include "../file_clock.hpp"
@@ -217,10 +221,17 @@ namespace rod::_win32
 	inline static filetime tp_to_filetime(typename fs::file_clock::time_point tp) noexcept { return tp.time_since_epoch().count(); }
 	inline static typename fs::file_clock::time_point filetime_to_tp(filetime ft) noexcept { return fs::file_clock::time_point(ft); }
 
+#ifdef ROD_FORCE_STACK_BUFFERS
+	template<typename T>
+	struct alloca_deleter { void operator()(T *) const noexcept {} };
+	template<typename T>
+	using alloca_handle = std::unique_ptr<T, alloca_deleter<T>>;
+#else
 	template<typename T>
 	struct malloca_deleter { void operator()(T *p) const noexcept { _freea(p); } };
 	template<typename T>
 	using malloca_handle = std::unique_ptr<T, malloca_deleter<T>>;
+#endif
 
 	struct rtl_buffer
 	{
@@ -427,7 +438,7 @@ namespace rod::_win32
 				USHORT print_name_off;
 				USHORT print_name_len;
 				WCHAR path[1];
-			} mount_point;
+			} junction;
 			struct
 			{
 				UCHAR data[1];
@@ -828,4 +839,8 @@ namespace rod::_win32
 	};
 }
 
+#ifdef ROD_FORCE_STACK_BUFFERS
+#define ROD_MAKE_BUFFER(T, n) (rod::_win32::malloca_handle<T>(static_cast<T *>(alloca(n))))
+#else
 #define ROD_MAKE_BUFFER(T, n) (rod::_win32::malloca_handle<T>(static_cast<T *>(_malloca(n))))
+#endif

@@ -238,7 +238,7 @@ namespace rod
 			typename Hnd::timeout_type;
 			typename Hnd::extent_type;
 			typename Hnd::size_type;
-		} && _detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&
+		} && /*_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&*/ // Creation of new links is optional.
 		     _detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&
 		     _detail::callable<_handle::unlink_t, Hnd &, const typename Hnd::timeout_type &>;;
 
