@@ -98,27 +98,65 @@ namespace rod
 			return match_masks(name, {lustre_mask, smbfs_mask, nfs1_mask, nfs2_mask, nfs3_mask, nfs4_mask, nfs5_mask, nfs6_mask, nfs7_mask, nfs8_mask, nfs9_mask, cifs_mask});
 		}
 
-		result<discovery_cache> &discovery_cache::instance()
+		inline static auto init_cache() noexcept -> result<discovery_cache>;
+		inline static auto lock_cache() noexcept;
+
+		static std::atomic<discovery_cache::status_t> cache_status = {};
+		static result<discovery_cache> cache_instance = init_cache();
+
+		inline static auto init_cache() noexcept -> result<discovery_cache>
 		{
-			static auto value = []() -> result<discovery_cache>
+			for (;;)
 			{
+				auto expected = discovery_cache::none;
 				discovery_cache result;
-				if (auto path = fs::current_path(); path.has_value()) [[likely]]
-					result.working_dir = std::move(*path);
-				else
-					return path.error();
-				if (auto path = find_install_dir(); path.has_value()) [[likely]]
-					result.install_dir = std::move(*path);
-				else
-					return path.error();
-				if (auto path = find_runtime_dir(); path.has_value()) [[likely]]
-					result.runtime_dir = std::move(*path);
-				else
-					return path.error();
-				return std::move(result);
-			}();
-			return value;
+
+				if (cache_status.compare_exchange_strong(expected, discovery_cache::busy, std::memory_order_acq_rel))
+				{
+					const auto guard = defer_invoke([]() noexcept
+					{
+						cache_status.store(discovery_cache::init, std::memory_order_release);
+						cache_status.notify_one();
+					});
+
+					if (auto path = fs::current_path(); path.has_value()) [[likely]]
+						result.working_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_install_dir(); path.has_value()) [[likely]]
+						result.install_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_runtime_dir(); path.has_value()) [[likely]]
+						result.runtime_dir = std::move(*path);
+					else
+						return path.error();
+					return std::move(result);
+				}
+				if (expected == discovery_cache::busy)
+					cache_status.wait(expected);
+				if (expected == discovery_cache::init)
+					return std::move(cache_instance);
+			}
 		}
+		inline static auto lock_cache() noexcept
+		{
+			for (auto expected = discovery_cache::init;;)
+			{
+				if (cache_status.compare_exchange_strong(expected, discovery_cache::busy, std::memory_order_acq_rel))
+					return defer_invoke([]() noexcept
+					{
+						cache_status.store(discovery_cache::init, std::memory_order_release);
+						cache_status.notify_one();
+					});
+				if (expected == discovery_cache::busy)
+					cache_status.wait(expected);
+				if (expected != discovery_cache::init)
+					cache_instance = init_cache();
+			}
+		}
+
+		inline static auto acquire_cache() noexcept { return std::make_pair(std::reference_wrapper(cache_instance), lock_cache()); }
 
 		template<auto discovery_cache::*Path>
 		auto discovery_cache::open_cached_dir() const noexcept -> fs::directory_handle
@@ -147,19 +185,41 @@ namespace rod
 	{
 		using _detail::discovery_cache;
 
+		result<directory_handle> current_working_directory() noexcept
+		{
+			if (auto path = current_path(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_install_directory() noexcept
+		{
+			if (auto path = _detail::find_install_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_runtime_directory() noexcept
+		{
+			if (auto path = _detail::find_runtime_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+
 		const directory_handle &starting_working_directory() noexcept
 		{
-			static const auto value = discovery_cache::instance().transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::working_dir>(); }).value_or({});
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::working_dir>(); }).value_or({});
 			return value;
 		}
 		const directory_handle &starting_install_directory() noexcept
 		{
-			static const auto value = discovery_cache::instance().transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::install_dir>(); }).value_or({});
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::install_dir>(); }).value_or({});
 			return value;
 		}
 		const directory_handle &starting_runtime_directory() noexcept
 		{
-			static const auto value = discovery_cache::instance().transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::runtime_dir>(); }).value_or({});
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::runtime_dir>(); }).value_or({});
 			return value;
 		}
 
@@ -204,11 +264,10 @@ namespace rod
 
 		result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode, std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
 		{
-			auto &cache = discovery_cache::instance();
+			auto &&[cache, guard] = _detail::acquire_cache();
 			if (cache.has_error()) [[unlikely]]
 				return cache.error();
 
-			auto guard = std::lock_guard(*cache);
 			if (refresh || cache->temp_dirs.empty()) [[unlikely]]
 			{
 				auto res = cache->refresh_dirs<&discovery_cache::temp_dirs>(_detail::find_temp_dirs);

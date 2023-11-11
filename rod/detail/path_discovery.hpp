@@ -92,25 +92,17 @@ namespace rod
 
 		struct discovery_cache
 		{
-			static result<discovery_cache> &instance();
-
-			void unlock() noexcept
+			enum status_t
 			{
-				std::atomic_ref(busy).store(false, std::memory_order_release);
-				std::atomic_ref(busy).notify_one();
-			}
-			void lock() noexcept
-			{
-				while (std::atomic_ref(busy).exchange(true, std::memory_order_acq_rel))
-					std::atomic_ref(busy).wait(true);
-			}
+				none = 0,
+				busy = 1,
+				init = 2,
+			};
 
 			template<auto discovery_cache::*Path>
 			[[nodiscard]] auto open_cached_dir() const noexcept -> fs::directory_handle;
 			template<auto discovery_cache::*Dirs, typename F>
 			[[nodiscard]] auto refresh_dirs(F &&) noexcept -> result<>;
-
-			bool busy = false;
 
 			typename fs::path::string_type working_dir;
 			typename fs::path::string_type install_dir;
