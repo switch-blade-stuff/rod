@@ -300,7 +300,7 @@ namespace rod
 			nosuid = 0x2,
 			/** Filesystem is read-only (writes will always fail). */
 			rdonly = 0x4,
-			/** Filesystem operates over a network. */
+			/** Filesystem can operate over a network. */
 			network = 0x8,
 
 			/* Feature flags */

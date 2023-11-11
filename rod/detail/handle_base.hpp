@@ -336,7 +336,7 @@ namespace rod
 		template<typename Child, typename Base>
 		struct handle_adaptor { class type; };
 		template<typename Child, typename Base>
-		class handle_adaptor<Child, Base>::type : public define_timeout_type<Base>
+		class handle_adaptor<Child, Base>::type : public define_timeout_type<Base>, empty_base<Base>
 		{
 			friend Child;
 
@@ -362,19 +362,19 @@ namespace rod
 			type &operator=(type &&) noexcept = default;
 
 			template<typename... Args> requires std::constructible_from<Base, native_handle_type, Args...>
-			explicit type(native_handle_type hnd, Args &&...args) noexcept : _base(hnd, std::forward<Args>(args)...) {}
+			explicit type(native_handle_type hnd, Args &&...args) noexcept : empty_base<Base>(hnd, std::forward<Args>(args)...) {}
 			template<typename... Args> requires std::constructible_from<Base, Base, Args...>
-			explicit type(Base &&hnd, Args &&...args) noexcept : _base(std::forward<Base>(hnd), std::forward<Args>(args)...) {}
+			explicit type(Base &&hnd, Args &&...args) noexcept : empty_base<Base>(std::forward<Base>(hnd), std::forward<Args>(args)...) {}
 
 			/** Checks if the handle is open. */
-			[[nodiscard]] bool is_open() const noexcept { return _base.is_open(); }
+			[[nodiscard]] bool is_open() const noexcept { return base().is_open(); }
 			/** Returns the underlying native handle. */
-			[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return _base.native_handle(); }
+			[[nodiscard]] constexpr native_handle_type native_handle() const noexcept { return base().native_handle(); }
 
 			/** Releases the underlying native handle. */
-			native_handle_type release() noexcept { return _base.release(); }
+			native_handle_type release() noexcept { return base().release(); }
 			/** Releases the underlying native handle and replaces it with \a hnd. */
-			native_handle_type release(native_handle_type hnd) noexcept { return _base.release(hnd); }
+			native_handle_type release(native_handle_type hnd) noexcept { return base().release(hnd); }
 
 			constexpr void swap(type &other) noexcept { adl_swap(base(), get_adaptor(other).base()); }
 			friend constexpr void swap(type &a, type &b) noexcept { a.swap(b); }
@@ -466,13 +466,10 @@ namespace rod
 			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
 
 		protected:
-			[[nodiscard]] constexpr Base &base() & noexcept { return _base; }
-			[[nodiscard]] constexpr Base &&base() && noexcept { return std::move(_base); }
-			[[nodiscard]] constexpr const Base &base() const & noexcept { return _base; }
-			[[nodiscard]] constexpr const Base &&base() const && noexcept { return std::move(_base); }
-
-		private:
-			Base _base;
+			[[nodiscard]] constexpr Base &base() & noexcept { return empty_base<Base>::value(); }
+			[[nodiscard]] constexpr Base &&base() && noexcept { return std::move(empty_base<Base>::value()); }
+			[[nodiscard]] constexpr const Base &base() const & noexcept { return empty_base<Base>::value(); }
+			[[nodiscard]] constexpr const Base &&base() const && noexcept { return std::move(empty_base<Base>::value()); }
 		};
 	}
 

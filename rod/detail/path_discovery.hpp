@@ -81,8 +81,8 @@ namespace rod
 		result<fs::path> find_install_dir() noexcept;
 		result<fs::path> find_runtime_dir() noexcept;
 
-		result<fs::path> find_temp_file_dir() noexcept;
-		result<fs::path> find_temp_pipe_dir() noexcept;
+		result<fs::path> preferred_temp_file_dir() noexcept;
+		result<fs::path> preferred_temp_pipe_dir() noexcept;
 
 		result<fs::path> find_user_home_dir() noexcept;
 		result<fs::path> find_cache_home_dir() noexcept;
@@ -126,8 +126,6 @@ namespace rod
 			std::vector<fs::discovered_path> state_dirs;
 			std::vector<fs::discovered_path> config_dirs;
 		};
-
-		result<bool> query_discovered_dir(fs::discovery_mode, fs::discovered_path &) noexcept;
 
 		/* Platform-specific discovery hooks. */
 		result<> find_temp_dirs(std::vector<fs::discovered_path> &) noexcept;
@@ -198,19 +196,18 @@ namespace rod
 		/** Returns handle to a directory used for creation of temporary named pipes. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &temporary_pipe_directory() noexcept;
 
-		/** Returns a vector of system-specific temporary directories sorted by discovery source.
-		 * @param mode Discovery mode flags used to validate resulting temporary directories.
-		 * @param override Span of directory paths used for `discovery_source::override` source.
-		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
-		 * @param refresh If set to `true`, system temporary directory cache is refreshed.
-		 * @return Vector of `discovered_path` structures describing discovered temporary directories or a status code on failure. */
-		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode = discovery_mode::all, std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh = false) noexcept;
-
 		/** Attempts to find the specified executable or library in the current environment (such as the `PATH` environment variable).
 		 * @param filter Filter string used for path lookup.
 		 * @param dirs Directory paths to search in addition to system-defaults.
 		 * @return Path to the target file or a status code on failure. */
 		[[nodiscard]] ROD_API_PUBLIC result<path> find_system_file(path_view filter, std::span<const path_view> dirs = {}) noexcept;
+
+		/** Returns a vector of system-specific temporary directories sorted by discovery source.
+		 * @param mode Discovery mode flags used to validate resulting temporary directories.
+		 * @param override Span of directory paths used for `discovery_source::override` source.
+		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
+		 * @return Vector of `discovered_path` structures describing discovered temporary directories or a status code on failure. */
+		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode = discovery_mode::all, std::span<const path_view> override = {}, std::span<const path_view> fallback = {}) noexcept;
 	}
 
 	result<fs::directory_handle> fs::directory_handle::open_temporary(fs::path_view path, fs::file_flags flags, fs::open_mode mode) noexcept

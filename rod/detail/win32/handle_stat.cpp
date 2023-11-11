@@ -477,7 +477,7 @@ namespace rod::_handle
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		auto buff = ROD_MAKE_BUFFER(wchar_t, buff_size * sizeof(wchar_t));
+		auto buff = ROD_MAKE_BUFFER(wchar_t, sizeof(file_fs_attribute_information) + buff_size * sizeof(wchar_t));
 		if (buff.get() == nullptr) [[unlikely]]
 			return std::make_error_code(std::errc::not_enough_memory);
 
@@ -487,7 +487,7 @@ namespace rod::_handle
 			auto attr_info = reinterpret_cast<file_fs_attribute_information *>(buff.get());
 			auto iosb = io_status_block();
 
-			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, attr_info, sizeof(file_fs_attribute_information), FileFsAttributeInformation);
+			auto status = ntapi->NtQueryVolumeInformationFile(native_handle(), &iosb, attr_info, sizeof(file_fs_attribute_information) + buff_size * sizeof(wchar_t), FileFsAttributeInformation);
 			if (status == STATUS_PENDING)
 				status = ntapi->wait_io(native_handle(), &iosb);
 			if (status == 0xc0000120 /*STATUS_CANCELLED*/) [[unlikely]]

@@ -3,6 +3,7 @@
  */
 
 #include "path_discovery.hpp"
+#include "file_handle.hpp"
 #include "path_util.hpp"
 
 #include <mutex>
@@ -97,21 +98,6 @@ namespace rod
 			return match_masks(name, {lustre_mask, smbfs_mask, nfs1_mask, nfs2_mask, nfs3_mask, nfs4_mask, nfs5_mask, nfs6_mask, nfs7_mask, nfs8_mask, nfs9_mask, cifs_mask});
 		}
 
-		result<bool> query_discovered_dir(fs::discovery_mode mode, fs::discovered_path &dir) noexcept
-		{
-			/* TODO: Try to create a temporary file in the target directory to see if it's suitable and to do `get_fs_stat`. */
-
-			/* Apply mode filter. */
-			if (bool(mode & fs::discovery_mode::storage_backed) < dir.storage_backed)
-				return false;
-			if (bool(mode & fs::discovery_mode::network_backed) < dir.network_backed)
-				return false;
-			if (bool(mode & fs::discovery_mode::memory_backed) < dir.memory_backed)
-				return false;
-
-			return true;
-		}
-
 		result<discovery_cache> &discovery_cache::instance()
 		{
 			static auto value = []() -> result<discovery_cache>
@@ -146,6 +132,7 @@ namespace rod
 		auto discovery_cache::refresh_dirs(F &&find) noexcept -> result<>
 		{
 			auto &dirs = this->*Dirs;
+			dirs.clear();
 			if (auto res = find(dirs); res.has_error()) [[unlikely]]
 				return res;
 
@@ -176,49 +163,42 @@ namespace rod
 			return value;
 		}
 
-		inline static result<bool> filter_dir(discovery_mode mode, discovered_path &dir, const discovered_path *entry) noexcept
+		inline static bool verify_discovered_path(discovered_path &dir, discovery_mode mode) noexcept
 		{
-			result<directory_handle> hnd;
-			if (entry != nullptr)
-			{
-//				dir.memory_backed = _detail::match_memory_backed(entry->fs_type);
-//				dir.storage_backed = _detail::match_storage_backed(entry->fs_type);
-				dir.network_backed = entry->network_backed;
-			}
-			else
-			{
-				fs_stat st;
-				if (hnd = directory_handle::open({}, dir.path, file_flags::attr_read); hnd.has_error()) [[unlikely]]
-					return {in_place_error, hnd.error()};
-				if (auto res = get_fs_stat(st, *hnd, fs_stat::query::fs_type | fs_stat::query::flags); res.has_error()) [[unlikely]]
-					return {in_place_error, res.error()};
+			constexpr auto fs_stat_mask = fs_stat::query::fs_type | fs_stat::query::flags;
+			constexpr auto dir_stat_mask = stat::query::dev | stat::query::ino;
 
-				dir.memory_backed = _detail::match_memory_backed(st.fs_type);
-				dir.storage_backed = _detail::match_storage_backed(st.fs_type);
-				dir.network_backed = bool(st.flags & fs_flags::network);
-			}
+			fs_stat fs_st;
+			stat dir_st;
 
+			/* Open a handle to the directory and check if we can create a file. */
+			auto path_hnd = path_handle::open({}, dir.path);
+			if (path_hnd.has_error()) [[unlikely]]
+				return false;
+			auto file_hnd = file_handle::open_unique(*path_hnd, file_flags::attr_read | file_flags::unlink_on_close);
+			if (file_hnd.has_error()) [[unlikely]]
+				return false;
 
-			/* TODO: check if we can create a file in the directory. */
-#if 0
-			auto tmp = file_handle::open_unique(dir.path, file_flags::unlink_on_close);
-			if (tmp.)
-#endif
+			/* Get filesystem and directory stats. */
+			if ((get_stat(dir_st, *path_hnd, dir_stat_mask).value_or({}) & dir_stat_mask) != dir_stat_mask) [[unlikely]]
+				return false;
+			if ((get_fs_stat(fs_st, *file_hnd, fs_stat_mask).value_or({}) & fs_stat_mask) != fs_stat_mask) [[unlikely]]
+				return false;
 
-			if (entry != nullptr)
-			{
-				dir.dev = entry->dev;
-				dir.ino = entry->ino;
-			}
-			else
-			{
-				stat st;
-				if (auto res = get_stat(st, *hnd, stat::query::dev | stat::query::ino); res.has_error()) [[unlikely]]
-					return {in_place_error, res.error()};
+			/* Fill the discovery metadata. */
+			dir.memory_backed = _detail::match_memory_backed(fs_st.fs_type);
+			dir.storage_backed = _detail::match_storage_backed(fs_st.fs_type);
+			dir.network_backed = bool(fs_st.flags & fs_flags::network);
+			dir.dev = dir_st.dev;
+			dir.ino = dir_st.ino;
 
-				dir.dev = st.dev;
-				dir.ino = st.ino;
-			}
+			/* Compare against the discovery mode mask. */
+			if (dir.memory_backed && !bool(mode & discovery_mode::memory_backed))
+				return false;
+			if (dir.storage_backed && !bool(mode & discovery_mode::storage_backed))
+				return false;
+			if (dir.network_backed && !bool(mode & discovery_mode::network_backed))
+				return false;
 			return true;
 		}
 
@@ -244,26 +224,20 @@ namespace rod
 				for (auto &entry: override)
 				{
 					auto dir = discovered_path{.path = path(entry), .source = discovery_source::override};
-					if (auto res = filter_dir(mode, dir, nullptr); res.has_value() && *res)
-						result.push_back(dir);
-					else if (res.has_error()) [[unlikely]]
-						return res.error();
+					if (verify_discovered_path(dir, mode))
+						result.push_back(std::move(dir));
 				}
 				for (auto &entry: cache->temp_dirs)
 				{
 					auto dir = discovered_path{.path = entry.path, .source = entry.source};
-					if (auto res = filter_dir(mode, dir, &entry); res.has_value() && *res)
-						result.push_back(dir);
-					else if (res.has_error()) [[unlikely]]
-						return res.error();
+					if (verify_discovered_path(dir, mode))
+						result.push_back(std::move(dir));
 				}
 				for (auto &entry: fallback)
 				{
 					auto dir = discovered_path{.path = path(entry), .source = discovery_source::fallback};
-					if (auto res = filter_dir(mode, dir, nullptr); res.has_value() && *res)
-						result.push_back(dir);
-					else if (res.has_error()) [[unlikely]]
-						return res.error();
+					if (verify_discovered_path(dir, mode))
+						result.push_back(std::move(dir));
 				}
 
 				return std::move(result);
@@ -273,12 +247,32 @@ namespace rod
 
 		const directory_handle &temporary_file_directory() noexcept
 		{
-			static const directory_handle value;
+			static const directory_handle value = []() noexcept
+			{
+				constexpr auto search_mode = discovery_mode::storage_backed | discovery_mode::network_backed | discovery_mode::memory_backed;
+
+				if (auto preferred = _detail::preferred_temp_file_dir(); preferred.has_value() && !preferred->empty()) [[unlikely]]
+					return directory_handle::open({}, *preferred).value_or({});
+				if (auto discovered = temporary_directory_paths(search_mode, {}, {}, true); discovered.has_value() && !discovered->empty()) [[unlikely]]
+					return directory_handle::open({}, discovered->front().path).value_or({});
+
+				return directory_handle();
+			}();
 			return value;
 		}
 		const directory_handle &temporary_pipe_directory() noexcept
 		{
-			static const directory_handle value;
+			static const directory_handle value = []() noexcept
+			{
+				constexpr auto search_mode = discovery_mode::storage_backed | discovery_mode::memory_backed;
+
+				if (auto preferred = _detail::preferred_temp_pipe_dir(); preferred.has_value() && !preferred->empty()) [[unlikely]]
+					return directory_handle::open({}, *preferred).value_or({});
+				if (auto discovered = temporary_directory_paths(search_mode, {}, {}, true); discovered.has_value() && !discovered->empty()) [[unlikely]]
+					return directory_handle::open({}, discovered->front().path).value_or({});
+
+				return directory_handle();
+			}();
 			return value;
 		}
 	}

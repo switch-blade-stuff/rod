@@ -20,7 +20,7 @@ namespace rod::_win32
 			else
 				path.resize(n - 1);
 
-			if (!::GetEnvironmentVariableW(env, path.data(), DWORD(path.size()))) [[unlikely]]
+			if (!::GetEnvironmentVariableW(env, path.data(), DWORD(path.size() + 1))) [[unlikely]]
 				return Res(in_place_error, dos_error_code(::GetLastError()));
 			else if constexpr (!std::is_void_v<std::invoke_result_t<F, std::wstring_view>>)
 				return f(std::wstring_view(path));

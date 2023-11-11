@@ -8,6 +8,11 @@
 
 int main()
 {
+	auto &tmp_file_dir = rod::fs::temporary_file_directory();
+	TEST_ASSERT(tmp_file_dir.is_open());
+	auto &tmp_pipe_dir = rod::fs::temporary_pipe_directory();
+	TEST_ASSERT(tmp_pipe_dir.is_open());
+
 	auto curr_path = rod::fs::current_path().value();
 	auto curr_dir = rod::fs::path_handle::open({}, curr_path).value();
 	TEST_ASSERT(curr_dir.is_open());

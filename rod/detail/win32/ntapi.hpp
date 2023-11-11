@@ -723,6 +723,8 @@ namespace rod::_win32
 		return std::find(cnds.begin(), cnds.end(), err) != cnds.end();
 	}
 
+	result<bool> is_elevated() noexcept;
+
 	struct ntapi
 	{
 		[[nodiscard]] static const result<ntapi> &instance() noexcept;

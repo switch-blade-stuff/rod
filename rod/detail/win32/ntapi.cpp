@@ -489,4 +489,24 @@ namespace rod::_win32
 		}
 		return iosb->status;
 	}
+
+	result<bool> is_elevated() noexcept
+	{
+		std::array<std::byte, 1024> owner_buffer, user_buffer;
+		DWORD written;
+		HANDLE token;
+
+		if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_ALL_ACCESS, &token)) [[unlikely]]
+			return {in_place_error, dos_error_code(::GetLastError())};
+
+		auto guard = defer_invoke([&]() noexcept { ::CloseHandle(token); });
+		if (!::GetTokenInformation(token, TokenOwner, owner_buffer.data(), DWORD(owner_buffer.size()), &written)) [[unlikely]]
+			return {in_place_error, dos_error_code(::GetLastError())};
+		if (!::GetTokenInformation(token, TokenUser, user_buffer.data(), DWORD(user_buffer.size()), &written)) [[unlikely]]
+			return {in_place_error, dos_error_code(::GetLastError())};
+
+		const auto owner = reinterpret_cast<const TOKEN_OWNER *>(owner_buffer.data());
+		const auto user = reinterpret_cast<const TOKEN_USER *>(user_buffer.data());
+		return {in_place_value, ::EqualSid(owner->Owner, user->User.Sid) == 0};
+	}
 }
