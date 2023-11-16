@@ -28,28 +28,6 @@ namespace rod
 			fallback,
 		};
 
-		/** Flags used to control path discovery behavior. */
-		enum class discovery_mode : int
-		{
-			/** Storage-backed directories will be considered for discovery.
-			 * @note Networked directories will not be included unless `network_backed` flag is set. */
-			storage_backed = 1,
-			/** Network-backed directories will be considered for discovery. */
-			network_backed = 2,
-			/** Memory-backed directories will be considered for discovery. */
-			memory_backed = 4,
-			/** Discovery mode with all flags set. */
-			all = storage_backed | network_backed | memory_backed,
-		};
-
-		[[nodiscard]] constexpr discovery_mode operator~(discovery_mode h) noexcept { return discovery_mode(~int(h)); }
-		[[nodiscard]] constexpr discovery_mode operator&(discovery_mode a, discovery_mode b) noexcept { return discovery_mode(int(a) & int(b)); }
-		[[nodiscard]] constexpr discovery_mode operator|(discovery_mode a, discovery_mode b) noexcept { return discovery_mode(int(a) | int(b)); }
-		[[nodiscard]] constexpr discovery_mode operator^(discovery_mode a, discovery_mode b) noexcept { return discovery_mode(int(a) ^ int(b)); }
-		constexpr discovery_mode &operator&=(discovery_mode &a, discovery_mode b) noexcept { return a = a & b; }
-		constexpr discovery_mode &operator|=(discovery_mode &a, discovery_mode b) noexcept { return a = a | b; }
-		constexpr discovery_mode &operator^=(discovery_mode &a, discovery_mode b) noexcept { return a = a ^ b; }
-
 		/** Structure representing metadata of a discovered path. */
 		struct discovered_path
 		{
@@ -81,14 +59,22 @@ namespace rod
 		result<fs::path> find_install_dir() noexcept;
 		result<fs::path> find_runtime_dir() noexcept;
 
-		result<fs::path> preferred_temp_file_dir() noexcept;
-		result<fs::path> preferred_temp_pipe_dir() noexcept;
-
+		result<fs::path> find_data_home_dir() noexcept;
 		result<fs::path> find_user_home_dir() noexcept;
 		result<fs::path> find_cache_home_dir() noexcept;
 		result<fs::path> find_state_home_dir() noexcept;
-		result<fs::path> find_data_home_dir() noexcept;
 		result<fs::path> find_config_home_dir() noexcept;
+
+		result<fs::path> find_share_dir() noexcept;
+		result<fs::path> find_music_dir() noexcept;
+		result<fs::path> find_videos_dir() noexcept;
+		result<fs::path> find_desktop_dir() noexcept;
+		result<fs::path> find_downloads_dir() noexcept;
+		result<fs::path> find_documents_dir() noexcept;
+		result<fs::path> find_templates_dir() noexcept;
+
+		result<fs::path> preferred_temp_file_dir() noexcept;
+		result<fs::path> preferred_temp_pipe_dir() noexcept;
 
 		struct discovery_cache
 		{
@@ -112,6 +98,14 @@ namespace rod
 			typename fs::path::string_type cache_home_dir;
 			typename fs::path::string_type state_home_dir;
 			typename fs::path::string_type config_home_dir;
+
+			typename fs::path::string_type share_dir;
+			typename fs::path::string_type music_dir;
+			typename fs::path::string_type videos_dir;
+			typename fs::path::string_type desktop_dir;
+			typename fs::path::string_type downloads_dir;
+			typename fs::path::string_type documents_dir;
+			typename fs::path::string_type templates_dir;
 
 			std::vector<fs::discovered_path> temp_dirs;
 			std::vector<fs::discovered_path> data_dirs;
@@ -140,7 +134,8 @@ namespace rod
 		/** Returns handle to the program install directory. Install directory is the parent directory of the current process' executable. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_install_directory() noexcept;
 		/** Returns handle to the current user's runtime directory. Runtime directory is a local filesystem directory used to store user-specific runtime files such as named pipes and sockets.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_RUNTIME_DIR</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_RUNTIME_DIR</a>.
+		 * @note Not all operating systems have support for user runtime directories. `temp_file_directory` and `temp_pipe_directory` may yield a more accurate result. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_runtime_directory() noexcept;
 
 		/** Returns handle to the working directory acquired during static initialization. */
@@ -148,66 +143,115 @@ namespace rod
 		/** Returns handle to the install directory acquired during static initialization. Install directory is the parent directory of the current process' executable. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_install_directory() noexcept;
 		/** Returns handle to the user's runtime directory acquired during static initialization. Runtime directory is a local filesystem directory used to store user-specific runtime files such as named pipes and sockets.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_RUNTIME_DIR</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_RUNTIME_DIR</a>.
+		 * @note Not all operating systems have support for user runtime directories. `temp_file_directory` and `temp_pipe_directory` may yield a more accurate result. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_runtime_directory() noexcept;
 
 		/** Returns handle to the current user's home directory. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_user_home_directory() noexcept;
 		/** Returns handle to the current user's data home directory. Data home directory is used to store user-specific data files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_DATA_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_DATA_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_data_home_directory() noexcept;
 		/** Returns handle to the current user's cache home directory. Cache home directory is used to store user-specific cache files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_CACHE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_CACHE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_cache_home_directory() noexcept;
 		/** Returns handle to the current user's state home directory. State home directory is used to store user-specific state files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_STATE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_STATE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_state_home_directory() noexcept;
 		/** Returns handle to the current user's config home directory. Config home directory is used to store user-specific config files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CONFIG_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CONFIG_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_config_home_directory() noexcept;
 
 		/** Returns handle to the user's home directory acquired during static initialization. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_user_home_directory() noexcept;
 		/** Returns handle to the user's data home directory acquired during static initialization. Data home directory is used to store user-specific data files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_DATA_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_DATA_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_data_home_directory() noexcept;
 		/** Returns handle to the user's cache home directory acquired during static initialization. Cache home directory is used to store user-specific cache files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_CACHE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_CACHE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_cache_home_directory() noexcept;
 		/** Returns handle to the user's state home directory acquired during static initialization. State home directory is used to store user-specific state files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_STATE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_STATE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_state_home_directory() noexcept;
 		/** Returns handle to the user's config home directory acquired during static initialization. Config home directory is used to store user-specific config files.
-		 * See <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CONFIG_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CONFIG_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_config_home_directory() noexcept;
 
-		/* TODO: Add support for xdg-user-dirs. */
+		/** Returns handle to the current user's share directory. This directory corresponds to `$XDG_PUBLICSHARE_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_share_directory() noexcept;
+		/** Returns handle to the current user's music directory. This directory corresponds to `$XDG_MUSIC_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_music_directory() noexcept;
+		/** Returns handle to the current user's videos directory. This directory corresponds to `$XDG_VIDEOS_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_videos_directory() noexcept;
+		/** Returns handle to the current user's desktop directory. This directory corresponds to `$XDG_DESKTOP_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_desktop_directory() noexcept;
+		/** Returns handle to the current user's downloads directory. This directory corresponds to `$XDG_DOWNLOAD_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_downloads_directory() noexcept;
+		/** Returns handle to the current user's documents directory. This directory corresponds to `$XDG_DOCUMENTS_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_documents_directory() noexcept;
+		/** Returns handle to the current user's templates directory. This directory corresponds to `$XDG_TEMPLATES_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_templates_directory() noexcept;
+
+		/** Returns handle to the user's share directory acquired during static initialization. This directory corresponds to `$XDG_PUBLICSHARE_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_share_directory() noexcept;
+		/** Returns handle to the user's music directory acquired during static initialization. This directory corresponds to `$XDG_MUSIC_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_music_directory() noexcept;
+		/** Returns handle to the user's videos directory acquired during static initialization. This directory corresponds to `$XDG_VIDEOS_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_videos_directory() noexcept;
+		/** Returns handle to the user's desktop directory acquired during static initialization. This directory corresponds to `$XDG_DESKTOP_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_desktop_directory() noexcept;
+		/** Returns handle to the user's downloads directory acquired during static initialization. This directory corresponds to `$XDG_DOWNLOAD_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_downloads_directory() noexcept;
+		/** Returns handle to the user's documents directory acquired during static initialization. This directory corresponds to `$XDG_DOCUMENTS_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_documents_directory() noexcept;
+		/** Returns handle to the user's templates directory acquired during static initialization. This directory corresponds to `$XDG_TEMPLATES_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_templates_directory() noexcept;
 
 		/** Returns handle to a directory used for creation of temporary files. */
-		[[nodiscard]] ROD_API_PUBLIC const directory_handle &temporary_file_directory() noexcept;
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &temp_file_directory() noexcept;
 		/** Returns handle to a directory used for creation of temporary named pipes. */
-		[[nodiscard]] ROD_API_PUBLIC const directory_handle &temporary_pipe_directory() noexcept;
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &temp_pipe_directory() noexcept;
 
-		/** Attempts to find the specified executable or library in the current environment (such as the `PATH` environment variable).
-		 * @param filter Filter string used for path lookup.
-		 * @param dirs Directory paths to search in addition to system-defaults.
-		 * @return Path to the target file or a status code on failure. */
-		[[nodiscard]] ROD_API_PUBLIC result<path> find_system_file(path_view filter, std::span<const path_view> dirs = {}) noexcept;
-
-		/** Returns a vector of system-specific temporary directories sorted by discovery source.
-		 * @param mode Discovery mode flags used to validate resulting temporary directories.
+		/** Returns a vector of system-specific temporary file directories sorted by discovery source.
 		 * @param override Span of directory paths used for `discovery_source::override` source.
 		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
 		 * @return Vector of `discovered_path` structures describing discovered temporary directories or a status code on failure. */
-		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode = discovery_mode::all, std::span<const path_view> override = {}, std::span<const path_view> fallback = {}) noexcept;
+		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> temp_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
+		/** Returns a vector of system-specific data directories sorted by discovery source.
+		 * @param override Span of directory paths used for `discovery_source::override` source.
+		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
+		 * @return Vector of `discovered_path` structures describing discovered data directories or a status code on failure. */
+		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> data_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
+		/** Returns a vector of system-specific state directories sorted by discovery source.
+		 * @param override Span of directory paths used for `discovery_source::override` source.
+		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
+		 * @return Vector of `discovered_path` structures describing discovered state directories or a status code on failure. */
+		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> state_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
+		/** Returns a vector of system-specific config directories sorted by discovery source.
+		 * @param override Span of directory paths used for `discovery_source::override` source.
+		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
+		 * @return Vector of `discovered_path` structures describing discovered config directories or a status code on failure. */
+		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> config_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
+
+// TODO: Implement
+//		/** Returns a vector of system-specific font directories sorted by discovery source.
+//		 * @param override Span of directory paths used for `discovery_source::override` source.
+//		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
+//		 * @return Vector of `discovered_path` structures describing discovered font directories or a status code on failure. */
+//		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> font_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
+//		/** Returns a vector of system-specific applications directories sorted by discovery source.
+//		 * @param override Span of directory paths used for `discovery_source::override` source.
+//		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
+//		 * @return Vector of `discovered_path` structures describing discovered applications directories or a status code on failure. */
+//		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> apps_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
 	}
 
 	result<fs::directory_handle> fs::directory_handle::open_temporary(fs::path_view path, fs::file_flags flags, fs::open_mode mode) noexcept
 	{
 		if (!path.empty())
-			return open(fs::temporary_file_directory(), path, flags, mode);
+			return open(fs::temp_file_directory(), path, flags, mode);
 		else if (mode != fs::open_mode::existing)
-			return open_unique(fs::temporary_file_directory(), flags);
+			return open_unique(fs::temp_file_directory(), flags);
 		else
 			return std::make_error_code(std::errc::invalid_argument);
 	}

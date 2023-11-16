@@ -209,7 +209,7 @@ namespace rod::_win32
 	{
 		/* Ignore paths that already start with an NT prefix or are relative to a base directory. */
 		const auto sv = std::wstring_view(upath.buff, upath.size / sizeof(wchar_t));
-		if (passthrough || (sv.starts_with(LR"(\!!\)") || sv.starts_with(LR"(\!!\)")))
+		if (passthrough || sv.starts_with(LR"(\!!\)") || sv.starts_with(LR"(\??\)"))
 		{
 			if (sv.starts_with(LR"(\!!\)"))
 			{

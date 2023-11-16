@@ -187,9 +187,9 @@ namespace rod
 				file_handle_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					if (!path.empty())
-						return open(std::forward<Sch>(sch), temporary_file_directory(), path, flags, mode, caching, perm);
+						return open(std::forward<Sch>(sch), temp_file_directory(), path, flags, mode, caching, perm);
 					else if (mode != open_mode::existing)
-						return open_unique(std::forward<Sch>(sch), temporary_file_directory(), flags, caching, perm);
+						return open_unique(std::forward<Sch>(sch), temp_file_directory(), flags, caching, perm);
 					else
 						return std::make_error_code(std::errc::invalid_argument);
 				}
@@ -202,9 +202,9 @@ namespace rod
 				result<file_handle> operator()(path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					if (!path.empty())
-						return open(temporary_file_directory(), path, flags, mode, caching, perm);
+						return open(temp_file_directory(), path, flags, mode, caching, perm);
 					else if (mode != open_mode::existing)
-						return open_unique(temporary_file_directory(), flags, caching, perm);
+						return open_unique(temp_file_directory(), flags, caching, perm);
 					else
 						return std::make_error_code(std::errc::invalid_argument);
 				}

@@ -131,6 +131,54 @@ namespace rod
 						result.runtime_dir = std::move(*path);
 					else
 						return path.error();
+					if (auto path = find_user_home_dir(); path.has_value()) [[likely]]
+						result.user_home_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_data_home_dir(); path.has_value()) [[likely]]
+						result.data_home_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_cache_home_dir(); path.has_value()) [[likely]]
+						result.cache_home_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_state_home_dir(); path.has_value()) [[likely]]
+						result.state_home_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_config_home_dir(); path.has_value()) [[likely]]
+						result.config_home_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_share_dir(); path.has_value()) [[likely]]
+						result.share_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_music_dir(); path.has_value()) [[likely]]
+						result.music_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_videos_dir(); path.has_value()) [[likely]]
+						result.videos_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_desktop_dir(); path.has_value()) [[likely]]
+						result.desktop_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_downloads_dir(); path.has_value()) [[likely]]
+						result.downloads_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_documents_dir(); path.has_value()) [[likely]]
+						result.documents_dir = std::move(*path);
+					else
+						return path.error();
+					if (auto path = find_templates_dir(); path.has_value()) [[likely]]
+						result.templates_dir = std::move(*path);
+					else
+						return path.error();
 					return std::move(result);
 				}
 				if (expected == discovery_cache::busy)
@@ -223,7 +271,155 @@ namespace rod
 			return value;
 		}
 
-		inline static bool verify_discovered_path(discovered_path &dir, discovery_mode mode) noexcept
+		result<directory_handle> current_user_home_directory() noexcept
+		{
+			if (auto path = _detail::find_user_home_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_data_home_directory() noexcept
+		{
+			if (auto path = _detail::find_data_home_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_cache_home_directory() noexcept
+		{
+			if (auto path = _detail::find_cache_home_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_state_home_directory() noexcept
+		{
+			if (auto path = _detail::find_state_home_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_config_home_directory() noexcept
+		{
+			if (auto path = _detail::find_config_home_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+
+		const directory_handle &starting_user_home_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::user_home_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_data_home_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::data_home_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_cache_home_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::cache_home_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_state_home_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::state_home_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_config_home_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::config_home_dir>(); }).value_or({});
+			return value;
+		}
+
+		result<directory_handle> current_share_directory() noexcept
+		{
+			if (auto path = _detail::find_share_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_music_directory() noexcept
+		{
+			if (auto path = _detail::find_music_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_videos_directory() noexcept
+		{
+			if (auto path = _detail::find_videos_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_desktop_directory() noexcept
+		{
+			if (auto path = _detail::find_desktop_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_downloads_directory() noexcept
+		{
+			if (auto path = _detail::find_downloads_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_documents_directory() noexcept
+		{
+			if (auto path = _detail::find_documents_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+		result<directory_handle> current_templates_directory() noexcept
+		{
+			if (auto path = _detail::find_templates_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
+
+		const directory_handle &starting_share_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::share_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_music_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::music_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_videos_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::videos_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_desktop_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::desktop_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_downloads_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::downloads_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_documents_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::documents_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_templates_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::templates_dir>(); }).value_or({});
+			return value;
+		}
+
+		inline static bool verify_discovered_path(discovered_path &dir) noexcept
 		{
 			constexpr auto fs_stat_mask = fs_stat::query::fs_type | fs_stat::query::flags;
 			constexpr auto dir_stat_mask = stat::query::dev | stat::query::ino;
@@ -251,26 +447,18 @@ namespace rod
 			dir.network_backed = bool(fs_st.flags & fs_flags::network);
 			dir.dev = dir_st.dev;
 			dir.ino = dir_st.ino;
-
-			/* Compare against the discovery mode mask. */
-			if (dir.memory_backed && !bool(mode & discovery_mode::memory_backed))
-				return false;
-			if (dir.storage_backed && !bool(mode & discovery_mode::storage_backed))
-				return false;
-			if (dir.network_backed && !bool(mode & discovery_mode::network_backed))
-				return false;
 			return true;
 		}
-
-		result<std::vector<discovered_path>> temporary_directory_paths(discovery_mode mode, std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
+		template<auto DirsCache, auto FindFunc>
+		inline static result<std::vector<discovered_path>> discover_cached_paths(std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
 		{
 			auto &&[cache, guard] = _detail::acquire_cache();
 			if (cache.has_error()) [[unlikely]]
 				return cache.error();
 
-			if (refresh || cache->temp_dirs.empty()) [[unlikely]]
+			if (refresh || ((*cache).*DirsCache).empty()) [[unlikely]]
 			{
-				auto res = cache->refresh_dirs<&discovery_cache::temp_dirs>(_detail::find_temp_dirs);
+				auto res = cache->refresh_dirs<DirsCache>(FindFunc);
 				if (res.has_error()) [[unlikely]]
 					return res.error();
 			}
@@ -278,24 +466,24 @@ namespace rod
 			try
 			{
 				std::vector<discovered_path> result;
-				result.reserve(override.size() + fallback.size() + cache->temp_dirs.size());
+				result.reserve(override.size() + fallback.size() + ((*cache).*DirsCache).size());
 
 				for (auto &entry: override)
 				{
 					auto dir = discovered_path{.path = path(entry), .source = discovery_source::override};
-					if (verify_discovered_path(dir, mode))
+					if (verify_discovered_path(dir)) [[likely]]
 						result.push_back(std::move(dir));
 				}
-				for (auto &entry: cache->temp_dirs)
+				for (auto &entry: ((*cache).*DirsCache))
 				{
 					auto dir = discovered_path{.path = entry.path, .source = entry.source};
-					if (verify_discovered_path(dir, mode))
+					if (verify_discovered_path(dir)) [[likely]]
 						result.push_back(std::move(dir));
 				}
 				for (auto &entry: fallback)
 				{
 					auto dir = discovered_path{.path = path(entry), .source = discovery_source::fallback};
-					if (verify_discovered_path(dir, mode))
+					if (verify_discovered_path(dir)) [[likely]]
 						result.push_back(std::move(dir));
 				}
 
@@ -304,30 +492,43 @@ namespace rod
 			catch (...) { return _detail::current_error(); }
 		}
 
-		const directory_handle &temporary_file_directory() noexcept
+		result<std::vector<discovered_path>> temp_directory_paths(std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
+		{
+			return discover_cached_paths<&discovery_cache::temp_dirs, _detail::find_temp_dirs>(override, fallback, refresh);
+		}
+		result<std::vector<discovered_path>> data_directory_paths(std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
+		{
+			return discover_cached_paths<&discovery_cache::data_dirs, _detail::find_data_dirs>(override, fallback, refresh);
+		}
+		result<std::vector<discovered_path>> state_directory_paths(std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
+		{
+			return discover_cached_paths<&discovery_cache::state_dirs, _detail::find_state_dirs>(override, fallback, refresh);
+		}
+		result<std::vector<discovered_path>> config_directory_paths(std::span<const path_view> override, std::span<const path_view> fallback, bool refresh) noexcept
+		{
+			return discover_cached_paths<&discovery_cache::config_dirs, _detail::find_config_dirs>(override, fallback, refresh);
+		}
+
+		const directory_handle &temp_file_directory() noexcept
 		{
 			static const directory_handle value = []() noexcept
 			{
-				constexpr auto search_mode = discovery_mode::storage_backed | discovery_mode::network_backed | discovery_mode::memory_backed;
-
 				if (auto preferred = _detail::preferred_temp_file_dir(); preferred.has_value() && !preferred->empty()) [[unlikely]]
 					return directory_handle::open({}, *preferred).value_or({});
-				if (auto discovered = temporary_directory_paths(search_mode, {}, {}, true); discovered.has_value() && !discovered->empty()) [[unlikely]]
+				if (auto discovered = temp_directory_paths({}, {}, true); discovered.has_value() && !discovered->empty()) [[unlikely]]
 					return directory_handle::open({}, discovered->front().path).value_or({});
 
 				return directory_handle();
 			}();
 			return value;
 		}
-		const directory_handle &temporary_pipe_directory() noexcept
+		const directory_handle &temp_pipe_directory() noexcept
 		{
 			static const directory_handle value = []() noexcept
 			{
-				constexpr auto search_mode = discovery_mode::storage_backed | discovery_mode::memory_backed;
-
 				if (auto preferred = _detail::preferred_temp_pipe_dir(); preferred.has_value() && !preferred->empty()) [[unlikely]]
 					return directory_handle::open({}, *preferred).value_or({});
-				if (auto discovered = temporary_directory_paths(search_mode, {}, {}, true); discovered.has_value() && !discovered->empty()) [[unlikely]]
+				if (auto discovered = temp_directory_paths({}, {}, true); discovered.has_value() && !discovered->empty()) [[unlikely]]
 					return directory_handle::open({}, discovered->front().path).value_or({});
 
 				return directory_handle();

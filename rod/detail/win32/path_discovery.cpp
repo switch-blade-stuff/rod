@@ -8,13 +8,13 @@ namespace rod::_detail
 {
 	using namespace _win32;
 
-	inline static auto find_shell_dirs(std::vector<fs::discovered_path> &dirs, std::span<const GUID> ids) noexcept -> result<>
+	inline static auto find_shell_dirs(std::vector<fs::discovered_path> &dirs, std::span<const GUID> ids) noexcept
 	{
 		for (auto id : ids)
-			with_shell_path(id, [&](auto &&dir) { dirs.push_back(fs::discovered_path{.path = fs::path(dir, fs::path::native_format), .source = fs::discovery_source::system}); });
-		return {};
+			with_shell_path(id, [&](auto p) { dirs.push_back(fs::discovered_path{.path = fs::path(p, fs::path::native_format), .source = fs::discovery_source::system}); });
+		return result<>();
 	}
-	inline static auto find_localappdata() noexcept -> result<fs::path> { return with_shell_path(FOLDERID_LocalAppData, [](auto sv) { return fs::path(sv); }); }
+	inline static auto find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto p) { return fs::path(p, fs::path::native_format); }); }
 
 	result<> find_temp_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
@@ -29,9 +29,9 @@ namespace rod::_detail
 			}
 
 			/* Find %LOCALAPPDATA%\Temp */
-			with_shell_path(FOLDERID_LocalAppData, [&dirs](auto &&dir) { dirs.push_back(fs::discovered_path{.path = fs::path(dir, fs::path::native_format) + L"\\Temp", .source = fs::discovery_source::system}); });
+			with_shell_path(FOLDERID_LocalAppData, [&dirs](auto p) { dirs.push_back(fs::discovered_path{.path = fs::path(p, fs::path::native_format) + L"\\Temp", .source = fs::discovery_source::system}); });
 			/* Find %USERPROFILE%\AppData\Local\Temp */
-			with_shell_path(FOLDERID_Profile, [&dirs](auto &&dir) { dirs.push_back(fs::discovered_path{.path = fs::path(dir, fs::path::native_format) + LR"(\AppData\Local\Temp)", .source = fs::discovery_source::system}); });
+			with_shell_path(FOLDERID_Profile, [&dirs](auto p) { dirs.push_back(fs::discovered_path{.path = fs::path(p, fs::path::native_format) + LR"(\AppData\Local\Temp)", .source = fs::discovery_source::system}); });
 
 			{ /* Find GetWindowsDirectoryW()\Temp */
 				auto buffer = std::wstring(32767, L'\0');
@@ -90,7 +90,9 @@ namespace rod::_detail
 					break;
 			}
 
-			path.resize(n);
+			/* Strip module file name. */
+			const auto pos = path.find_last_of(L"\\/", n);
+			path.resize(pos == std::wstring::npos ? n : pos);
 			return std::move(path);
 		}
 		catch (...) { return _detail::current_error(); }
@@ -98,13 +100,21 @@ namespace rod::_detail
 	/* Windows does not have a user-specific temporary runtime directory. */
 	result<fs::path> find_runtime_dir() noexcept { return {}; }
 
-	/* Windows uses \Device\NamedPipe for all named pipes, and has no "standard" temp file directory. */
-	result<fs::path> preferred_temp_file_dir() noexcept { return {}; }
-	result<fs::path> preferred_temp_pipe_dir() noexcept { try { return fs::path(L"\\!!\\Device\\NamedPipe", fs::path::native_format); } catch (...) { return _detail::current_error(); } }
-
 	result<fs::path> find_user_home_dir() noexcept { return with_env_var(L"USERPROFILE", [](auto sv) { return fs::path(sv, fs::path::native_format); }); }
 	result<fs::path> find_data_home_dir() noexcept { return find_localappdata(); }
 	result<fs::path> find_cache_home_dir() noexcept { return find_localappdata(); }
 	result<fs::path> find_state_home_dir() noexcept { return find_localappdata(); }
 	result<fs::path> find_config_home_dir() noexcept { return find_localappdata(); }
+
+	result<fs::path> find_share_dir() noexcept { return with_shell_path(FOLDERID_Public, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_music_dir() noexcept { return with_shell_path(FOLDERID_Music, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_videos_dir() noexcept { return with_shell_path(FOLDERID_Videos, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_desktop_dir() noexcept { return with_shell_path(FOLDERID_Desktop, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_downloads_dir() noexcept { return with_shell_path(FOLDERID_Downloads, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_documents_dir() noexcept { return with_shell_path(FOLDERID_Documents, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_templates_dir() noexcept { return with_shell_path(FOLDERID_Templates, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+
+	/* Windows uses \Device\NamedPipe for all named pipes, and has no "standard" temp file directory. */
+	result<fs::path> preferred_temp_file_dir() noexcept { return {}; }
+	result<fs::path> preferred_temp_pipe_dir() noexcept { try { return fs::path(L"\\!!\\Device\\NamedPipe", fs::path::native_format); } catch (...) { return _detail::current_error(); } }
 }
