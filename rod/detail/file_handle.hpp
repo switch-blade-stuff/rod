@@ -17,7 +17,7 @@ namespace rod
 
 		class file_handle;
 		template<typename FileBase>
-		struct streamable_file_adaptor { class type; };
+		struct file_stream_adaptor { class type; };
 
 		using extent_pair = std::pair<_handle::extent_type, _handle::extent_type>;
 
@@ -184,27 +184,27 @@ namespace rod
 			struct open_temporary_t
 			{
 				template<scheduler Sch> requires(!tag_invocable<open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm> && _detail::callable<open_t, Sch, const path_handle &, path_view>)
-				file_handle_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_handle_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all | file_caching::temporary, file_perm perm = file_perm::all) const noexcept
 				{
 					if (!path.empty())
-						return open(std::forward<Sch>(sch), temp_file_directory(), path, flags, mode, caching, perm);
+						return open(std::forward<Sch>(sch), temp_file_directory(), path, flags, mode, caching | file_caching::temporary, perm);
 					else if (mode != open_mode::existing)
-						return open_unique(std::forward<Sch>(sch), temp_file_directory(), flags, caching, perm);
+						return open_unique(std::forward<Sch>(sch), temp_file_directory(), flags, caching | file_caching::temporary, perm);
 					else
 						return std::make_error_code(std::errc::invalid_argument);
 				}
 				template<scheduler Sch> requires tag_invocable<open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm>
-				file_handle_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_handle_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all | file_caching::temporary, file_perm perm = file_perm::all) const noexcept
 				{
-					return tag_invoke(*this, std::forward<Sch>(sch), path, flags, mode, caching, perm);
+					return tag_invoke(*this, std::forward<Sch>(sch), path, flags, mode, caching | file_caching::temporary, perm);
 				}
 
-				result<file_handle> operator()(path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				result<file_handle> operator()(path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all | file_caching::temporary, file_perm perm = file_perm::all) const noexcept
 				{
 					if (!path.empty())
-						return open(temp_file_directory(), path, flags, mode, caching, perm);
+						return open(temp_file_directory(), path, flags, mode, caching | file_caching::temporary, perm);
 					else if (mode != open_mode::existing)
-						return open_unique(temp_file_directory(), flags, caching, perm);
+						return open_unique(temp_file_directory(), flags, caching | file_caching::temporary, perm);
 					else
 						return std::make_error_code(std::errc::invalid_argument);
 				}
@@ -270,12 +270,12 @@ namespace rod
 		};
 
 		template<typename Hnd>
-		concept streamable_file_like = file_handle_like<Hnd> && seekable_handle<Hnd> && stream_io_handle<Hnd>;
+		concept file_stream_like = file_handle_like<Hnd> && seekable_handle<Hnd> && stream_io_handle<Hnd>;
 		template<typename Res>
-		concept streamable_file_like_result = instance_of<Res, result> && streamable_file_like<typename Res::value_type>;
+		concept file_stream_like_result = instance_of<Res, result> && file_stream_like<typename Res::value_type>;
 
 		template<typename FileBase>
-		class streamable_file_adaptor<FileBase>::type : public io_handle_adaptor<type, FileBase, fs_handle_adaptor>
+		class file_stream_adaptor<FileBase>::type : public io_handle_adaptor<type, FileBase, fs_handle_adaptor>
 		{
 			using adp_base = io_handle_adaptor<type, FileBase, fs_handle_adaptor>;
 
@@ -286,12 +286,12 @@ namespace rod
 			struct reopen_t
 			{
 				template<typename Base = FileBase> requires(!tag_invocable<reopen_t, const Base &, file_flags, file_caching> && tag_invocable<typename Base::reopen_t, const Base &, file_flags, file_caching>)
-				streamable_file_like_result auto operator()(const typename streamable_file_adaptor<Base>::type &other, file_flags flags = file_flags::read, file_caching caching = file_caching::all) const noexcept
+				file_stream_like_result auto operator()(const typename file_stream_adaptor<Base>::type &other, file_flags flags = file_flags::read, file_caching caching = file_caching::all) const noexcept
 				{
-					return typename Base::reopen_t{}(other.base(), flags, caching).transform_value([](Base &&base) { return typename streamable_file_adaptor<Base>::type(std::forward<Base>(base)); });
+					return typename Base::reopen_t{}(other.base(), flags, caching).transform_value([](Base &&base) { return typename file_stream_adaptor<Base>::type(std::forward<Base>(base)); });
 				}
 				template<typename Base = FileBase> requires tag_invocable<reopen_t, const Base &, file_flags, file_caching>
-				streamable_file_like_result auto operator()(const typename streamable_file_adaptor<Base>::type &other, file_flags flags = file_flags::read, file_caching caching = file_caching::all) const noexcept
+				file_stream_like_result auto operator()(const typename file_stream_adaptor<Base>::type &other, file_flags flags = file_flags::read, file_caching caching = file_caching::all) const noexcept
 				{
 					return tag_invoke(*this, other.base(), flags, caching);
 				}
@@ -303,12 +303,12 @@ namespace rod
 			struct open_t
 			{
 				template<scheduler Sch> requires(!tag_invocable<open_t, Sch, const path_handle &, path_view, file_flags, open_mode, file_caching, file_perm> && _detail::callable<typename FileBase::open_t, Sch, const path_handle &, path_view, file_flags, open_mode, file_caching, file_perm>)
-				streamable_file_like_result auto operator()(Sch &&sch, const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					return typename FileBase::open_t{}(std::forward<Sch>(sch), base, path, flags, mode, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
 				}
 				template<scheduler Sch> requires tag_invocable<open_t, Sch, const path_handle &, path_view, file_flags, open_mode, file_caching, file_perm>
-				streamable_file_like_result auto operator()(Sch &&sch, const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					return tag_invoke(*this, std::forward<Sch>(sch), base, path, flags, mode, caching, perm);
 				}
@@ -325,12 +325,12 @@ namespace rod
 			struct open_unique_t
 			{
 				template<scheduler Sch> requires(!tag_invocable<open_unique_t, Sch, const path_handle &, file_flags, file_caching, file_perm> && _detail::callable<typename FileBase::open_unique_t, Sch, const path_handle &, file_flags, file_caching, file_perm>)
-				streamable_file_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::read, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::read, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					return typename FileBase::open_unique_t{}(std::forward<Sch>(sch), base, flags, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
 				}
 				template<scheduler Sch> requires tag_invocable<open_unique_t, Sch, const path_handle &, file_flags, file_caching, file_perm>
-				streamable_file_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::read, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::read, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					return tag_invoke(*this, std::forward<Sch>(sch), base, flags, caching, perm);
 				}
@@ -347,12 +347,12 @@ namespace rod
 			struct open_temporary_t
 			{
 				template<scheduler Sch> requires(!tag_invocable<open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm> && _detail::callable<typename FileBase::open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm>)
-				streamable_file_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_stream_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					return typename FileBase::open_temporary_t{}(std::forward<Sch>(sch), path, flags, mode, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
 				}
 				template<scheduler Sch> requires tag_invocable<open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm>
-				streamable_file_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
+				file_stream_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
 					return tag_invoke(*this, std::forward<Sch>(sch), path, flags, mode, caching, perm);
 				}
@@ -448,18 +448,18 @@ namespace rod
 		static_assert(!seekable_handle<file_handle> && !stream_io_handle<file_handle>);
 
 		static_assert(_file::file_handle_like<file_handle> && _file::file_handle_like_result<decltype(file_handle::open({}, {}))>);
-		static_assert(!_file::streamable_file_like<file_handle> && !_file::streamable_file_like_result<decltype(file_handle::open({}, {}))>);
+		static_assert(!_file::file_stream_like<file_handle> && !_file::file_stream_like_result<decltype(file_handle::open({}, {}))>);
 
 		/** Streamable file handle adaptor which maintains an offset used for streaming IO. */
 		template<typename FileBase>
-		using streamable_file_adaptor = typename _file::streamable_file_adaptor<FileBase>::type;
-		/** Alias for `streamable_file_adaptor&lt;file_handle&gt;`. */
-		using streamable_file = streamable_file_adaptor<file_handle>;
+		using file_stream_adaptor = typename _file::file_stream_adaptor<FileBase>::type;
+		/** Alias for `file_stream_adaptor&lt;file_handle&gt;`. */
+		using file_stream = file_stream_adaptor<file_handle>;
 
-		static_assert(sized_handle<streamable_file> && sparse_io_handle<streamable_file>);
-		static_assert(seekable_handle<streamable_file> && stream_io_handle<streamable_file>);
+		static_assert(sized_handle<file_stream> && sparse_io_handle<file_stream>);
+		static_assert(seekable_handle<file_stream> && stream_io_handle<file_stream>);
 
-		static_assert(_file::file_handle_like<streamable_file> && _file::file_handle_like_result<decltype(streamable_file::open({}, {}))>);
-		static_assert(_file::streamable_file_like<streamable_file> && _file::streamable_file_like_result<decltype(streamable_file::open({}, {}))>);
+		static_assert(_file::file_handle_like<file_stream> && _file::file_handle_like_result<decltype(file_stream::open({}, {}))>);
+		static_assert(_file::file_stream_like<file_stream> && _file::file_stream_like_result<decltype(file_stream::open({}, {}))>);
 	}
 }

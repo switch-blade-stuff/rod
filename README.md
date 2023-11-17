@@ -1,7 +1,7 @@
 ## Features list
 
- * [x] Async
-   * [x] Senders & Receivers
+ * [ ] Async
+   * [ ] Senders & Receivers
      * [x] Base features
      * [x] Algorithms
      * [x] Default executors
@@ -16,17 +16,16 @@
    * [x] `path` & `path_view`
    * [x] Basic handle, adaptor & stats
    * [x] Filesystem handle adaptor
-   * [ ] Filesystem utilities
+   * [x] Filesystem utilities
    * [x] `path_handle`
    * [x] `link_handle`
    * [x] `directory_handle`
-   * [ ] Extended attributes
-   * [x] Directory iterators
-   * [ ] Path discovery
+   * [x] `directory_iterator`
+   * [x] Path discovery
    * [x] `file_handle`
-   * [ ] `file_stream`
-   * [ ] `mapping_source`
-   * [ ] `mapping_handle`
-   * [ ] `file_mapping`
+   * [x] `file_stream`
+   * [ ] `mmap_source`
+   * [ ] `mmap_handle`
+   * [ ] `pipe_handle`
  * [ ] Networking IO
    * [ ] Sockets

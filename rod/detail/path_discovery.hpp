@@ -232,18 +232,6 @@ namespace rod
 		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
 		 * @return Vector of `discovered_path` structures describing discovered config directories or a status code on failure. */
 		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> config_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
-
-// TODO: Implement
-//		/** Returns a vector of system-specific font directories sorted by discovery source.
-//		 * @param override Span of directory paths used for `discovery_source::override` source.
-//		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
-//		 * @return Vector of `discovered_path` structures describing discovered font directories or a status code on failure. */
-//		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> font_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
-//		/** Returns a vector of system-specific applications directories sorted by discovery source.
-//		 * @param override Span of directory paths used for `discovery_source::override` source.
-//		 * @param fallback Span of directory paths used for `discovery_source::fallback` source.
-//		 * @return Vector of `discovered_path` structures describing discovered applications directories or a status code on failure. */
-//		[[nodiscard]] ROD_API_PUBLIC result<std::vector<discovered_path>> apps_directory_paths(std::span<const path_view> override = {}, std::span<const path_view> fallback = {}, bool refresh_cache = false) noexcept;
 	}
 
 	result<fs::directory_handle> fs::directory_handle::open_temporary(fs::path_view path, fs::file_flags flags, fs::open_mode mode) noexcept

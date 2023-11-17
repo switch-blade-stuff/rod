@@ -31,7 +31,8 @@ namespace rod
 
 		public:
 			template<typename Rcv2, typename Fn2>
-			constexpr explicit type(Rcv2 &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Rcv, Rcv2> && std::is_nothrow_constructible_v<Fn, Fn2>) : adp_base(std::forward<Rcv2>(rcv)), func_base(std::forward<Fn2>(fn)), _shape(shape) {}
+			constexpr explicit type(Rcv2 &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Rcv, Rcv2> && std::is_nothrow_constructible_v<Fn, Fn2>)
+					: adp_base(std::forward<Rcv2>(rcv)), func_base(std::forward<Fn2>(fn)), _shape(shape) {}
 
 		private:
 			template<typename... Args>
@@ -63,7 +64,7 @@ namespace rod
 
 		private:
 			template<typename Rcv>
-			using receiver_t = typename receiver<std::decay_t<Rcv>, std::decay_t<Shape>, std::decay_t<Fn>>::type;
+			using receiver_t = typename receiver<Rcv, Shape, Fn>::type;
 
 			template<typename... Ts>
 			using test_nothrow = std::is_nothrow_invocable<Fn, Shape, _detail::decayed_ref<Ts>...>;

@@ -45,7 +45,7 @@ namespace rod
 
 		private:
 			template<typename Rcv>
-			using operation_t = typename operation<C, std::decay_t<Rcv>, Ts...>::type;
+			using operation_t = typename operation<C, Rcv, Ts...>::type;
 			using signs_t = completion_signatures<C(Ts...)>;
 
 		public:

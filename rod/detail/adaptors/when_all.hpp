@@ -127,7 +127,7 @@ namespace rod
 				if (state.load(std::memory_order_acquire) != state_t::running)
 					return;
 
-				if constexpr (!(_detail::nothrow_decay_copyable<Args>::value && ...))
+				if constexpr (!noexcept(emplace_value<I>(std::forward<Args>(args)...)))
 					try { emplace_value<I>(std::forward<Args>(args)...); } catch (...) { set_error(std::current_exception()); }
 				else
 					emplace_value<I>(std::forward<Args>(args)...);
@@ -139,7 +139,7 @@ namespace rod
 					return;
 
 				stop_src.request_stop();
-				if constexpr (!_detail::nothrow_decay_copyable<Err>::value)
+				if constexpr (!noexcept(emplace_error(std::forward<Err>(err))))
 					try { emplace_error(std::forward<Err>(err)); } catch (...) { emplace_error(std::current_exception()); }
 				else
 					emplace_error(std::forward<Err>(err));
@@ -207,7 +207,7 @@ namespace rod
 		public:
 			constexpr explicit type(operation_base *op) noexcept : _op(op) {}
 
-			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>{get_env(r._op->rcv_base::value()), r._op->stop_src.get_token()}; }
+			friend constexpr env_for_t<Rcv> tag_invoke(get_env_t, const type &r) noexcept(_detail::nothrow_callable<get_env_t, const Rcv &>) { return env_for_t<Rcv>(get_env(r._op->rcv_base::value()), r._op->stop_src.get_token()); }
 
 			template<typename... Args>
 			friend void tag_invoke(set_value_t, type &&r, Args &&...args) noexcept
@@ -269,8 +269,8 @@ namespace rod
 				if constexpr (_detail::stoppable_env<env_of_t<Rcv>>)
 					op.stop_cb.emplace(get_stop_token(get_env(op.rcv_base::value())), stop_trigger{op.stop_src});
 
-				if (op.stop_src.stop_requested())
-					[[unlikely]] set_stopped(std::move(op.rcv_base::value()));
+				if (op.stop_src.stop_requested()) [[unlikely]]
+					set_stopped(std::move(op.rcv_base::value()));
 				else if constexpr (sizeof...(Snds) != 0)
 					std::apply([](auto &...ops) noexcept { (start(ops), ...); }, op._state);
 				else

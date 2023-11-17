@@ -339,11 +339,11 @@ namespace rod
 			/** Returns reference to the underlying value. */
 			[[nodiscard]] constexpr auto &value() & noexcept { return static_cast<T &>(*this); }
 			/** @copydoc value */
-			[[nodiscard]] constexpr auto &value() const & noexcept { return static_cast<const T &>(*this); }
+			[[nodiscard]] constexpr auto &value() const & noexcept { return static_cast<std::add_const_t<T> &>(*this); }
 			/** @copydoc value */
 			[[nodiscard]] constexpr auto &&value() && noexcept { return static_cast<T &&>(*this); }
 			/** @copydoc value */
-			[[nodiscard]] constexpr auto &&value() const && noexcept { return static_cast<const T &&>(*this); }
+			[[nodiscard]] constexpr auto &&value() const && noexcept { return static_cast<std::add_const_t<T> &&>(*this); }
 
 			/** Returns pointer to the underlying value. */
 			[[nodiscard]] constexpr auto get() noexcept requires(!std::is_reference_v<T>) { return std::addressof(value()); }

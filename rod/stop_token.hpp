@@ -24,6 +24,12 @@ namespace rod
 	template<typename T, typename CB>
 	using stop_callback_for_t = std::conditional_t<std::same_as<T, std::stop_token>, std::stop_callback<CB>, typename T::template callback_type<CB>>;
 
+	namespace _detail
+	{
+		template<typename Token, typename Func, typename CB = stop_callback_for_t<std::decay_t<Token>, std::decay_t<Func>>>
+		[[nodiscard]] inline constexpr auto make_stop_callback(Token &&token, Func &&func) noexcept(std::is_nothrow_constructible_v<CB, Token, Func>) { return CB(std::forward<Token>(token), std::forward<Func>(func)); }
+	}
+
 	/** Concept used to define a stoppable token type that can accept a callback type `CB` initialized from `Init`. */
 	template<typename T, typename CB, typename Init = CB>
 	concept stoppable_token_for = stoppable_token<T> && std::invocable<CB> && std::constructible_from<CB, Init> && requires { typename stop_callback_for_t<T, CB>; } &&
@@ -109,7 +115,7 @@ namespace rod
 			node_t(node_t &&) = delete;
 
 			node_t(in_place_stop_source *src, void (*invoke)(node_t *) noexcept) noexcept : invoke_func(invoke), src(src) { if (src) src->insert(this); }
-			~node_t() noexcept { if (src) src->erase(this); }
+			~node_t() noexcept { if (src) src->remove(this); }
 
 			void invoke() noexcept { invoke_func(this); }
 			bool invoke(bool &removed_ref) noexcept
@@ -222,7 +228,7 @@ namespace rod
 
 			unlock();
 		}
-		void erase(node_t *node) noexcept
+		void remove(node_t *node) noexcept
 		{
 			if (auto old = lock(); node->this_ptr)
 			{
