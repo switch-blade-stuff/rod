@@ -170,10 +170,9 @@ namespace rod
 			{
 				friend class run_loop;
 
-				thread_context(run_loop *loop) noexcept : _loop(loop) { _loop->push_ctx(this); }
-
 			public:
-				thread_context() = delete;
+				/** Initializes thread context for run loop \a loop. */
+				thread_context(run_loop &loop) : _loop(&loop) { _loop->push_ctx(this); }
 				~thread_context() { _loop->pop_ctx(this); }
 
 				/** Unblocks and stops the thread associated with this context. Does not affect other threads or the run loop itself unlike `run_loop::finish`. */
@@ -205,13 +204,8 @@ namespace rod
 
 			run_loop() noexcept = default;
 
-			/** Returns a scoped thread context used for iterative execution and synchronization of the run loop.
-			 * @note Thread context may not outlive it's parent run loop. */
-			[[nodiscard]] thread_context get_context() noexcept { return {this}; }
-			/** Returns a scheduler used to schedule operations and timers to be executed by the run loop.
-			 * @note Scheduler may not outlive it's parent run loop. */
+			/** Returns a scheduler used to schedule operations and timers to be executed by the run loop. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept { return {this}; }
-
 			/** Returns copy of the stop source associated with the run loop. */
 			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_src; }
 			/** Returns a stop token of the stop source associated with the run loop. */
@@ -233,15 +227,15 @@ namespace rod
 			/** Blocks the current thread until `finish` is called and executes scheduled operations and timers. */
 			void run()
 			{
-				auto ctx = get_context();
+				auto ctx = thread_context(*this);
 				run_ctx(ctx);
 			}
-			/** Blocks the current thread until stopped via \a tok or `finish` is called and executes scheduled operations and timers.
+			/** Blocks the current thread until `finish` is called or stopped via \a tok and executes scheduled operations and timers.
 			 * @param token Stop token used to stop execution of the event loop. */
 			template<stoppable_token Token>
 			void run(Token &&token)
 			{
-				auto ctx = get_context();
+				auto ctx = thread_context(*this);
 				auto cb = _detail::make_stop_callback(std::forward<Token>(token), [&ctx]() noexcept { ctx.finish(); });
 				run_ctx(ctx);
 			}
