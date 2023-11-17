@@ -103,6 +103,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/adaptors/with_stop_token.hpp
         rod/detail/adaptors/schedule_from.hpp
         rod/detail/adaptors/stopped_as.hpp
+        rod/detail/adaptors/accumulate.hpp
         rod/detail/adaptors/transfer.hpp
         rod/detail/adaptors/when_all.hpp
         rod/detail/adaptors/split.hpp
