@@ -8,6 +8,8 @@ namespace rod::_mmap
 {
 	using namespace _win32;
 
+	constexpr auto prot_flags_mask = mmap_flags::read | mmap_flags::exec | mmap_flags::copy | mmap_flags::write;
+
 	inline constexpr std::pair<ULONG, ULONG> flags_to_prot_and_attr(mmap_flags flags) noexcept
 	{
 		ULONG prot = 0;
@@ -42,9 +44,9 @@ namespace rod::_mmap
 
 		return {prot, attr};
 	}
-	inline constexpr std::pair<ULONG, ULONG> flags_to_prot_and_type(mmap_flags flags) noexcept
+	inline constexpr ULONG flags_to_prot(mmap_flags flags) noexcept
 	{
-		ULONG prot;
+		ULONG prot = 0;
 		if (bool(flags & mmap_flags::exec))
 		{
 			if (bool(flags & mmap_flags::write))
@@ -67,24 +69,19 @@ namespace rod::_mmap
 			else
 				prot = PAGE_NOACCESS;
 		}
-
-		ULONG type = 0;
-		if (bool(flags & mmap_flags::reserve))
-			type = SEC_RESERVE;
-		if (bool(flags & mmap_flags::map_large_pages))
-			type = SEC_RESERVE | SEC_LARGE_PAGES;
-
-		return {prot, type};
+		return prot;
 	}
 
 	result<mmap_source> mmap_source::open(extent_type size, const fs::path_handle &base, mmap_flags flags) noexcept
 	{
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & mmap_flags::commit) && bool(flags & mmap_flags::reserve)) [[unlikely]]
+		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
 		if (size > extent_type(std::numeric_limits<LONGLONG>::max())) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);
+		if ((flags & (mmap_flags::reserve | mmap_flags::commit)) == mmap_flags::none)
+			flags |= mmap_flags::commit;
 
 		auto tmp_file = fs::file_handle::open_anonymous(base);
 		if (tmp_file.has_error()) [[unlikely]]
@@ -105,12 +102,14 @@ namespace rod::_mmap
 	}
 	result<mmap_source> mmap_source::open(const fs::file_handle &file, extent_type size, mmap_flags flags) noexcept
 	{
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & mmap_flags::commit) && bool(flags & mmap_flags::reserve)) [[unlikely]]
+		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
 		if (size > extent_type(std::numeric_limits<LONGLONG>::max())) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);
+		if ((flags & (mmap_flags::reserve | mmap_flags::commit)) == mmap_flags::none)
+			flags |= mmap_flags::commit;
 
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -210,10 +209,50 @@ namespace rod::_mmap
 			return extent_type(new_size);
 	}
 
+	result<mmap_handle> mmap_handle::map(size_type size, mmap_flags flags) noexcept
+	{
+		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) [[unlikely]]
+			return std::make_error_code(std::errc::invalid_argument);
+		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		if ((flags & (mmap_flags::reserve | mmap_flags::commit)) == mmap_flags::none)
+			flags |= mmap_flags::commit;
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		ULONG prot = flags_to_prot(flags), type = SEC_RESERVE;
+		if (bool(flags & mmap_flags::commit))
+			type |= SEC_COMMIT;
+		if (bool(flags & mmap_flags::map_large_pages))
+			type |= SEC_LARGE_PAGES;
+
+		const auto page_sizes = get_page_sizes();
+		const auto page = (type & SEC_LARGE_PAGES) && page_sizes.size() > 1 ? page_sizes[1] : page_sizes[0];
+		const auto total = (size + (page - 1)) & ~(page - 1);
+		void *mem = nullptr;
+
+		if ((mem = ::VirtualAlloc(mem, total, type | SEC_RESERVE | SEC_COMMIT, prot)) == nullptr) [[unlikely]]
+			return dos_error_code(::GetLastError());
+
+		if (bool(flags & mmap_flags::prefault)) /* Prefault manually if required. */
+		{
+			if (ntapi->PrefetchVirtualMemory)
+			{
+				auto entry = WIN32_MEMORY_RANGE_ENTRY{mem, total};
+				ntapi->PrefetchVirtualMemory(::GetCurrentProcess(), 1, &entry, 0);
+			}
+
+			auto vmem = static_cast<volatile std::int8_t *>(mem);
+			for (std::size_t i = 0; i < total; i += page)
+				(void) vmem[i];
+		}
+		return mmap_handle(static_cast<std::byte *>(mem), 0, size, page, total, flags);
+	}
 	result<mmap_handle> mmap_handle::map(const mmap_source &src, extent_type offset, size_type size, mmap_flags flags) noexcept
 	{
-		constexpr auto prot_mask = mmap_flags::read | mmap_flags::exec | mmap_flags::copy | mmap_flags::write;
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool((flags & prot_mask) & ~(src.flags() & prot_mask)) || !src.is_open()) [[unlikely]]
+		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve) || !src.is_open()) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
@@ -221,6 +260,8 @@ namespace rod::_mmap
 			return std::make_error_code(std::errc::value_too_large);
 		if (size > extent_type(std::numeric_limits<LONGLONG>::max())) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);
+		if ((flags & (mmap_flags::reserve | mmap_flags::commit)) == mmap_flags::none)
+			flags |= mmap_flags::commit;
 
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -237,9 +278,13 @@ namespace rod::_mmap
 		if (size == 0) /* Make sure not to overflow when casting to size_type. */
 			size = size_type(std::min(*map_size, extent_type(std::numeric_limits<size_type>::max())));
 
-		const auto [prot, type] = flags_to_prot_and_type(flags);
-		const auto page_sizes = get_page_sizes();
+		ULONG prot = flags_to_prot(flags), type = 0;
+		if (bool(flags & mmap_flags::reserve) || prot == PAGE_NOACCESS)
+			type = SEC_RESERVE;
+		if (bool(flags & mmap_flags::map_large_pages))
+			type = SEC_RESERVE | SEC_LARGE_PAGES;
 
+		const auto page_sizes = get_page_sizes();
 		auto page = (type & SEC_LARGE_PAGES) && page_sizes.size() > 1 ? page_sizes[1] : page_sizes[0];
 		auto total = size_type(offset & 65'535) + size;
 		auto commit = (type & SEC_RESERVE) ? 0 : total;
@@ -275,8 +320,12 @@ namespace rod::_mmap
 
 			if (has_source())
 			{
-//				if (is_writable() && (_flag & section_handle::flag::barrier_on_close))
-//					OUTCOME_TRYV(barrier(barrier_kind::wait_all));
+				if (bool(flags() & (mmap_flags::write | mmap_flags::copy)) && bool(flags() & mmap_flags::sync_on_close))
+				{
+					const auto res = flush({0, 0});
+					if (res.has_error()) [[unlikely]]
+						return res.error();
+				}
 
 				auto status = ntapi->free_mapped_pages(base(), reserved());
 				if (is_status_failure(status)) [[unlikely]]
@@ -294,6 +343,168 @@ namespace rod::_mmap
 		return {};
 	}
 
+	inline constexpr extent_pair clamp_extent(extent_pair ext, _handle::extent_type max) noexcept
+	{
+		if (ext.second == 0)
+			ext.second = max;
+		if (ext.first >= max)
+			ext.first = 0;
+		return ext;
+	}
+	inline constexpr extent_pair over_align_extent(extent_pair ext, _handle::extent_type mul) noexcept
+	{
+		const auto mask = mul - 1;
+		ext.second = (ext.second + mask) & ~mask;
+		ext.first = ext.first & ~mask;
+		return ext;
+	}
+	inline constexpr extent_pair under_align_extent(extent_pair ext, _handle::extent_type mul) noexcept
+	{
+		const auto mask = mul - 1;
+		ext.first = (ext.first + mask) & ~mask;
+		ext.second = ext.second & ~mask;
+		return ext;
+	}
+
+	result<void> mmap_handle::flush(extent_pair ext) noexcept
+	{
+		if (!has_source()) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		ext = clamp_extent(ext, reserved());
+		if (const auto endp = ext.first + ext.second; endp < ext.first || endp > reserved()) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		ext = over_align_extent(ext, page_size());
+		return ntapi->apply_virtual_pages(base() + ext.first, ext.second, MEM_COMMIT, [](auto *addr, auto size) noexcept -> result<void>
+		{
+			if (!::FlushViewOfFile(addr, size)) [[unlikely]]
+				return dos_error_code(::GetLastError());
+			else
+				return {};
+		});
+	}
+	result<void> mmap_handle::discard(extent_pair ext) noexcept
+	{
+		if (!has_source()) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		ext = clamp_extent(ext, reserved());
+		if (const auto endp = ext.first + ext.second; endp < ext.first || endp > reserved()) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		if (ext = under_align_extent(ext, page_size()); ext.second > 0)
+			return ntapi->apply_virtual_pages(base() + ext.first, ext.second, MEM_COMMIT, [&](auto *addr, auto size) noexcept -> result<void>
+			{
+				if (!has_source() && ntapi->DiscardVirtualMemory != nullptr)
+				{
+					if (!ntapi->DiscardVirtualMemory(addr, size))
+					{
+						const auto err = ::GetLastError();
+						if (err != ERROR_NOT_LOCKED) [[unlikely]]
+							return dos_error_code(err);
+					}
+					return {};
+				}
+				else if (!::VirtualUnlock(addr, size))
+				{
+					const auto err = ::GetLastError();
+					if (err != ERROR_NOT_LOCKED) [[unlikely]]
+						return dos_error_code(err);
+				}
+				return {};
+			});
+		return {};
+	}
+
+	result<void> mmap_handle::commit(extent_pair ext) noexcept
+	{
+		ext = clamp_extent(ext, reserved());
+		if (const auto endp = ext.first + ext.second; endp < ext.first || endp > reserved()) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		if ((flags() & prot_flags_mask) == mmap_flags::none)
+			return ntapi->apply_virtual_pages(base() + ext.first, ext.second, MEM_COMMIT, [](auto *addr, auto size) noexcept -> result<void>
+			{
+				if (DWORD old = 0; !::VirtualProtect(addr, size, PAGE_NOACCESS, &old)) [[unlikely]]
+					return dos_error_code(::GetLastError());
+				else
+					return {};
+			});
+
+		const auto prot = flags_to_prot(flags());
+		ext = over_align_extent(ext, page_size());
+		if (::VirtualAlloc(base() + ext.first, ext.second, MEM_COMMIT, prot) == nullptr) [[unlikely]]
+			return dos_error_code(::GetLastError());
+		else
+			return {};
+	}
+	result<void> mmap_handle::decommit(extent_pair ext) noexcept
+	{
+		ext = clamp_extent(ext, reserved());
+		if (const auto endp = ext.first + ext.second; endp < ext.first || endp > reserved()) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		/* Memory is rounded down to avoid de-commiting partial pages. */
+		ext = under_align_extent(ext, page_size());
+		if (auto status = ntapi->free_virtual_pages(base() + ext.first, ext.second, MEM_DECOMMIT); is_status_failure(status)) [[unlikely]]
+			return status_error_code(status);
+		else
+			return {};
+	}
+
+	result<void> mmap_handle::zero(extent_pair ext) noexcept
+	{
+		ext = clamp_extent(ext, reserved());
+		if (const auto endp = ext.first + ext.second; endp < ext.first || endp > reserved()) [[unlikely]]
+			return std::make_error_code(std::errc::value_too_large);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		/* Fill extent with zeros manually as windows doesnt have an efficient page-zero without discarding. */
+		std::memset(base() + ext.first, 0, ext.second);
+		/* Now do same as `discard` except dont fail fot un-backed views. */
+		if (!has_source())
+			return {};
+		if (ext = under_align_extent(ext, page_size()); ext.second > 0)
+			return ntapi->apply_virtual_pages(base() + ext.first, ext.second, MEM_COMMIT, [&](auto *addr, auto size) noexcept -> result<void>
+			{
+				if (ntapi->DiscardVirtualMemory != nullptr)
+				{
+					if (!ntapi->DiscardVirtualMemory(addr, size))
+					{
+						const auto err = ::GetLastError();
+						if (err != ERROR_NOT_LOCKED) [[unlikely]]
+							return dos_error_code(err);
+					}
+					return {};
+				}
+				else if (!::VirtualUnlock(addr, size))
+				{
+					const auto err = ::GetLastError();
+					if (err != ERROR_NOT_LOCKED) [[unlikely]]
+						return dos_error_code(err);
+				}
+				return {};
+			});
+		return {};
+	}
 	result<void> mmap_handle::prefault(std::span<const extent_pair> exts) noexcept
 	{
 		const auto &ntapi = ntapi::instance();

@@ -39,7 +39,7 @@ namespace rod
 			/** Reserve but dont commit mapped pages from the process address space. Mutually exclusive with `commit`.
 			 * @note Reserved pages must be manually comitted to the address space via `mmap_handle::commit`. */
 			reserve = 0x20,
-			/** Prefault mapped pages. `commit` and `reserve` flags are ignored. */
+			/** Prefault mapped pages. Requires `commit`. */
 			prefault = 0x40,
 
 			/** Mapped file is to be treated as a dynamic-linkage binary rather than a file. */
@@ -49,7 +49,7 @@ namespace rod
 			/** Block until pending changes are flushed to underlying device when a mapping handle of this mapping source is closed. */
 			sync_on_close = 0x400,
 			/** Hint to the operating system that mapped memory is to be allocated from large pages.
-			 * @note May require elevated privileges as well as `commit` under Windows. */
+			 * @note May require elevated privileges under Windows. */
 			map_large_pages = 0x800,
 		};
 
@@ -132,6 +132,8 @@ namespace rod
 
 		public:
 			/* TODO: Document usage */
+			[[nodiscard]] static ROD_API_PUBLIC result<mmap_handle> map(size_type size, mmap_flags flags = mmap_flags::readwrite | mmap_flags::commit) noexcept;
+			/* TODO: Document usage */
 			[[nodiscard]] static ROD_API_PUBLIC result<mmap_handle> map(const mmap_source &src, extent_type offset = 0, size_type size = 0, mmap_flags flags = mmap_flags::readwrite) noexcept;
 
 		public:
@@ -206,20 +208,26 @@ namespace rod
 				return base;
 			}
 
-			/** Commits reserved ranges of memory specified by \a exts to process address space.
-			 * @note Extent offset should be specified relative to `0` from view base. */
-			ROD_API_PUBLIC result<void> commit(std::span<const extent_pair> exts) noexcept;
-			/** Commits the reserved extent \a ext to process address space.
-			 * @note Extent offset should be specified relative to `0` from view base. */
-			result<void> commit(extent_pair ext) noexcept { return commit(std::initializer_list<extent_pair>{ext}); }
+			/** Flushes range of memory specified by \a ext to the backing resource.
+			 * @note Extent offset should be specified relative to `0` from view base.
+			 * @note Does not call `sync` on the source file handle and only flushes the mapped view.
+			 * @note Flushing is not supported for non-backed views and will return `std::errc::not_supported`. */
+			ROD_API_PUBLIC result<void> flush(extent_pair ext) noexcept;
+			/** Discards pages in the memory range specified by \a ext.
+			 * @note Extent offset should be specified relative to `0` from view base.
+			 * @note Discarding pages is not supported for non-backed views and will return `std::errc::not_supported`. */
+			ROD_API_PUBLIC result<void> discard(extent_pair ext) noexcept;
 
-			/** Decommits ranges of memory specified by \a exts from process address space.
+			/** Commits reserved range of memory specified by \a ext to process address space.
 			 * @note Extent offset should be specified relative to `0` from view base. */
-			ROD_API_PUBLIC result<void> decommit(std::span<const extent_pair> exts) noexcept;
-			/** Decommits the extent \a ext to process address space.
+			ROD_API_PUBLIC result<void> commit(extent_pair ext) noexcept;
+			/** Decommits range of memory specified by \a ext from process address space.
 			 * @note Extent offset should be specified relative to `0` from view base. */
-			result<void> decommit(extent_pair ext) noexcept { return decommit(std::initializer_list<extent_pair>{ext}); }
+			ROD_API_PUBLIC result<void> decommit(extent_pair ext) noexcept;
 
+			/** Fills memory range specified by \a ext with zeros.
+			 * @note Extent offset should be specified relative to `0` from view base. */
+			ROD_API_PUBLIC result<void> zero(extent_pair ext) noexcept;
 			/** Prefaults ranges of memory specified by \a exts.
 			 * @note Extent offset should be specified relative to `0` from view base. */
 			ROD_API_PUBLIC result<void> prefault(std::span<const extent_pair> exts) noexcept;

@@ -103,6 +103,10 @@ namespace rod::_win32
 				result.bcrypt = *hnd;
 			else
 				return hnd.error();
+			if (auto hnd = load_library("kernel32.dll"); hnd.has_value()) [[likely]]
+				result.kernel32 = *hnd;
+			else
+				return hnd.error();
 
 			if (auto sym = load_sym<RtlIsDosDeviceName_U_t>(result.ntdll, "RtlIsDosDeviceName_U"); sym.has_value()) [[likely]]
 				result.RtlIsDosDeviceName_U = *sym;
@@ -220,15 +224,6 @@ namespace rod::_win32
 			else
 				return sym.error();
 
-			if (auto sym = load_sym<DiscardVirtualMemory_t>(result.ntdll, "DiscardVirtualMemory", true); sym.has_value()) [[likely]]
-				result.DiscardVirtualMemory = *sym;
-			else
-				return sym.error();
-			if (auto sym = load_sym<PrefetchVirtualMemory_t>(result.ntdll, "PrefetchVirtualMemory", true); sym.has_value()) [[likely]]
-				result.PrefetchVirtualMemory = *sym;
-			else
-				return sym.error();
-
 			if (auto sym = load_sym<BCryptGenRandom_t>(result.bcrypt, "BCryptGenRandom"); sym.has_value()) [[likely]]
 				result.BCryptGenRandom = *sym;
 			else
@@ -239,6 +234,15 @@ namespace rod::_win32
 				return sym.error();
 			if (auto sym = load_sym<BCryptCloseAlgorithmProvider_t>(result.bcrypt, "BCryptCloseAlgorithmProvider"); sym.has_value()) [[likely]]
 				result.BCryptCloseAlgorithmProvider = *sym;
+			else
+				return sym.error();
+
+			if (auto sym = load_sym<DiscardVirtualMemory_t>(result.kernel32, "DiscardVirtualMemory", true); sym.has_value()) [[likely]]
+				result.DiscardVirtualMemory = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<PrefetchVirtualMemory_t>(result.kernel32, "PrefetchVirtualMemory", true); sym.has_value()) [[likely]]
+				result.PrefetchVirtualMemory = *sym;
 			else
 				return sym.error();
 
@@ -534,12 +538,11 @@ namespace rod::_win32
 
 	ntstatus ntapi::free_mapped_pages(std::byte *addr, std::size_t size) const noexcept
 	{
-		while (size > 0)
+		for (auto info = memory_region_information(); size > 0;)
 		{
-			auto info = memory_region_information();
-			std::size_t bytes = 0;
-
-			if (auto status = NtQueryVirtualMemory(::GetCurrentProcess(), addr, MemoryRegionInformation, &info, sizeof(info), &bytes); is_status_failure(status)) [[unlikely]]
+			/* MemoryRegionInformation is undocumented (even in ReactOS), but is supported by most versions of WinNT, and provides much faster
+			 * interface than the documented MemoryBasicInformation due to not being required to scan the VMA for page metadata. */
+			if (auto status = NtQueryVirtualMemory(::GetCurrentProcess(), addr, MemoryRegionInformation, &info, sizeof(info), nullptr); is_status_failure(status)) [[unlikely]]
 				return status;
 			if (auto status = NtUnmapViewOfSection(::GetCurrentProcess(), info.base); is_status_failure(status)) [[unlikely]]
 				return status;
@@ -548,7 +551,7 @@ namespace rod::_win32
 			if (info.size < size)
 				size -= info.size;
 			else
-				size = 0;
+				break;
 		}
 		return 0;
 	}

@@ -637,7 +637,7 @@ namespace rod::_win32
 	{
 		MemoryBasicInformation,
 		MemoryWorkingSetInformation,
-		MemoryMappedFilenameInformation,
+		MemorySectionName,
 		MemoryRegionInformation,
 		MemoryWorkingSetExInformation,
 		MemorySharedCommitInformation,
@@ -738,15 +738,15 @@ namespace rod::_win32
 	using NtExtendSection_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _Inout_ LONGLONG *new_size);
 	using NtQuerySection_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ section_info_type type, _Out_ void *info, _In_ ULONG len, _Out_opt_ ULONG *out_len);
 
-	using NtMapViewOfSection_t = ntstatus (ROD_NTAPI *)(_In_ void *sec_hnd, _In_ void *proc_hnd, _Inout_ void **base_addr, _In_ ULONG_PTR zero, _In_ std::size_t commit, _Inout_opt_ LONGLONG *sec_off, _Inout_ std::size_t *view_size,
+	using NtMapViewOfSection_t = ntstatus (ROD_NTAPI *)(_In_ void *sec_hnd, _In_ void *proc_hnd, _Inout_ void **base_addr, _In_ ULONG_PTR zero, _In_ SIZE_T commit, _Inout_opt_ LONGLONG *sec_off, _Inout_ SIZE_T *view_size,
 														_In_ section_inherit inherit, _In_ ULONG type, _In_ ULONG prot);
 	using NtUnmapViewOfSection_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _In_opt_ void *addr);
 
-	using NtFreeVirtualMemory_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _Inout_ void **addr, _Inout_ std::size_t *size, _In_ ULONG op);
-	using NtQueryVirtualMemory_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _In_ void *addr, _In_ memory_information_type type, _Out_ void *info, _In_ ULONG len, _Out_opt_ std::size_t *out_len);
+	using NtFreeVirtualMemory_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _Inout_ void **addr, _Inout_ SIZE_T *size, _In_ ULONG op);
+	using NtQueryVirtualMemory_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _In_ void *addr, _In_ memory_information_type type, _Out_ void *info, _In_ SIZE_T len, _Out_opt_ SIZE_T *out_len);
 
-	using DiscardVirtualMemory_t = int (ROD_NTAPI *)(_In_ void *addr, _In_ std::size_t size);
-	using PrefetchVirtualMemory_t = int (ROD_NTAPI *)(_In_ void *proc, _In_ ULONG_PTR n, _In_ WIN32_MEMORY_RANGE_ENTRY *addr_buff, _In_ ULONG flags);
+	using DiscardVirtualMemory_t = int (ROD_NTAPI *)(_In_ void *addr, _In_ SIZE_T size);
+	using PrefetchVirtualMemory_t = int (ROD_NTAPI *)(_In_ void *proc, _In_ SIZE_T size, _In_ WIN32_MEMORY_RANGE_ENTRY *buff, _In_ ULONG flags);
 
 	inline constexpr const wchar_t *bcrypt_primitive_provider = L"Microsoft Primitive Provider";
 	inline constexpr const wchar_t *bcrypt_platform_crypto_provider = L"Microsoft Platform Crypto Provider";
@@ -916,11 +916,35 @@ namespace rod::_win32
 		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
 		ntstatus wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
 
+		template<typename F>
+		result<void> apply_virtual_pages(std::byte *addr, std::size_t size, ULONG mask, F &&f) const noexcept
+		{
+			for (auto info = memory_basic_information(); size > 0;)
+			{
+				if (auto status = NtQueryVirtualMemory(::GetCurrentProcess(), addr, MemoryBasicInformation, &info, sizeof(info), nullptr); is_status_failure(status)) [[unlikely]]
+					return status_error_code(status);
+
+				if ((info.state & mask) != 0)
+				{
+					if (auto res = f(static_cast<std::byte *>(info.addr), std::min(std::size_t(info.region_size), size)); res.has_error()) [[unlikely]]
+						return res.error();
+				}
+
+				addr += info.region_size;
+				if (info.region_size < size)
+					size -= info.region_size;
+				else
+					break;
+			}
+			return {};
+		}
+
 		ntstatus free_mapped_pages(std::byte *addr, std::size_t size) const noexcept;
 		ntstatus free_virtual_pages(std::byte *addr, std::size_t size, ULONG op) const noexcept;
 
 		void *ntdll;
 		void *bcrypt;
+		void *kernel32;
 
 		RtlIsDosDeviceName_U_t RtlIsDosDeviceName_U;
 		RtlNtStatusToDosError_t RtlNtStatusToDosError;
@@ -961,12 +985,12 @@ namespace rod::_win32
 		NtMapViewOfSection_t NtMapViewOfSection;
 		NtUnmapViewOfSection_t NtUnmapViewOfSection;
 
-		DiscardVirtualMemory_t DiscardVirtualMemory;
-		PrefetchVirtualMemory_t PrefetchVirtualMemory;
-
 		BCryptGenRandom_t BCryptGenRandom;
 		BCryptOpenAlgorithmProvider_t BCryptOpenAlgorithmProvider;
 		BCryptCloseAlgorithmProvider_t BCryptCloseAlgorithmProvider;
+
+		DiscardVirtualMemory_t DiscardVirtualMemory;
+		PrefetchVirtualMemory_t PrefetchVirtualMemory;
 	};
 }
 

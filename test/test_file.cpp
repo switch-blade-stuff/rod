@@ -36,15 +36,15 @@ int main()
 	created = rod::fs::create_directories(curr_dir, "dir-a/dir-b").value();
 	TEST_ASSERT(created == 0);
 
-	auto file_src = rod::fs::file_handle::open(curr_dir, "dir-a/dir-b/test.txt", rod::fs::file_flags::read | rod::fs::file_flags::write /*| rod::fs::file_flags::unlink_on_close*/, rod::fs::open_mode::always).value();
-	auto file_dst = rod::fs::file_handle::open(curr_dir, "dir-a/test.txt", rod::fs::file_flags::read | rod::fs::file_flags::write /*| rod::fs::file_flags::unlink_on_close*/, rod::fs::open_mode::always).value();
+	auto file_src = rod::fs::file_handle::open(curr_dir, "dir-a/dir-b/test.txt", rod::fs::file_flags::readwrite /*| rod::fs::file_flags::unlink_on_close*/, rod::fs::open_mode::always).value();
+	auto file_dst = rod::fs::file_handle::open(curr_dir, "dir-a/test.txt", rod::fs::file_flags::readwrite /*| rod::fs::file_flags::unlink_on_close*/, rod::fs::open_mode::always).value();
 
 	auto iter = rod::fs::directory_iterator::from_path(curr_dir, "dir-a").value();
 	TEST_ASSERT(std::distance(iter.begin(), iter.end()) == 2);
 	iter = rod::fs::directory_iterator::from_path(curr_dir, "dir-a/dir-b").value();
 	TEST_ASSERT(std::distance(iter.begin(), iter.end()) == 1);
 
-	auto str_src = std::string_view("hello, world");
+	auto str_src = std::string_view("hello, world.");
 	auto str_dst = std::string(str_src.size(), 0);
 	auto buff_src = rod::as_bytes(str_src);
 	auto buff_dst = rod::as_bytes(str_dst);
@@ -74,7 +74,7 @@ int main()
 	}
 	rod::close(file_copy);
 
-	auto dir_copy = rod::fs::directory_handle::open(curr_dir, "dir-c", rod::fs::file_flags::read | rod::fs::file_flags::write).value();
+	auto dir_copy = rod::fs::directory_handle::open(curr_dir, "dir-c", rod::fs::file_flags::readwrite).value();
 	rod::fs::relink(dir_copy, curr_dir, "dir-d").value();
 	{
 		auto dir_link = rod::fs::directory_handle::open(curr_dir, "dir-d", rod::fs::file_flags::read).value();
@@ -96,8 +96,16 @@ int main()
 	TEST_ASSERT(read_res.front().size() == buff_dst.size() && str_dst == str_src);
 
 	auto src = rod::mmap_source::open(file_src).value();
-	auto map = rod::mmap_handle::map(src, 0, 0, rod::mmap_flags::read | rod::mmap_flags::prefault).value();
+	auto map = rod::mmap_handle::map(src, 0, 0, rod::mmap_flags::readwrite | rod::mmap_flags::prefault).value();
 	TEST_ASSERT(std::memcmp(map.data(), str_src.data(), str_src.size()) == 0);
+
+	str_src = "hello, world!";
+	std::memcpy(map.data(), str_src.data(), str_src.size());
+	map.flush({}).value();
+	TEST_ASSERT(std::memcmp(map.data(), str_src.data(), str_src.size()) == 0);
+
+	read_res = rod::read_some_at(file_src, {.buffs = {&buff_dst, 1}, .off = 0}).value();
+	TEST_ASSERT(read_res.front().size() == buff_dst.size() && str_dst == str_src);
 
 #ifndef ROD_WIN32
 	copied = rod::fs::copy_all(curr_dir, "dir-e", curr_dir, "dir-c", rod::fs::copy_mode::files | rod::fs::copy_mode::directories | rod::fs::copy_mode::create_symlinks).value();
