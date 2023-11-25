@@ -187,6 +187,48 @@ namespace rod::_win32
 			else
 				return sym.error();
 
+			if (auto sym = load_sym<NtOpenSection_t>(result.ntdll, "NtOpenSection"); sym.has_value()) [[likely]]
+				result.NtOpenSection = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtCreateSection_t>(result.ntdll, "NtCreateSection"); sym.has_value()) [[likely]]
+				result.NtCreateSection = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtQuerySection_t>(result.ntdll, "NtQuerySection"); sym.has_value()) [[likely]]
+				result.NtQuerySection = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtExtendSection_t>(result.ntdll, "NtExtendSection"); sym.has_value()) [[likely]]
+				result.NtExtendSection = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtFreeVirtualMemory_t>(result.ntdll, "NtFreeVirtualMemory"); sym.has_value()) [[likely]]
+				result.NtFreeVirtualMemory = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtQueryVirtualMemory_t>(result.ntdll, "NtQueryVirtualMemory"); sym.has_value()) [[likely]]
+				result.NtQueryVirtualMemory = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtMapViewOfSection_t>(result.ntdll, "NtMapViewOfSection"); sym.has_value()) [[likely]]
+				result.NtMapViewOfSection = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<NtUnmapViewOfSection_t>(result.ntdll, "NtUnmapViewOfSection"); sym.has_value()) [[likely]]
+				result.NtUnmapViewOfSection = *sym;
+			else
+				return sym.error();
+
+			if (auto sym = load_sym<DiscardVirtualMemory_t>(result.ntdll, "DiscardVirtualMemory", true); sym.has_value()) [[likely]]
+				result.DiscardVirtualMemory = *sym;
+			else
+				return sym.error();
+			if (auto sym = load_sym<PrefetchVirtualMemory_t>(result.ntdll, "PrefetchVirtualMemory", true); sym.has_value()) [[likely]]
+				result.PrefetchVirtualMemory = *sym;
+			else
+				return sym.error();
+
 			if (auto sym = load_sym<BCryptGenRandom_t>(result.bcrypt, "BCryptGenRandom"); sym.has_value()) [[likely]]
 				result.BCryptGenRandom = *sym;
 			else
@@ -488,6 +530,41 @@ namespace rod::_win32
 			}
 		}
 		return iosb->status;
+	}
+
+	ntstatus ntapi::free_mapped_pages(std::byte *addr, std::size_t size) const noexcept
+	{
+		while (size > 0)
+		{
+			auto info = memory_region_information();
+			std::size_t bytes = 0;
+
+			if (auto status = NtQueryVirtualMemory(::GetCurrentProcess(), addr, MemoryRegionInformation, &info, sizeof(info), &bytes); is_status_failure(status)) [[unlikely]]
+				return status;
+			if (auto status = NtUnmapViewOfSection(::GetCurrentProcess(), info.base); is_status_failure(status)) [[unlikely]]
+				return status;
+
+			addr += info.size;
+			if (info.size < size)
+				size -= info.size;
+			else
+				size = 0;
+		}
+		return 0;
+	}
+	ntstatus ntapi::free_virtual_pages(std::byte *addr, std::size_t size, ULONG op) const noexcept
+	{
+		while (size > 0)
+		{
+			std::size_t region_size = 0;
+			void *region_addr = addr;
+			if (auto status = NtFreeVirtualMemory(::GetCurrentProcess(), &region_addr, &region_size, op); is_status_failure(status)) [[unlikely]]
+				return status;
+
+			size -= region_size;
+			addr += region_size;
+		}
+		return 0;
 	}
 
 	result<bool> is_elevated() noexcept

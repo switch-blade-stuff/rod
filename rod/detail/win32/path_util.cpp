@@ -123,7 +123,7 @@ namespace rod::fs
 		obj_attrib.name = &upath;
 
 		/* Open the target with backup semantics (i.e. do not care if directory or file). */
-		auto hnd = ntapi.open_file(obj_attrib, &iosb, access, share, opts).transform_value([](auto hnd) { return basic_handle(hnd); });
+		auto hnd = ntapi.open_file(obj_attrib, &iosb, access, share, opts).transform_value([](auto hnd) { return path_handle(hnd); });
 		if (hnd.has_error() && is_error_file_not_found(hnd.error())) [[unlikely]]
 			return std::make_error_code(std::errc::no_such_file_or_directory);
 
@@ -371,8 +371,8 @@ namespace rod::fs
 				return 0;
 		}
 
-		auto ent = std::array{read_some_buffer_t<directory_handle>()};
-		auto seq = read_some_buffer_sequence_t<directory_handle>(ent);
+		auto ent = std::array{directory_handle::io_buffer<read_some_t>()};
+		auto seq = directory_handle::io_buffer_sequence<read_some_t>(ent);
 		std::size_t removed = 0;
 
 		for (;;)

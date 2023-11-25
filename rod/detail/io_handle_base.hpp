@@ -10,6 +10,23 @@
 
 namespace rod
 {
+	inline namespace _get_io_scheduler
+	{
+		struct get_io_scheduler_t
+		{
+			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_io_scheduler_t) noexcept { return true; }
+
+			template<typename Q> requires tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &>
+			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return tag_invoke(*this, std::as_const(q)); }
+			template<typename Q> requires(!tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &> && _detail::callable<get_completion_scheduler_t<set_value_t>, const std::remove_cvref_t<Q> &>)
+			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return get_completion_scheduler<set_value_t>(std::as_const(q)); }
+			[[nodiscard]] constexpr decltype(auto) operator()() const noexcept { return read(*this); }
+		};
+	}
+
+	/** Customization point object used to obtain a scheduler that can be used to schedule IO operations. Falls back to `get_completion_scheduler&lt;set_value_t&gt;`. */
+	inline constexpr auto get_io_scheduler = get_io_scheduler_t{};
+
 	namespace _extent
 	{
 		template<typename Hnd>
@@ -48,10 +65,15 @@ namespace rod
 			template<decay_has_extent Hnd, typename Ext = handle_extent_t<std::decay_t<Hnd>>> requires tag_invocable<truncate_t, Hnd, Ext>
 			extent_result<std::decay_t<Hnd>> auto operator()(Hnd &&hnd, Ext endp) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), endp); }
 		};
+
+		/** Pair of handle extents used for extent IO operations. Defined as alias for `std::pair&lt;handle_extent_t&lt;Hnd&gt;, handle_extent_t&lt;Hnd&gt;&gt;`. */
+		template<has_extent Hnd>
+		using extent_pair_t = std::pair<handle_extent_t<Hnd>, handle_extent_t<Hnd>>;
 	}
 
 	using _extent::endpos_t;
 	using _extent::truncate_t;
+	using _extent::extent_pair_t;
 
 	/* TODO: Document usage */
 	inline constexpr auto endpos = endpos_t{};
@@ -61,312 +83,6 @@ namespace rod
 	/** Concept used to define a handle that supports size queries and resizing. */
 	template<typename Hnd>
 	concept sized_handle = _extent::has_extent<Hnd> && _detail::callable<endpos_t, const Hnd &> && _detail::callable<truncate_t, Hnd &, handle_extent_t<Hnd>>;
-
-	inline namespace _get_io_scheduler
-	{
-		struct get_io_scheduler_t
-		{
-			[[nodiscard]] constexpr friend bool tag_invoke(forwarding_query_t, get_io_scheduler_t) noexcept { return true; }
-
-			template<typename Q> requires tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &>
-			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return tag_invoke(*this, std::as_const(q)); }
-			template<typename Q> requires(!tag_invocable<get_io_scheduler_t, const std::remove_cvref_t<Q> &> && _detail::callable<get_completion_scheduler_t<set_value_t>, const std::remove_cvref_t<Q> &>)
-			[[nodiscard]] constexpr decltype(auto) operator()(Q &&q) const noexcept { return get_completion_scheduler<set_value_t>(std::as_const(q)); }
-			[[nodiscard]] constexpr decltype(auto) operator()() const noexcept { return read(*this); }
-		};
-	}
-
-	/** Customization point object used to obtain a scheduler that can be used to schedule IO operations. Falls back to `get_completion_scheduler&lt;set_value_t&gt;`. */
-	inline constexpr auto get_io_scheduler = get_io_scheduler_t{};
-
-	namespace _handle
-	{
-		template<typename Child, typename Base, template <typename, typename> typename BaseAdaptor>
-		struct io_handle_adaptor { class type; };
-
-		template<typename Hnd, typename Op>
-		struct io_request_impl;
-		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_request<Op>; })
-		struct io_request_impl<Hnd, Op> { using type = typename Hnd::template io_request<Op>; };
-
-		template<typename Hnd, typename Op>
-		struct io_result_impl;
-		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_result<Op>; })
-		struct io_result_impl<Hnd, Op> { using type = typename Hnd::template io_result<Op>; };
-
-		template<typename Hnd, typename Op>
-		struct io_buffer_sequence_impl;
-		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_buffer_sequence<Op>; })
-		struct io_buffer_sequence_impl<Hnd, Op> { using type = typename Hnd::template io_buffer_sequence<Op>; };
-
-		template<typename Hnd, typename Op>
-		struct io_buffer_impl;
-		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_buffer<Op>; })
-		struct io_buffer_impl<Hnd, Op> { using type = typename Hnd::template io_buffer<Op>; };
-	}
-
-	/** Type trait used to obtain the IO buffer sequence type of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_buffer_sequence : _handle::io_buffer_sequence_impl<Hnd, Op> {};
-	/** Alias for `typename io_buffer_sequence&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_buffer_sequence_t = typename io_buffer_sequence<Hnd, Op>::type;
-
-	/** Type trait used to obtain the IO buffer type of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_buffer : _handle::io_buffer_impl<Hnd, Op> {};
-	/** Alias for `typename io_buffer&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_buffer_t = typename io_buffer<Hnd, Op>::type;
-
-	/** Type trait used to obtain the IO request type of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_request : _handle::io_request_impl<Hnd, Op> {};
-	/** Alias for `typename io_request&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_request_t = typename io_request<Hnd, Op>::type;
-
-	/** Type trait used to obtain the IO result type of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_result : _handle::io_result_impl<Hnd, Op> {};
-	/** Alias for `typename io_result&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_result_t = typename io_result<Hnd, Op>::type;
-
-	/** Type trait used to obtain the value type of the IO result of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_value { using type = typename io_result_t<Hnd, Op>::value_type; };
-	/** Alias for `typename io_value&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_value_t = typename io_value<Hnd, Op>::type;
-
-	/** Type trait used to obtain the error type of the IO result of handle \a Hnd for operation \a Op. */
-	template<typename Hnd, typename Op>
-	struct io_error { using type = typename io_result_t<Hnd, Op>::error_type; };
-	/** Alias for `typename io_value&lt;Hnd, Op&gt;::type` */
-	template<typename Hnd, typename Op>
-	using io_error_t = typename io_error<Hnd, Op>::type;
-
-	namespace _io_operation
-	{
-		template<typename Hnd, typename Op>
-		concept has_io_buffer_sequence = requires { typename Hnd::template io_buffer_sequence<Op>; };
-		template<typename Hnd, typename Op>
-		concept has_io_buffer = requires { typename Hnd::template io_buffer<Op>; };
-
-		template<typename Hnd, typename Op>
-		concept has_io_request = requires { typename Hnd::template io_request<Op>; };
-		template<typename Hnd, typename Op>
-		concept has_io_result = requires { typename Hnd::template io_result<Op>; };
-
-		template<typename Hnd>
-		concept has_timeout = requires { typename Hnd::timeout_type; };
-
-		template<typename Hnd, typename Op>
-		concept has_io_definitions = _extent::has_extent<Hnd> && has_timeout<Hnd> && has_io_buffer_sequence<Hnd, Op> && has_io_buffer<Hnd, Op> && has_io_request<Hnd, Op> && has_io_result<Hnd, Op>;
-		template<typename Hnd, typename Op>
-		concept decay_has_io_definitions = has_io_definitions<std::decay_t<Hnd>, Op>;
-
-		template<typename T, typename Hnd>
-		concept buffer_io_result = instance_of<std::decay_t<T>, result> && std::constructible_from<typename T::template rebind_value<handle_size_t<std::decay_t<Hnd>>>, std::decay_t<T>>;
-		template<typename T, typename Hnd, typename Op>
-		concept buffer_range = std::ranges::sized_range<std::decay_t<T>> && decays_to_same<std::ranges::range_value_t<std::decay_t<T>>, io_buffer_t<std::decay_t<Hnd>, Op>>;
-
-		template<typename Op>
-		struct adaptor { class type; };
-		template<typename Op>
-		class adaptor<Op>::type
-		{
-			template<typename Hnd> requires has_io_request<std::decay_t<Hnd>, Op>
-			using request_t = io_request_t<std::decay_t<Hnd>, Op>;
-			template<typename Hnd> requires has_io_result<std::decay_t<Hnd>, Op>
-			using result_t = io_result_t<std::decay_t<Hnd>, Op>;
-			template<typename Hnd> requires has_io_buffer<std::decay_t<Hnd>, Op>
-			using buffer_t = io_buffer_t<std::decay_t<Hnd>, Op>;
-
-			template<typename Hnd> requires has_timeout<std::decay_t<Hnd>>
-			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
-			template<typename Hnd> requires _extent::decay_has_extent<Hnd>
-			using extent_t = handle_extent_t<std::decay_t<Hnd>>;
-
-		public:
-			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
-			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to = To()) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
-		};
-	}
-
-	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op with timeout \a To. */
-	template<typename Hnd, typename Op, typename To = handle_timeout_t<Hnd>>
-	concept io_handle = _io_operation::has_io_definitions<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, To>;
-
-	namespace _sync { struct sync_at_t : _io_operation::adaptor<sync_at_t>::type {}; }
-
-	using _sync::sync_at_t;
-
-	/* TODO: Document usage. */
-	inline constexpr auto sync_at = sync_at_t{};
-
-	template<typename Hnd>
-	using sync_at_buffer_sequence_t = io_buffer_sequence_t<Hnd, sync_at_t>;
-	template<typename Hnd>
-	using sync_at_buffer_t = io_buffer_t<Hnd, sync_at_t>;
-
-	template<typename Hnd>
-	using sync_at_request_t = io_request_t<Hnd, sync_at_t>;
-	template<typename Hnd>
-	using sync_at_result_t = io_result_t<Hnd, sync_at_t>;
-
-	template<typename Hnd>
-	using sync_at_value_t = io_value_t<Hnd, sync_at_t>;
-	template<typename Hnd>
-	using sync_at_error_t = io_error_t<Hnd, sync_at_t>;
-
-	namespace _extent
-	{
-		/* NOTE: Extent functions do not have async versions as they require multiple dependant IO calls. */
-		struct clone_extents_to_t : _io_operation::adaptor<clone_extents_to_t>::type {};
-		struct zero_extents_t : _io_operation::adaptor<zero_extents_t>::type {};
-		struct list_extents_t : _io_operation::adaptor<list_extents_t>::type {};
-	}
-
-	using _extent::clone_extents_to_t;
-	using _extent::zero_extents_t;
-	using _extent::list_extents_t;
-
-	/* TODO: Document usage. */
-	inline constexpr auto clone_extents_to = clone_extents_to_t{};
-	/* TODO: Document usage. */
-	inline constexpr auto zero_extents = zero_extents_t{};
-	/* TODO: Document usage. */
-	inline constexpr auto list_extents = list_extents_t{};
-
-	namespace _read_some
-	{
-		struct read_some_at_t : _io_operation::adaptor<read_some_at_t>::type {};
-		struct read_some_t : _io_operation::adaptor<read_some_t>::type {};
-	}
-
-	using _read_some::read_some_at_t;
-	using _read_some::read_some_t;
-
-	/** Customization point object used to preform a synchronous sparse input using an IO handle.
-	 * @param hnd Handle to preform the IO operation on.
-	 * @param req Value of type `io_request_t&lt;decltype(hnd), read_some_at_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
-	 * @return Value of type `io_result_t&lt;decltype(hnd), read_some_at_t&gt;` indicating either a success or a status code on failure.
-	 * @note It is recommended to use the value of the result, as it may own internal buffers or contain important information about the operation.
-	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
-	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
-	inline constexpr auto read_some_at = read_some_at_t{};
-
-	template<typename Hnd>
-	using read_some_at_buffer_sequence_t = io_buffer_sequence_t<Hnd, read_some_at_t>;
-	template<typename Hnd>
-	using read_some_at_buffer_t = io_buffer_t<Hnd, read_some_at_t>;
-
-	template<typename Hnd>
-	using read_some_at_request_t = io_request_t<Hnd, read_some_at_t>;
-	template<typename Hnd>
-	using read_some_at_result_t = io_result_t<Hnd, read_some_at_t>;
-
-	/** Customization point object used to preform a synchronous stream input using an IO handle.
-	 * @param hnd Handle to preform the IO operation on.
-	 * @param req Value of type `io_request_t&lt;decltype(hnd), read_some_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
-	 * @return Value of type `io_result_t&lt;decltype(hnd), read_some_t&gt;` indicating either a success or a status code on failure.
-	 * @note It is recommended to use the value of the result, as it may own internal buffers or contain important information about the operation.
-	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
-	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
-	inline constexpr auto read_some = read_some_t{};
-
-	template<typename Hnd>
-	using read_some_buffer_sequence_t = io_buffer_sequence_t<Hnd, read_some_t>;
-	template<typename Hnd>
-	using read_some_buffer_t = io_buffer_t<Hnd, read_some_t>;
-
-	template<typename Hnd>
-	using read_some_request_t = io_request_t<Hnd, read_some_t>;
-	template<typename Hnd>
-	using read_some_result_t = io_result_t<Hnd, read_some_t>;
-
-	template<typename Hnd>
-	using read_some_value_t = io_value_t<Hnd, read_some_t>;
-	template<typename Hnd>
-	using read_some_error_t = io_error_t<Hnd, read_some_t>;
-
-	/** Concept used to define an IO handle that supports synchronous sparse input. */
-	template<typename Hnd>
-	concept sparse_input_handle = io_handle<Hnd, read_some_at_t>;
-	/** Concept used to define an IO handle that supports synchronous stream input. */
-	template<typename Hnd>
-	concept stream_input_handle = io_handle<Hnd, read_some_t>;
-
-	namespace _write_some
-	{
-		struct write_some_at_t : _io_operation::adaptor<write_some_at_t>::type {};
-		struct write_some_t : _io_operation::adaptor<write_some_t>::type {};
-	}
-
-	using _write_some::write_some_at_t;
-	using _write_some::write_some_t;
-
-	/** Customization point object used to preform a synchronous sparse output using an IO handle.
-	 * @param hnd Handle to preform the IO operation on.
-	 * @param req Value of type `io_request_t&lt;decltype(hnd), write_some_at_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
-	 * @return Value of type `io_result_t&lt;decltype(hnd), write_some_at_t&gt;` indicating either a success or a status code on failure.
-	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
-	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
-	inline constexpr auto write_some_at = write_some_at_t{};
-	/** Customization point object used to preform a synchronous stream output using an IO handle.
-	 * @param hnd Handle to preform the IO operation on.
-	 * @param src Value of type `io_request_t&lt;decltype(hnd), write_some_t&gt;` used to specify parameters of the IO operation.
-	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
-	 * @return Value of type `io_result_t&lt;decltype(hnd), write_some_t&gt;` indicating either a success or a status code on failure.
-	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
-	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
-	inline constexpr auto write_some = write_some_t{};
-
-	template<typename Hnd>
-	using write_some_at_buffer_sequence_t = io_buffer_sequence_t<Hnd, write_some_at_t>;
-	template<typename Hnd>
-	using write_some_at_buffer_t = io_buffer_t<Hnd, write_some_at_t>;
-
-	template<typename Hnd>
-	using write_some_at_request_t = io_request_t<Hnd, write_some_at_t>;
-	template<typename Hnd>
-	using write_some_at_result_t = io_result_t<Hnd, write_some_at_t>;
-
-	template<typename Hnd>
-	using write_some_buffer_sequence_t = io_buffer_sequence_t<Hnd, write_some_t>;
-	template<typename Hnd>
-	using write_some_buffer_t = io_buffer_t<Hnd, write_some_t>;
-
-	template<typename Hnd>
-	using write_some_request_t = io_request_t<Hnd, write_some_t>;
-	template<typename Hnd>
-	using write_some_result_t = io_result_t<Hnd, write_some_t>;
-
-	template<typename Hnd>
-	using write_some_value_t = io_value_t<Hnd, write_some_t>;
-	template<typename Hnd>
-	using write_some_error_t = io_error_t<Hnd, write_some_t>;
-
-	/** Concept used to define an IO handle that supports synchronous sparse output. */
-	template<typename Hnd>
-	concept sparse_output_handle = io_handle<Hnd, write_some_at_t>;
-	/** Concept used to define an IO handle that supports synchronous stream output. */
-	template<typename Hnd>
-	concept stream_output_handle = io_handle<Hnd, write_some_t>;
-
-	/** Concept used to define an IO handle that supports synchronous sparse IO operations. */
-	template<typename Hnd>
-	concept sparse_io_handle = sparse_input_handle<Hnd> && sparse_output_handle<Hnd>;
-	/** Concept used to define an IO handle that supports synchronous stream IO operations. */
-	template<typename Hnd>
-	concept stream_io_handle = stream_input_handle<Hnd> && stream_output_handle<Hnd>;
-
-	/* TODO: Implement async IO operations. */
 
 	namespace _extent
 	{
@@ -419,8 +135,299 @@ namespace rod
 	template<typename Hnd>
 	concept seekable_handle = sized_handle<Hnd> && _extent::has_offset<Hnd> && _detail::callable<getpos_t, const Hnd &> && _detail::callable<setpos_t, Hnd &, handle_extent_t<Hnd>> && _detail::callable<seekpos_t, Hnd &, handle_offset_t<Hnd>, seek_dir>;
 
+	namespace _sync
+	{
+		struct sync_t;
+		struct sync_at_t;
+
+		/** Flags used to control handle synchronization behavior. */
+		enum class sync_mode : int
+		{
+			none = 0,
+			/** Synchronize everything. */
+			all = -1,
+			/** Synchronize handle data only. */
+			data = 1,
+			/** Synchronize handle metadata only. */
+			metadata = 2,
+		};
+
+		[[nodiscard]] constexpr sync_mode operator~(sync_mode h) noexcept { return sync_mode(~int(h)); }
+		[[nodiscard]] constexpr sync_mode operator&(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) & int(b)); }
+		[[nodiscard]] constexpr sync_mode operator|(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) | int(b)); }
+		[[nodiscard]] constexpr sync_mode operator^(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) ^ int(b)); }
+		constexpr sync_mode &operator&=(sync_mode &a, sync_mode b) noexcept { return a = a & b; }
+		constexpr sync_mode &operator|=(sync_mode &a, sync_mode b) noexcept { return a = a | b; }
+		constexpr sync_mode &operator^=(sync_mode &a, sync_mode b) noexcept { return a = a ^ b; }
+
+		template<typename Res>
+		concept sync_result = instance_of<Res, result> && std::same_as<typename Res::value_type, void>;
+		template<typename Res, typename Hnd>
+		concept sync_at_result = instance_of<Res, result> && one_of<typename Res::value_type, void, extent_pair_t<std::decay_t<Hnd>>>;
+
+		struct sync_t
+		{
+			template<typename Hnd> requires tag_invocable<sync_t, Hnd, sync_mode>
+			sync_result auto operator()(Hnd &&hnd, sync_mode mode = sync_mode::all) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), mode); }
+		};
+		struct sync_at_t
+		{
+			template<_extent::decay_has_extent Hnd, std::convertible_to<extent_pair_t<std::decay_t<Hnd>>> Ext = extent_pair_t<std::decay_t<Hnd>>> requires tag_invocable<sync_at_t, Hnd, Ext, sync_mode>
+			sync_at_result<Hnd> auto operator()(Hnd &&hnd, Ext &&ext, sync_mode mode = sync_mode::all) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), std::forward<Ext>(ext), mode); }
+		};
+	}
+
+	using _sync::sync_t;
+	using _sync::sync_at_t;
+	using _sync::sync_mode;
+
+	/* TODO: Document usage. */
+	inline constexpr auto sync = sync_t{};
+	/* TODO: Document usage. */
+	inline constexpr auto sync_at = sync_at_t{};
+
+	namespace _io_operation
+	{
+		template<typename Hnd, typename Op>
+		concept has_io_request = requires { typename Hnd::template io_request<Op>; };
+		template<typename Hnd, typename Op>
+		concept has_io_result = requires { typename Hnd::template io_result<Op>; };
+		template<typename Hnd>
+		concept has_timeout = requires { typename Hnd::timeout_type; };
+
+		template<typename Hnd, typename Op>
+		struct io_request_impl;
+		template<typename Hnd, typename Op> requires has_io_request<Hnd, Op>
+		struct io_request_impl<Hnd, Op> { using type = typename Hnd::template io_request<Op>; };
+
+		template<typename Hnd, typename Op>
+		struct io_result_impl;
+		template<typename Hnd, typename Op> requires has_io_result<Hnd, Op>
+		struct io_result_impl<Hnd, Op> { using type = typename Hnd::template io_result<Op>; };
+
+		template<typename Hnd, typename Op>
+		struct io_buffer_sequence_impl;
+		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_buffer_sequence<Op>; })
+		struct io_buffer_sequence_impl<Hnd, Op> { using type = typename Hnd::template io_buffer_sequence<Op>; };
+
+		template<typename Hnd, typename Op>
+		struct io_buffer_impl;
+		template<typename Hnd, typename Op> requires(requires { typename Hnd::template io_buffer<Op>; })
+		struct io_buffer_impl<Hnd, Op> { using type = typename Hnd::template io_buffer<Op>; };
+	}
+
+	/** Type trait used to obtain the IO buffer sequence type of handle \a Hnd for operation \a Op.
+	 * @note Handles are not required to expose an IO buffer sequence for every supported operation type. */
+	template<typename Hnd, typename Op>
+	struct io_buffer_sequence : _io_operation::io_buffer_sequence_impl<Hnd, Op> {};
+	/** Alias for `typename io_buffer_sequence&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_buffer_sequence_t = typename io_buffer_sequence<Hnd, Op>::type;
+
+	/** Type trait used to obtain the IO buffer type of handle \a Hnd for operation \a Op.
+	 * @note Handles are not required to expose an IO buffer for every supported operation type. */
+	template<typename Hnd, typename Op>
+	struct io_buffer : _io_operation::io_buffer_impl<Hnd, Op> {};
+	/** Alias for `typename io_buffer&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_buffer_t = typename io_buffer<Hnd, Op>::type;
+
+	/** Type trait used to obtain the IO request type of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_request : _io_operation::io_request_impl<Hnd, Op> {};
+	/** Alias for `typename io_request&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_request_t = typename io_request<Hnd, Op>::type;
+
+	/** Type trait used to obtain the IO result type of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_result : _io_operation::io_result_impl<Hnd, Op> {};
+	/** Alias for `typename io_result&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_result_t = typename io_result<Hnd, Op>::type;
+
+	/** Type trait used to obtain the value type of the IO result of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_value { using type = typename io_result_t<Hnd, Op>::value_type; };
+	/** Alias for `typename io_value&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_value_t = typename io_value<Hnd, Op>::type;
+
+	/** Type trait used to obtain the error type of the IO result of handle \a Hnd for operation \a Op. */
+	template<typename Hnd, typename Op>
+	struct io_error { using type = typename io_result_t<Hnd, Op>::error_type; };
+	/** Alias for `typename io_value&lt;Hnd, Op&gt;::type` */
+	template<typename Hnd, typename Op>
+	using io_error_t = typename io_error<Hnd, Op>::type;
+
+	namespace _io_operation
+	{
+		template<typename Hnd, typename Op>
+		concept has_io_definitions = _extent::has_extent<Hnd> && has_timeout<Hnd> && has_io_request<Hnd, Op> && has_io_result<Hnd, Op>;
+		template<typename Hnd, typename Op>
+		concept decay_has_io_definitions = has_io_definitions<std::decay_t<Hnd>, Op>;
+
+		template<typename T, typename Hnd>
+		concept buffer_io_result = instance_of<std::decay_t<T>, result> && std::constructible_from<typename T::template rebind_value<handle_size_t<std::decay_t<Hnd>>>, std::decay_t<T>>;
+
+		template<typename Op>
+		struct adaptor { class type; };
+		template<typename Op>
+		class adaptor<Op>::type
+		{
+			template<typename Hnd> requires has_io_request<std::decay_t<Hnd>, Op>
+			using request_t = io_request_t<std::decay_t<Hnd>, Op>;
+			template<typename Hnd> requires has_io_result<std::decay_t<Hnd>, Op>
+			using result_t = io_result_t<std::decay_t<Hnd>, Op>;
+
+			template<typename Hnd> requires has_timeout<std::decay_t<Hnd>>
+			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
+			template<typename Hnd> requires _extent::decay_has_extent<Hnd>
+			using extent_t = handle_extent_t<std::decay_t<Hnd>>;
+
+		public:
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
+			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req, To &&to) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires tag_invocable<Op, Hnd, Req, timeout_t<Hnd>>
+			constexpr result_t<Hnd> operator()(Hnd &&hnd, Req &&req) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), timeout_t<Hnd>()); }
+		};
+	}
+
+	/** Concept used to check if \a Hnd is a handle compatible with IO operation \a Op with timeout \a To. */
+	template<typename Hnd, typename Op, typename To = handle_timeout_t<Hnd>>
+	concept io_handle = _io_operation::has_io_definitions<Hnd, Op> && _detail::callable_r<io_result_t<Hnd, Op>, Op, Hnd, io_request_t<Hnd, Op>, To>;
+
+	namespace _extent
+	{
+		/* NOTE: Extent functions do not have async versions as they require multiple dependant IO calls. */
+		struct clone_extents_to_t : _io_operation::adaptor<clone_extents_to_t>::type {};
+		struct zero_extents_t : _io_operation::adaptor<zero_extents_t>::type {};
+		struct list_extents_t : _io_operation::adaptor<list_extents_t>::type {};
+	}
+
+	using _extent::clone_extents_to_t;
+	using _extent::zero_extents_t;
+	using _extent::list_extents_t;
+
+	/* TODO: Document usage. */
+	inline constexpr auto clone_extents_to = clone_extents_to_t{};
+	/* TODO: Document usage. */
+	inline constexpr auto zero_extents = zero_extents_t{};
+	/* TODO: Document usage. */
+	inline constexpr auto list_extents = list_extents_t{};
+
+	namespace _read_some
+	{
+		struct read_some_at_t : _io_operation::adaptor<read_some_at_t>::type {};
+		struct read_some_t : _io_operation::adaptor<read_some_t>::type {};
+	}
+
+	using _read_some::read_some_at_t;
+	using _read_some::read_some_t;
+
+	/** Customization point object used to preform a synchronous sparse input using an IO handle.
+	 * @param hnd Handle to preform the IO operation on.
+	 * @param req Value of type `io_request_t&lt;decltype(hnd), read_some_at_t&gt;` used to specify parameters of the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @return Value of type `io_result_t&lt;decltype(hnd), read_some_at_t&gt;` indicating either a success or a status code on failure.
+	 * @note It is recommended to use the value of the result, as it may own internal buffers or contain important information about the operation.
+	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
+	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
+	inline constexpr auto read_some_at = read_some_at_t{};
+
+	template<typename Hnd>
+	using read_some_at_request_t = io_request_t<Hnd, read_some_at_t>;
+	template<typename Hnd>
+	using read_some_at_result_t = io_result_t<Hnd, read_some_at_t>;
+
+	/** Customization point object used to preform a synchronous stream input using an IO handle.
+	 * @param hnd Handle to preform the IO operation on.
+	 * @param req Value of type `io_request_t&lt;decltype(hnd), read_some_t&gt;` used to specify parameters of the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @return Value of type `io_result_t&lt;decltype(hnd), read_some_t&gt;` indicating either a success or a status code on failure.
+	 * @note It is recommended to use the value of the result, as it may own internal buffers or contain important information about the operation.
+	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
+	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
+	inline constexpr auto read_some = read_some_t{};
+
+	template<typename Hnd>
+	using read_some_request_t = io_request_t<Hnd, read_some_t>;
+	template<typename Hnd>
+	using read_some_result_t = io_result_t<Hnd, read_some_t>;
+
+	template<typename Hnd>
+	using read_some_value_t = io_value_t<Hnd, read_some_t>;
+	template<typename Hnd>
+	using read_some_error_t = io_error_t<Hnd, read_some_t>;
+
+	/** Concept used to define an IO handle that supports synchronous sparse input. */
+	template<typename Hnd>
+	concept sparse_input_handle = io_handle<Hnd, read_some_at_t>;
+	/** Concept used to define an IO handle that supports synchronous stream input. */
+	template<typename Hnd>
+	concept stream_input_handle = io_handle<Hnd, read_some_t>;
+
+	namespace _write_some
+	{
+		struct write_some_at_t : _io_operation::adaptor<write_some_at_t>::type {};
+		struct write_some_t : _io_operation::adaptor<write_some_t>::type {};
+	}
+
+	using _write_some::write_some_at_t;
+	using _write_some::write_some_t;
+
+	/** Customization point object used to preform a synchronous sparse output using an IO handle.
+	 * @param hnd Handle to preform the IO operation on.
+	 * @param req Value of type `io_request_t&lt;decltype(hnd), write_some_at_t&gt;` used to specify parameters of the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @return Value of type `io_result_t&lt;decltype(hnd), write_some_at_t&gt;` indicating either a success or a status code on failure.
+	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
+	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
+	inline constexpr auto write_some_at = write_some_at_t{};
+	/** Customization point object used to preform a synchronous stream output using an IO handle.
+	 * @param hnd Handle to preform the IO operation on.
+	 * @param src Value of type `io_request_t&lt;decltype(hnd), write_some_t&gt;` used to specify parameters of the IO operation.
+	 * @param to Optional value of type `handle_timeout_t&lt;decltype(hnd)&gt;` used to specify the timeout for the IO operation.
+	 * @return Value of type `io_result_t&lt;decltype(hnd), write_some_t&gt;` indicating either a success or a status code on failure.
+	 * @note If the handle supports partial IO, the result type's status code will indicate the partial amount of bytes transferred.
+	 * @note See definition of the individual handle type for further information about it's IO request and result types. */
+	inline constexpr auto write_some = write_some_t{};
+
+	template<typename Hnd>
+	using write_some_at_request_t = io_request_t<Hnd, write_some_at_t>;
+	template<typename Hnd>
+	using write_some_at_result_t = io_result_t<Hnd, write_some_at_t>;
+
+	template<typename Hnd>
+	using write_some_request_t = io_request_t<Hnd, write_some_t>;
+	template<typename Hnd>
+	using write_some_result_t = io_result_t<Hnd, write_some_t>;
+
+	template<typename Hnd>
+	using write_some_value_t = io_value_t<Hnd, write_some_t>;
+	template<typename Hnd>
+	using write_some_error_t = io_error_t<Hnd, write_some_t>;
+
+	/** Concept used to define an IO handle that supports synchronous sparse output. */
+	template<typename Hnd>
+	concept sparse_output_handle = io_handle<Hnd, write_some_at_t>;
+	/** Concept used to define an IO handle that supports synchronous stream output. */
+	template<typename Hnd>
+	concept stream_output_handle = io_handle<Hnd, write_some_t>;
+
+	/** Concept used to define an IO handle that supports synchronous sparse IO operations. */
+	template<typename Hnd>
+	concept sparse_io_handle = sparse_input_handle<Hnd> && sparse_output_handle<Hnd>;
+	/** Concept used to define an IO handle that supports synchronous stream IO operations. */
+	template<typename Hnd>
+	concept stream_io_handle = stream_input_handle<Hnd> && stream_output_handle<Hnd>;
+
+	/* TODO: Implement async IO operations. */
+
 	namespace _handle
 	{
+		template<typename Child, typename Base, template <typename, typename> typename BaseAdaptor>
+		struct io_handle_adaptor { class type; };
 		template<typename Child, typename Base, template <typename, typename> typename BaseAdaptor>
 		class io_handle_adaptor<Child, Base, BaseAdaptor>::type : public BaseAdaptor<Child, Base>
 		{
@@ -430,11 +437,6 @@ namespace rod
 			friend Child;
 
 		public:
-			template<typename Op>
-			using io_buffer_sequence = io_buffer_sequence_t<Base, Op>;
-			template<typename Op>
-			using io_buffer = io_buffer_t<Base, Op>;
-
 			template<typename Op>
 			using io_request = io_request_t<Base, Op>;
 			template<typename Op>
@@ -475,8 +477,8 @@ namespace rod
 
 			template<typename Hnd>
 			constexpr static auto dispatch_sync(Hnd &&hnd, sync_mode mode) noexcept -> decltype(std::forward<Hnd>(hnd).do_sync(mode)) { return std::forward<Hnd>(hnd).do_sync(mode); }
-			template<typename Hnd, typename Req>
-			constexpr static auto dispatch_sync_at(Hnd &&hnd, Req &&req) noexcept -> decltype(std::forward<Hnd>(hnd).do_sync_at(std::forward<Req>(req))) { return std::forward<Hnd>(hnd).do_sync_at(std::forward<Req>(req)); }
+			template<typename Hnd, typename Ext>
+			constexpr static auto dispatch_sync_at(Hnd &&hnd, Ext &&ext, sync_mode mode) noexcept -> decltype(std::forward<Hnd>(hnd).do_sync_at(std::forward<Ext>(ext), mode)) { return std::forward<Hnd>(hnd).do_sync_at(std::forward<Ext>(ext), mode); }
 
 		public:
 			template<decays_to_same<sync_t> Op, decays_to_same<Child> Hnd> requires(has_sync<Hnd>())
@@ -484,10 +486,10 @@ namespace rod
 			template<decays_to_same<sync_t> Op, decays_to_same<Child> Hnd> requires(!has_sync<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, sync_mode>)
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, sync_mode mode) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), mode); }
 
-			template<decays_to_same<sync_at_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req> requires(has_sync<Hnd>())
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept { return dispatch_sync_at(std::forward<Hnd>(hnd), std::forward<Req>(req)); }
-			template<decays_to_same<sync_at_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req> requires(!has_sync<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req>)
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Req>(req)); }
+			template<decays_to_same<sync_at_t> Op, decays_to_same<Child> Hnd, std::convertible_to<extent_pair_t<std::decay_t<Hnd>>> Ext> requires(has_sync<Hnd>())
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&ext, sync_mode mode) noexcept { return dispatch_sync_at(std::forward<Hnd>(hnd), std::forward<Ext>(ext), mode); }
+			template<decays_to_same<sync_at_t> Op, decays_to_same<Child> Hnd, std::convertible_to<extent_pair_t<std::decay_t<Hnd>>> Ext> requires(!has_sync<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Ext, sync_mode>)
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Ext &&ext, sync_mode mode) noexcept { return Op{}(get_adaptor(std::forward<Hnd>(hnd)).base(), std::forward<Ext>(ext), mode); }
 
 		private:
 			static constexpr int do_endpos = 1;

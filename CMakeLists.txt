@@ -146,9 +146,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
 
         # Filesystem IO
         rod/detail/file_handle.hpp
-        # rod/detail/mapping_source.hpp
-        # rod/detail/mapping_handle.hpp
-        # rod/detail/file_mapping.hpp
+        rod/detail/mmap_handle.hpp
 
         # Filesystem algorithms
         rod/detail/algorithm/traverse.hpp
@@ -210,6 +208,7 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/file_clock.cpp
             rod/detail/win32/handle_base.hpp
             rod/detail/win32/handle_base.cpp
+            rod/detail/win32/handle_stat.hpp
             rod/detail/win32/handle_stat.cpp
             rod/detail/win32/path_handle.hpp
             rod/detail/win32/path_handle.cpp
@@ -221,6 +220,8 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/directory_handle.cpp
             rod/detail/win32/file_handle.hpp
             rod/detail/win32/file_handle.cpp
+            rod/detail/win32/mmap_handle.hpp
+            rod/detail/win32/mmap_handle.cpp
             #[[rod/win32/iocp_context.cpp]])
 endif ()
 

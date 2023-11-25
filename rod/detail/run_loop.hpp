@@ -175,9 +175,10 @@ namespace rod
 				thread_context(run_loop &loop) : _loop(&loop) { _loop->push_ctx(this); }
 				~thread_context() { _loop->pop_ctx(this); }
 
-				/** Unblocks and stops the thread associated with this context. Does not affect other threads or the run loop itself unlike `run_loop::finish`. */
+				/** Unblocks and stops the parent thread of this context. Does not stop other threads or the run loop itself unlike `run_loop::finish`. */
 				void finish() noexcept
 				{
+					/* notify_all has to be used since all threads are waiting on the same condition variable. */
 					_is_stopped.test_and_set();
 					_loop->_cnd.notify_all();
 				}
@@ -190,8 +191,8 @@ namespace rod
 				thread_context **_this_ptr = nullptr;
 				std::atomic_flag _is_stopped;
 
-				run_loop *_loop = nullptr;
 				task_queue_t _local_queue;
+				run_loop *_loop;
 			};
 
 		private:

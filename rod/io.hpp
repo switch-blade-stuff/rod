@@ -6,6 +6,7 @@
 
 #include "path.hpp"
 #include "file.hpp"
+#include "mmap.hpp"
 
 #if 0
 #ifdef ROD_WIN32

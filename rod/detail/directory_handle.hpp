@@ -6,7 +6,6 @@
 
 #include "fs_handle_base.hpp"
 #include "io_handle_base.hpp"
-#include "path_handle.hpp"
 
 namespace rod
 {
@@ -14,177 +13,6 @@ namespace rod
 	{
 		class directory_entry;
 		class directory_iterator;
-
-		template<typename>
-		class io_buffer;
-		template<typename>
-		class io_buffer_sequence;
-
-		template<>
-		class io_buffer<read_some_t>
-		{
-			friend class directory_handle;
-
-		public:
-			using value_type = typename fs::path::value_type;
-			using size_type = typename fs::path::size_type;
-
-		public:
-			/** Initializes an empty directory entry buffer. */
-			constexpr io_buffer() noexcept = default;
-			/** Initializes the directory entry buffer with an explicit `stat` query \a q. */
-			constexpr io_buffer(stat::query q) noexcept : _query(q) {}
-
-			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size. */
-			constexpr io_buffer(value_type *buff, size_type size) noexcept : _buff(buff, size) {}
-			/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size with an explicit `stat` query \a q. */
-			constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _query(q) {}
-
-			/** Initializes the directory entry buffer from a range of characters defined by [\a begin, \a end). */
-			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
-			constexpr io_buffer(I begin, S end) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(begin, end) {}
-			/** Initializes the directory entry buffer from a range of characters defined by [\a begin, \a end) with an explicit `stat` query \a q. */
-			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
-			constexpr io_buffer(I begin, S end, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(begin, end), _query(q) {}
-
-			/** Initializes the directory entry buffer from a contiguous range of characters. */
-			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
-			constexpr io_buffer(Buff &&buff) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)) {}
-			/** Initializes the directory entry buffer from a contiguous range of characters with an explicit `stat` query \a q. */
-			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
-			constexpr io_buffer(Buff &&buff, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)), _query(q) {}
-
-			/** Checks if the directory entry buffer is empty. */
-			[[nodiscard]] constexpr bool empty() const noexcept { return _buff.empty(); }
-			/** Returns size of the directory entry buffer. */
-			[[nodiscard]] constexpr size_type size() const noexcept { return _buff.size(); }
-			/** Returns pointer to the memory of the directory entry buffer. */
-			[[nodiscard]] constexpr value_type *data() const noexcept { return _buff.data(); }
-
-			/** Returns the data of the directory entry buffer as a `path_view`. */
-			[[nodiscard]] constexpr fs::path_view path() const noexcept { return static_cast<fs::path_view>(*this); }
-			/** Converts directory entry buffer to `path_view`. Equivalent to `path()`. */
-			[[nodiscard]] constexpr explicit operator fs::path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, fs::path_view::native_format}; }
-
-			/** Returns a pair of directory entry stats and a mask of initialized fields. */
-			[[nodiscard]] constexpr std::pair<stat, stat::query> st() const noexcept { return {_st, _query}; }
-
-		private:
-			std::span<value_type> _buff;
-			stat _st;
-
-			stat::query _query = {};
-			bool _is_terminated = {};
-		};
-		template<>
-		class io_buffer_sequence<read_some_t>
-		{
-			friend class directory_handle;
-
-			using buff_type = malloc_ptr<typename fs::path::value_type[]>;
-			using data_type = std::span<io_buffer<read_some_t>>;
-
-		public:
-			using value_type = typename data_type::value_type;
-
-			using pointer = typename data_type::pointer;
-			using const_pointer = typename data_type::const_pointer;
-			using reference = typename data_type::reference;
-			using const_reference = typename data_type::const_reference;
-
-			using iterator = typename data_type::iterator;
-			using reverse_iterator = typename data_type::reverse_iterator;
-
-			using difference_type = typename data_type::difference_type;
-			using size_type = typename data_type::size_type;
-
-		private:
-			io_buffer_sequence(data_type &&buffs, buff_type &&chars, size_type chars_max) noexcept : _data(std::forward<data_type>(buffs)), _buff(std::forward<buff_type>(chars)), _buff_max(chars_max) {}
-
-		public:
-			io_buffer_sequence(const io_buffer_sequence &) = delete;
-			io_buffer_sequence &operator=(const io_buffer_sequence &) = delete;
-
-			constexpr io_buffer_sequence() noexcept = default;
-			/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size. */
-			constexpr io_buffer_sequence(value_type *buff, size_type size) noexcept : _data(buff, size) {}
-			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end). */
-			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-			constexpr io_buffer_sequence(I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end) {}
-			/** Initializes the buffer sequence from a contiguous range of entry buffers. */
-			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-			constexpr io_buffer_sequence(Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)) {}
-
-			io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-			io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_max = std::exchange(other._buff_max, {}), *this); }
-
-			/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size, using internal character buffer of \a other. */
-			io_buffer_sequence(io_buffer_sequence &&other, value_type *buff, size_type size) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-			/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end), using internal character buffer of \a other. */
-			template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-			io_buffer_sequence(io_buffer_sequence &&other, I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-			/** Initializes the buffer sequence from a contiguous range of entry buffers, using internal character buffer of \a other. */
-			template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-			io_buffer_sequence(io_buffer_sequence &&other, Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-
-			/** Returns iterator to the first buffer of the buffer sequence. */
-			[[nodiscard]] constexpr iterator begin() const noexcept { return _data.begin(); }
-			/** Returns iterator one past the last buffer of the buffer sequence. */
-			[[nodiscard]] constexpr iterator end() const noexcept { return _data.end(); }
-
-			/** Returns reverse iterator one past the first buffer of the buffer sequence. */
-			[[nodiscard]] constexpr reverse_iterator rbegin() const noexcept { return _data.rbegin(); }
-			/** Returns reverse iterator to the last buffer of the buffer sequence. */
-			[[nodiscard]] constexpr reverse_iterator rend() const noexcept { return _data.rend(); }
-
-			/** Checks if the buffer sequence is empty. */
-			[[nodiscard]] constexpr bool empty() const noexcept { return _data.empty(); }
-			/** Returns size of the buffer sequence. */
-			[[nodiscard]] constexpr size_type size() const noexcept { return _data.size(); }
-
-			/** Returns pointer to the start of the buffer sequence. */
-			[[nodiscard]] constexpr pointer data() const noexcept { return _data.data(); }
-			/** Returns reference to the last buffer of the buffer sequence. */
-			[[nodiscard]] constexpr reference back() const noexcept { return _data.back(); }
-			/** Returns reference to the first buffer of the buffer sequence. */
-			[[nodiscard]] constexpr reference front() const noexcept { return _data.front(); }
-			/** Returns reference to the buffer located at offset \a i within the buffer sequence. */
-			[[nodiscard]] constexpr reference operator[](size_type i) const { return _data[i]; }
-
-			/** Converts buffer sequence to a span of directory entry buffers. */
-			[[nodiscard]] constexpr auto as_span() const noexcept { return _data; }
-
-			void swap(io_buffer_sequence &other) noexcept
-			{
-				std::swap(_data, other._data);
-				std::swap(_buff, other._buff);
-				std::swap(_buff_max, other._buff_max);
-			}
-			friend void swap(io_buffer_sequence &a, io_buffer_sequence &b) noexcept { a.swap(b); }
-
-		private:
-			data_type _data = {};
-			buff_type _buff = {};
-			size_type _buff_max = {};
-		};
-
-		template<typename>
-		struct io_request;
-		template<>
-		struct io_request<read_some_t>
-		{
-			/** Sequence of directory entry buffers to be filled with directory entries. When buffers are not empty, directory enumeration will attempt to use
-			 * the provided memory as long as there is enough space to store the path. Filled buffers will be returned in the buffer sequence of `io_result`.
-			 * @note `read_some` will return a truncated copy of the buffer sequence which may also contain an internally-allocated character buffer.
-			 * This internal buffer can be re-used by passing the returned buffer sequence as \a buffs to the next call of `read_some`.
-			 * @note Supplied buffers will be modified with the size and/or pointers to the actual memory of the entry path. */
-			io_buffer_sequence<read_some_t> buffs;
-			/** Directory enumeration filter passed to the native platform API.
-			 * @note If the platform does not provide directory filtering, it is preformed manually. */
-			fs::path_view filter;
-			/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
-			bool resume = {};
-		};
 
 		/** @brief Handle to a unique directory within the filesystem.
 		 *
@@ -199,15 +27,179 @@ namespace rod
 			using adp_base = fs::fs_handle_adaptor<directory_handle, fs::path_handle>;
 
 		public:
-			template<typename Op>
-			using io_buffer_sequence = _dir::io_buffer_sequence<Op>;
-			template<typename Op>
-			using io_buffer = _dir::io_buffer<Op>;
+			template<typename>
+			class io_buffer;
+			template<>
+			class io_buffer<read_some_t>
+			{
+				friend class directory_handle;
+
+			public:
+				using value_type = typename fs::path::value_type;
+				using size_type = typename fs::path::size_type;
+
+			public:
+				/** Initializes an empty directory entry buffer. */
+				constexpr io_buffer() noexcept = default;
+				/** Initializes the directory entry buffer with an explicit `stat` query \a q. */
+				constexpr io_buffer(stat::query q) noexcept : _query(q) {}
+
+				/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size. */
+				constexpr io_buffer(value_type *buff, size_type size) noexcept : _buff(buff, size) {}
+				/** Initializes the directory entry buffer from a pointer to a buffer of characters and a size with an explicit `stat` query \a q. */
+				constexpr io_buffer(value_type *buff, size_type size, stat::query q) noexcept : _buff(buff, size), _query(q) {}
+
+				/** Initializes the directory entry buffer from a range of characters defined by [\a begin, \a end). */
+				template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
+				constexpr io_buffer(I begin, S end) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(begin, end) {}
+				/** Initializes the directory entry buffer from a range of characters defined by [\a begin, \a end) with an explicit `stat` query \a q. */
+				template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<std::span<value_type>, I, S>
+				constexpr io_buffer(I begin, S end, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, I, S>) : _buff(begin, end), _query(q) {}
+
+				/** Initializes the directory entry buffer from a contiguous range of characters. */
+				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
+				constexpr io_buffer(Buff &&buff) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)) {}
+				/** Initializes the directory entry buffer from a contiguous range of characters with an explicit `stat` query \a q. */
+				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer> && std::constructible_from<std::span<value_type>, Buff>)
+				constexpr io_buffer(Buff &&buff, stat::query q) noexcept(std::is_nothrow_constructible_v<std::span<value_type>, Buff>) : _buff(std::forward<Buff>(buff)), _query(q) {}
+
+				/** Checks if the directory entry buffer is empty. */
+				[[nodiscard]] constexpr bool empty() const noexcept { return _buff.empty(); }
+				/** Returns size of the directory entry buffer. */
+				[[nodiscard]] constexpr size_type size() const noexcept { return _buff.size(); }
+				/** Returns pointer to the memory of the directory entry buffer. */
+				[[nodiscard]] constexpr value_type *data() const noexcept { return _buff.data(); }
+
+				/** Returns the data of the directory entry buffer as a `path_view`. */
+				[[nodiscard]] constexpr fs::path_view path() const noexcept { return static_cast<fs::path_view>(*this); }
+				/** Converts directory entry buffer to `path_view`. Equivalent to `path()`. */
+				[[nodiscard]] constexpr explicit operator fs::path_view() const noexcept { return {_buff.data(), _buff.size(), _is_terminated, fs::path_view::native_format}; }
+
+				/** Returns a pair of directory entry stats and a mask of initialized fields. */
+				[[nodiscard]] constexpr std::pair<stat, stat::query> st() const noexcept { return {_st, _query}; }
+
+			private:
+				std::span<value_type> _buff;
+				stat _st;
+
+				stat::query _query = {};
+				bool _is_terminated = {};
+			};
+
+			template<typename>
+			class io_buffer_sequence;
+			template<>
+			class io_buffer_sequence<read_some_t>
+			{
+				friend class directory_handle;
+
+				using buff_type = malloc_ptr<typename fs::path::value_type[]>;
+				using data_type = std::span<io_buffer<read_some_t>>;
+
+			public:
+				using value_type = typename data_type::value_type;
+
+				using pointer = typename data_type::pointer;
+				using const_pointer = typename data_type::const_pointer;
+				using reference = typename data_type::reference;
+				using const_reference = typename data_type::const_reference;
+
+				using iterator = typename data_type::iterator;
+				using reverse_iterator = typename data_type::reverse_iterator;
+
+				using difference_type = typename data_type::difference_type;
+				using size_type = typename data_type::size_type;
+
+			private:
+				io_buffer_sequence(data_type &&buffs, buff_type &&chars, size_type chars_max) noexcept : _data(std::forward<data_type>(buffs)), _buff(std::forward<buff_type>(chars)), _buff_max(chars_max) {}
+
+			public:
+				io_buffer_sequence(const io_buffer_sequence &) = delete;
+				io_buffer_sequence &operator=(const io_buffer_sequence &) = delete;
+
+				constexpr io_buffer_sequence() noexcept = default;
+				/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size. */
+				constexpr io_buffer_sequence(value_type *buff, size_type size) noexcept : _data(buff, size) {}
+				/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end). */
+				template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
+				constexpr io_buffer_sequence(I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end) {}
+				/** Initializes the buffer sequence from a contiguous range of entry buffers. */
+				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
+				constexpr io_buffer_sequence(Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)) {}
+
+				io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_max = std::exchange(other._buff_max, {}), *this); }
+
+				/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size, using internal character buffer of \a other. */
+				io_buffer_sequence(io_buffer_sequence &&other, value_type *buff, size_type size) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end), using internal character buffer of \a other. */
+				template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
+				io_buffer_sequence(io_buffer_sequence &&other, I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				/** Initializes the buffer sequence from a contiguous range of entry buffers, using internal character buffer of \a other. */
+				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
+				io_buffer_sequence(io_buffer_sequence &&other, Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+
+				/** Returns iterator to the first buffer of the buffer sequence. */
+				[[nodiscard]] constexpr iterator begin() const noexcept { return _data.begin(); }
+				/** Returns iterator one past the last buffer of the buffer sequence. */
+				[[nodiscard]] constexpr iterator end() const noexcept { return _data.end(); }
+
+				/** Returns reverse iterator one past the first buffer of the buffer sequence. */
+				[[nodiscard]] constexpr reverse_iterator rbegin() const noexcept { return _data.rbegin(); }
+				/** Returns reverse iterator to the last buffer of the buffer sequence. */
+				[[nodiscard]] constexpr reverse_iterator rend() const noexcept { return _data.rend(); }
+
+				/** Checks if the buffer sequence is empty. */
+				[[nodiscard]] constexpr bool empty() const noexcept { return _data.empty(); }
+				/** Returns size of the buffer sequence. */
+				[[nodiscard]] constexpr size_type size() const noexcept { return _data.size(); }
+
+				/** Returns pointer to the start of the buffer sequence. */
+				[[nodiscard]] constexpr pointer data() const noexcept { return _data.data(); }
+				/** Returns reference to the last buffer of the buffer sequence. */
+				[[nodiscard]] constexpr reference back() const noexcept { return _data.back(); }
+				/** Returns reference to the first buffer of the buffer sequence. */
+				[[nodiscard]] constexpr reference front() const noexcept { return _data.front(); }
+				/** Returns reference to the buffer located at offset \a i within the buffer sequence. */
+				[[nodiscard]] constexpr reference operator[](size_type i) const { return _data[i]; }
+
+				/** Converts buffer sequence to a span of directory entry buffers. */
+				[[nodiscard]] constexpr auto as_span() const noexcept { return _data; }
+
+				void swap(io_buffer_sequence &other) noexcept
+				{
+					std::swap(_data, other._data);
+					std::swap(_buff, other._buff);
+					std::swap(_buff_max, other._buff_max);
+				}
+				friend void swap(io_buffer_sequence &a, io_buffer_sequence &b) noexcept { a.swap(b); }
+
+			private:
+				data_type _data = {};
+				buff_type _buff = {};
+				size_type _buff_max = {};
+			};
 
 			template<typename Op>
 			using io_result = result<std::pair<io_buffer_sequence<Op>, bool>>;
-			template<typename Op>
-			using io_request = _dir::io_request<Op>;
+
+			template<typename>
+			struct io_request;
+			template<>
+			struct io_request<read_some_t>
+			{
+				/** Sequence of directory entry buffers to be filled with directory entries. When buffers are not empty, directory enumeration will attempt to use
+				 * the provided memory as long as there is enough space to store the path. Filled buffers will be returned in the buffer sequence of `io_result`.
+				 * @note `read_some` will return a truncated copy of the buffer sequence which may also contain an internally-allocated character buffer.
+				 * This internal buffer can be re-used by passing the returned buffer sequence as \a buffs to the next call of `read_some`.
+				 * @note Supplied buffers will be modified with the size and/or pointers to the actual memory of the entry path. */
+				io_buffer_sequence<read_some_t> buffs;
+				/** Directory enumeration filter passed to the native platform API.
+				 * @note If the platform does not provide directory filtering, it is preformed manually. */
+				fs::path_view filter;
+				/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
+				bool resume = {};
+			};
 
 		public:
 			/** Re-opens the directory referenced by \a other.

@@ -343,14 +343,14 @@ namespace rod::_io_uring
 			if (std::exchange(_stop_pending, false)) [[unlikely]]
 				return;
 
-			acquire_consumer_queue();
-			acquire_elapsed_timers();
-
 			/* Handle producer & waitlist queue items. */
 			if (!_queue_active && !_producer_queue.empty())
 				_consumer_queue.merge_back(std::move(_producer_queue));
 			while (!_waitlist_queue.empty() && _sq.pending < _sq.size && _cq.pending + _sq.pending < _cq.size)
 				_waitlist_queue.pop_front()->notify();
+
+			acquire_consumer_queue();
+			acquire_elapsed_timers();
 
 			if (_consumer_queue.empty() || _sq.pending)
 				uring_enter();

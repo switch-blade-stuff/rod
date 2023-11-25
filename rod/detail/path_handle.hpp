@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "handle_base.hpp"
+#include "handle_stat.hpp"
 
 namespace rod
 {
@@ -42,6 +42,19 @@ namespace rod
 
 			friend constexpr bool operator==(const path_handle &, const path_handle &) noexcept = default;
 			friend constexpr bool operator!=(const path_handle &, const path_handle &) noexcept = default;
+
+		public:
+			template<std::same_as<get_stat_t> T>
+			friend auto tag_invoke(T, stat &st, const path_handle &hnd, stat::query q) noexcept { return _handle::do_get_stat(st, hnd.native_handle(), q); }
+			template<std::same_as<set_stat_t> T>
+			friend auto tag_invoke(T, const stat &st, path_handle &hnd, stat::query q) noexcept { return _handle::do_set_stat(st, hnd.native_handle(), q); }
+			template<std::same_as<fs::get_fs_stat_t> T>
+			friend auto tag_invoke(T, fs::fs_stat &st, const path_handle &hnd, fs::fs_stat::query q) noexcept { return _handle::do_get_fs_stat(st, hnd.native_handle(), q); }
+
+			template<std::same_as<fs::to_object_path_t> T>
+			friend auto tag_invoke(T, const path_handle &hnd) noexcept { return _path::do_to_object_path(hnd.native_handle()); }
+			template<std::same_as<fs::to_native_path_t> T>
+			friend auto tag_invoke(T, const path_handle &hnd, fs::native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept { return _path::do_to_native_path(hnd.native_handle(), fmt, dev, ino); }
 		};
 
 		static_assert(handle<path_handle>);

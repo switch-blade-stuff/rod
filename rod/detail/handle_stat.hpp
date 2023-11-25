@@ -4,13 +4,12 @@
 
 #pragma once
 
+#include "handle_base.hpp"
 #include "file_clock.hpp"
 #include "path_view.hpp"
-#include "../tag.hpp"
 
 namespace rod
 {
-	namespace _handle { class basic_handle; }
 	namespace _path { class path_handle; }
 
 	namespace fs
@@ -112,9 +111,6 @@ namespace rod
 
 	namespace _handle
 	{
-		using extent_type = std::uint64_t;
-		using size_type = std::size_t;
-
 		/** Structure containing stats of a filesystem object, derived from POSIX `struct stat`. */
 		struct stat
 		{
@@ -229,12 +225,11 @@ namespace rod
 		constexpr stat::query &operator|=(stat::query &a, stat::query b) noexcept { return a = a | b; }
 		constexpr stat::query &operator^=(stat::query &a, stat::query b) noexcept { return a = a ^ b; }
 
-		/* Default implementation for path types. */
-		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept;
-		inline static result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, const fs::path &path, stat::query q, bool nofollow) noexcept { return do_get_stat(st, base, fs::path_view(path), q, nofollow); }
-
 		template<typename Res>
 		concept stat_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<stat::query>, Res>;
+
+		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, basic_handle::native_handle_type hnd, stat::query q) noexcept;
+		ROD_API_PUBLIC result<stat::query> do_get_stat(stat &st, const _path::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept;
 
 		struct get_stat_t
 		{
@@ -243,8 +238,14 @@ namespace rod
 			template<typename Hnd> requires tag_invocable<get_stat_t, stat &, const Hnd &, stat::query>
 			stat_result auto operator()(stat &st, const Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
 		};
+
+		ROD_API_PUBLIC result<stat::query> do_set_stat(const stat &st, basic_handle::native_handle_type hnd, stat::query q) noexcept;
+		ROD_API_PUBLIC result<stat::query> do_set_stat(const stat &st, const _path::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept;
+
 		struct set_stat_t
 		{
+			template<typename Path> requires one_of<std::decay_t<Path>, fs::path, fs::path_view>
+			result<stat::query> operator()(const stat &st, const _path::path_handle &base, Path &&path, stat::query q = stat::query::all, bool nofollow = false) const noexcept { return do_set_stat(st, base, std::forward<Path>(path), q, nofollow); }
 			template<typename Hnd> requires tag_invocable<set_stat_t, const stat &, Hnd &, stat::query>
 			stat_result auto operator()(const stat &st, Hnd &hnd, stat::query q = stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
 		};
@@ -258,11 +259,13 @@ namespace rod
 	 * @note Some of the queried fields may not be supported by the platform or the filesystems, which will be indicated by a cleared bit in the returned mask.
 	 *
 	 * @overload Queries stats of an object referenced by \a hnd.
+	 * @param st Reference to the `stat` structure receiving values of the selected stats.
 	 * @param hnd Handle to the target object.
 	 * @param q Query flags used to select requested stats.
 	 * @return Mask of the obtained stats, or a status code on failure.
 	 *
 	 * @overload Queries stats of an object referenced by path \a path relative to \a base.
+	 * @param st Reference to the `stat` structure receiving values of the selected stats.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
 	 * @param q Query flags used to select requested stats.
@@ -280,8 +283,18 @@ namespace rod
 	 * <li>`btime`</li>
 	 * </ul>
 	 *
+	 * @overload Modifies stats of an object referenced by \a hnd.
+	 * @param st Reference to the `stat` structure containing new values of the selected stats.
 	 * @param hnd Handle to the target object.
 	 * @param q Query flags used to select modified stats.
+	 * @return Mask of the modified stats, or a status code on failure.
+	 *
+	 * @overload Modifies stats of an object referenced by path \a path relative to \a base.
+	 * @param st Reference to the `stat` structure containing new values of the selected stats.
+	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
+	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
+	 * @param q Query flags used to select modified stats.
+	 * @param nofollow If set to `true`, will not follow symlinks. `false` by default.
 	 * @return Mask of the modified stats, or a status code on failure. */
 	inline constexpr auto set_stat = set_stat_t{};
 
@@ -411,8 +424,13 @@ namespace rod
 		template<typename Res>
 		concept fs_stat_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<fs_stat::query>, Res>;
 
+		ROD_API_PUBLIC result<fs_stat::query> do_get_fs_stat(fs_stat &st, basic_handle::native_handle_type hnd, fs_stat::query q) noexcept;
+		ROD_API_PUBLIC result<fs_stat::query> do_get_fs_stat(fs_stat &st, const _path::path_handle &base, fs::path_view path, fs_stat::query q, bool nofollow) noexcept;
+
 		struct get_fs_stat_t
 		{
+			template<typename Path> requires one_of<std::decay_t<Path>, fs::path, fs::path_view>
+			result<fs_stat::query> operator()(fs_stat &st, const _path::path_handle &base, Path &&path, fs_stat::query q = fs_stat::query::all, bool nofollow = false) const noexcept { return do_get_fs_stat(st, base, std::forward<Path>(path), q, nofollow); }
 			template<typename Hnd> requires tag_invocable<get_fs_stat_t, fs_stat &, const Hnd &, fs_stat::query>
 			fs_stat_result auto operator()(fs_stat &st, const Hnd &hnd, fs_stat::query q = fs_stat::query::all) const noexcept { return tag_invoke(*this, st, hnd, q); }
 		};
@@ -426,5 +444,70 @@ namespace rod
 
 		/** TODO: Document usage. */
 		inline constexpr auto get_fs_stat = get_fs_stat_t{};
+	}
+
+	namespace _path
+	{
+		/** Enumeration used to select representation of the path returned by `to_native_path`. */
+		enum class native_path_format
+		{
+			/** Use any valid implementation-defined path representation. */
+			any = 0,
+			/** Use a generic path representation (ex. use DOS path format under Windows). */
+			generic,
+			/** Use system-native path representation (ex. use Win32 path format under Windows).
+			 * @note Some systems (ex. Linux) do not support different path representations, in which case `system` is same as `generic`. */
+			system,
+
+			/** Use a unique volume ID path representation (Windows only). */
+			volume_id,
+			/** Use a unique object ID path representation (Windows only). */
+			object_id,
+		};
+
+		template<typename Res>
+		concept path_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<fs::path>, result<fs::path>>;
+
+		/* Default implementation for handles. */
+		ROD_API_PUBLIC result<path> do_to_object_path(basic_handle::native_handle_type hnd) noexcept;
+		ROD_API_PUBLIC result<path> do_to_native_path(basic_handle::native_handle_type hnd, native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept;
+
+		struct to_object_path_t
+		{
+			template<typename Hnd> requires tag_invocable<to_object_path_t, const Hnd &>
+			[[nodiscard]] path_result auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
+		};
+		struct to_native_path_t
+		{
+			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
+			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt, fs::dev_t dev, fs::ino_t ino) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
+			{
+				return tag_invoke(*this, hnd, fmt, dev, ino);
+			}
+			template<typename Hnd> requires(!tag_invocable<to_native_path_t, const Hnd &, native_path_format> && _detail::callable<get_stat_t, stat &, const Hnd &, stat::query> && tag_invocable<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>)
+			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
+			{
+				stat st;
+				if (auto res = get_stat(st, hnd, stat::query::dev | stat::query::ino); res.has_value()) [[likely]]
+					return tag_invoke(*this, hnd, fmt, st.dev, st.ino);
+				else
+					return res.error();
+			}
+
+			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format>
+			[[nodiscard]] path_result auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept { return tag_invoke(*this, hnd, fmt); }
+		};
+	}
+
+	namespace fs
+	{
+		using _path::native_path_format;
+		using _path::to_object_path_t;
+		using _path::to_native_path_t;
+
+		/* TODO: Document usage */
+		inline constexpr auto to_object_path = to_object_path_t{};
+		/* TODO: Document usage */
+		inline constexpr auto to_native_path = to_native_path_t{};
 	}
 }

@@ -9,6 +9,7 @@
 #include <variant>
 #include <memory>
 #include <array>
+#include <span>
 
 #include <cstring>
 #include <cwchar>
@@ -573,6 +574,11 @@ namespace rod
 	 * @param max Maximum size of the destination buffer.
 	 * @return Total amount of bytes written to \a dst, or `0` on failure to generate random numbers. */
 	ROD_API_PUBLIC std::size_t system_random(void *buff, std::size_t max) noexcept;
+
+	/** Returns the minimum user-available page size of the current system. */
+	[[nodiscard]] ROD_API_PUBLIC std::size_t get_page_size() noexcept;
+	/** Returns a span of current system's page sizes. If \a avail is set to `true`, returns only the page sizes available to the user. */
+	[[nodiscard]] ROD_API_PUBLIC std::span<const std::size_t> get_page_sizes(bool avail = true) noexcept;
 
 	namespace _detail
 	{

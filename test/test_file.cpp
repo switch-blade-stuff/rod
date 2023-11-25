@@ -95,6 +95,10 @@ int main()
 	read_res = rod::read_some_at(file_copy, {.buffs = {&buff_dst, 1}, .off = 0}).value();
 	TEST_ASSERT(read_res.front().size() == buff_dst.size() && str_dst == str_src);
 
+	auto src = rod::mmap_source::open(file_src).value();
+	auto map = rod::mmap_handle::map(src, 0, 0, rod::mmap_flags::read | rod::mmap_flags::prefault).value();
+	TEST_ASSERT(std::memcmp(map.data(), str_src.data(), str_src.size()) == 0);
+
 #ifndef ROD_WIN32
 	copied = rod::fs::copy_all(curr_dir, "dir-e", curr_dir, "dir-c", rod::fs::copy_mode::files | rod::fs::copy_mode::directories | rod::fs::copy_mode::create_symlinks).value();
 	TEST_ASSERT(copied == 2);

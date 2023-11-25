@@ -4,12 +4,16 @@
 
 #pragma once
 
-#include "handle_stat.hpp"
+#include "../result.hpp"
+#include "timeout.hpp"
 
 namespace rod
 {
 	namespace _handle
 	{
+		using extent_type = std::uint64_t;
+		using size_type = std::size_t;
+
 		class basic_handle;
 
 		template<typename Hnd>
@@ -68,31 +72,18 @@ namespace rod
 	template<typename Hnd>
 	using handle_size_t = typename handle_size<Hnd>::type;
 
-	namespace _close
+	namespace _handle
 	{
 		template<typename Res>
 		concept close_result = is_result_with_value_v<Res, void>;
+		template<typename Res, typename Hnd>
+		concept clone_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
 
 		struct close_t
 		{
 			template<typename Hnd> requires tag_invocable<close_t, Hnd>
 			close_result auto operator()(Hnd &&hnd) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd)); }
 		};
-	}
-
-	using _close::close_t;
-
-	/** Customization point object used to close an open handle.
-	 * @param hnd Handle to close.
-	 * @return `void` result on success or a status code on failure.
-	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `close` on POSIX or `CloseHandle` on Windows. */
-	inline constexpr auto close = close_t{};
-
-	namespace _clone
-	{
-		template<typename Res, typename Hnd>
-		concept clone_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<Hnd>, Res>;
-
 		struct clone_t
 		{
 			template<typename Hnd> requires tag_invocable<clone_t, const Hnd &>
@@ -100,109 +91,19 @@ namespace rod
 		};
 	}
 
-	using _clone::clone_t;
+	using _handle::close_t;
+	using _handle::clone_t;
 
+	/** Customization point object used to close an open handle.
+	 * @param hnd Handle to close.
+	 * @return `void` result on success or a status code on failure.
+	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `close` on POSIX or `CloseHandle` on Windows. */
+	inline constexpr auto close = close_t{};
 	/** Customization point object used to clone a handle.
 	 * @param hnd Handle to clone.
 	 * @return Result containing the cloned handle on success or a status code on failure.
 	 * @errors Error codes are implementation-defined. Default implementation forwards the errors returned by `fcntl(F_DUPFD_CLOEXEC)`, `fcntl(F_DUPFD)`, `fcntl(F_GETFL)`, and `fcntl(F_SETFL)` on POSIX or `DuplicateHandle` on Windows. */
 	inline constexpr auto clone = clone_t{};
-
-	namespace _sync
-	{
-		/** Flags used to control handle synchronization behavior. */
-		enum class sync_mode : int
-		{
-			none = 0,
-			/** Synchronize everything. */
-			all = -1,
-			/** Synchronize handle data only. */
-			data = 1,
-			/** Synchronize handle metadata only. */
-			metadata = 2,
-		};
-
-		[[nodiscard]] constexpr sync_mode operator~(sync_mode h) noexcept { return sync_mode(~int(h)); }
-		[[nodiscard]] constexpr sync_mode operator&(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) & int(b)); }
-		[[nodiscard]] constexpr sync_mode operator|(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) | int(b)); }
-		[[nodiscard]] constexpr sync_mode operator^(sync_mode a, sync_mode b) noexcept { return sync_mode(int(a) ^ int(b)); }
-		constexpr sync_mode &operator&=(sync_mode &a, sync_mode b) noexcept { return a = a & b; }
-		constexpr sync_mode &operator|=(sync_mode &a, sync_mode b) noexcept { return a = a | b; }
-		constexpr sync_mode &operator^=(sync_mode &a, sync_mode b) noexcept { return a = a ^ b; }
-
-		template<typename Res>
-		concept sync_result = instance_of<Res, result> && std::same_as<typename Res::value_type, void>;
-
-		struct sync_t
-		{
-			template<typename Hnd> requires tag_invocable<sync_t, Hnd, sync_mode>
-			sync_result auto operator()(Hnd &&hnd, sync_mode mode = sync_mode::all) const noexcept { return tag_invoke(*this, std::forward<Hnd>(hnd), mode); }
-		};
-	}
-
-	using _sync::sync_mode;
-	using _sync::sync_t;
-
-	/* TODO: Document usage. */
-	inline constexpr auto sync = sync_t{};
-
-	namespace _to_path
-	{
-		/** Enumeration used to select representation of the path returned by `to_native_path`. */
-		enum class native_path_format
-		{
-			/** Use any valid implementation-defined path representation. */
-			any = 0,
-			/** Use a generic path representation (ex. use DOS path format under Windows). */
-			generic,
-			/** Use system-native path representation (ex. use Win32 path format under Windows).
-			 * @note Some systems (ex. Linux) do not support different path representations, in which case `system` is same as `generic`. */
-			system,
-
-			/** Use a unique volume ID path representation (Windows only). */
-			volume_id,
-			/** Use a unique object ID path representation (Windows only). */
-			object_id,
-		};
-
-		template<typename Res>
-		concept path_result = instance_of<Res, result> && std::constructible_from<typename Res::template rebind_value<fs::path>, result<fs::path>>;
-
-		struct to_object_path_t
-		{
-			template<typename Hnd> requires tag_invocable<to_object_path_t, const Hnd &>
-			[[nodiscard]] path_result auto operator()(const Hnd &hnd) const noexcept { return tag_invoke(*this, hnd); }
-		};
-		struct to_native_path_t
-		{
-			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
-			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt, fs::dev_t dev, fs::ino_t ino) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
-			{
-				return tag_invoke(*this, hnd, fmt, dev, ino);
-			}
-			template<typename Hnd> requires(tag_invocable<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t> && !tag_invocable<to_native_path_t, const Hnd &, native_path_format>)
-			[[nodiscard]] auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept -> tag_invoke_result_t<to_native_path_t, const Hnd &, native_path_format, fs::dev_t, fs::ino_t>
-			{
-				stat st;
-				if (auto res = get_stat(st, hnd, stat::query::dev | stat::query::ino); res.has_value()) [[likely]]
-					return tag_invoke(*this, hnd, fmt, st.dev, st.ino);
-				else
-					return res.error();
-			}
-
-			template<typename Hnd> requires tag_invocable<to_native_path_t, const Hnd &, native_path_format>
-			[[nodiscard]] path_result auto operator()(const Hnd &hnd, native_path_format fmt = native_path_format::any) const noexcept { return tag_invoke(*this, hnd, fmt); }
-		};
-	}
-
-	using _to_path::native_path_format;
-	using _to_path::to_object_path_t;
-	using _to_path::to_native_path_t;
-
-	/* TODO: Document usage */
-	inline constexpr auto to_object_path = to_object_path_t{};
-	/* TODO: Document usage */
-	inline constexpr auto to_native_path = to_native_path_t{};
 
 	namespace _handle
 	{
@@ -291,28 +192,9 @@ namespace rod
 			template<typename Hnd>
 			friend auto tag_invoke(clone_t, const Hnd &hnd) noexcept { return hnd.do_clone(); }
 
-			template<typename Hnd>
-			friend auto tag_invoke(get_stat_t, stat &st, const Hnd &hnd, stat::query q) noexcept { return hnd.do_get_stat(st, q); }
-			template<typename Hnd>
-			friend auto tag_invoke(set_stat_t, const stat &st, Hnd &&hnd, stat::query q) noexcept { return hnd.do_set_stat(st, q); }
-			template<typename Hnd>
-			friend auto tag_invoke(get_fs_stat_t, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return hnd.do_get_fs_stat(st, q); }
-
-			template<typename Hnd>
-			friend auto tag_invoke(to_object_path_t, const Hnd &hnd) noexcept { return hnd.do_to_object_path(); }
-			template<typename Hnd>
-			friend auto tag_invoke(to_native_path_t, const Hnd &hnd, native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept { return hnd.do_to_native_path(fmt, dev, ino); }
-
 		private:
 			ROD_API_PUBLIC auto do_close() noexcept -> result<>;
 			ROD_API_PUBLIC auto do_clone() const noexcept -> result<basic_handle>;
-
-			ROD_API_PUBLIC result<stat::query> do_get_stat(stat &, stat::query) const noexcept;
-			ROD_API_PUBLIC result<stat::query> do_set_stat(const stat &, stat::query) noexcept;
-			ROD_API_PUBLIC result<fs_stat::query> do_get_fs_stat(fs_stat &, fs_stat::query) const noexcept;
-
-			ROD_API_PUBLIC result<fs::path> do_to_object_path() const noexcept;
-			ROD_API_PUBLIC result<fs::path> do_to_native_path(native_path_format, fs::dev_t, fs::ino_t) const noexcept;
 
 			native_handle_type _hnd;
 		};
@@ -396,19 +278,6 @@ namespace rod
 			template<typename Hnd>
 			constexpr static auto dispatch_clone(const Hnd &hnd) noexcept -> decltype(hnd.do_clone()) { return hnd.do_clone(); }
 
-			static constexpr int do_to_object_path = 1;
-			static constexpr int do_to_native_path = 1;
-
-			template<typename Hnd>
-			static constexpr bool has_to_object_path() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_to_object_path)); }; }
-			template<typename Hnd>
-			static constexpr bool has_to_native_path() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_to_native_path)); }; }
-
-			template<typename Hnd>
-			constexpr static auto dispatch_to_object_path(const Hnd &hnd) noexcept -> decltype(hnd.do_to_object_path()) { return hnd.do_to_object_path(); }
-			template<typename Hnd>
-			constexpr static auto dispatch_to_native_path(const Hnd &hnd, native_path_format fmt) noexcept -> decltype(hnd.do_to_native_path(fmt)) { return hnd.do_to_native_path(fmt); }
-
 		public:
 			template<std::same_as<close_t> T, decays_to_same<Child> Hnd> requires(has_close<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return dispatch_close(std::forward<Hnd>(hnd)); }
@@ -419,51 +288,6 @@ namespace rod
 			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return dispatch_clone(hnd); }
 			template<std::same_as<clone_t> T, decays_to_same<Child> Hnd> requires(!has_clone<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd) noexcept { return clone_result<Hnd>(T{}(get_adaptor(hnd).base())); }
-
-			template<std::same_as<to_object_path_t> T, decays_to_same<Child> Hnd> requires(has_to_object_path<Hnd>())
-			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return dispatch_to_object_path(hnd); }
-			template<std::same_as<to_object_path_t> T, decays_to_same<Child> Hnd> requires(!has_to_object_path<Hnd>())
-			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return T{}(get_adaptor(hnd).base()); }
-
-			template<std::same_as<to_native_path_t> T, decays_to_same<Child> Hnd> requires(has_to_native_path<Hnd>())
-			friend auto tag_invoke(T, const Hnd &hnd, native_path_format fmt) noexcept { return dispatch_to_native_path(hnd, fmt); }
-			template<std::same_as<to_native_path_t> T, decays_to_same<Child> Hnd> requires(!has_to_native_path<Hnd>())
-			friend auto tag_invoke(T, const Hnd &hnd, native_path_format fmt) noexcept { return T{}(get_adaptor(hnd).base(), fmt); }
-
-		private:
-			static constexpr int do_get_stat = 1;
-			static constexpr int do_set_stat = 1;
-			static constexpr int do_get_fs_stat = 1;
-
-			template<typename Hnd>
-			static constexpr bool has_get_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_get_stat)); }; }
-			template<typename Hnd>
-			static constexpr bool has_set_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_set_stat)); }; }
-			template<typename Hnd>
-			static constexpr bool has_get_fs_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_get_fs_stat)); }; }
-
-			template<typename Hnd>
-			constexpr static auto dispatch_get_stat(stat &st, const Hnd &hnd, stat::query q) noexcept -> decltype(hnd.do_get_stat(st, hnd, q)) { return hnd.do_get_stat(st, hnd, q); }
-			template<typename Hnd>
-			constexpr static auto dispatch_set_stat(const stat &st, Hnd &hnd, stat::query q) noexcept -> decltype(hnd.do_set_stat(st, hnd, q)) { return hnd.do_set_stat(st, hnd, q); }
-			template<typename Hnd>
-			constexpr static auto dispatch_get_fs_stat(fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept -> decltype(hnd.do_get_fs_stat(st, hnd, q)) { return hnd.do_get_fs_stat(st, hnd, q); }
-
-		public:
-			template<std::same_as<get_stat_t> T, decays_to_same<Child> Hnd> requires(has_get_stat<Hnd>())
-			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return dispatch_get_stat(st, hnd, q); }
-			template<std::same_as<get_stat_t> T, decays_to_same<Child> Hnd> requires(!has_get_stat<Hnd>())
-			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
-
-			template<std::same_as<set_stat_t> T, decays_to_same<Child> Hnd> requires(has_set_stat<Hnd>())
-			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return dispatch_set_stat(st, std::forward<Hnd>(hnd), q); }
-			template<std::same_as<set_stat_t> T, decays_to_same<Child> Hnd> requires(!has_set_stat<Hnd>())
-			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return T{}(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q); }
-
-			template<std::same_as<get_fs_stat_t> T, decays_to_same<Child> Hnd> requires(has_get_fs_stat<Hnd>())
-			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return dispatch_get_fs_stat(st, hnd, q); }
-			template<std::same_as<get_fs_stat_t> T, decays_to_same<Child> Hnd> requires(!has_get_fs_stat<Hnd>())
-			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
 
 		protected:
 			[[nodiscard]] constexpr Base &base() & noexcept { return empty_base<Base>::value(); }
@@ -484,12 +308,12 @@ namespace rod
 
 		{ mut_hnd.release() } -> std::convertible_to<typename Hnd::native_handle_type>;
 		{ mut_hnd.release(std::declval<typename Hnd::native_handle_type>()) } -> std::convertible_to<typename Hnd::native_handle_type>;
-	} && _detail::callable<close_t, Hnd &> &&
-		 _detail::callable<clone_t, const Hnd &> &&
-		 _detail::callable<to_object_path_t, const Hnd &> &&
-		 _detail::callable<to_native_path_t, const Hnd &, native_path_format> &&
-		 _detail::callable<get_stat_t, stat &, const Hnd &, stat::query> &&
-		 _detail::callable<set_stat_t, const stat &, Hnd &, stat::query>;
+	} && _detail::callable<close_t, Hnd &> && _detail::callable<clone_t, const Hnd &>;
+
+	/* _detail::callable<to_object_path_t, const Hnd &> &&
+	 * _detail::callable<to_native_path_t, const Hnd &, native_path_format> &&
+	 * _detail::callable<get_stat_t, stat &, const Hnd &, stat::query> &&
+	 * _detail::callable<set_stat_t, const stat &, Hnd &, stat::query> */
 
 	/** Handle adaptor used to implement basic handle functionality. */
 	template<typename Child, handle Base = _handle::basic_handle>

@@ -115,12 +115,12 @@ namespace rod::fs
 		if (src_hnd.has_error()) [[unlikely]]
 			return src_hnd.error();
 
-		auto src_buff = read_some_buffer_t<link_handle>();
+		auto src_buff = link_handle::io_buffer<read_some_t>();
 		auto src_res = read_some(*src_hnd, {{&src_buff, 1}}, to);
 		if (src_res.has_error()) [[unlikely]]
 			return src_res.error();
 
-		auto dst_buff = write_some_buffer_t<link_handle>(src_buff.data(), src_buff.size());
+		auto dst_buff = link_handle::io_buffer<write_some_t>(src_buff.data(), src_buff.size());
 		if (auto dst_hnd = link_handle::open(dst_base, dst_path, file_flags::write, overwrite ? open_mode::always : open_mode::create); dst_hnd.has_value())
 			return write_some(*dst_hnd, {{std::move(*src_res), &dst_buff, 1, src_res->type()}}, to).transform_value(transform);
 		else if (dst_hnd.error() != std::make_error_condition(std::errc::file_exists) || overwrite)
@@ -159,7 +159,7 @@ namespace rod::fs
 			if (full_path.has_error()) [[unlikely]]
 				return full_path.error();
 
-			auto dst_buff = write_some_buffer_t<link_handle>(full_path->native());
+			auto dst_buff = link_handle::io_buffer<write_some_t>(full_path->native());
 			if (auto dst_hnd = link_handle::open(dst_base, dst_path, file_flags::write ^ file_flags::append, overwrite ? open_mode::always : open_mode::create); dst_hnd.has_value())
 				return write_some(*dst_hnd, {{&dst_buff, 1, link_type::symbolic}}, to).transform_value(transform);
 			else if (dst_hnd.error() != std::make_error_condition(std::errc::file_exists) || overwrite)
@@ -206,8 +206,8 @@ namespace rod::fs
 		if (src_hnd.has_error()) [[unlikely]]
 			return src_hnd.error();
 
-		auto buff = read_some_buffer_t<directory_handle>(copy_stats_mask);
-		auto seq = read_some_buffer_sequence_t<directory_handle>(&buff, 1);
+		auto buff = directory_handle::io_buffer<read_some_t>(copy_stats_mask);
+		auto seq = directory_handle::io_buffer_sequence<read_some_t>(&buff, 1);
 		auto num = std::size_t(1);
 
 		for (;;)

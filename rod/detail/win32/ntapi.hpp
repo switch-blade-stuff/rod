@@ -11,18 +11,35 @@
 #include <windows.h>
 #include <ShlObj.h>
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || __has_include(<sal.h>)
 #include <sal.h>
 #else
+#ifndef _In_
 #define _In_
+#endif
+#ifndef _Inout_
 #define _Inout_
+#endif
+#ifndef _In_opt_
 #define _In_opt_
+#endif
+#ifndef _Inout_opt_
+#define _Inout_opt_
+#endif
+#ifndef _Out_
 #define _Out_
+#endif
+#ifndef _Out_writes_to_
 #define _Out_writes_to_(A, B)
+#endif
+#ifndef _Out_writes_bytes_
 #define _Out_writes_bytes_(A)
 #endif
+#endif
 
-#ifdef _MSC_VER
+#if defined(NTAPI)
+#define ROD_NTAPI NTAPI
+#elif defined(_MSC_VER)
 #define ROD_NTAPI __stdcall
 #else
 #define ROD_NTAPI __attribute__((__stdcall__))
@@ -42,16 +59,6 @@ namespace rod::_win32
 
 	[[nodiscard]] inline constexpr bool is_status_failure(ntstatus st) noexcept { return st > message_status_max; }
 
-	inline static _handle::extent_type get_page_size() noexcept
-	{
-		static const _handle::extent_type result = []()
-		{
-			auto info = SYSTEM_INFO();
-			::GetSystemInfo(&info);
-			return info.dwPageSize;
-		}();
-		return result;
-	}
 	inline static _handle::extent_type get_block_size() noexcept
 	{
 		static const auto result = std::max<_handle::extent_type>(4096, get_page_size());
@@ -296,13 +303,8 @@ namespace rod::_win32
 
 	using NtOpenFile_t = ntstatus (ROD_NTAPI *)(_Out_ void **file, _In_ ULONG access, _In_ const object_attributes *obj, _Out_ io_status_block *iosb, _In_ ULONG share, _In_ ULONG opts);
 	using NtCreateFile_t = ntstatus (ROD_NTAPI *)(_Out_ void **file, _In_ ULONG access, _In_ const object_attributes *obj, _Out_ io_status_block *iosb, _In_opt_ const LARGE_INTEGER *size,
-	                                              _In_ ULONG file_attr, _In_ ULONG share, _In_ disposition disp, _In_ ULONG opts, _In_opt_ void *buff, _In_ ULONG len);
+	                                              _In_ ULONG file_attr, _In_ ULONG share, _In_ disposition disp, _In_ ULONG opts, _In_opt_ const void *buff, _In_ ULONG len);
 
-	enum section_info_type
-	{
-		SectionBasicInformation,
-		SectionImageInformation
-	};
 	enum object_info_type
 	{
 		ObjectBasicInformation = 0,
@@ -406,11 +408,11 @@ namespace rod::_win32
 	};
 
 	using NtReadFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff,
-	                                            _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
+	                                            _In_ ULONG len, _In_opt_ const LARGE_INTEGER *off, _In_opt_ ULONG *key);
 	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff,
-	                                             _In_ ULONG len, _In_opt_ LARGE_INTEGER *off, _In_opt_ ULONG *key);
+	                                             _In_ ULONG len, _In_opt_ const LARGE_INTEGER *off, _In_opt_ ULONG *key);
 	using NtQueryDirectoryFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *event, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb,
-	                                                      _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ bool single, _In_opt_ unicode_string *name, _In_ bool restart);
+	                                                      _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ bool single, const _In_opt_ unicode_string *name, _In_ bool restart);
 
 	using NtFlushBuffersFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *iosb);
 	using NtFlushBuffersFileEx_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_ ULONG flags, _In_ void *params, _In_ ULONG params_size, _Out_ io_status_block *iosb);
@@ -446,12 +448,6 @@ namespace rod::_win32
 		};
 	};
 
-	struct section_basic_information
-	{
-		void *base_addr;
-		ULONG attributes;
-		LONGLONG max_size;
-	};
 	struct file_basic_information
 	{
 		filetime btime;
@@ -635,7 +631,122 @@ namespace rod::_win32
 	using NtWaitForSingleObject_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ bool alert, _In_ const filetime *timeout);
 	using NtCancelIoFileEx_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _Out_ io_status_block *req, _Out_ io_status_block *iosb);
 	using NtSetIoCompletion_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ ULONG key_ctx, _In_ ULONG_PTR apc_ctx, _In_ long status, _In_ ULONG info);
-	using NtRemoveIoCompletionEx_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ULONG count, _Out_ ULONG *removed, _In_opt_ LARGE_INTEGER *timeout, _In_ bool alert);
+	using NtRemoveIoCompletionEx_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _Out_writes_to_(count, *removed) io_completion_info *completion_info, _In_ ULONG count, _Out_ ULONG *removed, _In_opt_ const LARGE_INTEGER *timeout, _In_ bool alert);
+
+	enum memory_information_type
+	{
+		MemoryBasicInformation,
+		MemoryWorkingSetInformation,
+		MemoryMappedFilenameInformation,
+		MemoryRegionInformation,
+		MemoryWorkingSetExInformation,
+		MemorySharedCommitInformation,
+	};
+	enum section_info_type
+	{
+		SectionBasicInformation,
+		SectionImageInformation
+	};
+	enum section_inherit
+	{
+		ViewShare = 1,
+		ViewUnmap = 2
+	};
+
+	struct memory_basic_information
+	{
+		void *addr;
+		void *alloc_addr;
+		ULONG alloc_prot;
+		USHORT partition_id;
+		std::size_t region_size;
+		ULONG state;
+		ULONG prot;
+		ULONG type;
+	};
+	struct section_basic_information
+	{
+		void *base_addr;
+		ULONG attributes;
+		LONGLONG max_size;
+	};
+	struct memory_region_information
+	{
+		void *base;
+		ULONG prot;
+		ULONG type; /*MEM_IMAGE, MEM_MAPPED, MEM_PRIVATE*/
+		std::size_t size;
+	};
+	struct memory_working_set_ex_block
+	{
+		union
+		{
+			struct valid_t
+			{
+				ULONG_PTR valid : 1;
+				ULONG_PTR sharecount : 3;
+				ULONG_PTR win32prot : 11;
+				ULONG_PTR shared : 1;
+				ULONG_PTR node : 6;
+				ULONG_PTR locked : 1;
+				ULONG_PTR largepage : 1;
+				ULONG_PTR priority : 3;  // new
+				ULONG_PTR _reserved0 : 3;
+				ULONG_PTR sharedoriginal : 1;  // new
+				ULONG_PTR bad : 1;
+#ifdef _WIN64
+				ULONG_PTR _reserved1 : 32;
+#endif
+			} valid;
+			struct invalid_t
+			{
+				ULONG_PTR valid : 1;
+				ULONG_PTR _reserved0 : 14;
+				ULONG_PTR shared : 1;
+				ULONG_PTR _reserved1 : 5;
+				ULONG_PTR pagetable : 1;     // new
+				ULONG_PTR location : 2;      // new
+				ULONG_PTR priority : 3;      // new
+				ULONG_PTR modifiedlist : 1;  // new
+				ULONG_PTR _reserved2 : 2;
+				ULONG_PTR sharedoriginal : 1;  // new
+				ULONG_PTR bad : 1;
+#ifdef _WIN64
+				ULONG_PTR _reserved3 : 32;
+#endif
+			} invalid;
+		};
+
+	};
+	struct memory_shared_commit_information
+	{
+		std::size_t commit;
+	};
+	struct memory_working_set_ex_information
+	{
+		void *addr;
+		union
+		{
+			memory_working_set_ex_block attrs;
+			ULONG_PTR value;
+		};
+	};
+
+	using NtOpenSection_t = ntstatus (ROD_NTAPI *)(_Out_ void **hnd, _In_ DWORD access, _In_opt_ const object_attributes *attr);
+	using NtCreateSection_t = ntstatus (ROD_NTAPI *)(_Out_ void **hnd, _In_ DWORD access, _In_opt_ const object_attributes *attr, const _In_opt_ LONGLONG *max_size, _In_ ULONG page_prot, _In_ ULONG alloc_attr, _In_ void *file);
+
+	using NtExtendSection_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _Inout_ LONGLONG *new_size);
+	using NtQuerySection_t = ntstatus (ROD_NTAPI *)(_In_ void *hnd, _In_ section_info_type type, _Out_ void *info, _In_ ULONG len, _Out_opt_ ULONG *out_len);
+
+	using NtMapViewOfSection_t = ntstatus (ROD_NTAPI *)(_In_ void *sec_hnd, _In_ void *proc_hnd, _Inout_ void **base_addr, _In_ ULONG_PTR zero, _In_ std::size_t commit, _Inout_opt_ LONGLONG *sec_off, _Inout_ std::size_t *view_size,
+														_In_ section_inherit inherit, _In_ ULONG type, _In_ ULONG prot);
+	using NtUnmapViewOfSection_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _In_opt_ void *addr);
+
+	using NtFreeVirtualMemory_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _Inout_ void **addr, _Inout_ std::size_t *size, _In_ ULONG op);
+	using NtQueryVirtualMemory_t = ntstatus (ROD_NTAPI *)(_In_ void *proc, _In_ void *addr, _In_ memory_information_type type, _Out_ void *info, _In_ ULONG len, _Out_opt_ std::size_t *out_len);
+
+	using DiscardVirtualMemory_t = int (ROD_NTAPI *)(_In_ void *addr, _In_ std::size_t size);
+	using PrefetchVirtualMemory_t = int (ROD_NTAPI *)(_In_ void *proc, _In_ ULONG_PTR n, _In_ WIN32_MEMORY_RANGE_ENTRY *addr_buff, _In_ ULONG flags);
 
 	inline constexpr const wchar_t *bcrypt_primitive_provider = L"Microsoft Primitive Provider";
 	inline constexpr const wchar_t *bcrypt_platform_crypto_provider = L"Microsoft Platform Crypto Provider";
@@ -805,6 +916,9 @@ namespace rod::_win32
 		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
 		ntstatus wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
 
+		ntstatus free_mapped_pages(std::byte *addr, std::size_t size) const noexcept;
+		ntstatus free_virtual_pages(std::byte *addr, std::size_t size, ULONG op) const noexcept;
+
 		void *ntdll;
 		void *bcrypt;
 
@@ -834,6 +948,21 @@ namespace rod::_win32
 		NtSetIoCompletion_t NtSetIoCompletion;
 		NtWaitForSingleObject_t NtWaitForSingleObject;
 		NtRemoveIoCompletionEx_t NtRemoveIoCompletionEx;
+
+		NtOpenSection_t NtOpenSection;
+		NtCreateSection_t NtCreateSection;
+
+		NtQuerySection_t NtQuerySection;
+		NtExtendSection_t NtExtendSection;
+
+		NtFreeVirtualMemory_t NtFreeVirtualMemory;
+		NtQueryVirtualMemory_t NtQueryVirtualMemory;
+
+		NtMapViewOfSection_t NtMapViewOfSection;
+		NtUnmapViewOfSection_t NtUnmapViewOfSection;
+
+		DiscardVirtualMemory_t DiscardVirtualMemory;
+		PrefetchVirtualMemory_t PrefetchVirtualMemory;
 
 		BCryptGenRandom_t BCryptGenRandom;
 		BCryptOpenAlgorithmProvider_t BCryptOpenAlgorithmProvider;

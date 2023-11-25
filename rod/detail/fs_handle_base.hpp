@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "handle_base.hpp"
 #include "path_handle.hpp"
 
 namespace rod
@@ -30,6 +29,9 @@ namespace rod
 			append = 0x10,
 			/** Allow writing and appending of handle data & attributes. */
 			write = data_write | attr_write | append,
+
+			/** Allow reading, writing, and appending of handle data & attributes. */
+			readwrite = read | write,
 
 			/** Disable creation of native sparse files, and instead emulate extents via padding. */
 			no_sparse_files = 0x20,
@@ -98,9 +100,8 @@ namespace rod
 				for (std::size_t i = 0; i < str.size(); ++i)
 				{
 					/* std::rand fallback is fine since it's not used it for cryptography. */
-					if (i >= gen)
-						[[unlikely]]
-								str[i] = alphabet[std::rand() % 16];
+					if (i >= gen) [[unlikely]]
+						str[i] = alphabet[std::rand() % 16];
 					else
 						str[i] = alphabet[str[i] % 16];
 				}
@@ -226,6 +227,73 @@ namespace rod
 			friend auto tag_invoke(T, Hnd &&hnd, const timeout_type &to) noexcept { return dispatch_unlink(std::forward<Hnd>(hnd), to); }
 			template<std::same_as<unlink_t> T, decays_to_same<Child> Hnd> requires(!has_unlink<Hnd>())
 			friend auto tag_invoke(T, Hnd &&hnd, const timeout_type &to) noexcept { return T{}(get_adaptor(std::forward<Hnd>(hnd)).base(), to); }
+
+		private:
+			static constexpr int do_to_object_path = 1;
+			static constexpr int do_to_native_path = 1;
+
+			template<typename Hnd>
+			static constexpr bool has_to_object_path() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_to_object_path)); }; }
+			template<typename Hnd>
+			static constexpr bool has_to_native_path() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_to_native_path)); }; }
+
+			template<typename Hnd>
+			constexpr static auto dispatch_to_object_path(const Hnd &hnd) noexcept -> decltype(hnd.do_to_object_path()) { return hnd.do_to_object_path(); }
+			template<typename Hnd> requires(requires(const Hnd &hnd, fs::native_path_format fmt) { hnd.do_to_native_path(fmt); })
+			constexpr static auto dispatch_to_native_path(const Hnd &hnd, fs::native_path_format fmt) noexcept -> decltype(hnd.do_to_native_path(fmt)) { return hnd.do_to_native_path(fmt); }
+			template<typename Hnd> requires(requires(const Hnd &hnd, fs::native_path_format fmt, fs::dev_t dev, fs::ino_t ino) { hnd.do_to_native_path(fmt, dev, ino); })
+			constexpr static auto dispatch_to_native_path(const Hnd &hnd, fs::native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept -> decltype(hnd.do_to_native_path(fmt, dev, ino)) { return hnd.do_to_native_path(fmt, dev, ino); }
+
+		public:
+			template<std::same_as<fs::to_object_path_t> T, decays_to_same<Child> Hnd> requires(has_to_object_path<Hnd>())
+			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return dispatch_to_object_path(hnd); }
+			template<std::same_as<fs::to_object_path_t> T, decays_to_same<Child> Hnd> requires(!has_to_object_path<Hnd>())
+			friend auto tag_invoke(T, const Hnd &hnd) noexcept { return T{}(get_adaptor(hnd).base()); }
+
+			template<std::same_as<fs::to_native_path_t> T, decays_to_same<Child> Hnd> requires(!has_to_native_path<Hnd>() && _detail::callable<T, copy_cvref_t<Hnd, Base>, fs::native_path_format>)
+			friend auto tag_invoke(T, const Hnd &hnd, fs::native_path_format fmt) noexcept { return T{}(get_adaptor(hnd).base(), fmt); }
+			template<std::same_as<fs::to_native_path_t> T, decays_to_same<Child> Hnd> requires(!has_to_native_path<Hnd>() && _detail::callable<T, copy_cvref_t<Hnd, Base>, fs::native_path_format, fs::dev_t, fs::ino_t>)
+			friend auto tag_invoke(T, const Hnd &hnd, fs::native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept { return T{}(get_adaptor(hnd).base(), fmt, dev, ino); }
+
+			template<std::same_as<fs::to_native_path_t> T, decays_to_same<Child> Hnd>
+			friend auto tag_invoke(T, const Hnd &hnd, fs::native_path_format fmt) noexcept requires(has_to_native_path<Hnd>() && requires { dispatch_to_native_path(hnd, fmt); }) { return dispatch_to_native_path(hnd, fmt); }
+			template<std::same_as<fs::to_native_path_t> T, decays_to_same<Child> Hnd>
+			friend auto tag_invoke(T, const Hnd &hnd, fs::native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept requires(has_to_native_path<Hnd>() && requires { dispatch_to_native_path(hnd, fmt, dev, ino); }) { return dispatch_to_native_path(hnd, fmt, dev, ino); }
+
+		private:
+			static constexpr int do_get_stat = 1;
+			static constexpr int do_set_stat = 1;
+			static constexpr int do_get_fs_stat = 1;
+
+			template<typename Hnd>
+			static constexpr bool has_get_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_get_stat)); }; }
+			template<typename Hnd>
+			static constexpr bool has_set_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_set_stat)); }; }
+			template<typename Hnd>
+			static constexpr bool has_get_fs_stat() noexcept { return !requires { requires bool(int(std::decay_t<Hnd>::do_get_fs_stat)); }; }
+
+			template<typename Hnd>
+			constexpr static auto dispatch_get_stat(stat &st, const Hnd &hnd, stat::query q) noexcept -> decltype(hnd.do_get_stat(st, q)) { return hnd.do_get_stat(st, q); }
+			template<typename Hnd>
+			constexpr static auto dispatch_set_stat(const stat &st, Hnd &hnd, stat::query q) noexcept -> decltype(hnd.do_set_stat(st, q)) { return hnd.do_set_stat(st, q); }
+			template<typename Hnd>
+			constexpr static auto dispatch_get_fs_stat(fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept -> decltype(hnd.do_get_fs_stat(st, q)) { return hnd.do_get_fs_stat(st, q); }
+
+		public:
+			template<std::same_as<get_stat_t> T, decays_to_same<Child> Hnd> requires(has_get_stat<Hnd>())
+			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return dispatch_get_stat(st, hnd, q); }
+			template<std::same_as<get_stat_t> T, decays_to_same<Child> Hnd> requires(!has_get_stat<Hnd>())
+			friend auto tag_invoke(T, stat &st, const Hnd &hnd, stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
+
+			template<std::same_as<set_stat_t> T, decays_to_same<Child> Hnd> requires(has_set_stat<Hnd>())
+			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return dispatch_set_stat(st, std::forward<Hnd>(hnd), q); }
+			template<std::same_as<set_stat_t> T, decays_to_same<Child> Hnd> requires(!has_set_stat<Hnd>())
+			friend auto tag_invoke(T, const stat &st, Hnd &&hnd, stat::query q) noexcept { return T{}(st, get_adaptor(std::forward<Hnd>(hnd)).base(), q); }
+
+			template<std::same_as<get_fs_stat_t> T, decays_to_same<Child> Hnd> requires(has_get_fs_stat<Hnd>())
+			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return dispatch_get_fs_stat(st, hnd, q); }
+			template<std::same_as<get_fs_stat_t> T, decays_to_same<Child> Hnd> requires(!has_get_fs_stat<Hnd>())
+			friend auto tag_invoke(T, fs_stat &st, const Hnd &hnd, fs_stat::query q) noexcept { return T{}(st, get_adaptor(hnd).base(), q); }
 		};
 	}
 
@@ -238,9 +306,14 @@ namespace rod
 			typename Hnd::timeout_type;
 			typename Hnd::extent_type;
 			typename Hnd::size_type;
-		} && /*_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&*/ // Creation of new links is optional.
-		     _detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const typename Hnd::timeout_type &> &&
-		     _detail::callable<_handle::unlink_t, Hnd &, const typename Hnd::timeout_type &>;;
+		} && //_detail::callable<_handle::link_t, Hnd &, const path_handle &, path_view, bool, const handle_timeout_t<Hnd> &> && // Creation of new hardlinks is optional.
+		     _detail::callable<_handle::relink_t, Hnd &, const path_handle &, path_view, bool, const handle_timeout_t<Hnd> &> &&
+		     _detail::callable<_handle::unlink_t, Hnd &, const handle_timeout_t<Hnd> &> &&
+		     _detail::callable<get_fs_stat_t, fs_stat &, const Hnd &, fs_stat::query> &&
+		     _detail::callable<get_stat_t, stat &, const Hnd &, stat::query> &&
+		     _detail::callable<set_stat_t, const stat &, Hnd &, stat::query> &&
+		     _detail::callable<to_native_path_t, const Hnd &, native_path_format> &&
+		     _detail::callable<to_object_path_t, const Hnd &>;
 
 		/** Handle adaptor used to implement filesystem object handles. */
 		template<typename Child, handle Base = basic_handle>
@@ -257,6 +330,13 @@ namespace rod
 			result<> do_link(const fs::path_handle &, fs::path_view, bool, const typename adp_base::timeout_type &) noexcept { return {}; };
 			result<> do_relink(const fs::path_handle &, fs::path_view, bool, const typename adp_base::timeout_type &) noexcept { return {}; };
 			result<> do_unlink(const typename adp_base::timeout_type &) noexcept { return {}; };
+
+			result<stat::query> do_get_stat(stat &, stat::query) const noexcept { return {}; }
+			result<stat::query> do_set_stat(const stat &, stat::query) noexcept { return {}; }
+			result<fs_stat::query> do_get_fs_stat(fs_stat &, fs_stat::query) const noexcept { return {}; }
+
+			result<fs::path> do_to_object_path() const noexcept { return _path::do_to_object_path(native_handle()); }
+			result<fs::path> do_to_native_path(fs::native_path_format, fs::dev_t, fs::ino_t) const noexcept { return {}; }
 		};
 
 		static_assert(fs::fs_handle<dummy_fs_handle>, "Child of `fs_hande_adaptor` must satisfy `fs_handle`");

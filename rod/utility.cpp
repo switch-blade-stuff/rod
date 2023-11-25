@@ -51,4 +51,52 @@ namespace rod
 #endif
 		return 0;
 	}
+
+	std::size_t get_page_size() noexcept
+	{
+#if defined(ROD_WIN32)
+		static const auto value = []()
+		{
+			auto info = SYSTEM_INFO();
+			::GetSystemInfo(&info);
+			return info.dwPageSize;
+		}();
+		return value;
+#elif defined(ROD_POSIX)
+		static const auto value = getpagesize();
+		return std::size_t(value);
+#endif
+	}
+	std::span<const std::size_t> get_page_sizes(bool avail) noexcept
+	{
+		static const auto [all, user] = []() noexcept -> std::pair<std::vector<std::size_t>, std::vector<std::size_t>>
+		{
+			try
+			{
+#if defined(ROD_WIN32)
+				std::pair<std::vector<std::size_t>, std::vector<std::size_t>> result = {{get_page_size()}, {get_page_size()}};
+				if (const auto GetLargePageMinimum = reinterpret_cast<std::size_t (WINAPI *)()>(::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetLargePageMinimum")); GetLargePageMinimum != nullptr)
+				{
+					result.first.push_back(GetLargePageMinimum());
+
+					/* Attempt to enable SeLockMemoryPrivilege */
+					if (void *token; ::OpenProcessToken(::GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &token) != 0)
+					{
+						auto guard = defer_invoke([token]() { ::CloseHandle(token); });
+						auto privs = TOKEN_PRIVILEGES{.PrivilegeCount = 1};
+						if (::LookupPrivilegeValueW(nullptr, L"SeLockMemoryPrivilege", &privs.Privileges[0].Luid))
+						{
+							privs.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+							if (::AdjustTokenPrivileges(token, false, &privs, 0, nullptr, nullptr) != 0 && ::GetLastError() == ERROR_SUCCESS)
+								result.second.push_back(GetLargePageMinimum());
+						}
+					}
+				}
+				return result;
+#endif
+			}
+			catch (...) { return {}; }
+		}();
+		return avail ? user : all;
+	}
 }

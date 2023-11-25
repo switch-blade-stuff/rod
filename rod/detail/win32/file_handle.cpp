@@ -75,6 +75,84 @@ namespace rod::_file
 
 		return file_handle(*hnd, flags, caching);
 	}
+	result<file_handle> file_handle::do_open_anonymous(const path_handle &base, file_flags flags, file_caching caching, file_perm perm) noexcept
+	{
+		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append)) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+		if (bool(flags & file_flags::case_sensitive)) [[unlikely]]
+			return std::make_error_code(std::errc::not_supported);
+
+		const auto &ntapi = ntapi::instance();
+		if (ntapi.has_error()) [[unlikely]]
+			return ntapi.error();
+
+		auto name = _handle::generate_unique_name();
+		if (name.has_error()) [[unlikely]]
+			return name.error();
+
+		auto opts = make_handle_opts(flags, caching) | 0x40; /*FILE_NON_DIRECTORY_FILE*/
+		auto attr = make_handle_attr(flags, caching, perm);
+		auto access = flags_to_access(flags);
+		void *hnd = INVALID_HANDLE_VALUE;
+
+		for (;;)
+		{
+			auto obj_attrib = object_attributes();
+			auto uname = make_ustring(*name);
+			auto iosb = io_status_block();
+
+			obj_attrib.root_dir = base.is_open() ? base.native_handle() : nullptr;
+			obj_attrib.length = sizeof(object_attributes);
+			obj_attrib.name = &uname;
+
+			auto status = ntapi->NtCreateFile(&hnd, access, &obj_attrib, &iosb, nullptr, attr, share, file_create, opts, nullptr, 0);
+			if (status == STATUS_PENDING) [[unlikely]]
+				status = ntapi->wait_io(hnd, &iosb);
+			if (status == 0xc0000035 /*STATUS_OBJECT_NAME_COLLISION*/)
+				continue;
+			if (is_status_failure(status)) [[unlikely]]
+				return status_error_code(status);
+			else
+				break;
+		}
+
+		if (!bool(flags & file_flags::no_sparse_files))
+		{
+			DWORD written = 0;
+			auto buffer = FILE_SET_SPARSE_BUFFER{.SetSparse = 1};
+			::DeviceIoControl(hnd, FSCTL_SET_SPARSE, &buffer, sizeof(buffer), nullptr, 0, &written, nullptr);
+		}
+		/* Flush the file if additional sanity barriers are requested. */
+		if (bool(caching & file_caching::sanity_barriers))
+			::FlushFileBuffers(hnd);
+
+		void *hnd2 = INVALID_HANDLE_VALUE;
+		{
+			auto obj_attrib = object_attributes();
+			auto uname = unicode_string();
+			auto iosb = io_status_block();
+
+			obj_attrib.length = sizeof(object_attributes);
+			obj_attrib.root_dir = hnd;
+			obj_attrib.name = &uname;
+
+			auto status = ntapi->NtOpenFile(&hnd2, SYNCHRONIZE | DELETE, &obj_attrib, &iosb, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0x20 /*FILE_SYNCHRONOUS_IO_NONALERT*/);
+			if (status == STATUS_PENDING) [[unlikely]]
+				status = ntapi->wait_io(hnd, &iosb);
+			if (is_status_failure(status)) [[unlikely]]
+			{
+				::CloseHandle(hnd);
+				return status_error_code(status);
+			}
+		}
+
+		/* Try to immediately delete and hide the file. */
+		if (auto iosb = io_status_block(); !is_status_failure(ntapi->unlink_file(hnd2, &iosb, !bool(flags & file_flags::unlink_on_close), {})))
+			flags &= ~file_flags::unlink_on_close;
+
+		::CloseHandle(hnd2);
+		return file_handle(hnd, flags, caching);
+	}
 	result<file_handle> file_handle::do_reopen(const file_handle &other, file_flags flags, file_caching caching) noexcept
 	{
 		if (!bool(caching & (file_caching::read | file_caching::write)) && bool(flags & file_flags::append))
@@ -161,33 +239,33 @@ namespace rod::_file
 	result<void, io_status_code> file_handle::do_sync(sync_mode mode) noexcept
 	{
 		/* WinNT does not have sparse flush, so do_sync and do_sync_at are identical. */
-		return do_sync_at({.mode = mode});
+		return do_sync_at({}, mode);
 	}
-	io_result<sync_at_t> file_handle::do_sync_at(io_request<sync_at_t> req) noexcept
+	result<void, io_status_code> file_handle::do_sync_at(extent_pair ext, sync_mode mode) noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
 
-		ULONG mode = 0;
-		if ((req.mode & sync_mode::metadata) == sync_mode::none)
-			mode |= 1; /*FLUSH_FLAGS_FILE_DATA_ONLY*/
+		ULONG flush_flags = 0;
+		if ((mode & sync_mode::metadata) == sync_mode::none)
+			flush_flags |= 1; /*FLUSH_FLAGS_FILE_DATA_ONLY*/
 		if (bool(flags() & file_flags::non_blocking))
-			mode |= 2; /*FLUSH_FLAGS_NO_SYNC*/
+			flush_flags |= 2; /*FLUSH_FLAGS_NO_SYNC*/
 
 		auto iosb = io_status_block();
 		auto status = ntstatus();
 
 		/* NtFlushBuffersFileEx may not be supported. */
 		if (!ntapi->NtFlushBuffersFileEx)
-			status = ntapi->NtFlushBuffersFileEx(native_handle(), mode, nullptr, 0, &iosb);
+			status = ntapi->NtFlushBuffersFileEx(native_handle(), flush_flags, nullptr, 0, &iosb);
 		else
 			status = ntapi->NtFlushBuffersFile(native_handle(), &iosb);
 
 		if (is_status_failure(status)) [[unlikely]]
 			return status_error_code(status);
 		else
-			return req.buffs;
+			return {};
 	}
 
 	template<auto IoFunc, typename Op>
@@ -326,7 +404,8 @@ namespace rod::_file
 			::FlushFileBuffers(native_handle());
 		return endp;
 	}
-	io_result<zero_extents_t> file_handle::do_zero_extents(io_request<zero_extents_t> req, const file_timeout &to) noexcept
+
+	io_result_t<file_handle, zero_extents_t> file_handle::do_zero_extents(io_request<zero_extents_t> req, const file_timeout &to) noexcept
 	{
 		if (req.extent.first + req.extent.second < req.extent.first) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);
@@ -377,7 +456,7 @@ namespace rod::_file
 		}
 		return req.extent;
 	}
-	io_result<list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const file_timeout &to) const noexcept
+	io_result_t<file_handle, list_extents_t> file_handle::do_list_extents(io_request<list_extents_t> req, const file_timeout &to) const noexcept
 	{
 		auto buff = FILE_ALLOCATED_RANGE_BUFFER{.Length = {.QuadPart = (extent_type(1) << 63) - 1}};
 		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
@@ -390,8 +469,8 @@ namespace rod::_file
 
 		try
 		{
-			req.buffs.resize(64);
-			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buffs.data(), DWORD(req.buffs.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &written, &ol) == 0)
+			req.buff.resize(64);
+			while (::DeviceIoControl(native_handle(), FSCTL_QUERY_ALLOCATED_RANGES, &buff, sizeof(buff), req.buff.data(), DWORD(req.buff.size() * sizeof(FILE_ALLOCATED_RANGE_BUFFER)), &written, &ol) == 0)
 			{
 				if (const auto err = ::GetLastError(); err == ERROR_IO_PENDING)
 				{
@@ -400,17 +479,17 @@ namespace rod::_file
 						return status_error_code(status);
 				}
 				else if (err == ERROR_INSUFFICIENT_BUFFER || err == ERROR_MORE_DATA)
-					req.buffs.resize(req.buffs.size() * 2);
+					req.buff.resize(req.buff.size() * 2);
 				else if (err != ERROR_SUCCESS) [[unlikely]]
 					return dos_error_code(err);
 			}
 
-			req.buffs.resize(written / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
-			return req.buffs;
+			req.buff.resize(written / sizeof(FILE_ALLOCATED_RANGE_BUFFER));
+			return req.buff;
 		}
 		catch (...) { return _detail::current_error(); }
 	}
-	io_result<clone_extents_to_t> file_handle::do_clone_extents_to(io_request<clone_extents_to_t> req, const file_timeout &to) noexcept
+	io_result_t<file_handle, clone_extents_to_t> file_handle::do_clone_extents_to(io_request<clone_extents_to_t> req, const file_timeout &to) noexcept
 	{
 		constexpr auto stat_mask = stat::query::size | stat::query::ino | stat::query::dev;
 
