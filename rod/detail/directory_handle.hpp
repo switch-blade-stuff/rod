@@ -24,7 +24,7 @@ namespace rod
 			friend handle_adaptor<directory_handle, fs::path_handle>;
 			friend std::lock_guard<directory_handle>;
 
-			using adp_base = fs::fs_handle_adaptor<directory_handle, fs::path_handle>;
+			using adaptor = fs::fs_handle_adaptor<directory_handle, fs::path_handle>;
 
 		public:
 			template<typename>
@@ -278,24 +278,24 @@ namespace rod
 
 			/** Initializes a closed directory handle. */
 			directory_handle() noexcept = default;
-			directory_handle(directory_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
-			directory_handle &operator=(directory_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
+			directory_handle(directory_handle &&other) noexcept : adaptor(std::forward<adaptor>(other)) {}
+			directory_handle &operator=(directory_handle &&other) noexcept { return (adaptor::operator=(std::forward<adaptor>(other)), *this); }
 
 			/** Initializes directory handle from a path handle rvalue and file flags. */
 			explicit directory_handle(fs::path_handle &&hnd, fs::file_flags flags) noexcept : directory_handle(hnd.release(), flags) {}
 			/** Initializes directory handle from a native handle. */
-			explicit directory_handle(typename adp_base::native_handle_type hnd, fs::file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, flags)) {}
+			explicit directory_handle(typename adaptor::native_handle_type hnd, fs::file_flags flags) noexcept : adaptor(typename adaptor::native_handle_type(hnd, flags)) {}
 
 			/** Returns the flags of the directory handle. */
 			[[nodiscard]] constexpr fs::file_flags flags() const noexcept { return fs::file_flags(native_handle().flags); }
 
-			[[nodiscard]] constexpr explicit operator fs::path_handle &() & noexcept { return static_cast<fs::path_handle &>(adp_base::base()); }
-			[[nodiscard]] constexpr operator const fs::path_handle &() const & noexcept { return static_cast<const fs::path_handle &>(adp_base::base()); }
+			[[nodiscard]] constexpr explicit operator fs::path_handle &() & noexcept { return static_cast<fs::path_handle &>(adaptor::base()); }
+			[[nodiscard]] constexpr operator const fs::path_handle &() const & noexcept { return static_cast<const fs::path_handle &>(adaptor::base()); }
 
-			[[nodiscard]] constexpr explicit operator fs::path_handle &&() && noexcept { return static_cast<fs::path_handle &&>(std::move(adp_base::base())); }
-			[[nodiscard]] constexpr operator const fs::path_handle &&() const && noexcept { return static_cast<const fs::path_handle &&>(std::move(adp_base::base())); }
+			[[nodiscard]] constexpr explicit operator fs::path_handle &&() && noexcept { return static_cast<fs::path_handle &&>(std::move(adaptor::base())); }
+			[[nodiscard]] constexpr operator const fs::path_handle &&() const && noexcept { return static_cast<const fs::path_handle &&>(std::move(adaptor::base())); }
 
-			constexpr void swap(directory_handle &other) noexcept { adp_base::swap(other); }
+			constexpr void swap(directory_handle &other) noexcept { adaptor::swap(other); }
 			friend constexpr void swap(directory_handle &a, directory_handle &b) noexcept { a.swap(b); }
 
 		public:

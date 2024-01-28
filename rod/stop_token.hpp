@@ -139,7 +139,8 @@ namespace rod
 		[[nodiscard]] static constexpr bool stop_possible() noexcept { return true; }
 
 	public:
-		in_place_stop_source(in_place_stop_source &&) noexcept = delete;
+		in_place_stop_source(in_place_stop_source &&) = delete;
+		in_place_stop_source(const in_place_stop_source &) = delete;
 
 		constexpr in_place_stop_source() noexcept = default;
 		constexpr ~in_place_stop_source() noexcept = default;
@@ -152,11 +153,13 @@ namespace rod
 		/** Sends a stop request via this stop source. */
 		bool request_stop() noexcept
 		{
-			if (!try_lock(status_t::has_req)) return false;
+			if (!try_lock(status_t::has_req))
+				return false;
 			for (_tid = std::this_thread::get_id(); _nodes; lock())
 			{
 				const auto node = pop();
 				unlock(status_t::has_req);
+
 				if (bool removed = false; !node->invoke(removed))
 				{
 					node->complete.test_and_set(std::memory_order_release);
@@ -194,8 +197,10 @@ namespace rod
 			{
 				for (; flags; flags = _flags.load(std::memory_order_relaxed))
 				{
-					if (flags & status_t::has_req) return false;
-					if (flags & status_t::is_busy) _flags.wait(flags);
+					if (flags & status_t::has_req)
+						return false;
+					if (flags & status_t::is_busy)
+						_flags.wait(flags);
 				}
 
 				if (_flags.compare_exchange_weak(
@@ -209,7 +214,8 @@ namespace rod
 		{
 			const auto node = _nodes;
 			_nodes = node->next_node;
-			if (_nodes) _nodes->this_ptr = &_nodes;
+			if (_nodes != nullptr)
+				_nodes->this_ptr = &_nodes;
 			node->this_ptr = {};
 			return node;
 		}
@@ -223,7 +229,8 @@ namespace rod
 
 			node->next_node = _nodes;
 			node->this_ptr = &_nodes;
-			if (_nodes) _nodes->this_ptr = &node->next_node;
+			if (_nodes != nullptr)
+				_nodes->this_ptr = &node->next_node;
 			_nodes = node;
 
 			unlock();
@@ -232,7 +239,7 @@ namespace rod
 		{
 			if (auto old = lock(); node->this_ptr)
 			{
-				if ((*node->this_ptr = node->next_node))
+				if ((*node->this_ptr = node->next_node) != nullptr)
 					node->next_node->this_ptr = node->this_ptr;
 				unlock(old);
 			}
@@ -243,7 +250,7 @@ namespace rod
 
 				if (tid != std::this_thread::get_id())
 					node->complete.wait(false);
-				else if (node->removed)
+				else if (node->removed != nullptr)
 					*node->removed = true;
 			}
 		}

@@ -20,11 +20,9 @@ namespace rod
 		io_status_code(std::error_code err, _handle::extent_type prt) noexcept : _err(err), _prt(prt) {}
 
 		/** Initializes IO status code from a value and error category. */
-		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
-		io_status_code(V value, const std::error_category &cat) noexcept : _err(value, cat) {}
+		io_status_code(int value, const std::error_category &cat) noexcept : _err(value, cat) {}
 		/** Initializes IO status code from a value, error category, and number of bytes transferred. */
-		template<typename V> requires std::constructible_from<std::error_code, V, const std::error_category &>
-		io_status_code(V value, const std::error_category &cat, _handle::extent_type prt) noexcept : _err(value, cat), _prt(prt) {}
+		io_status_code(int value, const std::error_category &cat, _handle::extent_type prt) noexcept : _err(value, cat), _prt(prt) {}
 
 		/** Resets the status code to an empty state. */
 		void clear() noexcept

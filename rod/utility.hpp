@@ -186,7 +186,7 @@ namespace rod
 
 	/** Utility type used to group type pack \a Ts. */
 	template<typename... Ts>
-	struct type_list_t {};
+	struct type_list_t { static constexpr auto size = sizeof...(Ts); };
 	/** Instance of `rod::type_list_t&lt;Ts...&gt;`. */
 	template<typename... Ts>
 	inline constexpr auto type_list = type_list_t<Ts...>{};
@@ -393,6 +393,14 @@ namespace rod
 				ROD_THROW(std::system_error(err, msg));
 			else
 				ROD_THROW(std::bad_alloc());
+		}
+		[[noreturn]] inline void throw_error_code(std::io_errc err, const std::string &msg = {})
+		{
+			throw_error_code(std::make_error_code(err), msg);
+		}
+		[[noreturn]] inline void throw_error_code(std::errc err, const std::string &msg = {})
+		{
+			throw_error_code(std::make_error_code(err), msg);
 		}
 
 		template<typename Err> requires(!requires (Err e) { e.throw_exception(); } && std::derived_from<std::decay_t<Err>, std::exception>)

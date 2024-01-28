@@ -73,7 +73,11 @@ int main()
 		int i = 0, j = 5;
 		auto g = []<typename T>(T i, T j) -> rod::generator_task<T>
 		{
-			for (; i < j; ++i) co_yield co_await async_return(i);
+			for (; i < j; ++i)
+			{
+				auto res = co_await async_return(i);;
+				co_yield res;
+			}
 		}(i, j);
 
 		for (auto curr = co_await g.begin(); curr != g.end(); co_await ++curr, ++i)

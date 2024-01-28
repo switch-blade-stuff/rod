@@ -8,7 +8,6 @@
 #include "file.hpp"
 #include "mmap.hpp"
 
-#if 0
 #ifdef ROD_WIN32
 #include "win32/iocp_context.hpp"
 #endif
@@ -29,4 +28,3 @@ namespace rod
 	using system_context = run_loop;
 #endif
 }
-#endif

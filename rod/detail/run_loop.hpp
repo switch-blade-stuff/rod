@@ -14,6 +14,7 @@
 #include "queries/progress.hpp"
 #include "priority_queue.hpp"
 #include "atomic_queue.hpp"
+#include "tid_lock.hpp"
 
 namespace rod
 {
@@ -40,6 +41,7 @@ namespace rod
 
 			constexpr operation_base(run_loop *loop, notify_func_t notify) noexcept : _notify_func(notify), _loop(loop) {}
 
+			void notify() noexcept { std::exchange(_notify_func, nullptr)(this); }
 			inline void start() noexcept;
 
 			notify_func_t _notify_func;
@@ -59,6 +61,12 @@ namespace rod
 			timer_operation_base *_timer_prev = {};
 			timer_operation_base *_timer_next = {};
 			time_point _tp;
+		};
+		template<typename F>
+		struct callback_operation : operation_base, empty_base<F>
+		{
+			static void notify(operation_base *ptr) noexcept { static_cast<callback_operation *>(ptr)->value()(); }
+			constexpr callback_operation(run_loop *loop, F &&func) noexcept : operation_base(loop, notify), empty_base<F>(std::forward<F>(func)) {}
 		};
 
 		template<typename Base, typename Rcv>
@@ -162,111 +170,89 @@ namespace rod
 			using clock = _run_loop::clock;
 
 		private:
-			using task_queue_t = _detail::basic_queue<operation_base, &operation_base::_next>;
-
-		public:
-			/** Structure containing scoped thread context used for iterative execution and synchronization. */
-			class thread_context
-			{
-				friend class run_loop;
-
-			public:
-				/** Initializes thread context for run loop \a loop. */
-				thread_context(run_loop &loop) : _loop(&loop) { _loop->push_ctx(this); }
-				~thread_context() { _loop->pop_ctx(this); }
-
-				/** Unblocks and stops the parent thread of this context. Does not stop other threads or the run loop itself unlike `run_loop::finish`. */
-				void finish() noexcept
-				{
-					/* notify_all has to be used since all threads are waiting on the same condition variable. */
-					_is_stopped.test_and_set();
-					_loop->_cnd.notify_all();
-				}
-				/** Returns `true` if the thread context is active, and `false` if `finish` has been called and the thread should terminate it's event loop.
-				 * @note Individual contexts are not stopped when `run_loop::finish` is called. */
-				[[nodiscard]] bool active() const noexcept { return !_is_stopped.test(); }
-
-			private:
-				thread_context *_next_node = nullptr;
-				thread_context **_this_ptr = nullptr;
-				std::atomic_flag _is_stopped;
-
-				task_queue_t _local_queue;
-				run_loop *_loop;
-			};
-
-		private:
 			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a._tp <= b._tp; }};
 			using timer_queue_t = _detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::_timer_prev, &timer_operation_base::_timer_next>;
+			using task_queue_t = _detail::basic_queue<operation_base, &operation_base::_next>;
 
 		public:
 			run_loop(run_loop &&) = delete;
 			run_loop(const run_loop &) = delete;
 
-			run_loop() noexcept = default;
+			run_loop() noexcept { _active.test_and_set(std::memory_order_relaxed); }
 
 			/** Returns a scheduler used to schedule operations and timers to be executed by the run loop. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept { return {this}; }
-			/** Returns copy of the stop source associated with the run loop. */
+
+			/** Returns reference to the stop source associated with the run loop. */
 			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_src; }
 			/** Returns a stop token of the stop source associated with the run loop. */
 			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_src.get_token(); }
 
-			/** Returns `true` if the run loop is active, and `false` if `run_loop::finish` has been called. */
-			[[nodiscard]] bool active() const noexcept { return !_is_stopped.test(); }
-			/** Returns `true` if the run loop has does not have any pending scheduled operations or timers. */
-			[[nodiscard]] bool empty() const noexcept { return ((void) std::unique_lock(_mtx), _task_queue.empty() || _timer_queue.empty()); }
+			/** Returns `true` if the run loop is active, and `false` if `finish` has been called. */
+			[[nodiscard]] bool active() const noexcept { return _active.test(std::memory_order_acquire); }
 
-			/** Dispatches scheduled operations of context `ctx`.
-			 * @return Amount of operations executed. */
-			ROD_API_PUBLIC std::size_t run_once(thread_context &ctx);
-			/** Acquires pending operations and elapsed timers for context `ctx` and blocks if the thread context queue is empty and `block` is equal to `false`.
-			 * @return Amount of operations scheduled to execute on next call to `run_once`.
-			 * @note Associated thread context must be locked to avoid thread contention. */
-			ROD_API_PUBLIC std::size_t poll(thread_context &ctx, bool block = true);
+			/** Dispatches scheduled operations from the consumer queue.
+			 * @return Amount of scheduled operations dispatched.
+			 * @note Returned number might not be the same as the one returned by `poll`. */
+			ROD_API_PUBLIC std::size_t run_once();
+			/** Acquires pending operations and elapsed timers, and schedules them to the consumer queue. Blocks if there are no pending operations or timers and \a block is equal to `true`.
+			 * @param block If set to `true` blocks the thread until new operations or timers are scheduled to the consumer queue, or the run loop is terminated via `finish`.
+			 * @return Amount of operations and timers scheduled to the consumer queue to be executed on next call to `run_once`. */
+			ROD_API_PUBLIC std::size_t poll(bool block = true);
 
 			/** Blocks the current thread until `finish` is called and executes scheduled operations and timers. */
-			void run()
-			{
-				auto ctx = thread_context(*this);
-				run_ctx(ctx);
-			}
+			void run() { run(never_stop_token{}); }
 			/** Blocks the current thread until `finish` is called or stopped via \a tok and executes scheduled operations and timers.
 			 * @param token Stop token used to stop execution of the event loop. */
 			template<stoppable_token Token>
 			void run(Token &&token)
 			{
-				auto ctx = thread_context(*this);
-				auto cb = _detail::make_stop_callback(std::forward<Token>(token), [&ctx]() noexcept { ctx.finish(); });
-				run_ctx(ctx);
+				auto flag = std::atomic_flag();
+				auto op = callback_operation(this, [&flag] { flag.test_and_set(std::memory_order_release); });
+				auto cb = _detail::make_stop_callback(std::forward<Token>(token), [&op]() { op._loop->schedule(&op); });
+
+				for (std::size_t pending = 0;;)
+				{
+					if (pending != 0) [[likely]]
+					{
+						if (const auto n = run_once(); n <= pending)
+							pending -= n;
+						else
+							pending = 0;
+					}
+					if (!flag.test(std::memory_order_acquire) && active())
+						pending += poll(pending == 0);
+					else
+						break;
+				}
 			}
 
 			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */
-			void finish()
-			{
-				_is_stopped.test_and_set();
-				_cnd.notify_all();
-			}
+			void finish() { _active.clear(std::memory_order_release), _cnd.notify_all(); }
 			/** Sends a stop request to the stop source associated with the run loop. */
 			void request_stop() { _stop_src.request_stop(); }
 
 		private:
-			ROD_API_PUBLIC void run_ctx(thread_context &ctx);
-			ROD_API_PUBLIC void pop_ctx(thread_context *ctx);
-			ROD_API_PUBLIC void push_ctx(thread_context *ctx);
+			[[nodiscard]] bool is_consumer_thread() const noexcept { return _consumer_lock.tid.load(std::memory_order_acquire) == std::this_thread::get_id(); }
+			[[nodiscard]] bool has_pending() const noexcept { return !_consumer_queue.empty() || !_producer_queue.empty(); }
 
 			ROD_API_PUBLIC void schedule(operation_base *node);
 			ROD_API_PUBLIC void schedule_timer(timer_operation_base *node);
 
+			void acquire_producer_queue() noexcept;
+			void acquire_elapsed_timers() noexcept;
+
 			mutable std::mutex _mtx;
 			std::condition_variable _cnd;
-			std::atomic_flag _is_stopped;
+			_detail::tid_lock _consumer_lock;
 
+			std::atomic_flag _active;
 			in_place_stop_source _stop_src;
-			thread_context *_ctx_queue = {};
-			timer_queue_t _timer_queue = {};
-			task_queue_t _task_queue = {};
-			time_point _next_timeout = {};
+
+			task_queue_t _consumer_queue;
+			task_queue_t _producer_queue;
+			timer_queue_t _timer_queue;
+			time_point _next_timeout;
 		};
 
 		constexpr in_place_stop_token tag_invoke(get_stop_token_t, const env &s) noexcept { return s._loop->get_stop_token(); }

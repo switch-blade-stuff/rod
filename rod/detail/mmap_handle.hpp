@@ -64,8 +64,8 @@ namespace rod
 		/** Object represenging source of a memory mapping such as a file or a memory-backed shared mapping. */
 		class mmap_source : public handle_adaptor<mmap_source>
 		{
-			using adp_base = handle_adaptor<mmap_source>;
-			friend adp_base;
+			using adaptor = handle_adaptor<mmap_source>;
+			friend adaptor;
 
 		public:
 			/** Creates a memory mapping source backed by an anonymous temporary file.
@@ -93,18 +93,18 @@ namespace rod
 
 			/** Initializes a closed memory mapping source handle. */
 			mmap_source() noexcept = default;
-			mmap_source(mmap_source &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
-			mmap_source &operator=(mmap_source &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
+			mmap_source(mmap_source &&other) noexcept : adaptor(std::forward<adaptor>(other)) {}
+			mmap_source &operator=(mmap_source &&other) noexcept { return (adaptor::operator=(std::forward<adaptor>(other)), *this); }
 
 			/** Initializes memory mapping source handle from a basic handle rvalue and flags. */
 			explicit mmap_source(basic_handle &&hnd, mmap_flags flags) noexcept : mmap_source(hnd.release(), flags) {}
 			/** Initializes memory mapping source handle from a native handle and flags. */
-			explicit mmap_source(typename adp_base::native_handle_type hnd, mmap_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags))) {}
+			explicit mmap_source(typename adaptor::native_handle_type hnd, mmap_flags flags) noexcept : adaptor(typename adaptor::native_handle_type(hnd, std::uint32_t(flags))) {}
 
 			/** Returns the flags of the mapping source handle. */
 			[[nodiscard]] constexpr mmap_flags flags() const noexcept { return mmap_flags(native_handle().flags); }
 
-			constexpr void swap(mmap_source &other) noexcept { adp_base::swap(other); }
+			constexpr void swap(mmap_source &other) noexcept { adaptor::swap(other); }
 			friend constexpr void swap(mmap_source &a, mmap_source &b) noexcept { a.swap(b); }
 
 		public:

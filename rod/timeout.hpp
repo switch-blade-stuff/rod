@@ -7,7 +7,7 @@
 #include <variant>
 #include <chrono>
 
-#include "../utility.hpp"
+#include "utility.hpp"
 
 namespace rod
 {

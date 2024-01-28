@@ -153,10 +153,10 @@ namespace rod
 		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_DATA_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_data_home_directory() noexcept;
 		/** Returns handle to the current user's cache home directory. Cache home directory is used to store user-specific cache files.
-		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_CACHE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CACHE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_cache_home_directory() noexcept;
 		/** Returns handle to the current user's state home directory. State home directory is used to store user-specific state files.
-		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_STATE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_STATE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_state_home_directory() noexcept;
 		/** Returns handle to the current user's config home directory. Config home directory is used to store user-specific config files.
 		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CONFIG_HOME</a>. */
@@ -168,10 +168,10 @@ namespace rod
 		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_DATA_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_data_home_directory() noexcept;
 		/** Returns handle to the user's cache home directory acquired during static initialization. Cache home directory is used to store user-specific cache files.
-		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_CACHE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CACHE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_cache_home_directory() noexcept;
 		/** Returns handle to the user's state home directory acquired during static initialization. State home directory is used to store user-specific state files.
-		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">XDG_STATE_HOME</a>. */
+		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_STATE_HOME</a>. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_state_home_directory() noexcept;
 		/** Returns handle to the user's config home directory acquired during static initialization. Config home directory is used to store user-specific config files.
 		 * This directory corresponds to <a href="https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html">$XDG_CONFIG_HOME</a>. */

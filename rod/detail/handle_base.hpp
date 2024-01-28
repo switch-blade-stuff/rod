@@ -4,8 +4,8 @@
 
 #pragma once
 
+#include "../timeout.hpp"
 #include "../result.hpp"
-#include "timeout.hpp"
 
 namespace rod
 {
@@ -325,8 +325,8 @@ namespace rod
 	{
 		struct dummy_handle : rod::handle_adaptor<dummy_handle, basic_handle>
 		{
-			using adp_base = rod::handle_adaptor<dummy_handle, basic_handle>;
-			using adp_base::adp_base;
+			using adaptor = rod::handle_adaptor<dummy_handle, basic_handle>;
+			using adaptor::adaptor;
 		};
 
 		static_assert(handle<dummy_handle>, "Child of `hande_adaptor` must satisfy `handle`");

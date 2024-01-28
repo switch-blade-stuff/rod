@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "timeout.hpp"
+#include "../timeout.hpp"
 
 namespace rod::fs
 {
@@ -83,6 +83,8 @@ namespace rod::fs
 	using file_clock = std::chrono::system_clock;
 #endif
 
+	/** Time point of `file_clock` clock. */
+	using file_time_point = typename file_clock::time_point;
 	/** Timeout type using `file_clock`. */
 	using file_timeout = basic_timeout<file_clock>;
 }

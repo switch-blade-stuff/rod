@@ -39,7 +39,7 @@ namespace rod
 
 		class link_handle : public io_handle_adaptor<link_handle, handle_base, fs_handle_adaptor>
 		{
-			using adp_base = io_handle_adaptor<link_handle, handle_base, fs_handle_adaptor>;
+			using adaptor = io_handle_adaptor<link_handle, handle_base, fs_handle_adaptor>;
 
 			friend io_handle_adaptor<link_handle, handle_base, fs_handle_adaptor>;
 			friend fs_handle_adaptor<link_handle, handle_base>;
@@ -245,12 +245,12 @@ namespace rod
 			/** Initializes link handle from a basic handle rvalue and file flags. */
 			explicit link_handle(basic_handle &&hnd, file_flags flags) noexcept : link_handle(hnd.release(), flags) {}
 			/** Initializes link handle from a native handle and file flags. */
-			explicit link_handle(typename adp_base::native_handle_type hnd, file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags))) {}
+			explicit link_handle(typename adaptor::native_handle_type hnd, file_flags flags) noexcept : adaptor(typename adaptor::native_handle_type(hnd, std::uint32_t(flags))) {}
 #else
 			/** Initializes link handle from a base path handle rvalue, leaf pathname and file flags. */
 			explicit link_handle(path_handle &&base, path_view path, file_flags flags) noexcept : link_handle(base.release(), path, flags) {}
 			/** Initializes link handle from a native base path handle, leaf pathname and file flags. */
-			explicit link_handle(typename adp_base::native_handle_type base, path_view path, file_flags flags) noexcept : adp_base(typename adp_base::native_handle_type(base, std::uint32_t(flags))), _path(path) {}
+			explicit link_handle(typename adaptor::native_handle_type base, path_view path, file_flags flags) noexcept : adaptor(typename adaptor::native_handle_type(base, std::uint32_t(flags))), _path(path) {}
 #endif
 
 			~link_handle() { if (is_open()) do_close(); }
@@ -259,11 +259,11 @@ namespace rod
 			[[nodiscard]] constexpr file_flags flags() const noexcept { return file_flags(native_handle().flags); }
 
 #ifdef ROD_HAS_SYMLINK_HANDLE
-			constexpr void swap(link_handle &other) noexcept { adp_base::swap(other); }
+			constexpr void swap(link_handle &other) noexcept { adaptor::swap(other); }
 #else
 			constexpr void swap(link_handle &other) noexcept
 			{
-				adp_base::swap(other);
+				adaptor::swap(other);
 				_path.swap(other._path);
 			}
 #endif

@@ -487,8 +487,8 @@ namespace rod::_win32
 		const auto status = NtCancelIoFileEx(handle, iosb, iosb);
 		if (is_status_failure(status))
 		{
-			if (status == 0xc0000225 /* STATUS_NOT_FOUND */)
-				return iosb->status = 0xc0000120 /*STATUS_CANCELLED */;
+			if (status == 0xc0000225 /*STATUS_NOT_FOUND*/)
+				return iosb->status = 0xc0000120 /*STATUS_CANCELLED*/;
 			else
 				return status;
 		}

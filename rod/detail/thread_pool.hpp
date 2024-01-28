@@ -244,7 +244,7 @@ namespace rod
 				}
 				void start(thread_pool *pool, std::size_t id) noexcept
 				{
-					thread = std::jthread{[=]() { pool->worker_main(id); }};
+					thread = std::jthread{[](auto *pool, auto id) { pool->worker_main(id); }, pool, id};
 				}
 
 				void push(operation_base *node) noexcept
@@ -273,19 +273,20 @@ namespace rod
 			ROD_API_PUBLIC thread_pool(std::size_t size);
 			ROD_API_PUBLIC ~thread_pool();
 
-			/** Changes the internal state to stopped and terminates worker threads.
-			 * @note After a call to `finish` the thread pool will no longer be dispatching scheduled operations. */
-			ROD_API_PUBLIC void finish() noexcept;
-
 			/** Returns a scheduler used to schedule work to be executed on the thread pool. */
 			[[nodiscard]] constexpr scheduler get_scheduler() noexcept;
-			/** Returns the number of worker threads managed by the thread pool. */
-			[[nodiscard]] std::size_t size() const noexcept { return _workers.size(); }
 
 			/** Returns copy of the stop source associated with the thread pool. */
 			[[nodiscard]] constexpr in_place_stop_source &get_stop_source() noexcept { return _stop_src; }
 			/** Returns a stop token of the stop source associated with the thread pool. */
 			[[nodiscard]] constexpr in_place_stop_token get_stop_token() const noexcept { return _stop_src.get_token(); }
+
+			/** Returns the number of worker threads managed by the thread pool. */
+			[[nodiscard]] std::size_t size() const noexcept { return _workers.size(); }
+
+			/** Changes the internal state to stopped and terminates worker threads.
+			 * @note After a call to `finish` the thread pool will no longer be dispatching scheduled operations. */
+			ROD_API_PUBLIC void finish() noexcept;
 			/** Sends a stop request to the stop source associated with the thread pool. */
 			void request_stop() { _stop_src.request_stop(); }
 

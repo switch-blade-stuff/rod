@@ -422,6 +422,47 @@ namespace rod
 	template<typename Hnd>
 	concept stream_io_handle = stream_input_handle<Hnd> && stream_output_handle<Hnd>;
 
+	namespace _io_operation
+	{
+		template<typename Snd, typename Op, typename Hnd, typename Env = empty_env>
+		concept sender_of_io_result = sender_of<Snd, completion_signatures<set_value_t(io_result_t<std::decay_t<Hnd>, Op>)>, Env>;
+
+		template<typename Op>
+		struct async_adaptor { class type; };
+		template<typename Op>
+		class async_adaptor<Op>::type
+		{
+			template<typename Hnd> requires has_io_request<std::decay_t<Hnd>, Op>
+			using request_t = io_request_t<std::decay_t<Hnd>, Op>;
+			template<typename Hnd> requires has_timeout<std::decay_t<Hnd>>
+			using timeout_t = handle_timeout_t<std::decay_t<Hnd>>;
+
+		public:
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>, std::convertible_to<timeout_t<Hnd>> To = timeout_t<Hnd>> requires tag_invocable<Op, Hnd, Req, To>
+			constexpr sender_of_io_result<Op, Hnd> auto operator()(Hnd &&hnd, Req &&req, To &&to) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), std::forward<To>(to)); }
+			template<decay_has_io_definitions<Op> Hnd, std::convertible_to<request_t<Hnd>> Req = request_t<Hnd>> requires tag_invocable<Op, Hnd, Req, timeout_t<Hnd>>
+			constexpr sender_of_io_result<Op, Hnd> auto operator()(Hnd &&hnd, Req &&req) const noexcept { return tag_invoke(Op{}, std::forward<Hnd>(hnd), std::forward<Req>(req), timeout_t<Hnd>()); }
+		};
+	}
+
+	namespace _read_some
+	{
+		struct async_read_some_at_t : _io_operation::async_adaptor<async_read_some_at_t>::type {};
+		struct async_read_some_t : _io_operation::async_adaptor<async_read_some_t>::type {};
+	}
+
+	using _read_some::async_read_some_at_t;
+	using _read_some::async_read_some_t;
+
+	namespace _write_some
+	{
+		struct async_write_some_at_t : _io_operation::async_adaptor<async_write_some_at_t>::type {};
+		struct async_write_some_t : _io_operation::async_adaptor<async_write_some_t>::type {};
+	}
+
+	using _write_some::async_write_some_at_t;
+	using _write_some::async_write_some_t;
+
 	/* TODO: Implement async IO operations. */
 
 	namespace _handle
@@ -431,7 +472,7 @@ namespace rod
 		template<typename Child, typename Base, template <typename, typename> typename BaseAdaptor>
 		class io_handle_adaptor<Child, Base, BaseAdaptor>::type : public BaseAdaptor<Child, Base>
 		{
-			using adp_base = BaseAdaptor<Child, Base>;
+			using adaptor = BaseAdaptor<Child, Base>;
 
 			friend BaseAdaptor<Child, Base>;
 			friend Child;
@@ -451,19 +492,19 @@ namespace rod
 			type &operator=(const type &) = delete;
 
 			type() noexcept = default;
-			type(type &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
-			type &operator=(type &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
+			type(type &&other) noexcept : adaptor(std::forward<adaptor>(other)) {}
+			type &operator=(type &&other) noexcept { return (adaptor::operator=(std::forward<adaptor>(other)), *this); }
 
-			template<typename... Args> requires std::constructible_from<adp_base, Base, Args...>
-			explicit type(Base &&other, Args &&...args) noexcept : adp_base(std::forward<Base>(other), std::forward<Args>(args)...) {}
-			template<typename... Args> requires std::constructible_from<adp_base, typename adp_base::native_handle_type, Args...>
-			explicit type(typename adp_base::native_handle_type hnd, Args &&...args) noexcept : adp_base(hnd, std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adaptor, Base, Args...>
+			explicit type(Base &&other, Args &&...args) noexcept : adaptor(std::forward<Base>(other), std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adaptor, typename adaptor::native_handle_type, Args...>
+			explicit type(typename adaptor::native_handle_type hnd, Args &&...args) noexcept : adaptor(hnd, std::forward<Args>(args)...) {}
 
-			using adp_base::release;
-			using adp_base::is_open;
-			using adp_base::native_handle;
+			using adaptor::release;
+			using adaptor::is_open;
+			using adaptor::native_handle;
 
-			constexpr void swap(type &other) noexcept { adl_swap(static_cast<adp_base &>(*this), static_cast<adp_base &>(get_adaptor(other))); }
+			constexpr void swap(type &other) noexcept { adl_swap(static_cast<adaptor &>(*this), static_cast<adaptor &>(get_adaptor(other))); }
 			friend constexpr void swap(type &a, type &b) noexcept { a.swap(b); }
 
 		private:
@@ -573,7 +614,10 @@ namespace rod
 
 		public:
 			template<decays_to_same<list_extents_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_list_extents<Hnd>()) { return dispatch_list_extents(std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_list_extents<Hnd>() && requires { dispatch_list_extents(std::forward<Hnd>(hnd), std::forward<Req>(req), to); })
+			{
+				return dispatch_list_extents(std::forward<Hnd>(hnd), std::forward<Req>(req), to);
+			}
 			template<decays_to_same<list_extents_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_list_extents<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
@@ -581,7 +625,10 @@ namespace rod
 			}
 
 			template<decays_to_same<clone_extents_to_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_clone_extents_to<Hnd>()) { return dispatch_clone_extents_to(std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_clone_extents_to<Hnd>() && requires { dispatch_clone_extents_to(std::forward<Hnd>(hnd), std::forward<Req>(req), to); })
+			{
+				return dispatch_clone_extents_to(std::forward<Hnd>(hnd), std::forward<Req>(req), to);
+			}
 			template<decays_to_same<clone_extents_to_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_clone_extents_to<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
@@ -610,7 +657,10 @@ namespace rod
 
 		public:
 			template<decays_to_same<read_some_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_read_some<Hnd>()) { return dispatch_read_some(std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_read_some<Hnd>() && requires { dispatch_read_some(std::forward<Hnd>(hnd), std::forward<Req>(req), to); })
+			{
+				return dispatch_read_some(std::forward<Hnd>(hnd), std::forward<Req>(req), to);
+			}
 			template<decays_to_same<read_some_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_read_some<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
@@ -618,7 +668,10 @@ namespace rod
 			}
 
 			template<decays_to_same<read_some_at_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_read_some_at<Hnd>()) { return dispatch_read_some_at(std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_read_some_at<Hnd>() && requires { dispatch_read_some_at(std::forward<Hnd>(hnd), std::forward<Req>(req), to); })
+			{
+				return dispatch_read_some_at(std::forward<Hnd>(hnd), std::forward<Req>(req), to);
+			}
 			template<decays_to_same<read_some_at_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_read_some_at<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
@@ -647,7 +700,10 @@ namespace rod
 
 		public:
 			template<decays_to_same<write_some_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_write_some<Hnd>()) { return dispatch_write_some(std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_write_some<Hnd>() && requires { dispatch_write_some(std::forward<Hnd>(hnd), std::forward<Req>(req), to); })
+			{
+				return dispatch_write_some(std::forward<Hnd>(hnd), std::forward<Req>(req), to);
+			}
 			template<decays_to_same<write_some_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_write_some<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{
@@ -655,7 +711,11 @@ namespace rod
 			}
 
 			template<decays_to_same<write_some_at_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
-			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_write_some_at<Hnd>()) { return dispatch_write_some_at(std::forward<Hnd>(hnd), std::forward<Req>(req), to); }
+			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(has_write_some_at<Hnd>() && requires { dispatch_write_some_at(std::forward<Hnd>(hnd), std::forward<Req>(req), to); })
+			{
+				return dispatch_write_some_at(std::forward<Hnd>(hnd), std::forward<Req>(req), to);
+			}
+
 			template<decays_to_same<write_some_at_t> Op, decays_to_same<Child> Hnd, decays_to_same<io_request_t<std::decay_t<Hnd>, Op>> Req, std::convertible_to<handle_timeout_t<std::decay_t<Hnd>>> To>
 			friend decltype(auto) tag_invoke(Op, Hnd &&hnd, Req &&req, const To &to) noexcept requires(!has_write_some_at<Hnd>() && _detail::callable<Op, copy_cvref_t<Hnd, Base>, Req, const To &>)
 			{

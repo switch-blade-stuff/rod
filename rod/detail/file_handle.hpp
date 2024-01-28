@@ -52,11 +52,11 @@ namespace rod
 		/** Handle to a sparse IO file. */
 		class file_handle : public io_handle_adaptor<file_handle, basic_handle, fs_handle_adaptor>
 		{
-			using adp_base = io_handle_adaptor<file_handle, basic_handle, fs_handle_adaptor>;
-
 			friend io_handle_adaptor<file_handle, basic_handle, fs_handle_adaptor>;
 			friend fs_handle_adaptor<file_handle, basic_handle>;
 			friend handle_adaptor<file_handle, basic_handle>;
+
+			using adaptor = io_handle_adaptor<file_handle, basic_handle, fs_handle_adaptor>;
 
 		public:
 			template<typename Op>
@@ -216,13 +216,13 @@ namespace rod
 
 			/** Initializes a closed file handle. */
 			file_handle() noexcept = default;
-			file_handle(file_handle &&other) noexcept : adp_base(std::forward<adp_base>(other)) {}
-			file_handle &operator=(file_handle &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), *this); }
+			file_handle(file_handle &&other) noexcept : adaptor(std::forward<adaptor>(other)) {}
+			file_handle &operator=(file_handle &&other) noexcept { return (adaptor::operator=(std::forward<adaptor>(other)), *this); }
 
 			/** Initializes file handle from a basic handle rvalue, file flags, and caching mode. */
 			explicit file_handle(basic_handle &&hnd, file_flags flags, file_caching caching) noexcept : file_handle(hnd.release(), flags, caching) {}
 			/** Initializes file handle from a native handle, file flags, and caching mode. */
-			explicit file_handle(typename adp_base::native_handle_type hnd, file_flags flags, file_caching caching) noexcept : adp_base(typename adp_base::native_handle_type(hnd, std::uint32_t(flags) | (std::uint32_t(caching) << 16))) {}
+			explicit file_handle(typename adaptor::native_handle_type hnd, file_flags flags, file_caching caching) noexcept : adaptor(typename adaptor::native_handle_type(hnd, std::uint32_t(flags) | (std::uint32_t(caching) << 16))) {}
 
 			~file_handle() { if (is_open()) do_close(); }
 
@@ -231,7 +231,7 @@ namespace rod
 			/** Returns the caching mode of the file handle. */
 			[[nodiscard]] constexpr file_caching caching() const noexcept { return file_caching((native_handle().flags >> 16) & 0xff); }
 
-			constexpr void swap(file_handle &other) noexcept { adp_base::swap(other); }
+			constexpr void swap(file_handle &other) noexcept { adaptor::swap(other); }
 			friend constexpr void swap(file_handle &a, file_handle &b) noexcept { a.swap(b); }
 
 		private:
@@ -281,18 +281,18 @@ namespace rod
 		template<typename FileBase>
 		class file_stream_adaptor<FileBase>::type : public io_handle_adaptor<type, FileBase, fs_handle_adaptor>
 		{
-			using adp_base = io_handle_adaptor<type, FileBase, fs_handle_adaptor>;
-
 			friend io_handle_adaptor<type, FileBase, fs_handle_adaptor>;
 			friend handle_adaptor<type, FileBase>;
+
+			using adaptor = io_handle_adaptor<type, FileBase, fs_handle_adaptor>;
 
 		public:
 			struct reopen_t
 			{
-				template<typename Base = FileBase> requires(!tag_invocable<reopen_t, const Base &, file_flags, file_caching> && tag_invocable<typename Base::reopen_t, const Base &, file_flags, file_caching>)
+				template<typename Base = FileBase> requires(!tag_invocable<reopen_t, const Base &, file_flags, file_caching> && tag_invocable<typename file_handle::reopen_t, const Base &, file_flags, file_caching>)
 				file_stream_like_result auto operator()(const typename file_stream_adaptor<Base>::type &other, file_flags flags = file_flags::read, file_caching caching = file_caching::all) const noexcept
 				{
-					return typename Base::reopen_t{}(other.base(), flags, caching).transform_value([](Base &&base) { return typename file_stream_adaptor<Base>::type(std::forward<Base>(base)); });
+					return file_handle::reopen(other.base(), flags, caching).transform_value([](Base &&base) { return typename file_stream_adaptor<Base>::type(std::forward<Base>(base)); });
 				}
 				template<typename Base = FileBase> requires tag_invocable<reopen_t, const Base &, file_flags, file_caching>
 				file_stream_like_result auto operator()(const typename file_stream_adaptor<Base>::type &other, file_flags flags = file_flags::read, file_caching caching = file_caching::all) const noexcept
@@ -309,7 +309,7 @@ namespace rod
 				template<scheduler Sch> requires(!tag_invocable<open_t, Sch, const path_handle &, path_view, file_flags, open_mode, file_caching, file_perm> && _detail::callable<typename FileBase::open_t, Sch, const path_handle &, path_view, file_flags, open_mode, file_caching, file_perm>)
 				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
-					return typename FileBase::open_t{}(std::forward<Sch>(sch), base, path, flags, mode, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
+					return typename FileBase::open_t{}(std::forward<Sch>(sch), base, path, flags, mode, caching, perm).transform_value([]<typename Hnd>(Hnd &&hnd) { return typename file_stream_adaptor<Hnd>::type(std::forward<Hnd>(hnd)); });
 				}
 				template<scheduler Sch> requires tag_invocable<open_t, Sch, const path_handle &, path_view, file_flags, open_mode, file_caching, file_perm>
 				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::existing, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
@@ -331,7 +331,7 @@ namespace rod
 				template<scheduler Sch> requires(!tag_invocable<open_unique_t, Sch, const path_handle &, file_flags, file_caching, file_perm> && _detail::callable<typename FileBase::open_unique_t, Sch, const path_handle &, file_flags, file_caching, file_perm>)
 				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::read, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
-					return typename FileBase::open_unique_t{}(std::forward<Sch>(sch), base, flags, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
+					return typename FileBase::open_unique_t{}(std::forward<Sch>(sch), base, flags, caching, perm).transform_value([]<typename Hnd>(Hnd &&hnd) { return typename file_stream_adaptor<Hnd>::type(std::forward<Hnd>(hnd)); });
 				}
 				template<scheduler Sch> requires tag_invocable<open_unique_t, Sch, const path_handle &, file_flags, file_caching, file_perm>
 				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::read, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
@@ -353,7 +353,7 @@ namespace rod
 				template<scheduler Sch> requires(!tag_invocable<open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm> && _detail::callable<typename FileBase::open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm>)
 				file_stream_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
 				{
-					return typename FileBase::open_temporary_t{}(std::forward<Sch>(sch), path, flags, mode, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
+					return typename FileBase::open_temporary_t{}(std::forward<Sch>(sch), path, flags, mode, caching, perm).transform_value([]<typename Hnd>(Hnd &&hnd) { return typename file_stream_adaptor<Hnd>::type(std::forward<Hnd>(hnd)); });
 				}
 				template<scheduler Sch> requires tag_invocable<open_temporary_t, Sch, path_view, file_flags, open_mode, file_caching, file_perm>
 				file_stream_like_result auto operator()(Sch &&sch, path_view path, file_flags flags = file_flags::read, open_mode mode = open_mode::always, file_caching caching = file_caching::all, file_perm perm = file_perm::all) const noexcept
@@ -370,6 +370,28 @@ namespace rod
 			/* TODO: Document usage */
 			static constexpr auto open_temporary = open_temporary_t{};
 
+			struct open_anonymous_t
+			{
+				template<scheduler Sch> requires(!tag_invocable<open_temporary_t, Sch, const path_handle &, file_flags, file_caching, file_perm> && _detail::callable<typename FileBase::open_anonymous_t, Sch, const path_handle &, file_flags, file_caching, file_perm>)
+				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::readwrite, file_caching caching = file_caching::all | file_caching::temporary, file_perm perm = file_perm::all) const noexcept
+				{
+					return typename FileBase::open_anonymous_t{}(std::forward<Sch>(sch), base, flags, caching, perm).transform_value([]<typename Hnd>(Hnd &&hnd) { return typename file_stream_adaptor<Hnd>::type(std::forward<Hnd>(hnd)); });
+				}
+				template<scheduler Sch> requires tag_invocable<open_temporary_t, Sch, const path_handle &, file_flags, file_caching, file_perm>
+				file_stream_like_result auto operator()(Sch &&sch, const path_handle &base, file_flags flags = file_flags::readwrite, file_caching caching = file_caching::all | file_caching::temporary, file_perm perm = file_perm::all) const noexcept
+				{
+					return tag_invoke(*this, std::forward<Sch>(sch), base, flags, caching, perm);
+				}
+
+				result<type> operator()(const path_handle &base, file_flags flags = file_flags::readwrite, file_caching caching = file_caching::all | file_caching::temporary, file_perm perm = file_perm::all) const noexcept
+				{
+					return typename FileBase::open_anonymous_t{}(base, flags, caching, perm).transform_value([]<typename Base>(Base &&base) { return type(std::forward<Base>(base)); });
+				}
+			};
+
+			/* TODO: Document usage */
+			static constexpr auto open_anonymous = open_anonymous_t{};
+
 		private:
 			friend struct reopen_t;
 
@@ -379,40 +401,40 @@ namespace rod
 
 			/** Initializes a closed file stream. */
 			type() noexcept = default;
-			type(type &&other) noexcept : adp_base(std::forward<adp_base>(other)), _pos(std::exchange(other._pos, 0)) {}
-			type &operator=(type &&other) noexcept { return (adp_base::operator=(std::forward<adp_base>(other)), std::swap(_pos, other._pos), *this); }
+			type(type &&other) noexcept : adaptor(std::forward<adaptor>(other)), _pos(std::exchange(other._pos, 0)) {}
+			type &operator=(type &&other) noexcept { return (adaptor::operator=(std::forward<adaptor>(other)), std::swap(_pos, other._pos), *this); }
 
 			/** Initializes file stream from a base handle. */
-			explicit type(FileBase &&hnd) noexcept(std::is_nothrow_constructible_v<adp_base, FileBase>) : adp_base(std::forward<FileBase>(hnd)) {}
+			explicit type(FileBase &&hnd) noexcept(std::is_nothrow_constructible_v<adaptor, FileBase>) : adaptor(std::forward<FileBase>(hnd)) {}
 			/** Initializes file stream from a base handle and initial offset. */
-			explicit type(FileBase &&hnd, typename adp_base::extent_type off) noexcept(std::is_nothrow_constructible_v<adp_base, FileBase>) : adp_base(std::forward<FileBase>(hnd)), _pos(off) {}
+			explicit type(FileBase &&hnd, typename adaptor::extent_type off) noexcept(std::is_nothrow_constructible_v<adaptor, FileBase>) : adaptor(std::forward<FileBase>(hnd)), _pos(off) {}
 
 			/** Initializes file stream from a native handle and additional arguments \a args passed to the base handle constructor. */
-			template<typename... Args>
-			explicit type(typename adp_base::native_handle_type hnd, Args &&...args) noexcept(std::is_nothrow_constructible_v<adp_base, typename adp_base::native_handle_type, Args...>) : adp_base(hnd, std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adaptor, typename adaptor::native_handle_type, Args...>
+			explicit type(typename adaptor::native_handle_type hnd, Args &&...args) noexcept(std::is_nothrow_constructible_v<adaptor, typename adaptor::native_handle_type, Args...>) : adaptor(hnd, std::forward<Args>(args)...) {}
 			/** Initializes file stream from a native handle, initial offset, and additional arguments \a args passed to the base handle constructor. */
-			template<typename... Args>
-			explicit type(typename adp_base::native_handle_type hnd, typename adp_base::extent_type off, Args &&...args) noexcept(std::is_nothrow_constructible_v<adp_base, typename adp_base::native_handle_type, Args...>) : adp_base(hnd, std::forward<Args>(args)...), _pos(off) {}
+			template<typename... Args> requires std::constructible_from<adaptor, typename adaptor::native_handle_type, Args...>
+			explicit type(typename adaptor::native_handle_type hnd, typename adaptor::extent_type off, Args &&...args) noexcept(std::is_nothrow_constructible_v<adaptor, typename adaptor::native_handle_type, Args...>) : adaptor(hnd, std::forward<Args>(args)...), _pos(off) {}
 
 			constexpr void swap(type &other) noexcept
 			{
-				adp_base::swap(other);
+				adaptor::swap(other);
 				std::swap(_pos, other._pos);
 			}
 			friend constexpr void swap(type &a, type &b) noexcept { a.swap(b); }
 
 		private:
-			result<type> do_clone() const noexcept { return clone(adp_base::base()).transform_value([&](FileBase &&hnd) { return type(std::forward<FileBase>(hnd), _pos); }); }
+			result<type> do_clone() const noexcept { return clone(adaptor::base()).transform_value([&](FileBase &&hnd) { return type(std::forward<FileBase>(hnd), _pos); }); }
 
-			result<typename adp_base::extent_type> do_getpos() const noexcept { return _pos; }
-			result<typename adp_base::extent_type> do_setpos(auto pos) noexcept { return (_pos = pos); }
-			result<typename adp_base::extent_type> do_seekpos(auto off, seek_dir dir) noexcept
+			result<typename adaptor::extent_type> do_getpos() const noexcept { return _pos; }
+			result<typename adaptor::extent_type> do_setpos(auto pos) noexcept { return (_pos = pos); }
+			result<typename adaptor::extent_type> do_seekpos(auto off, seek_dir dir) noexcept
 			{
 				switch (dir)
 				{
 				case seek_dir::end: return endpos(*this).transform_value([&]<typename Ext>(Ext pos) { return (_pos = Ext(pos - off)); });
-				case seek_dir::cur: return (_pos = typename adp_base::extent_type(_pos + off));
-				case seek_dir::beg: return (_pos = typename adp_base::extent_type(off));
+				case seek_dir::cur: return (_pos = typename adaptor::extent_type(_pos + off));
+				case seek_dir::beg: return (_pos = typename adaptor::extent_type(off));
 				}
 				return std::make_error_code(std::errc::invalid_argument);
 			}
@@ -420,7 +442,7 @@ namespace rod
 			template<typename Req, typename To>
 			io_result_t<FileBase, read_some_t> do_read_some(Req &&req, const To &to) noexcept
 			{
-				auto res = read_some_at(adp_base::base(), {.buffs = std::forward<Req>(req).buffs, .off = _pos}, to);
+				auto res = read_some_at(adaptor::base(), {.buffs = std::forward<Req>(req).buffs, .off = _pos}, to);
 				if (res.has_value()) [[likely]]
 					std::ranges::for_each(*res, [&](auto &buff) noexcept { _pos += buff.size(); });
 				else
@@ -430,7 +452,7 @@ namespace rod
 			template<typename Req, typename To>
 			io_result_t<FileBase, write_some_t> do_write_some(Req &&req, const To &to) noexcept
 			{
-				auto res = write_some_at(adp_base::base(), {.buffs = std::forward<Req>(req).buffs, .off = _pos}, to);
+				auto res = write_some_at(adaptor::base(), {.buffs = std::forward<Req>(req).buffs, .off = _pos}, to);
 				if (res.has_value()) [[likely]]
 					std::ranges::for_each(*res, [&](auto &buff) noexcept { _pos += buff.size(); });
 				else
@@ -440,7 +462,7 @@ namespace rod
 
 			/* TODO: Implement async overloads. */
 
-			typename adp_base::extent_type _pos = 0;
+			typename adaptor::extent_type _pos = 0;
 		};
 	}
 
@@ -454,11 +476,8 @@ namespace rod
 		static_assert(_file::file_handle_like<file_handle> && _file::file_handle_like_result<decltype(file_handle::open({}, {}))>);
 		static_assert(!_file::file_stream_like<file_handle> && !_file::file_stream_like_result<decltype(file_handle::open({}, {}))>);
 
-		/** Streamable file handle adaptor which maintains an offset used for streaming IO. */
-		template<typename FileBase>
-		using file_stream_adaptor = typename _file::file_stream_adaptor<FileBase>::type;
-		/** Alias for `file_stream_adaptor&lt;file_handle&gt;`. */
-		using file_stream = file_stream_adaptor<file_handle>;
+		/** File handle with an internal offset used for streaming IO. */
+		using file_stream = typename _file::file_stream_adaptor<file_handle>::type;
 
 		static_assert(sized_handle<file_stream> && sparse_io_handle<file_stream>);
 		static_assert(seekable_handle<file_stream> && stream_io_handle<file_stream>);

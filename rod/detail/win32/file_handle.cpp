@@ -294,13 +294,13 @@ namespace rod::_file
 			auto &iosb = iosb_buff.get()[i];
 			auto &data = req.buffs[i];
 
-			LARGE_INTEGER offset = {.QuadPart = LONGLONG(req.off)};
-			if (offset.QuadPart < 0) [[unlikely]]
+			if (data.size() > size_type(std::numeric_limits<ULONG>::max()) || req.off > extent_type(std::numeric_limits<LONGLONG>::max())) [[unlikely]]
 			{
 				result_status = std::make_error_code(std::errc::value_too_large);
 				break;
 			}
 
+			LARGE_INTEGER offset = {.QuadPart = LONGLONG(req.off)};
 			((*ntapi).*IoFunc)(native_handle(), nullptr, nullptr, 0, &iosb, const_cast<std::byte *>(data.data()), ULONG(data.size()), &offset, nullptr);
 			if (iosb.status == STATUS_PENDING)
 			{

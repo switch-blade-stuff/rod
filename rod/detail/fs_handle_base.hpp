@@ -151,14 +151,14 @@ namespace rod
 		template<typename Child, typename Base>
 		class fs_handle_adaptor<Child, Base>::type : public handle_adaptor<Child, Base>::type
 		{
-			using adp_base = typename handle_adaptor<Child, Base>::type;
+			using adaptor = typename handle_adaptor<Child, Base>::type;
 
-			friend adp_base;
+			friend adaptor;
 			friend Child;
 
 		public:
 			/** Timeout type used for handle operations. */
-			using timeout_type = typename fs_handle_timeout<adp_base>::type;
+			using timeout_type = typename fs_handle_timeout<adaptor>::type;
 
 		private:
 			template<typename T>
@@ -172,16 +172,16 @@ namespace rod
 			type(type &&) noexcept = default;
 			type &operator=(type &&) noexcept = default;
 
-			template<typename... Args> requires std::constructible_from<adp_base, Base, Args...>
-			explicit type(Base &&hnd, Args &&...args) noexcept : adp_base(std::forward<Base>(hnd), std::forward<Args>(args)...) {}
-			template<typename... Args> requires std::constructible_from<adp_base, typename adp_base::native_handle_type, Args...>
-			explicit type(typename adp_base::native_handle_type hnd, Args &&...args) noexcept : adp_base(hnd, std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adaptor, Base, Args...>
+			explicit type(Base &&hnd, Args &&...args) noexcept : adaptor(std::forward<Base>(hnd), std::forward<Args>(args)...) {}
+			template<typename... Args> requires std::constructible_from<adaptor, typename adaptor::native_handle_type, Args...>
+			explicit type(typename adaptor::native_handle_type hnd, Args &&...args) noexcept : adaptor(hnd, std::forward<Args>(args)...) {}
 
-			using adp_base::release;
-			using adp_base::is_open;
-			using adp_base::native_handle;
+			using adaptor::release;
+			using adaptor::is_open;
+			using adaptor::native_handle;
 
-			constexpr void swap(type &other) noexcept { adp_base::swap(other); }
+			constexpr void swap(type &other) noexcept { adaptor::swap(other); }
 			friend constexpr void swap(type &a, type &b) noexcept { a.swap(b); }
 
 		private:
@@ -324,12 +324,12 @@ namespace rod
 	{
 		struct dummy_fs_handle : fs::fs_handle_adaptor<dummy_fs_handle, basic_handle>
 		{
-			using adp_base = fs::fs_handle_adaptor<dummy_fs_handle, basic_handle>;
-			using adp_base::adp_base;
+			using adaptor = fs::fs_handle_adaptor<dummy_fs_handle, basic_handle>;
+			using adaptor::adaptor;
 
-			result<> do_link(const fs::path_handle &, fs::path_view, bool, const typename adp_base::timeout_type &) noexcept { return {}; };
-			result<> do_relink(const fs::path_handle &, fs::path_view, bool, const typename adp_base::timeout_type &) noexcept { return {}; };
-			result<> do_unlink(const typename adp_base::timeout_type &) noexcept { return {}; };
+			result<> do_link(const fs::path_handle &, fs::path_view, bool, const typename adaptor::timeout_type &) noexcept { return {}; };
+			result<> do_relink(const fs::path_handle &, fs::path_view, bool, const typename adaptor::timeout_type &) noexcept { return {}; };
+			result<> do_unlink(const typename adaptor::timeout_type &) noexcept { return {}; };
 
 			result<stat::query> do_get_stat(stat &, stat::query) const noexcept { return {}; }
 			result<stat::query> do_set_stat(const stat &, stat::query) noexcept { return {}; }

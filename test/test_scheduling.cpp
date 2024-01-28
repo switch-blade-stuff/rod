@@ -4,8 +4,8 @@
 
 #include <thread>
 
-#include <rod/scheduling.hpp>
 #include <rod/task.hpp>
+#include <rod/io.hpp>
 
 #include "common.hpp"
 
@@ -51,13 +51,13 @@ int main()
 	{
 		using namespace std::chrono_literals;
 
-		rod::run_loop loop;
-		auto trd = std::jthread{[&]() { loop.run(); }};
-		auto sch = loop.get_scheduler();
+		rod::system_context context;
+		auto trd = std::jthread{[&]() { context.run(); }};
+		auto sch = context.get_scheduler();
 
 		const auto start = sch.now();
 		const auto timeout = start + 50ms;
 		rod::sync_wait(rod::transfer_when_all(sch, rod::schedule_at(sch, timeout), rod::on(sch, rod::just())) | rod::then([&]() { TEST_ASSERT(sch.now() >= timeout); }));
-		loop.finish();
+		context.finish();
 	}
 }

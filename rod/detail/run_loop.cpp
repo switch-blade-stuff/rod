@@ -6,94 +6,95 @@
 
 namespace rod::_run_loop
 {
-	std::size_t run_loop::run_once(thread_context &ctx)
+	void run_loop::acquire_elapsed_timers() noexcept
 	{
-		std::size_t notified = 0;
-		for (; !ctx._local_queue.empty(); ++notified)
+		for (const auto now = clock::now();;)
 		{
-			auto *node = ctx._local_queue.pop_front();
-			node->_notify_func(node);
+			if (_timer_queue.empty())
+			{
+				_next_timeout = {};
+				break;
+			}
+			if (_timer_queue.front()->_tp > now)
+			{
+				_next_timeout = _timer_queue.front()->_tp;
+				break;
+			}
+			_consumer_queue.push_back(_timer_queue.pop_front());
 		}
+	}
+	void run_loop::acquire_producer_queue() noexcept
+	{
+		if (_producer_queue.empty())
+			return;
+		_consumer_queue.merge_back(std::move(_producer_queue));
+	}
+
+	std::size_t run_loop::run_once()
+	{
+		const auto g = std::unique_lock(_consumer_lock);
+		std::size_t notified = 0;
+
+		for (auto queue = std::move(_consumer_queue); !queue.empty(); ++notified)
+			queue.pop_front()->notify();
+
 		return notified;
 	}
-	std::size_t run_loop::poll(thread_context &ctx, bool block)
+	std::size_t run_loop::poll(bool block)
 	{
-		auto g = std::unique_lock(_mtx);
-		std::size_t acquired = 0;
+		std::lock(_consumer_lock, _mtx);
+		auto g_tid = std::unique_lock(_consumer_lock, std::adopt_lock);
+		auto g_mtx = std::unique_lock(_mtx, std::adopt_lock);
 
-		/* Acquire tasks from the producer queue. */
-		for (; !_task_queue.empty(); ++acquired)
-		{
-			auto *node = _task_queue.pop_front();
-			ctx._local_queue.push_back(node);
-		}
-
-		/* Dispatch elapsed timers. */
-		if (!_timer_queue.empty())
-			for (const auto now = clock::now(); !_timer_queue.empty(); ++acquired)
+		if (!has_pending() && block) [[unlikely]]
+			for (;;)
 			{
-				if (_timer_queue.front()->_tp > now)
-				{
-					_next_timeout = _timer_queue.front()->_tp;
+				const auto wait_condition = [&]() { return has_pending() || !active(); };
+				auto old_timeout = _next_timeout;
+				bool has_timeout = false;
+
+				if (!_timer_queue.empty())
+					 has_timeout = !_cnd.wait_until(g_mtx, old_timeout, wait_condition);
+				else
+					_cnd.wait(g_mtx, wait_condition);
+
+				if (has_timeout && _next_timeout < old_timeout)
+					old_timeout = _next_timeout;
+				else
 					break;
-				}
-				auto *node = _timer_queue.pop_front();
-				ctx._local_queue.push_back(node);
 			}
 
-		if (ctx._local_queue.empty() && block)
-		{
-			if (const auto wait_condition = [&]() noexcept { return !_task_queue.empty() || !_timer_queue.empty() || !ctx.active() || !active(); }; !_timer_queue.empty())
-				_cnd.wait_until(g, _next_timeout, wait_condition);
-			else
-				_cnd.wait(g, wait_condition);
-		}
-		return acquired;
-	}
-
-	void run_loop::run_ctx(thread_context &ctx)
-	{
-		for (std::size_t pending = 0;;)
-		{
-			/* Skip execution if there are no scheduled local queue operations. */
-			if (pending != 0) [[likely]]
-				pending -= run_once(ctx);
-			if (!ctx.active() || !active())
-				break;
-
-			/* Block only if there are no scheduled local queue operations, pending tasks or timers. */
-			pending += poll(ctx, pending == 0);
-		}
-	}
-	void run_loop::pop_ctx(thread_context *ctx)
-	{
-		const auto g = std::unique_lock(_mtx);
-		if ((*ctx->_this_ptr = ctx->_next_node) != nullptr)
-			ctx->_next_node->_this_ptr = ctx->_this_ptr;
-	}
-	void run_loop::push_ctx(thread_context *ctx)
-	{
-		const auto g = std::unique_lock(_mtx);
-		if (auto old = std::exchange(_ctx_queue, ctx); old != nullptr)
-		{
-			old->_this_ptr = &ctx->_next_node;
-			ctx->_next_node = old;
-		}
-		ctx->_this_ptr = &_ctx_queue;
+		acquire_elapsed_timers();
+		acquire_producer_queue();
+		return _consumer_queue.size;
 	}
 
 	void run_loop::schedule(operation_base *node)
 	{
+		if (is_consumer_thread())
+		{
+			_consumer_queue.push_back(node);
+			return;
+		}
+
 		{
 			const auto g = std::unique_lock(_mtx);
-			_task_queue.push_back(node);
+			_producer_queue.push_back(node);
 		}
 		_cnd.notify_one();
 	}
 	void run_loop::schedule_timer(timer_operation_base *node)
 	{
+		if (is_consumer_thread() && node->_tp <= clock::now())
+		{
+			_consumer_queue.push_back(node);
+			return;
+		}
+
 		{
 			const auto g = std::unique_lock(_mtx);
+			if (node->_tp <= _next_timeout)
+				_next_timeout = node->_tp;
 			_timer_queue.insert(node);
 		}
 		_cnd.notify_one();

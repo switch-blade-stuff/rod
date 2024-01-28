@@ -60,18 +60,17 @@ namespace rod::_detail
 		void wait(void *old = nullptr) noexcept { head.wait(old); }
 		[[nodiscard]] void *sentinel() const noexcept { return const_cast<atomic_queue *>(this); }
 
-		/* Convert to a basic queue with `head` becoming the tail of the new queue. */
 		[[nodiscard]] operator basic_queue<Node, Next>() && noexcept
 		{
-			auto node = static_cast<Node *>(head.exchange({}, std::memory_order_acq_rel));
-			basic_queue<Node, Next> result;
-			result.tail = node;
-			while (node)
+			auto front = static_cast<Node *>(head.exchange({}, std::memory_order_acq_rel));
+			auto queue = basic_queue<Node, Next>();
+
+			for (Node *node = front, *next; node != nullptr; node = next)
 			{
-				const auto next = std::exchange(node->*Next, result.head);
-				result.head = std::exchange(node, next);
+				next = std::exchange(node->*Next, nullptr);
+				queue.push_back(node);
 			}
-			return result;
+			return queue;
 		}
 
 		std::atomic<void *> head = {};

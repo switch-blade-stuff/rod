@@ -11,6 +11,15 @@ if (${ROD_NO_COROUTINES})
     add_compile_definitions(ROD_NO_COROUTINES)
 endif ()
 
+set(ROD_TAG_INVOKE_NAMESPACE "" CACHE STRING "Namespace override used to select an external tag_invoke implementation")
+if (NOT ${ROD_TAG_INVOKE_NAMESPACE} STREQUAL "")
+    add_compile_definitions(ROD_TAG_INVOKE_NAMESPACE ${ROD_TAG_INVOKE_NAMESPACE})
+endif ()
+
+if (${ROD_NO_COROUTINES})
+    add_compile_definitions(ROD_NO_COROUTINES)
+endif ()
+
 if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
     option(ROD_NO_LIBURING "Disables support for io_uring" OFF)
     find_package(liburing)
@@ -63,7 +72,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/export.gen.hpp
         rod/detail/config.hpp
 
-        # Utilities
+        # Private utilities
         rod/detail/receiver_adaptor.hpp
         rod/detail/priority_queue.hpp
         rod/detail/atomic_queue.hpp
@@ -71,11 +80,14 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         rod/detail/byte_buffer.hpp
         rod/detail/shared_ref.hpp
         rod/detail/file_clock.hpp
-        rod/detail/timeout.hpp
+        rod/detail/tid_lock.hpp
+
+        # Public utilities (separate into a core utils library)
         rod/packed_pair.hpp
         rod/array_list.hpp
         rod/delegate.hpp
         rod/property.hpp
+        rod/timeout.hpp
         rod/signal.hpp
         rod/result.hpp
         rod/hash.hpp
@@ -156,7 +168,7 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS rod FILES
         # rod/linux/epoll_context.hpp
 
         # Win32 headers
-        # rod/win32/iocp_context.hpp
+         rod/win32/iocp_context.hpp
 
         # API headers
         rod/path.hpp
@@ -222,7 +234,7 @@ if (${ROD_SYSTEM_NAME} MATCHES "windows|msys" OR CYGWIN)
             rod/detail/win32/file_handle.cpp
             rod/detail/win32/mmap_handle.hpp
             rod/detail/win32/mmap_handle.cpp
-            #[[rod/win32/iocp_context.cpp]])
+            rod/win32/iocp_context.cpp)
 endif ()
 
 # Unit tests

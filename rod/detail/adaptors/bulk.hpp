@@ -26,26 +26,26 @@ namespace rod
 		{
 			friend receiver_adaptor<type, Rcv>;
 
-			using adp_base = receiver_adaptor<type, Rcv>;
+			using adaptor = receiver_adaptor<type, Rcv>;
 			using func_base = empty_base<Fn>;
 
 		public:
 			template<typename Rcv2, typename Fn2>
 			constexpr explicit type(Rcv2 &&rcv, Shape shape, Fn2 &&fn) noexcept(std::is_nothrow_constructible_v<Rcv, Rcv2> && std::is_nothrow_constructible_v<Fn, Fn2>)
-					: adp_base(std::forward<Rcv2>(rcv)), func_base(std::forward<Fn2>(fn)), _shape(shape) {}
+					: adaptor(std::forward<Rcv2>(rcv)), func_base(std::forward<Fn2>(fn)), _shape(shape) {}
 
 		private:
 			template<typename... Args>
 			constexpr void try_complete(Args &&...args) noexcept(_detail::nothrow_callable<Fn, Shape, Args &...>)
 			{
 				for (auto i = Shape{}; i != _shape; ++i) std::invoke(func_base::value(), i, args...);
-				rod::set_value(std::move(adp_base::base()), std::forward<Args>(args)...);
+				rod::set_value(std::move(adaptor::base()), std::forward<Args>(args)...);
 			}
 			template<typename... Args>
 			constexpr void do_set_value(Args &&...args) && noexcept requires _detail::callable<Fn, Shape, Args &...>
 			{
 				if constexpr (!noexcept(try_complete(std::forward<Args>(args)...)))
-					try { try_complete(std::forward<Args>(args)...); } catch (...) { rod::set_error(std::move(adp_base::base()), std::current_exception()); }
+					try { try_complete(std::forward<Args>(args)...); } catch (...) { rod::set_error(std::move(adaptor::base()), std::current_exception()); }
 				else
 					try_complete(std::forward<Args>(args)...);
 			}

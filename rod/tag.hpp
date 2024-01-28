@@ -15,6 +15,7 @@ namespace rod
 	template<typename T>
 	concept queryable = std::destructible<T>;
 
+#ifndef ROD_TAG_INVOKE_NAMESPACE
 	namespace _tag_invoke
 	{
 		void tag_invoke();
@@ -45,10 +46,24 @@ namespace rod
 		};
 	}
 
+	using _tag_invoke::nothrow_tag_invocable;
+	using _tag_invoke::tag_invoke_result_t;
+	using _tag_invoke::tag_invoke_result;
+	using _tag_invoke::tag_invocable;
+
 	using _tag_invoke::tag_invoke_t;
 
 	/** Utility function used to invoke an implementation of `tag_invoke` with tag \a tag and arguments \a args selected via ADL. */
-	inline constexpr auto tag_invoke = _tag_invoke::tag_invoke_t{};
+	inline constexpr auto tag_invoke = tag_invoke_t{};
+#else
+	using ROD_TAG_INVOKE_NAMESPACE::nothrow_tag_invocable;
+	using ROD_TAG_INVOKE_NAMESPACE::tag_invoke_result_t;
+	using ROD_TAG_INVOKE_NAMESPACE::tag_invoke_result;
+	using ROD_TAG_INVOKE_NAMESPACE::tag_invocable;
+
+	using ROD_TAG_INVOKE_NAMESPACE::tag_invoke;
+	using tag_invoke_t = decltype(tag_invoke);
+#endif
 
 	/** @brief Metaprogramming utility used define a tag type for object \a V.
 	 *
@@ -56,11 +71,6 @@ namespace rod
 	 * in order to enable CPO via `tag_invoke`. */
 	template<auto &Tag>
 	using tag_t = std::decay_t<decltype(Tag)>;
-
-	using _tag_invoke::tag_invocable;
-	using _tag_invoke::nothrow_tag_invocable;
-	using _tag_invoke::tag_invoke_result_t;
-	using _tag_invoke::tag_invoke_result;
 
 	inline namespace _forwarding_query
 	{

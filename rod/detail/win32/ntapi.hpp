@@ -409,7 +409,7 @@ namespace rod::_win32
 
 	using NtReadFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _Out_ void *buff,
 	                                            _In_ ULONG len, _In_opt_ const LARGE_INTEGER *off, _In_opt_ ULONG *key);
-	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ void *buff,
+	using NtWriteFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *evt, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb, _In_ const void *buff,
 	                                             _In_ ULONG len, _In_opt_ const LARGE_INTEGER *off, _In_opt_ ULONG *key);
 	using NtQueryDirectoryFile_t = ntstatus (ROD_NTAPI *)(_In_ void *file, _In_opt_ void *event, _In_opt_ io_apc_routine apc_func, _In_opt_ ULONG_PTR apc_ctx, _Out_ io_status_block *iosb,
 	                                                      _Out_ void *info, _In_ ULONG len, _In_ file_info_type type, _In_ bool single, const _In_opt_ unicode_string *name, _In_ bool restart);
