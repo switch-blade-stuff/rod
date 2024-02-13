@@ -29,8 +29,8 @@ int main(int argc, char *argv[])
 
 	auto dst = std::fstream(argv[1], std::ios::out | std::ios::trunc);
 	dst << "/*\n * This file contains an auto-generated table of NTSTATUS values mapped to DOS and POSIX error codes.\n */\n\n"
-	    << "#include <string_view>\n\nnamespace\n{\nstatic const struct { unsigned long status; unsigned long dos_err; int posix_err; std::string_view msg; } "
-	    << argv[2] << "[] = {\n";
+		<< "#include <string_view>\n\nnamespace\n{\nstatic const struct { unsigned long status; unsigned long dos_err; int posix_err; std::string_view msg; } "
+		<< argv[2] << "[] = {\n";
 
 #if defined(_MSC_VER)
 	auto ntdll = ::LoadLibraryA("ntdll.dll");
@@ -85,10 +85,10 @@ int main(int argc, char *argv[])
 	for (const auto &ent : fallback_table)
 	{
 		dst << "\t{.status = " << ent.status
-		    << ", .dos_err = " << ent.dos_err
-		    << ", .posix_err = " << ent.posix_err
-		    << ", .msg = R\"(" << ent.msg
-		    << ")\"},\n";
+			<< ", .dos_err = " << ent.dos_err
+			<< ", .posix_err = " << ent.posix_err
+			<< ", .msg = R\"(" << ent.msg
+			<< ")\"},\n";
 	}
 	dst << "};\n}\n";
 }

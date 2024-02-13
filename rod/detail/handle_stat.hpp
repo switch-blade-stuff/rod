@@ -196,7 +196,8 @@ namespace rod
 			_handle::extent_type alloc;
 			/** Number of blocks allocated for the file. */
 			_handle::extent_type blocks;
-			/** Block size used by the device. */
+			/** IO block size used by the device.
+			 * @note Not related to `blocks`. */
 			std::uint16_t blksize;
 
 			/** Either the file is sparse or the directory can handle sparse files. */

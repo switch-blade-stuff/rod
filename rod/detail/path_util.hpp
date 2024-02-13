@@ -16,7 +16,7 @@ namespace rod::fs
 	/** Checks if \a path references a valid filesystem location.
 	 * @errors
 	 * <ul>
-	 * <li>`std::errc::bad_alloc` on failure to allocate internal buffers.</li>
+	 * <li>`std::errc::not_enough_memory` on failure to allocate internal buffers.</li>
 	 * <li>Other errors returned by the underlying OS functions.</li>
 	 * </ul> */
 	[[nodiscard]] ROD_API_PUBLIC result<bool> exists(path_view path) noexcept;
@@ -29,7 +29,7 @@ namespace rod::fs
 	 * @errors
 	 * <ul>
 	 * <li>`std::errc::no_such_file_or_directory` if \a path does not reference a valid filesystem location.</li>
-	 * <li>`std::errc::bad_alloc` on failure to allocate path memory.</li>
+	 * <li>`std::errc::not_enough_memory` on failure to allocate path memory.</li>
 	 * <li>Errors returned by `to_native_path`.</li>
 	 * </ul> */
 	[[nodiscard]] ROD_API_PUBLIC result<path> canonical(path_view path) noexcept;
@@ -37,7 +37,7 @@ namespace rod::fs
 	 * @return Weakly-canonical version of \a path or a status code on failure.
 	 * @errors
 	 * <ul>
-	 * <li>`std::errc::bad_alloc` on failure to allocate path memory.</li>
+	 * <li>`std::errc::not_enough_memory` on failure to allocate path memory.</li>
 	 * <li>Errors returned by `to_native_path`.</li>
 	 * </ul> */
 	[[nodiscard]] ROD_API_PUBLIC result<path> weakly_canonical(path_view path) noexcept;
@@ -47,7 +47,7 @@ namespace rod::fs
 	 * @errors
 	 * <ul>
 	 * <li>`std::errc::no_such_file_or_directory` if \a path does not reference a valid filesystem location.</li>
-	 * <li>`std::errc::bad_alloc` on failure to allocate path memory.</li>
+	 * <li>`std::errc::not_enough_memory` on failure to allocate path memory.</li>
 	 * <li>Errors returned by `GetFullPathNameW` on Windows.</li>
 	 * </ul> */
 	[[nodiscard]] ROD_API_PUBLIC result<path> absolute(path_view path) noexcept;
@@ -119,8 +119,8 @@ namespace rod::fs
 	 * @errors
 	 * <ul>
 	 * <li>`std::errc::directory_not_empty` if the specified directory is not empty.</li>
-	 * <li>`std::errc::bad_alloc` on failure to allocate internal buffers.</li>
-	 * <li>Errors returned by `rmdir` on POSIX or `NtGetInformationFile` and `NtSetInformationFile` on Windows.</li>
+	 * <li>`std::errc::not_enough_memory` on failure to allocate internal buffers.</li>
+	 * <li>Errors returned by `unlink` or `rmdir` on POSIX or `NtGetInformationFile` and `NtSetInformationFile` on Windows.</li>
 	 * </ul> */
 	ROD_API_PUBLIC result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base.
@@ -130,8 +130,8 @@ namespace rod::fs
 	 * @return Amount of filesystem objects removed or a status code on failure.
 	 * @errors
 	 * <ul>
-	 * <li>`std::errc::bad_alloc` on failure to allocate internal buffers.</li>
-	 * <li>Errors returned by `rmdir` on POSIX or `NtQueryDirectoryFile`, `NtGetInformationFile`, and `NtSetInformationFile` on Windows.</li>
+	 * <li>`std::errc::not_enough_memory` on failure to allocate internal buffers.</li>
+	 * <li>Errors returned by `unlink` or `rmdir` on POSIX or `NtQueryDirectoryFile`, `NtGetInformationFile`, and `NtSetInformationFile` on Windows.</li>
 	 * </ul> */
 	ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
 }

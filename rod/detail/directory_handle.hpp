@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "fs_handle_base.hpp"
 #include "io_handle_base.hpp"
 

@@ -162,7 +162,7 @@ namespace rod
 			 * @param flags Flags of the memory view.
 			 * @param src Mapping source the view is mapped from.
 			 * @note Lifetime of \a src is not required to exceed the lifetime of the memory view. */
-			constexpr mmap_handle(std::byte *base_ptr, extent_type base_off, size_type data_size, size_type page_size, extent_type reserved, mmap_flags flags, const mmap_source &src) noexcept
+			constexpr mmap_handle(std::byte *base_ptr, extent_type base_off, size_type data_size, size_type page_size, extent_type reserved, mmap_flags flags, const mmap_source &) noexcept
 					: _flags(flags), _has_source(true), _base_ptr(base_ptr), _base_off(base_off), _reserved(reserved), _data_size(data_size), _page_size(page_size) {}
 
 			~mmap_handle() { if (!empty()) reset(); }

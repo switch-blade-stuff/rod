@@ -16,7 +16,7 @@ namespace rod
 
 		/* Build a variant of form
 		 * std::variant<std::monostate,
-		 *      std::tuple<std::set_stopped_t>,
+		 *	  std::tuple<std::set_stopped_t>,
 		 *      std::tuple<std::set_value_t, Values0...>,
 		 *      ...
 		 *      std::tuple<std::set_value_t, ValuesN...>,

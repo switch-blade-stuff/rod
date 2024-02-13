@@ -484,7 +484,7 @@ namespace rod
 
 		constexpr void operator delete(void *ptr, std::size_t sz) { deallocate(ptr, sz); }
 	};
-	template<typename Promise, typename Alloc> requires(!instance_of<Alloc, std::allocator> && !std::is_empty_v<Alloc> || !std::allocator_traits<Alloc>::is_always_equal::value)
+	template<typename Promise, typename Alloc> requires(!instance_of<Alloc, std::allocator> && (!std::is_empty_v<Alloc> || !std::allocator_traits<Alloc>::is_always_equal::value))
 	class with_allocator_promise<Promise, Alloc> : _detail::with_allocator_base<Promise, Alloc>
 	{
 		using base_t = _detail::with_allocator_base<Promise, Alloc>;

@@ -2,6 +2,8 @@
  * Created by switchblade on 2023-09-29.
  */
 
+#include <mutex>
+
 #include "run_loop.hpp"
 
 namespace rod::_run_loop

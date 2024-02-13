@@ -16,10 +16,6 @@ if (NOT ${ROD_TAG_INVOKE_NAMESPACE} STREQUAL "")
     add_compile_definitions(ROD_TAG_INVOKE_NAMESPACE ${ROD_TAG_INVOKE_NAMESPACE})
 endif ()
 
-if (${ROD_NO_COROUTINES})
-    add_compile_definitions(ROD_NO_COROUTINES)
-endif ()
-
 if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
     option(ROD_NO_LIBURING "Disables support for io_uring" OFF)
     find_package(liburing)
@@ -185,10 +181,14 @@ target_sources(${PROJECT_NAME} PRIVATE
         rod/utility.cpp
         rod/result.cpp)
 
-# Posix implementation
-# if (POSIX)
-#
-# endif ()
+# Unix implementation
+if (UNIX)
+    target_sources(${PROJECT_NAME} PRIVATE
+            rod/detail/unix/path_discovery.hpp
+            rod/detail/unix/path_discovery.cpp
+            rod/detail/unix/path_util.hpp
+            rod/detail/unix/path_util.cpp)
+endif ()
 
 # Linux implementation
 if (${ROD_SYSTEM_NAME} MATCHES "linux|android")

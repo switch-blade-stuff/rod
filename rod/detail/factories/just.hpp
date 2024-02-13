@@ -33,7 +33,7 @@ namespace rod
 		public:
 			template<typename Vals>
 			constexpr explicit type(Vals &&vals, Rcv &&rcv) noexcept(std::is_nothrow_move_constructible_v<Rcv> && std::conjunction_v<std::is_nothrow_constructible<Ts, copy_cvref_t<Vals, Ts>>...>)
-					: std::tuple<Ts...>(std::forward<Vals>(vals)), rcv_base(std::forward<Rcv>(rcv)) {}
+					: rcv_base(std::forward<Rcv>(rcv)), std::tuple<Ts...>(std::forward<Vals>(vals)) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { std::apply([&op](Ts &...vals) { C{}(std::move(op.rcv_base::value()), std::move(vals)...); }, static_cast<std::tuple<Ts...> &>(op)); }
 		};

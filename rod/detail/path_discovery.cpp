@@ -167,6 +167,10 @@ namespace rod
 						result.desktop_dir = std::move(*path);
 					else
 						return path.error();
+					if (auto path = find_pictures_dir(); path.has_value()) [[likely]]
+						result.pictures_dir = std::move(*path);
+					else
+						return path.error();
 					if (auto path = find_downloads_dir(); path.has_value()) [[likely]]
 						result.downloads_dir = std::move(*path);
 					else
@@ -361,6 +365,13 @@ namespace rod
 			else
 				return path.error();
 		}
+		result<directory_handle> current_pictures_directory() noexcept
+		{
+			if (auto path = _detail::find_pictures_dir(); path.has_value()) [[likely]]
+				return directory_handle::open({}, *path);
+			else
+				return path.error();
+		}
 		result<directory_handle> current_downloads_directory() noexcept
 		{
 			if (auto path = _detail::find_downloads_dir(); path.has_value()) [[likely]]
@@ -401,6 +412,11 @@ namespace rod
 		const directory_handle &starting_desktop_directory() noexcept
 		{
 			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::desktop_dir>(); }).value_or({});
+			return value;
+		}
+		const directory_handle &starting_pictures_directory() noexcept
+		{
+			static const auto value = _detail::acquire_cache().first.transform_value([](auto &c) { return c.template open_cached_dir<&discovery_cache::pictures_dir>(); }).value_or({});
 			return value;
 		}
 		const directory_handle &starting_downloads_directory() noexcept
@@ -470,19 +486,19 @@ namespace rod
 
 				for (auto &entry: override)
 				{
-					auto dir = discovered_path{.path = path(entry), .source = discovery_source::override};
+					auto dir = discovered_path{path(entry), discovery_source::override};
 					if (verify_discovered_path(dir)) [[likely]]
 						result.push_back(std::move(dir));
 				}
 				for (auto &entry: ((*cache).*DirsCache))
 				{
-					auto dir = discovered_path{.path = entry.path, .source = entry.source};
+					auto dir = discovered_path{entry.path, entry.source};
 					if (verify_discovered_path(dir)) [[likely]]
 						result.push_back(std::move(dir));
 				}
 				for (auto &entry: fallback)
 				{
-					auto dir = discovered_path{.path = path(entry), .source = discovery_source::fallback};
+					auto dir = discovered_path{path(entry), discovery_source::fallback};
 					if (verify_discovered_path(dir)) [[likely]]
 						result.push_back(std::move(dir));
 				}

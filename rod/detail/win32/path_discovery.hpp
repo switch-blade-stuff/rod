@@ -56,4 +56,13 @@ namespace rod::_win32
 		}
 		catch (...) { return _detail::current_error(); }
 	}
+
+	inline static auto find_shell_dirs(std::vector<fs::discovered_path> &dirs, std::span<const GUID> ids) noexcept
+	{
+		for (auto id : ids)
+			with_shell_path(id, [&](auto p) { dirs.push_back({fs::path(p, fs::path::native_format), fs::discovery_source::system}); });
+		return result<>();
+	}
+	inline static auto find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+
 }

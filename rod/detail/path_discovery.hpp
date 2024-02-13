@@ -69,6 +69,7 @@ namespace rod
 		result<fs::path> find_music_dir() noexcept;
 		result<fs::path> find_videos_dir() noexcept;
 		result<fs::path> find_desktop_dir() noexcept;
+		result<fs::path> find_pictures_dir() noexcept;
 		result<fs::path> find_downloads_dir() noexcept;
 		result<fs::path> find_documents_dir() noexcept;
 		result<fs::path> find_templates_dir() noexcept;
@@ -103,6 +104,7 @@ namespace rod
 			typename fs::path::string_type music_dir;
 			typename fs::path::string_type videos_dir;
 			typename fs::path::string_type desktop_dir;
+			typename fs::path::string_type pictures_dir;
 			typename fs::path::string_type downloads_dir;
 			typename fs::path::string_type documents_dir;
 			typename fs::path::string_type templates_dir;
@@ -185,6 +187,8 @@ namespace rod
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_videos_directory() noexcept;
 		/** Returns handle to the current user's desktop directory. This directory corresponds to `$XDG_DESKTOP_DIR`. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_desktop_directory() noexcept;
+		/** Returns handle to the current user's pictures directory. This directory corresponds to `$XDG_PICTURES_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_pictures_directory() noexcept;
 		/** Returns handle to the current user's downloads directory. This directory corresponds to `$XDG_DOWNLOAD_DIR`. */
 		[[nodiscard]] ROD_API_PUBLIC result<directory_handle> current_downloads_directory() noexcept;
 		/** Returns handle to the current user's documents directory. This directory corresponds to `$XDG_DOCUMENTS_DIR`. */
@@ -200,6 +204,8 @@ namespace rod
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_videos_directory() noexcept;
 		/** Returns handle to the user's desktop directory acquired during static initialization. This directory corresponds to `$XDG_DESKTOP_DIR`. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_desktop_directory() noexcept;
+		/** Returns handle to the user's pictures directory acquired during static initialization. This directory corresponds to `$XDG_PICTURES_DIR`. */
+		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_pictures_directory() noexcept;
 		/** Returns handle to the user's downloads directory acquired during static initialization. This directory corresponds to `$XDG_DOWNLOAD_DIR`. */
 		[[nodiscard]] ROD_API_PUBLIC const directory_handle &starting_downloads_directory() noexcept;
 		/** Returns handle to the user's documents directory acquired during static initialization. This directory corresponds to `$XDG_DOCUMENTS_DIR`. */

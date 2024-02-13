@@ -55,7 +55,7 @@ namespace rod
 		concept noexcept_resize_func = std::is_nothrow_invocable_v<F, T *, std::size_t>;
 
 		template<typename SrcChar, typename DstChar, resize_func<DstChar> Resize> requires(sizeof(SrcChar) == sizeof(DstChar))
-		inline static result<std::size_t> cvt(const SrcChar *src, std::size_t n_src, DstChar *dst, std::size_t n_dst, Resize resize) noexcept(noexcept_resize_func<Resize, DstChar>)
+		inline static result<std::size_t> cvt(const SrcChar *src, std::size_t n_src, DstChar *dst, std::size_t, Resize resize) noexcept(noexcept_resize_func<Resize, DstChar>)
 		{
 			static_cast_copy(src, src + n_src, resize(dst, n_src));
 			return n_src;
@@ -670,7 +670,7 @@ namespace rod
 				return {pos, base.data() + end};
 		}
 		template<typename C = value_type>
-		inline constexpr std::basic_string_view<C> iter_prev(std::basic_string_view<C> comp, std::basic_string_view<C> base, const C *&pos, format_type fmt) noexcept
+		inline constexpr std::basic_string_view<C> iter_prev(std::basic_string_view<C>, std::basic_string_view<C> base, const C *&pos, format_type fmt) noexcept
 		{
 			const auto sep_pred = [fmt](auto ch) { return is_separator(ch, fmt); };
 			const auto name_end = base.data() + root_name_size(base, fmt);
@@ -1492,9 +1492,15 @@ namespace rod
 			template<accepted_source Src>
 			[[nodiscard]] friend path operator/(Src &&a, const path &b) { return path(std::forward<Src>(a)) /= b; }
 
+			inline friend path operator/(const path &a, path_view_like b);
+			inline friend path operator/(path_view_like a, const path &b);
+
 			[[nodiscard]] friend path operator+(const path &a, const path &b) { return path(a) += b; }
 			template<accepted_source Src>
 			[[nodiscard]] friend path operator+(const path &a, Src &&b) { return path(a) += std::forward<Src>(b); }
+
+			inline friend path operator+(const path &a, path_view_like b);
+			inline friend path operator+(path_view_like a, const path &b);
 
 			template<typename C, typename T>
 			friend std::basic_ostream<C, T> &operator<<(std::basic_ostream<C, T> &os, const path &p)
@@ -1525,9 +1531,9 @@ namespace rod
 		[[maybe_unused]] static path from_multibyte(std::span<const std::byte> data) { return {std::string_view{reinterpret_cast<const char *>(data.data()), data.size()}}; }
 
 #ifdef ROD_WIN32
-		ROD_API_PUBLIC path from_binary(std::span<const std::byte> data);
+        [[maybe_unused]] ROD_API_PUBLIC path from_binary(std::span<const std::byte> data);
 #else
-		path from_binary(std::span<const std::byte> data) { return from_multibyte(data); }
+        [[maybe_unused]] static path from_binary(std::span<const std::byte> data) { return from_multibyte(data); }
 #endif
 
 		template<typename P>

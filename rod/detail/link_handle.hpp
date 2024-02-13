@@ -86,7 +86,6 @@ namespace rod
 			template<one_of<read_some_t, write_some_t> Op>
 			class io_buffer_sequence
 			{
-				template<one_of<read_some_t, write_some_t>>
 				friend class io_buffer_sequence;
 				friend class link_handle;
 
@@ -118,27 +117,27 @@ namespace rod
 				constexpr io_buffer_sequence() noexcept = default;
 
 				/** Initializes the buffer sequence from a pointer to an entry buffer of characters, size, and an optional link type. */
-				constexpr io_buffer_sequence(value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _type(type), _data(buff, size) {}
+				constexpr io_buffer_sequence(value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _data(buff, size), _type(type) {}
 
 				/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end) and an optional link type. */
 				template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-				constexpr io_buffer_sequence(I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _type(type), _data(begin, end) {}
+				constexpr io_buffer_sequence(I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _type(type) {}
 				/** Initializes the buffer sequence from a contiguous range of entry buffers and an optional link type. */
 				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-				constexpr io_buffer_sequence(Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _type(type), _data(std::forward<Buff>(buff)) {}
+				constexpr io_buffer_sequence(Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _type(type) {}
 
 				io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
 				io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_max = std::exchange(other._buff_max, {}), *this); }
 
 				/** Initializes the buffer sequence from a pointer to an entry buffer of characters, size, and an optional link type, using internal character buffer of \a other. */
 				template<typename OtherOp = Op>
-				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _type(type), _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})), _type(type) {}
 				/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end) and an optional link type, using internal character buffer of \a other. */
 				template<typename OtherOp = Op, std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _type(type), _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})), _type(type) {}
 				/** Initializes the buffer sequence from a contiguous range of entry buffers and an optional link type, using internal character buffer of \a other. */
 				template<typename OtherOp = Op, std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _type(type), _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})), _type(type) {}
 
 				/** Returns iterator to the first buffer of the buffer sequence. */
 				[[nodiscard]] constexpr iterator begin() const noexcept { return _data.begin(); }

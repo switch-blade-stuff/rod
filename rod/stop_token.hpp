@@ -27,7 +27,7 @@ namespace rod
 	namespace _detail
 	{
 		template<typename Token, typename Func, typename CB = stop_callback_for_t<std::decay_t<Token>, std::decay_t<Func>>>
-		[[nodiscard]] inline constexpr auto make_stop_callback(Token &&token, Func &&func) noexcept(std::is_nothrow_constructible_v<CB, Token, Func>) { return CB(std::forward<Token>(token), std::forward<Func>(func)); }
+		inline constexpr auto make_stop_callback(Token &&token, Func &&func) noexcept(std::is_nothrow_constructible_v<CB, Token, Func>) { return CB(std::forward<Token>(token), std::forward<Func>(func)); }
 	}
 
 	/** Concept used to define a stoppable token type that can accept a callback type `CB` initialized from `Init`. */

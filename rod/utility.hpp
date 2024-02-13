@@ -5,6 +5,7 @@
 #pragma once
 
 #include <system_error>
+#include <functional>
 #include <exception>
 #include <variant>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <span>
 
 #include <cstring>
+#include <cstdint>
 #include <cwchar>
 
 #include "tag.hpp"
@@ -427,7 +429,7 @@ namespace rod
 
 	/** Throws an exception from \a error either using an ADL or member overload or an implementation-defined method. */
 	template<typename Err>
-	inline constexpr void throw_exception(Err &&error) requires(requires { _detail::throw_exception(std::forward<Err>(error)); }) { _detail::throw_exception(std::forward<Err>(error)); }
+	[[noreturn]] inline constexpr void throw_exception(Err &&error) requires(requires { _detail::throw_exception(std::forward<Err>(error)); }) { _detail::throw_exception(std::forward<Err>(error)); }
 
 	namespace _detail
 	{

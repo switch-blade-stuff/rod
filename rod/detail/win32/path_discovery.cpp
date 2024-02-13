@@ -8,14 +8,6 @@ namespace rod::_detail
 {
 	using namespace _win32;
 
-	inline static auto find_shell_dirs(std::vector<fs::discovered_path> &dirs, std::span<const GUID> ids) noexcept
-	{
-		for (auto id : ids)
-			with_shell_path(id, [&](auto p) { dirs.push_back(fs::discovered_path{.path = fs::path(p, fs::path::native_format), .source = fs::discovery_source::system}); });
-		return result<>();
-	}
-	inline static auto find_localappdata() noexcept { return with_shell_path(FOLDERID_LocalAppData, [](auto p) { return fs::path(p, fs::path::native_format); }); }
-
 	result<> find_temp_dirs(std::vector<fs::discovered_path> &dirs) noexcept
 	{
 		try
@@ -23,15 +15,15 @@ namespace rod::_detail
 			/* If not running with elevated privileges, find %TMP%, %TEMP%, %LOCALAPPDATA%\Temp */
 			if (!is_elevated().value_or(false))
 			{
-				with_env_var(L"LOCALAPPDATA", [&dirs](auto &&dir) { dirs.push_back(fs::discovered_path{.path = fs::path(dir, fs::path::native_format) + L"\\Temp", .source = fs::discovery_source::environment}); });
-				with_env_var(L"TEMP", [&dirs](auto &&dir) { dirs.push_back(fs::discovered_path{.path = fs::path(dir, fs::path::native_format), .source = fs::discovery_source::environment}); });
-				with_env_var(L"TMP", [&dirs](auto &&dir) { dirs.push_back(fs::discovered_path{.path = fs::path(dir, fs::path::native_format), .source = fs::discovery_source::environment}); });
+				with_env_var(L"LOCALAPPDATA", [&dirs](auto &&dir) { dirs.push_back({fs::path(dir, fs::path::native_format) + L"\\Temp", fs::discovery_source::environment}); });
+				with_env_var(L"TEMP", [&dirs](auto &&dir) { dirs.push_back({fs::path(dir, fs::path::native_format), fs::discovery_source::environment}); });
+				with_env_var(L"TMP", [&dirs](auto &&dir) { dirs.push_back({fs::path(dir, fs::path::native_format), fs::discovery_source::environment}); });
 			}
 
 			/* Find %LOCALAPPDATA%\Temp */
-			with_shell_path(FOLDERID_LocalAppData, [&dirs](auto p) { dirs.push_back(fs::discovered_path{.path = fs::path(p, fs::path::native_format) + L"\\Temp", .source = fs::discovery_source::system}); });
+			with_shell_path(FOLDERID_LocalAppData, [&dirs](auto p) { dirs.push_back({fs::path(p, fs::path::native_format) + L"\\Temp", fs::discovery_source::system}); });
 			/* Find %USERPROFILE%\AppData\Local\Temp */
-			with_shell_path(FOLDERID_Profile, [&dirs](auto p) { dirs.push_back(fs::discovered_path{.path = fs::path(p, fs::path::native_format) + LR"(\AppData\Local\Temp)", .source = fs::discovery_source::system}); });
+			with_shell_path(FOLDERID_Profile, [&dirs](auto p) { dirs.push_back({fs::path(p, fs::path::native_format) + LR"(\AppData\Local\Temp)", fs::discovery_source::system}); });
 
 			{ /* Find GetWindowsDirectoryW()\Temp */
 				auto buffer = std::wstring(32767, L'\0');
@@ -40,7 +32,7 @@ namespace rod::_detail
 				{
 					buffer.resize(len);
 					buffer.append(L"\\Temp");
-					dirs.push_back(fs::discovered_path{.path = fs::path(std::move(buffer), fs::path::native_format), .source = fs::discovery_source::fallback});
+					dirs.push_back({fs::path(std::move(buffer), fs::path::native_format), fs::discovery_source::fallback});
 				}
 			}
 			{ /* Find %SYSTEMDRIVE%\Temp */
@@ -50,7 +42,7 @@ namespace rod::_detail
 				{
 					buffer.resize(buffer.find_last_of(L'\\', len));
 					buffer.append(L"\\Temp");
-					dirs.push_back(fs::discovered_path{.path = fs::path(std::move(buffer), fs::path::native_format), .source = fs::discovery_source::fallback});
+					dirs.push_back({fs::path(std::move(buffer), fs::path::native_format), fs::discovery_source::fallback});
 				}
 			}
 			return {};
@@ -110,6 +102,7 @@ namespace rod::_detail
 	result<fs::path> find_music_dir() noexcept { return with_shell_path(FOLDERID_Music, [](auto p) { return fs::path(p, fs::path::native_format); }); }
 	result<fs::path> find_videos_dir() noexcept { return with_shell_path(FOLDERID_Videos, [](auto p) { return fs::path(p, fs::path::native_format); }); }
 	result<fs::path> find_desktop_dir() noexcept { return with_shell_path(FOLDERID_Desktop, [](auto p) { return fs::path(p, fs::path::native_format); }); }
+	result<fs::path> find_pictures_dir() noexcept { return with_shell_path(FOLDERID_Pictures, [](auto p) { return fs::path(p, fs::path::native_format); }); }
 	result<fs::path> find_downloads_dir() noexcept { return with_shell_path(FOLDERID_Downloads, [](auto p) { return fs::path(p, fs::path::native_format); }); }
 	result<fs::path> find_documents_dir() noexcept { return with_shell_path(FOLDERID_Documents, [](auto p) { return fs::path(p, fs::path::native_format); }); }
 	result<fs::path> find_templates_dir() noexcept { return with_shell_path(FOLDERID_Templates, [](auto p) { return fs::path(p, fs::path::native_format); }); }

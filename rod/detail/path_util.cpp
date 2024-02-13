@@ -72,35 +72,85 @@ namespace rod::fs
 		catch (...) { return _detail::current_error(); }
 	}
 
+	inline static result<directory_handle> try_create_dir(const path_handle &base, path_view path) noexcept
+	{
+		/* Try to create a new directory. If failed, try to get the path's type. If it is a directory, return success. */
+		if (auto res = directory_handle::open(base, path, file_flags::read, open_mode::create); res.has_value())
+			return std::move(*res);
+
+		auto st = stat(nullptr);
+		if (auto res = get_stat(st, base, path, stat::query::type); res.has_error() || st.type != file_type::directory)
+			return res.error_or(std::make_error_code(std::errc::file_exists));
+		else
+			return {};
+	}
+	template<typename Str>
+	inline static result<std::size_t> do_create(const path_handle &base, Str view, auto fmt) noexcept
+	{
+		const auto sep_pred = [fmt](auto ch) { return is_separator(ch, fmt); };
+		const auto root_end = std::find_if_not(view.begin() + root_name_size(view, fmt), view.end(), sep_pred);
+		auto cmp_off = std::distance(view.begin(), root_end);
+		auto cmp_pos = view.begin() + cmp_off;
+
+#ifdef ROD_WIN32
+		/* Remove drive leter if there is a \\?\ prefix. */
+		if (cmp_off && view.size() - cmp_off >= 3 && root_end[1] == ':' && _path::is_drive_letter(*root_end) && is_separator(root_end[2], fmt))
+			cmp_pos += 2;
+#endif
+
+		/* Go through every component and create the directory. Capture only the relevant error. */
+		std::error_code errs[2] = {};
+		std::size_t new_dirs = 0;
+		directory_handle dir_hnd;
+		auto *base_ptr = &base;
+
+		for (auto path_pos = view.begin(); cmp_pos != view.end();)
+		{
+			const auto cmp_end = std::find_if(std::find_if_not(cmp_pos, view.end(), sep_pred), view.end(), sep_pred);
+			const auto path = path_view(std::to_address(path_pos), std::size_t(cmp_end - path_pos), false, fmt);
+			cmp_pos = std::find_if_not(cmp_end, view.end(), sep_pred);
+
+			auto create_res = try_create_dir(*base_ptr, path);
+			if (create_res.has_error()) [[unlikely]]
+			{
+				errs[0] = create_res.error();
+				if (errs[0] != std::make_error_condition(std::errc::no_such_file_or_directory))
+					errs[1] = errs[0];
+			}
+
+			if (create_res->is_open())
+			{
+				base_ptr = &implicit_cast<const path_handle &>(dir_hnd);
+				dir_hnd = std::move(*create_res);
+				path_pos = cmp_pos;
+				new_dirs++;
+			}
+		}
+		if (errs[0]) [[unlikely]]
+			return errs[1] ? errs[1] : errs[0];
+		else
+			return new_dirs;
+	}
+	template<typename Str> requires decays_to_same<std::ranges::range_value_t<Str>, std::byte>
+	inline static result<std::size_t> do_create(const path_handle &base, Str view, auto fmt) noexcept
+	{
+		return try_create_dir(base, path_view(view.data(), view.size(), false, fmt)).transform_value([](auto &hnd) { return std::size_t(hnd.is_open()); });
+	}
+
+	result<std::size_t> create_directories(const path_handle &base, path_view path) noexcept
+	{
+		if (!path.empty()) [[likely]]
+			return visit([&](auto v) { return do_create(base, v, path.format()); }, path);
+		else
+			return std::make_error_code(std::errc::no_such_file_or_directory);
+	}
+
 	inline constexpr auto copy_stats_mask = stat::query::type | stat::query::dev | stat::query::ino | stat::query::perm;
 
 	inline static result<std::size_t> do_copy(const path_handle &, path_view, const path_handle &, path_view, copy_mode, const file_timeout &, bool) noexcept;
 	inline static result<std::size_t> do_copy(const path_handle &, path_view, stat, const path_handle &, path_view, stat, copy_mode, const file_timeout &, bool) noexcept;
 
-	inline static result<std::size_t> make_symlink(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, stat dst_st, const file_timeout &to) noexcept
-	{
-		if (dst_st.type != file_type::symlink && dst_st.type != file_type::none)
-			return std::make_error_code(std::errc::file_exists);
-
-		/* Get the full target path from the source handle. */
-		path full_path;
-		if (src_base.is_open())
-		{
-			if (auto res = to_native_path(src_base, native_path_format::generic); res.has_value()) [[likely]]
-				full_path = std::move(*res) / path(src_path);
-			else
-				return res.error();
-		}
-		else
-		{
-			if (auto res = canonical(src_path); res.has_value()) [[likely]]
-				full_path = std::move(*res);
-			else
-				return res.error();
-		}
-	}
-
-	inline static result<std::size_t> copy_symlink(const path_handle &src_base, path_view src_path, stat src_st, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to) noexcept
+	inline static result<std::size_t> copy_symlink(const path_handle &src_base, path_view src_path, stat , const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to) noexcept
 	{
 		if (bool(mode & copy_mode::ignore_links))
 			return 0;
@@ -183,7 +233,7 @@ namespace rod::fs
 		}
 		return 0;
 	}
-	inline static result<std::size_t> copy_directory(const path_handle &src_base, path_view src_path, stat src_st, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to, bool enter) noexcept
+	inline static result<std::size_t> copy_directory(const path_handle &src_base, path_view src_path, stat, const path_handle &dst_base, path_view dst_path, stat dst_st, copy_mode mode, const file_timeout &to, bool enter) noexcept
 	{
 		if (!bool(mode & copy_mode::directories))
 			return 0;

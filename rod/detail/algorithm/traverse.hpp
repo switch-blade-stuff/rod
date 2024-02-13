@@ -327,7 +327,7 @@ namespace rod
 		template<typename Sch, typename Rcv, typename Vst>
 		void receiver<Sch, Rcv, Vst>::type::run() noexcept
 		{
-			auto buffs = std::vector<read_some_buffer_t<fs::directory_handle>>(64);
+			auto buffs = std::vector<io_buffer_t<fs::directory_handle, read_some_t>>(64);
 			auto req = read_some_request_t<fs::directory_handle>{.buffs = buffs};
 			for (;;)
 			{

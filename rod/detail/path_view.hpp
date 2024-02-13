@@ -12,7 +12,7 @@ namespace rod
 	{
 		template<typename F>
 		concept visitor = std::invocable<F, std::span<const std::byte>> &&
-		                            std::invocable<F, std::basic_string_view<char>> &&
+			                        std::invocable<F, std::basic_string_view<char>> &&
 		                            std::invocable<F, std::basic_string_view<wchar_t>> &&
 		                            std::invocable<F, std::basic_string_view<char8_t>> &&
 		                            std::invocable<F, std::basic_string_view<char16_t>>;
@@ -80,7 +80,7 @@ namespace rod
 			/** Initializes an empty path component of unknown format. */
 			constexpr path_view_component() noexcept : path_view_component(unknown_format) {}
 			/** Initializes an empty path component with format \a fmt. */
-			constexpr path_view_component(format_type fmt) noexcept : _data(nullptr), _size(0), _is_null_terminated(false), _format(fmt), _encoding(encoding::byte) {}
+			constexpr path_view_component(format_type fmt) noexcept : _data(nullptr), _size(0), _encoding(encoding::byte), _format(fmt), _is_null_terminated(false) {}
 
 			/** Copy-initializes path component from \a other. */
 			constexpr path_view_component(const path_view_component &other) noexcept = default;
@@ -98,32 +98,32 @@ namespace rod
 			/** Initializes a path component from a null-terminated `char` string \a str and format \a fmt. */
 			constexpr path_view_component(const char *str, format_type fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
 			/** Initializes a path component from a `char` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
-			constexpr path_view_component(const char *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char)), _is_null_terminated(term), _format(fmt), _encoding(encoding::cchar) {}
+			constexpr path_view_component(const char *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char)), _encoding(encoding::cchar), _format(fmt), _is_null_terminated(term) {}
 
 			/** Initializes a path component from a null-terminated `wchar_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const wchar_t *str, format_type fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
 			/** Initializes a path component from a `wchar_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
-			constexpr path_view_component(const wchar_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(wchar_t)), _is_null_terminated(term), _format(fmt), _encoding(encoding::wchar) {}
+			constexpr path_view_component(const wchar_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(wchar_t)), _encoding(encoding::wchar), _format(fmt), _is_null_terminated(term) {}
 
 			/** Initializes a path component from a null-terminated `char8_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const char8_t *str, format_type fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
 			/** Initializes a path component from a `char8_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
-			constexpr path_view_component(const char8_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char8_t)), _is_null_terminated(term), _format(fmt), _encoding(encoding::char8) {}
+			constexpr path_view_component(const char8_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char8_t)), _encoding(encoding::char8), _format(fmt), _is_null_terminated(term) {}
 
 			/** Initializes a path component from a null-terminated `char16_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const char16_t *str, format_type fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
 			/** Initializes a path component from a `char16_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
-			constexpr path_view_component(const char16_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char16_t)), _is_null_terminated(term), _format(fmt), _encoding(encoding::char16) {}
+			constexpr path_view_component(const char16_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char16_t)), _encoding(encoding::char16), _format(fmt), _is_null_terminated(term) {}
 
 			/** Initializes a path component from a null-terminated `char32_t` string \a str and format \a fmt. */
 			constexpr path_view_component(const char32_t *str, format_type fmt = binary_format) noexcept : path_view_component(str, rod::_detail::strlen(str), true, fmt) {}
 			/** Initializes a path component from a `char32_t` string \a str of length \a len, null-termination flag \a term and format \a fmt. */
-			constexpr path_view_component(const char32_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char32_t)), _is_null_terminated(term), _format(fmt), _encoding(encoding::char32) {}
+			constexpr path_view_component(const char32_t *str, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(str), _size(len * sizeof(char32_t)), _encoding(encoding::char32), _format(fmt), _is_null_terminated(term) {}
 
 			/** Initializes a path component from a null-terminated byte array \a data and format \a fmt. */
 			constexpr path_view_component(const std::byte *data, format_type fmt = binary_format) noexcept : path_view_component(data, rod::_detail::strlen(data), true, fmt) {}
 			/** Initializes a path component from a byte array \a data of length \a len, null-termination flag \a term and format \a fmt. */
-			constexpr path_view_component(const std::byte *data, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(data), _size(len), _is_null_terminated(term), _format(fmt), _encoding(encoding::byte) {}
+			constexpr path_view_component(const std::byte *data, size_type len, bool term, format_type fmt = binary_format) noexcept : _data(data), _size(len), _encoding(encoding::byte), _format(fmt), _is_null_terminated(term) {}
 
 			/** Initializes path component from path \a p. */
 			constexpr path_view_component(const path &p) noexcept : path_view_component(p.native().data(), p.native().size(), true, p.format()) {}
@@ -210,7 +210,7 @@ namespace rod
 			/** Returns the path component's formatting type. */
 			[[nodiscard]] constexpr format_type format() const noexcept { return _format; }
 			/** Returns the native size (in codepoints or bytes) of the path component. */
-			[[nodiscard]] constexpr size_type native_size() const noexcept { return visit([&]<typename V>(V sv) noexcept { return _size / sizeof(std::ranges::range_value_t<V>); }); }
+			[[nodiscard]] constexpr size_type native_size() const noexcept { return visit([&]<typename V>(V) noexcept { return _size / sizeof(std::ranges::range_value_t<V>); }); }
 
 			/** Checks if the path component is empty. */
 			[[nodiscard]] constexpr bool empty() const noexcept { return native_size() == 0; }
@@ -746,29 +746,29 @@ namespace rod
 			[[nodiscard]] constexpr path_view root_namespace() const noexcept
 			{
 				return visit([&]<typename V>(V view) -> path_view
-				             {
-					             if constexpr (!std::same_as<V, std::span<const std::byte>>)
-					             {
-						             const auto comp = root_namespace_substr(view, format());
-						             const auto term = is_null_terminated() && ends_with(view, comp);
-						             return path_view(comp, term, format());
-					             }
-					             return {};
-				             });
+                {
+                    if constexpr (!std::same_as<V, std::span<const std::byte>>)
+                    {
+                        const auto comp = root_namespace_substr(view, format());
+                        const auto term = is_null_terminated() && ends_with(view, comp);
+                        return path_view(comp, term, format());
+                    }
+                    return {};
+                });
 			}
 			/** Returns a view of the root directory component of this path view. */
 			[[nodiscard]] constexpr path_view root_directory() const noexcept
 			{
 				return visit([&]<typename V>(V view) -> path_view
-				             {
-					             if constexpr (!std::same_as<V, std::span<const std::byte>>)
-					             {
-						             const auto comp = root_directory_substr(view, format());
-						             const auto term = is_null_terminated() && ends_with(view, comp);
-						             return path_view(comp, term, format());
-					             }
-					             return {};
-				             });
+                {
+                    if constexpr (!std::same_as<V, std::span<const std::byte>>)
+                    {
+                        const auto comp = root_directory_substr(view, format());
+                        const auto term = is_null_terminated() && ends_with(view, comp);
+                        return path_view(comp, term, format());
+                    }
+                    return {};
+                });
 			}
 			/** Returns a view of the root path component of this path view. */
 			[[nodiscard]] constexpr path_view root_path() const noexcept
@@ -966,9 +966,15 @@ namespace rod
 		path &path::append(path_view_like p) { return append(from_view_like(p, format())); }
 		path &path::append(path_view_like p, const std::locale &loc) { return append(from_view_like(p, loc, format())); }
 
+		inline path operator/(const path &a, path_view_like b) { return a / from_view_like(b, a.format()); }
+		inline path operator/(path_view_like a, const path &b) { return from_view_like(a, b.format()) / b; }
+
 		path &path::operator+=(path_view_like p) { return concat(p); }
 		path &path::concat(path_view_like p) { return concat(from_view_like(p, format())); }
 		path &path::concat(path_view_like p, const std::locale &loc) { return concat(from_view_like(p, loc, format())); }
+
+		inline path operator+(const path &a, path_view_like b) { return a + from_view_like(b, a.format()); }
+		inline path operator+(path_view_like a, const path &b) { return from_view_like(a, b.format()) + b; }
 
 		/** Preforms a component-wise lexicographical equality comparison between \a a and \a b. Equivalent to `a.compare(path(b)) == 0`. */
 		template<_path::accepted_source Src>

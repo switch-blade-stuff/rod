@@ -225,6 +225,7 @@ namespace rod
 					else
 						break;
 				}
+                (void) cb;
 			}
 
 			/** Changes the internal state to stopped and unblocks waiting threads. Any in-progress work will run to completion. */

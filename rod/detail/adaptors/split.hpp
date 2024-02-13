@@ -161,7 +161,7 @@ namespace rod
 			type &operator=(type &&) = delete;
 
 			constexpr explicit type(Rcv &&rcv, _detail::shared_handle<shared_state_t> handle) noexcept(std::is_nothrow_move_constructible_v<Rcv>)
-					: operation_base{{}, notify_complete}, _state(std::move(handle)), empty_base<Rcv>(std::forward<Rcv>(rcv)) {}
+					: operation_base{{}, notify_complete}, empty_base<Rcv>(std::forward<Rcv>(rcv)), _state(std::move(handle)) {}
 
 			friend constexpr void tag_invoke(start_t, type &op) noexcept { op.start(); }
 

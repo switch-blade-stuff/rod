@@ -71,9 +71,9 @@ namespace rod
 	{
 		static const auto [all, user] = []() noexcept -> std::pair<std::vector<std::size_t>, std::vector<std::size_t>>
 		{
-			try
-			{
 #if defined(ROD_WIN32)
+            try
+			{
 				std::pair<std::vector<std::size_t>, std::vector<std::size_t>> result = {{get_page_size()}, {get_page_size()}};
 				if (const auto GetLargePageMinimum = reinterpret_cast<std::size_t (WINAPI *)()>(::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetLargePageMinimum")); GetLargePageMinimum != nullptr)
 				{
@@ -93,9 +93,11 @@ namespace rod
 					}
 				}
 				return result;
-#endif
 			}
 			catch (...) { return {}; }
+#else
+            return {};
+#endif
 		}();
 		return avail ? user : all;
 	}
