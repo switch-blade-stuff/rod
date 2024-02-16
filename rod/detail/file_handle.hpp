@@ -252,6 +252,9 @@ namespace rod
 			result<fs_stat::query> do_get_fs_stat(fs_stat &st, fs_stat::query q) const noexcept { return _handle::do_get_fs_stat(st, native_handle(), q); }
 
 			result<path> do_to_object_path() const noexcept { return _path::do_to_object_path(native_handle()); }
+#if defined(__unix__)
+			result<path> do_to_native_path(native_path_format fmt) const noexcept { return _path::do_to_native_path(native_handle(), fmt, 0, 0); }
+#endif
 			result<path> do_to_native_path(native_path_format fmt, dev_t dev, ino_t ino) const noexcept { return _path::do_to_native_path(native_handle(), fmt, dev, ino); }
 
 			ROD_API_PUBLIC result<> do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;

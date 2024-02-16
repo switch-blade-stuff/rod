@@ -32,10 +32,12 @@
 #include <pwd.h>
 
 #include "../path_discovery.hpp"
+#include "../file_handle.hpp"
 #include "path_util.hpp"
 
 namespace rod::_unix
 {
+	result<std::string> read_link_path(const char *link) noexcept;
 	result<std::string> read_xdg_path(std::string_view name) noexcept;
 
 	template<std::invocable<std::string_view> F> requires(std::convertible_to<std::invoke_result_t<F, std::string_view>, bool>)

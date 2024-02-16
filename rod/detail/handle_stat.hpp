@@ -98,6 +98,13 @@ namespace rod
 			read = owner_read | group_read | other_read,
 			/** Owner, group & others have write permissions. */
 			write = owner_write | group_write | other_write,
+
+			/** Set UID executable flag (POSIX only). */
+			setuid = 04000,
+			/** Set GID executable flag (POSIX only). */
+			setgid = 02000,
+			/** Set sticky file flag (POSIX only). */
+			sticky = 01000,
 		};
 
 		[[nodiscard]] constexpr file_perm operator~(file_perm h) noexcept { return file_perm(~std::int16_t(h)); }

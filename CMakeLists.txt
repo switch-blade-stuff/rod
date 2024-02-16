@@ -187,7 +187,9 @@ if (UNIX)
             rod/detail/unix/path_discovery.hpp
             rod/detail/unix/path_discovery.cpp
             rod/detail/unix/path_util.hpp
-            rod/detail/unix/path_util.cpp)
+            rod/detail/unix/path_util.cpp
+            rod/detail/unix/handle_stat.hpp
+            rod/detail/unix/handle_stat.cpp)
 endif ()
 
 # Linux implementation

@@ -53,6 +53,10 @@ namespace rod
 
 			template<std::same_as<fs::to_object_path_t> T>
 			friend auto tag_invoke(T, const path_handle &hnd) noexcept { return _path::do_to_object_path(hnd.native_handle()); }
+#if defined(__unix__)
+			template<std::same_as<fs::to_native_path_t> T>
+			friend auto tag_invoke(T, const path_handle &hnd, fs::native_path_format fmt) noexcept { return _path::do_to_native_path(hnd.native_handle(), fmt, 0, 0); }
+#endif
 			template<std::same_as<fs::to_native_path_t> T>
 			friend auto tag_invoke(T, const path_handle &hnd, fs::native_path_format fmt, fs::dev_t dev, fs::ino_t ino) noexcept { return _path::do_to_native_path(hnd.native_handle(), fmt, dev, ino); }
 		};
