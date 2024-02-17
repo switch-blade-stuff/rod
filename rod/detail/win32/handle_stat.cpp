@@ -2,7 +2,6 @@
  * Created by switchblade on 2023-08-29.
  */
 
-#define _CRT_SECURE_NO_WARNINGS
 #include "handle_stat.hpp"
 
 namespace rod

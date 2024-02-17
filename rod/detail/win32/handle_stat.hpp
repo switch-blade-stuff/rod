@@ -4,5 +4,6 @@
 
 #pragma once
 
+#define _CRT_SECURE_NO_WARNINGS
 #include "../handle_stat.hpp"
 #include "path_discovery.hpp"

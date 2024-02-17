@@ -4,8 +4,6 @@
 
 #include "link_handle.hpp"
 
-#include <numeric>
-
 namespace rod::_link
 {
 	using namespace _win32;

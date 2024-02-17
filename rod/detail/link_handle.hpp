@@ -303,7 +303,7 @@ namespace rod
 
 #ifdef ROD_HAS_SYMLINK_HANDLE
 			result<path> do_to_object_path() const noexcept { return _path::do_to_object_path(native_handle()); }
-#if defined(__unix__)
+#if defined(ROD_POSIX)
 			result<path> do_to_native_path(native_path_format fmt) const noexcept { return _path::do_to_native_path(native_handle(), fmt, 0, 0); }
 #endif
 			result<path> do_to_native_path(native_path_format fmt, dev_t dev, ino_t ino) const noexcept { return _path::do_to_native_path(native_handle(), fmt, dev, ino); }
