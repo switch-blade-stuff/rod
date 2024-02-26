@@ -7,6 +7,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#ifdef __linux__
+#include <sys/sysmacros.h>
+#include <sys/statfs.h>
+#include <sys/mount.h>
+#include <mntent.h>
+#endif
+
 #if defined(STATX_BASIC_STATS) && defined(STATX_BTIME) && defined(STATX_ATTR_COMPRESSED)
 #define HAS_STATX 1
 #else

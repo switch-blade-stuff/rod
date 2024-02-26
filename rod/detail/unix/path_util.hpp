@@ -16,5 +16,6 @@
 
 namespace rod::_unix
 {
+	result<std::string> exec_cmd(std::string_view cmd) noexcept;
 	result<std::string> expand_path(std::string_view str) noexcept;
 }

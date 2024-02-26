@@ -178,11 +178,11 @@ namespace rod
 			/** ID of a special file (POSIX only). */
 			fs::dev_t rdev;
 			/** User id of the object (POSIX only). */
-			std::int16_t uid;
+			std::uint32_t uid;
 			/** Group id of the object (POSIX only). */
-			std::int16_t gid;
+			std::uint32_t gid;
 			/** Total number of hard links. */
-			std::int16_t nlink;
+			std::uint32_t nlink;
 			/** Type of the object. */
 			fs::file_type type;
 			/** Permissions of the object (POSIX only). */
@@ -408,8 +408,6 @@ namespace rod
 			extent_type ino_count = 0;
 			/** Number of unused inodes available to non-privileged users (POSIX only). */
 			extent_type ino_avail = 0;
-			/** Number of unused inodes in the filesystem (POSIX only). */
-			extent_type ino_free = 0;
 
 			/** Internal filesystem ID. */
 			std::uint64_t fs_id[2] = {};

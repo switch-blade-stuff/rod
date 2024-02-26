@@ -417,7 +417,302 @@ namespace rod
 			}
 			return done;
 		}
-		result<fs_stat::query> get_fs_stat(fs_stat &st, int base, const char *leaf, fs_stat::query q, bool nofollow) noexcept;
+		result<fs_stat::query> get_fs_stat(fs_stat &st, int base, const char *leaf, fs_stat::query q, bool nofollow) noexcept
+		{
+			if (q == fs_stat::query::none)
+				return q;
+
+			auto res = fs_stat::query::none;
+			auto hnd = -1;
+			auto g_hnd = defer_invoke([&] { if (hnd >= 0) ::close(hnd); });
+
+			if (base >= 0 && leaf != nullptr)
+			{
+				auto flags = O_CLOEXEC | O_RDONLY | (nofollow ? O_NOFOLLOW : 0);
+#ifdef O_PATH
+				flags |= O_PATH;
+#endif
+				if (hnd = ::openat(hnd, leaf, flags); hnd < 0) [[unlikely]]
+					return std::error_code(errno, std::system_category());
+				else
+					leaf = nullptr;
+			}
+
+#if defined(__linux__)
+			struct ::statfs64 st_data = {};
+			bool has_err;
+
+			if (leaf == nullptr && hnd < 0)
+				has_err = ::fstatfs64(base, &st_data);
+			else if (leaf == nullptr)
+				has_err = ::fstatfs64(hnd, &st_data);
+			else
+				has_err = ::statfs64(leaf, &st_data);
+			if (has_err) [[unlikely]]
+				return std::error_code(errno, std::system_category());
+
+			if (bool(q & fs_stat::query::io_size))
+			{
+				st.io_size = st_data.f_frsize;
+				res |= fs_stat::query::io_size;
+			}
+			if (bool(q & fs_stat::query::blk_size))
+			{
+				st.blk_size = st_data.f_bsize;
+				res |= fs_stat::query::blk_size;
+			}
+			if (bool(q & fs_stat::query::blk_count))
+			{
+				st.blk_count = st_data.f_blocks;
+				res |= fs_stat::query::blk_count;
+			}
+			if (bool(q & fs_stat::query::blk_avail))
+			{
+				st.blk_avail = st_data.f_bavail;
+				res |= fs_stat::query::blk_avail;
+			}
+			if (bool(q & fs_stat::query::blk_free))
+			{
+				st.blk_free = st_data.f_bfree;
+				res |= fs_stat::query::blk_free;
+			}
+
+			if (bool(q & fs_stat::query::filename_max))
+			{
+				st.filename_max = st_data.f_namelen;
+				res |= fs_stat::query::filename_max;
+			}
+			if (bool(q & fs_stat::query::ino_count))
+			{
+				st.ino_count = st_data.f_files;
+				res |= fs_stat::query::ino_count;
+			}
+			if (bool(q & fs_stat::query::ino_avail))
+			{
+				st.ino_avail = st_data.f_ffree;
+				res |= fs_stat::query::ino_avail;
+			}
+
+			if (bool(q & fs_stat::query::fs_id))
+			{
+				std::memcpy(st.fs_id, &st_data.f_fsid, sizeof(st_data.f_fsid));
+				res |= fs_stat::query::fs_id;
+			}
+			if (bool(q & (fs_stat::query::flags | fs_stat::query::fs_type | fs_stat::query::fs_name | fs_stat::query::fs_path)))
+			{
+				struct entry { std::string name, path, type, mnt_opts; };
+				auto ents_data = malloc_ptr<std::pair<entry, struct ::statfs64>[]>();
+				auto ents_cap = std::size_t(0), ents_len = std::size_t(0);
+
+				auto *mtab = ::setmntent("/etc/mtab", "r");
+				auto g_mtab = defer_invoke([&]() noexcept { if (mtab) ::endmntent(mtab); });
+
+				if (mtab == nullptr) [[unlikely]]
+					mtab = ::setmntent("/proc/mounts", "r");
+				if (mtab == nullptr) [[unlikely]]
+					return std::error_code(errno, std::system_category());
+
+				auto buff_data = make_malloc_ptr_for_overwrite<char[]>(32768);
+				if (buff_data.get() == nullptr) [[unlikely]]
+					return std::make_error_code(std::errc::not_enough_memory);
+
+				const auto ents_push = [&](entry &&e, struct ::statfs64 s) noexcept -> std::error_code
+				{
+					if (ents_len >= ents_cap)
+					{
+						decltype(ents_data.get()) new_data, old_data = ents_data.release();
+						if (ents_cap > 0)
+							new_data = static_cast<decltype(new_data)>(std::realloc(old_data, ents_cap *= 2));
+						else
+							new_data = static_cast<decltype(new_data)>(std::malloc(ents_cap = 4));
+						if (new_data == nullptr) [[unlikely]]
+							return (std::free(old_data), std::make_error_code(std::errc::not_enough_memory));
+						else
+							ents_data.reset(static_cast<decltype(old_data)>(new_data));
+					}
+
+					ents_data[ents_len++] = {std::forward<entry>(e), s};
+					return {};
+				};
+				struct ::statfs64 st_ent = {};
+				struct ::mntent ent = {};
+
+				while (::getmntent_r(mtab, &ent, buff_data.get(), 32768) != nullptr)
+				{
+					if (::statfs64(ent.mnt_dir, &st_ent) || st_ent.f_type != st_data.f_type || std::memcmp(&st_ent.f_fsid, &st_data.f_fsid, sizeof(::fsid_t)) != 0)
+						continue;
+					if (auto err = ents_push(entry{ent.mnt_fsname, ent.mnt_dir, ent.mnt_type, ent.mnt_opts}, st_ent); err) [[unlikely]]
+						return err;
+				}
+				if (ents_len == 0) [[unlikely]]
+					return std::make_error_code(std::errc::no_such_file_or_directory);
+
+				auto path = std::string();
+				if (leaf != nullptr)
+					path = leaf;
+				else if (auto path_res = get_path(hnd >= 0 ? hnd : base); path_res.has_value()) [[likely]]
+					path = std::move(path_res).value();
+				else
+					return std::move(path_res).error();
+
+				auto scores_data = make_malloc_ptr_for_overwrite<std::pair<std::size_t, std::size_t>[]>(ents_len);
+				if (scores_data.get() == nullptr) [[unlikely]]
+					return std::make_error_code(std::errc::not_enough_memory);
+				for (std::size_t n = 0; n < ents_len; ++n)
+				{
+					scores_data[n].first = path.substr(0, ents_data[n].first.path.size()) == ents_data[n].first.path ? ents_data[n].first.path.size() : 0;
+					scores_data[n].second = n;
+				}
+
+				auto found = std::move(ents_data[std::ranges::sort(scores_data.get(), scores_data.get() + ents_len)[-1].second]);
+				scores_data.reset();
+				ents_data.reset();
+				buff_data.reset();
+
+				if (bool(q & fs_stat::query::flags))
+				{
+					st.flags = fs_flags::none;
+					if (bool(st_data.f_flags & MS_NOEXEC))
+						st.flags |= fs_flags::noexec;
+					if (bool(st_data.f_flags & MS_NOSUID))
+						st.flags |= fs_flags::nosuid;
+					if (bool(st_data.f_flags & MS_RDONLY))
+						st.flags |= fs_flags::rdonly;
+					if (const auto &opts = found.first.mnt_opts; opts.find("xattr") < opts.size() &&  opts.find("nouser_xattr") >= opts.size())
+						st.flags |= fs_flags::extended_attributes;
+					if (const auto &opts = found.first.mnt_opts; opts.find("acl") < opts.size() &&  opts.find("noacl") >= opts.size())
+						st.flags |= fs_flags::access_control_list;
+					if (const auto &type = found.first.type; type == "tmpfs" || type == "btrfs" || type == "ext4" || type == "xfs")
+						st.flags |= fs_flags::sparse_files;
+					if (_detail::match_network_backed(found.first.type))
+						st.flags |= fs_flags::network;
+					res |= fs_stat::query::flags;
+				}
+				if (bool(q & fs_stat::query::fs_type))
+				{
+					st.fs_type = found.first.type;
+					res |= fs_stat::query::fs_type;
+				}
+				if (bool(q & fs_stat::query::fs_name))
+				{
+					st.fs_name = found.first.name;
+					res |= fs_stat::query::fs_name;
+				}
+				if (bool(q & fs_stat::query::fs_path))
+				{
+					st.fs_path = found.first.path;
+					res |= fs_stat::query::fs_path;
+				}
+			}
+#else
+			struct ::statfs st_data = {};
+			bool has_err;
+
+			if (leaf == nullptr && hnd < 0)
+				has_err = ::fstatfs(base, &st_data);
+			else if (leaf == nullptr)
+				has_err = ::fstatfs(hnd, &st_data);
+			else
+				has_err = ::statfs(leaf, &st_data);
+			if (has_err) [[unlikely]]
+				return std::error_code(errno, std::system_category());
+
+			if (bool(q & fs_stat::query::io_size))
+			{
+				st.io_size = st_data.f_iosize;
+				res |= fs_stat::query::io_size;
+			}
+			if (bool(q & fs_stat::query::blk_size))
+			{
+				st.blk_size = st_data.f_bsize;
+				res |= fs_stat::query::blk_size;
+			}
+			if (bool(q & fs_stat::query::blk_count))
+			{
+				st.blk_count = st_data.f_blocks;
+				res |= fs_stat::query::blk_count;
+			}
+			if (bool(q & fs_stat::query::blk_avail))
+			{
+				st.blk_avail = st_data.f_bavail;
+				res |= fs_stat::query::blk_avail;
+			}
+			if (bool(q & fs_stat::query::blk_free))
+			{
+				st.blk_free = st_data.f_bfree;
+				res |= fs_stat::query::blk_free;
+			}
+
+			if (bool(q & fs_stat::query::filename_max))
+			{
+#ifdef __APPLE__
+				st.filename_max = 255;
+#else
+				st.filename_max = st_data.f_namemax;
+#endif
+				res |= fs_stat::query::filename_max;
+			}
+			if (bool(q & fs_stat::query::ino_count))
+			{
+				st.ino_count = st_data.f_files;
+				res |= fs_stat::query::ino_count;
+			}
+			if (bool(q & fs_stat::query::ino_avail))
+			{
+				st.ino_avail = st_data.f_ffree;
+				res |= fs_stat::query::ino_avail;
+			}
+
+			if (bool(q & fs_stat::query::fs_id))
+			{
+				std::memcpy(st.fs_id, &st_data.f_fsid, sizeof(st_data.f_fsid));
+				res |= fs_stat::query::fs_id;
+			}
+			if (bool(q & fs_stat::query::fs_type))
+			{
+                st.fs_type = st_data.f_fstypename;
+				res |= fs_stat::query::fs_type;
+			}
+			if (bool(q & fs_stat::query::fs_name))
+			{
+                st.fs_type = st_data.f_mntfromname;
+				res |= fs_stat::query::fs_type;
+			}
+			if (bool(q & fs_stat::query::fs_path))
+			{
+                st.fs_type = st_data.f_mntonname;
+				res |= fs_stat::query::fs_type;
+			}
+			if (bool(q & fs_stat::query::flags))
+			{
+				st.flags = fs_flags::none;
+				if (bool(st_data.f_flags & MNT_NOEXEC))
+					st.flags |= fs_flags::noexec;
+				if (bool(st_data.f_flags & MNT_NOSUID))
+					st.flags |= fs_flags::nosuid;
+				if (bool(st_data.f_flags & MNT_RDONLY))
+					st.flags |= fs_flags::rdonly;
+#if defined(MNT_ACLS) && defined(MNT_NFS4ACLS)
+				if (bool(st_data.f_flags & (MNT_ACLS | MNT_NFS4ACLS)))
+					st.flags |= fs_flags::access_control_list;
+#endif
+				if (bool(q & fs_stat::query::fs_type) && _detail::match_network_backed(st.fs_type))
+					st.flags |= fs_flags::network;
+				if (!std::strcmp(st_data.f_fstypename, "ufs") || !std::strcmp(st_data.f_fstypename, "zfs"))
+				{
+					st.flags |= fs_flags::sparse_files;
+					if (!std::strcmp(st_data.f_fstypename, "zfs"))
+						st.flags |= fs_flags::file_compression;
+
+					auto cmd = std::string("zfs get xattr \"", 16 + st.fs_name.size());
+					if (auto cmd_res = exec_cmd((cmd += st.fs_name) += '\"'); cmd_res.has_value() && (cmd_res->find("on") != std::string::npos || cmd_res->find("ON") != std::string::npos)) [[likely]]
+						st.flags |= fs_flags::extended_attributes;
+				}
+				res |= fs_stat::query::flags;
+			}
+#endif
+			return res;
+		}
 	}
 
 	namespace _handle

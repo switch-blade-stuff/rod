@@ -4,82 +4,91 @@
 
 #include "path_util.hpp"
 
-rod::result<std::string> rod::_unix::expand_path(std::string_view str) noexcept
-{
-	if (str.find('$') == std::string_view::npos)
-		return str;
-
-	try
-	{
-		auto buff = std::string();
-#ifdef USE_WORDEXP
-		auto exp = ::wordexp_t();
-		buff = str;
-
-		switch (::wordexp(buff.data(), &exp, WRDE_UNDEF))
-		{
-		case WRDE_NOSPACE:
-			return std::make_error_code(std::errc::not_enough_memory);
-		case WRDE_BADCHAR:
-		case WRDE_SYNTAX:
-			return std::make_error_code(std::errc::invalid_argument);
-		case WRDE_BADVAL:
-			return std::make_error_code(std::errc::not_supported);
-		default: [[likely]]
-			break;
-		}
-
-		const auto g = defer_invoke([&] { ::wordfree(&exp); });
-		buff.clear();
-
-		for (std::size_t i = 0; i < exp.we_wordc; ++i)
-			buff += exp.we_wordv[i];
-#else
-		auto cmd = std::string("echo \"", 7 + str.size());
-		(cmd += str) += '\"';
-		buff.resize(4096);
-
-		auto pid = ::pid_t();
-		int link[2] = {};
-
-		if (::pipe(link) == -1) [[unlikely]]
-			return std::error_code(errno, std::system_category());
-		if ((pid = ::fork()) == -1) [[unlikely]]
-			return std::error_code(errno, std::system_category());
-
-		if (pid == ::pid_t(0))
-		{
-			if (::dup2(link[1], STDOUT_FILENO) == STDOUT_FILENO) [[likely]]
-			{
-				::close(link[0]);
-				::close(link[1]);
-				::execl("/bin/sh", cmd.data(), static_cast<char *>(nullptr));
-			}
-			const auto err = errno;
-			int err_msg[2] = {};
-
-			std::memcpy(err_msg + 1, &err, 4);
-			::write(link[1], err_msg, 8);
-			std::_Exit(err);
-		}
-		else
-		{
-			const auto g = defer_invoke([&] { ::close(link[0]); });
-			::close(link[1]);
-
-			if (::read(link[0], buff.data(), buff.size()) == 8 && buff[0] == '\0') [[unlikely]]
-				return std::error_code(reinterpret_cast<int *>(buff.data())[1], std::system_category());
-			else
-				buff.resize(::strlen(buff.data()));
-		}
-#endif
-		return buff;
-	}
-	catch (...) { return _detail::current_error(); }
-}
-
 namespace rod
 {
+	namespace _unix
+	{
+		result<std::string> exec_cmd(std::string_view cmd) noexcept
+		{
+			auto buff = std::string();
+			auto pid = ::pid_t();
+			int link[2] = {};
+
+			if (::pipe(link) == -1) [[unlikely]]
+				return std::error_code(errno, std::system_category());
+			if ((pid = ::fork()) == -1) [[unlikely]]
+				return std::error_code(errno, std::system_category());
+
+			if (pid == ::pid_t(0))
+			{
+				if (::dup2(link[1], STDOUT_FILENO) == STDOUT_FILENO) [[likely]]
+				{
+					::close(link[0]);
+					::close(link[1]);
+					::execl("/bin/sh", cmd.data(), static_cast<char *>(nullptr));
+				}
+				const auto err = errno;
+				int err_msg[2] = {};
+
+				std::memcpy(err_msg + 1, &err, 4);
+				::write(link[1], err_msg, 8);
+				std::_Exit(err);
+			}
+			else
+			{
+				const auto g = defer_invoke([&] { ::close(link[0]); });
+				::close(link[1]);
+
+				if (::read(link[0], buff.data(), buff.size()) == 8 && buff[0] == '\0') [[unlikely]]
+					return std::error_code(reinterpret_cast<int *>(buff.data())[1], std::system_category());
+				else
+					buff.resize(::strlen(buff.data()));
+			}
+			return buff;
+		}
+		result<std::string> expand_path(std::string_view str) noexcept
+		{
+			if (str.find('$') == std::string_view::npos)
+				return str;
+
+			try
+			{
+				auto buff = std::string();
+#ifdef USE_WORDEXP
+				auto exp = ::wordexp_t();
+				buff = str;
+
+				switch (::wordexp(buff.data(), &exp, WRDE_UNDEF))
+				{
+				case WRDE_NOSPACE:
+					return std::make_error_code(std::errc::not_enough_memory);
+				case WRDE_BADCHAR:
+				case WRDE_SYNTAX:
+					return std::make_error_code(std::errc::invalid_argument);
+				case WRDE_BADVAL:
+					return std::make_error_code(std::errc::not_supported);
+				default: [[likely]]
+					break;
+				}
+
+				const auto g = defer_invoke([&] { ::wordfree(&exp); });
+				buff.clear();
+
+				for (std::size_t i = 0; i < exp.we_wordc; ++i)
+					buff += exp.we_wordv[i];
+#else
+				buff = std::string("echo \"", 7 + str.size());
+				if (auto cmd_res = exec_cmd((buff += str) += '\"'); cmd_res.has_value()) [[likely]]
+					buff = std::move(cmd_res).value();
+				else
+					return std::move(cmd_res).error();
+#endif
+				return buff;
+			}
+			catch (...) { return _detail::current_error(); }
+		}
+	}
+
 	namespace fs
 	{
 		result<path> current_path() noexcept
