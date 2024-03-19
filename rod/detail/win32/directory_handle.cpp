@@ -156,7 +156,6 @@ namespace rod::_dir
 		bool reset_pos = req .reset;
 		result<bool> eof_result;
 
-		auto g = std::lock_guard(*this);
 		while (result_size < req.buffs.size() && !eof_result.value_or(false))
 		{
 			auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
@@ -273,8 +272,6 @@ namespace rod::_dir
 			return std::make_error_code(std::errc::not_enough_memory);
 
 		auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
-		auto g = std::lock_guard(_base_hnd);
-
 		auto eof_result = ntapi->query_directory(_base_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st) -> result<bool>
 		{
 			_entry._query = stats_mask;

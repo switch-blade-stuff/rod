@@ -305,21 +305,6 @@ namespace rod
 			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
 
 		private:
-#ifdef ROD_WIN32
-			void unlock() noexcept
-			{
-				std::atomic_ref(_read_guard).store(false, std::memory_order_release);
-				std::atomic_ref(_read_guard).notify_one();
-			}
-			void lock() noexcept
-			{
-				while (std::atomic_ref(_read_guard).exchange(true, std::memory_order_acq_rel))
-					std::atomic_ref(_read_guard).wait(true);
-			}
-
-			bool _read_guard = {};
-#endif
-
 			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](fs::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
 			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept;
