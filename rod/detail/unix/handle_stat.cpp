@@ -8,7 +8,7 @@ namespace rod
 {
 	namespace _unix
 	{
-		result<std::string> get_path(int fd) noexcept
+		result<std::string> get_fd_path(int fd) noexcept
 		{
 			try
 			{
@@ -62,6 +62,70 @@ namespace rod
 			}
 			catch (...) { return _detail::current_error(); }
 		}
+		result<path_handle> get_fd_base(int fd, std::string *out_leaf, bool check_stat, file_time_point to) noexcept
+		{
+			try
+			{
+				auto curr_path = std::string();
+				auto base_path = path_view();
+				auto leaf_path = path_view();
+				auto result = path_handle();
+
+				struct ::stat st_curr = {};
+				if (check_stat && ::fstat(fd, &st_curr) < 0) [[unlikely]]
+					return std::error_code(errno, std::system_category());
+
+				for (;;)
+				{
+					{
+						auto curr_tmp = get_fd_path(fd);
+						if (curr_tmp.has_error()) [[unlikely]]
+							return curr_tmp.error();
+						else if (curr_tmp->empty()) [[unlikely]]
+							return std::make_error_code(std::errc::no_such_file_or_directory);
+
+						curr_path = std::move(*curr_tmp);
+						base_path = path_view(curr_path).remove_filename().remove_separator();
+						leaf_path = path_view(curr_path).filename();
+					}
+
+					/* Make sure base is zero-terminated to avoid copying. */
+					if (_path::is_separator(curr_path[base_path.native_size()], path::format_type::auto_format))
+						curr_path[base_path.native_size()] = '\0';
+
+					if (auto hnd = path_handle::open({}, base_path); hnd.has_value()) [[likely]]
+						result = std::move(*hnd);
+					else
+						continue;
+
+					if (check_stat)
+					{
+						const auto rpath = leaf_path.render_null_terminated();
+						struct ::stat st_base = {};
+
+						if (::fstatat(result.native_handle(), rpath.c_str(), &st_base, AT_SYMLINK_NOFOLLOW) < 0) [[unlikely]]
+							continue;
+						if (st_base.st_dev == st_curr.st_dev && st_base.st_ino == st_curr.st_ino) [[likely]]
+							break;
+
+						if (const auto now = file_clock::now(); now >= to.absolute(now)) [[unlikely]]
+							return std::make_error_code(std::errc::timed_out);
+					}
+					break;
+				}
+				if (out_leaf != nullptr) [[likely]]
+				{
+					const auto leaf_ptr = visit([](auto sv) { return std::bit_cast<std::intptr_t>(sv.data()); }, leaf_path);
+					const auto leaf_off = std::size_t(leaf_ptr - std::bit_cast<std::intptr_t>(curr_path.data()));
+
+					curr_path.erase(0, std::min(leaf_off, base_path.native_size()));
+					*out_leaf = std::move(curr_path);
+				}
+				return result;
+			}
+			catch(...) { return _detail::current_error(); }
+		}
+
 		result<stat::query> get_stat(stat &st, int base, const char *leaf, stat::query q, bool nofollow) noexcept
 		{
 			if (q == stat::query::none)
@@ -550,7 +614,7 @@ namespace rod
 				auto path = std::string();
 				if (leaf != nullptr)
 					path = leaf;
-				else if (auto path_res = get_path(hnd >= 0 ? hnd : base); path_res.has_value()) [[likely]]
+				else if (auto path_res = get_fd_path(hnd >= 0 ? hnd : base); path_res.has_value()) [[likely]]
 					path = std::move(path_res).value();
 				else
 					return std::move(path_res).error();
@@ -729,7 +793,7 @@ namespace rod
 
 	namespace _path
 	{
-		result<path> do_to_object_path(basic_handle::native_handle_type hnd) noexcept { return _unix::get_path(hnd); }
-		result<path> do_to_native_path(basic_handle::native_handle_type hnd, native_path_format, fs::dev_t, fs::ino_t) noexcept { return _unix::get_path(hnd); }
+		result<path> do_to_object_path(basic_handle::native_handle_type hnd) noexcept { return _unix::get_fd_path(hnd); }
+		result<path> do_to_native_path(basic_handle::native_handle_type hnd, native_path_format, fs::dev_t, fs::ino_t) noexcept { return _unix::get_fd_path(hnd); }
 	}
 }

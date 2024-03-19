@@ -413,7 +413,7 @@ namespace rod
 		};
 
 		template<typename C = value_type>
-		inline constexpr std::size_t lfind_separator(std::basic_string_view<C> path, format_type fmt, std::size_t idx = 0) noexcept
+		inline constexpr std::size_t lfind_separator_start(std::basic_string_view<C> path, format_type fmt, std::size_t idx = 0) noexcept
 		{
 			switch (fmt)
 			{
@@ -433,7 +433,7 @@ namespace rod
 			}
 		}
 		template<typename C = value_type>
-		inline constexpr std::size_t rfind_separator(std::basic_string_view<C> path, format_type fmt, std::size_t idx = std::basic_string_view<C>::npos) noexcept
+		inline constexpr std::size_t rfind_separator_start(std::basic_string_view<C> path, format_type fmt, std::size_t idx = std::basic_string_view<C>::npos) noexcept
 		{
 			switch (fmt)
 			{
@@ -449,6 +449,54 @@ namespace rod
 			case constants::unknown_format:
 			case constants::auto_format:
 				return path.find_last_of(std::basic_string_view(std::array<C, 2>{'\\', '/'}.data(), 2), idx);
+#endif
+			}
+		}
+		template<typename C = value_type>
+		inline constexpr std::size_t lfind_separator_end(std::basic_string_view<C> path, format_type fmt, std::size_t idx = 0) noexcept
+		{
+			switch (fmt)
+			{
+			case constants::binary_format:
+				return std::basic_string_view<C>::npos;
+			default:
+				return path.find_first_not_of('/', path.find_first_of('/', idx));
+#ifdef ROD_WIN32
+			case constants::generic_format:
+				return path.find_first_not_of('/', path.find_first_of('/', idx));
+			case constants::native_format:
+				return path.find_first_not_of('\\', path.find_first_of('\\', idx));
+			case constants::unknown_format:
+			case constants::auto_format:
+			{
+				const auto chars = std::array<C, 2>{'\\', '/'};
+				const auto alpha = std::basic_string_view(buff.data(), 2);
+				return path.find_first_not_of(alpha, path.find_first_of(alpha, idx));
+			}
+#endif
+			}
+		}
+		template<typename C = value_type>
+		inline constexpr std::size_t rfind_separator_end(std::basic_string_view<C> path, format_type fmt, std::size_t idx = std::basic_string_view<C>::npos) noexcept
+		{
+			switch (fmt)
+			{
+			case constants::binary_format:
+				return std::basic_string_view<C>::npos;
+			default:
+				return path.find_last_not_of('/', path.find_last_of('/', idx));
+#ifdef ROD_WIN32
+			case constants::generic_format:
+				return path.find_last_not_of('/', path.find_last_of('/', idx));
+			case constants::native_format:
+				return path.find_last_not_of('\\', path.find_last_of('\\', idx));
+			case constants::unknown_format:
+			case constants::auto_format:
+			{
+				const auto chars = std::array<C, 2>{'\\', '/'};
+				const auto alpha = std::basic_string_view(buff.data(), 2);
+				return path.find_last_not_of(alpha, path.find_last_of(alpha, idx));
+			}
 #endif
 			}
 		}
@@ -537,7 +585,7 @@ namespace rod
 		{
 			if (path.size() >= 3 && is_separator(path[1], fmt) && !is_separator(path[2], fmt))
 			{
-				const auto pos = lfind_separator(path, fmt, 3);
+				const auto pos = lfind_separator_start(path, fmt, 3);
 				if (pos == std::basic_string_view<C>::npos)
 					return path.size();
 				else
@@ -664,7 +712,7 @@ namespace rod
 					return {};
 				}
 
-			if (const auto end = lfind_separator(base, fmt, pos - base.data()); end == std::basic_string_view<C>::npos)
+			if (const auto end = lfind_separator_start(base, fmt, pos - base.data()); end == std::basic_string_view<C>::npos)
 				return {pos, base.size() - (pos - base.data())};
 			else
 				return {pos, base.data() + end};
@@ -849,7 +897,7 @@ namespace rod
 		{
 			for (auto pos = find_relative_path(path, fmt); pos < path.size();)
 			{
-				auto end = lfind_separator(path, fmt, pos);
+				auto end = lfind_separator_start(path, fmt, pos);
 				if (root_name_size(path.substr(pos, end), fmt))
 					return true;
 
@@ -898,7 +946,7 @@ namespace rod
 		template<typename C = value_type>
 		inline constexpr std::size_t find_file_name(std::basic_string_view<C> path, format_type fmt) noexcept
 		{
-			const auto sep = rfind_separator(path, fmt);
+			const auto sep = rfind_separator_start(path, fmt);
 #ifdef ROD_WIN32
 			if (sep == 2 && path.size() == 3)
 			{
@@ -1435,6 +1483,13 @@ namespace rod
 				const auto name_start = find_file_name<value_type>(_string, format());
 				auto name_view = string_view_type(_string.data() + name_start, _string.size() - name_start);
 				_string.erase(name_start + file_stem_size<value_type>(name_view));
+				return *this;
+			}
+			/** Removes the trailing separators of the path. */
+			constexpr path &remove_separator() noexcept
+			{
+				if (const auto pos = rfind_separator_end<value_type>(_string, format()); pos < _string.size()) [[likely]]
+					_string.erase(pos);
 				return *this;
 			}
 

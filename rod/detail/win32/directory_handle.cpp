@@ -94,7 +94,7 @@ namespace rod::_dir
 
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -116,7 +116,7 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -137,9 +137,7 @@ namespace rod::_dir
 		if (req.buffs.empty()) [[unlikely]]
 			return std::make_pair(std::move(req.buffs), false);
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
-		auto g = std::lock_guard(*this);
-
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -152,12 +150,13 @@ namespace rod::_dir
 		if (rfilter.has_error()) [[unlikely]]
 			return rfilter.error();
 
-		std::size_t buffer_size = req.buffs._buff_max, result_size = 0;
+		std::size_t buffer_size = req.buffs._buff_len, result_size = 0;
 		wchar_t *result_buff = req.buffs._buff.release();
 		auto ufilter = make_ustring(rfilter->as_span());
-		bool reset_pos = !req.resume;
+		bool reset_pos = req .reset;
 		result<bool> eof_result;
 
+		auto g = std::lock_guard(*this);
 		while (result_size < req.buffs.size() && !eof_result.value_or(false))
 		{
 			auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
@@ -226,7 +225,7 @@ namespace rod::_dir
 		/* Always truncate to result_size to avoid empty-entry checks. */
 		req.buffs._data = req.buffs._data.subspan(0, result_size);
 		/* Save the buffer max size for later re-use. */
-		req.buffs._buff_max = std::max(req.buffs._buff_max, buffer_size);
+		req.buffs._buff_len = std::max(req.buffs._buff_len, buffer_size);
 		req.buffs._buff.reset(result_buff);
 
 		if (eof_result.has_value()) [[likely]]
@@ -262,7 +261,7 @@ namespace rod::_dir
 
 	result<> directory_iterator::next(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		auto &&str = _entry.to_path_string();
 
 		const auto &ntapi = ntapi::instance();
@@ -274,6 +273,8 @@ namespace rod::_dir
 			return std::make_error_code(std::errc::not_enough_memory);
 
 		auto bytes = std::span{buff.get(), buff_size * sizeof(wchar_t)};
+		auto g = std::lock_guard(_base_hnd);
+
 		auto eof_result = ntapi->query_directory(_base_hnd.native_handle(), bytes, nullptr, false, abs_timeout, [&](auto sv, auto &st) -> result<bool>
 		{
 			_entry._query = stats_mask;

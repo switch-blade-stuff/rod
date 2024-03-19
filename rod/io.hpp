@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "scheduling.hpp"
 #include "path.hpp"
 #include "file.hpp"
 #include "mmap.hpp"

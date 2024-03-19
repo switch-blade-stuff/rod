@@ -107,7 +107,7 @@ namespace rod
 				using size_type = typename data_type::size_type;
 
 			private:
-				io_buffer_sequence(data_type &&buffs, buff_type &&chars, size_type chars_max) noexcept : _data(std::forward<data_type>(buffs)), _buff(std::forward<buff_type>(chars)), _buff_max(chars_max) {}
+				io_buffer_sequence(data_type &&buffs, buff_type &&chars, size_type chars_max) noexcept : _data(std::forward<data_type>(buffs)), _buff(std::forward<buff_type>(chars)), _buff_len(chars_max) {}
 
 			public:
 				io_buffer_sequence(const io_buffer_sequence &) = delete;
@@ -126,18 +126,18 @@ namespace rod
 				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
 				constexpr io_buffer_sequence(Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _type(type) {}
 
-				io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-				io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_max = std::exchange(other._buff_max, {}), *this); }
+				io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})) {}
+				io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_len = std::exchange(other._buff_len, {}), *this); }
 
 				/** Initializes the buffer sequence from a pointer to an entry buffer of characters, size, and an optional link type, using internal character buffer of \a other. */
 				template<typename OtherOp = Op>
-				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})), _type(type) {}
+				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, value_type *buff, size_type size, link_type type = link_type::symbolic) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})), _type(type) {}
 				/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end) and an optional link type, using internal character buffer of \a other. */
 				template<typename OtherOp = Op, std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})), _type(type) {}
+				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, I begin, S end, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})), _type(type) {}
 				/** Initializes the buffer sequence from a contiguous range of entry buffers and an optional link type, using internal character buffer of \a other. */
 				template<typename OtherOp = Op, std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})), _type(type) {}
+				io_buffer_sequence(io_buffer_sequence<OtherOp> &&other, Buff &&buff, link_type type = link_type::symbolic) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})), _type(type) {}
 
 				/** Returns iterator to the first buffer of the buffer sequence. */
 				[[nodiscard]] constexpr iterator begin() const noexcept { return _data.begin(); }
@@ -172,14 +172,14 @@ namespace rod
 				{
 					std::swap(_data, other._data);
 					std::swap(_buff, other._buff);
-					std::swap(_buff_max, other._buff_max);
+					std::swap(_buff_len, other._buff_len);
 				}
 				friend void swap(io_buffer_sequence &a, io_buffer_sequence &b) noexcept { a.swap(b); }
 
 			private:
 				data_type _data = {};
 				buff_type _buff = {};
-				size_type _buff_max = {};
+				size_type _buff_len = {};
 				link_type _type = link_type::symbolic;
 			};
 

@@ -113,7 +113,7 @@ namespace rod
 				using size_type = typename data_type::size_type;
 
 			private:
-				io_buffer_sequence(data_type &&buffs, buff_type &&chars, size_type chars_max) noexcept : _data(std::forward<data_type>(buffs)), _buff(std::forward<buff_type>(chars)), _buff_max(chars_max) {}
+				io_buffer_sequence(data_type &&buffs, buff_type &&chars, size_type chars_max) noexcept : _data(std::forward<data_type>(buffs)), _buff(std::forward<buff_type>(chars)), _buff_len(chars_max) {}
 
 			public:
 				io_buffer_sequence(const io_buffer_sequence &) = delete;
@@ -129,17 +129,17 @@ namespace rod
 				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
 				constexpr io_buffer_sequence(Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)) {}
 
-				io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
-				io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_max = std::exchange(other._buff_max, {}), *this); }
+				io_buffer_sequence(io_buffer_sequence &&other) noexcept : _data(std::exchange(other._data, {})), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})) {}
+				io_buffer_sequence &operator=(io_buffer_sequence &&other) noexcept { return (_data = std::exchange(other._data, {}), _buff = std::move(other._buff), _buff_len = std::exchange(other._buff_len, {}), *this); }
 
 				/** Initializes the buffer sequence from a pointer to an entry buffer of characters and a size, using internal character buffer of \a other. */
-				io_buffer_sequence(io_buffer_sequence &&other, value_type *buff, size_type size) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence(io_buffer_sequence &&other, value_type *buff, size_type size) noexcept : _data(buff, size), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})) {}
 				/** Initializes the buffer sequence from from a range of entry buffers defined by [\a begin, \a end), using internal character buffer of \a other. */
 				template<std::contiguous_iterator I, std::sentinel_for<I> S> requires std::constructible_from<data_type, I, S>
-				io_buffer_sequence(io_buffer_sequence &&other, I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence(io_buffer_sequence &&other, I begin, S end) noexcept(std::is_nothrow_constructible_v<data_type, I, S>) : _data(begin, end), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})) {}
 				/** Initializes the buffer sequence from a contiguous range of entry buffers, using internal character buffer of \a other. */
 				template<std::ranges::contiguous_range Buff> requires(!decays_to_same<Buff, io_buffer_sequence> && std::constructible_from<data_type, Buff>)
-				io_buffer_sequence(io_buffer_sequence &&other, Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_max(std::exchange(other._buff_max, {})) {}
+				io_buffer_sequence(io_buffer_sequence &&other, Buff &&buff) noexcept(std::is_nothrow_constructible_v<data_type, Buff>) : _data(std::forward<Buff>(buff)), _buff(std::move(other._buff)), _buff_len(std::exchange(other._buff_len, {})) {}
 
 				/** Returns iterator to the first buffer of the buffer sequence. */
 				[[nodiscard]] constexpr iterator begin() const noexcept { return _data.begin(); }
@@ -172,14 +172,14 @@ namespace rod
 				{
 					std::swap(_data, other._data);
 					std::swap(_buff, other._buff);
-					std::swap(_buff_max, other._buff_max);
+					std::swap(_buff_len, other._buff_len);
 				}
 				friend void swap(io_buffer_sequence &a, io_buffer_sequence &b) noexcept { a.swap(b); }
 
 			private:
 				data_type _data = {};
 				buff_type _buff = {};
-				size_type _buff_max = {};
+				size_type _buff_len = {};
 			};
 
 			template<typename Op>
@@ -195,12 +195,12 @@ namespace rod
 				 * @note `read_some` will return a truncated copy of the buffer sequence which may also contain an internally-allocated character buffer.
 				 * This internal buffer can be re-used by passing the returned buffer sequence as \a buffs to the next call of `read_some`.
 				 * @note Supplied buffers will be modified with the size and/or pointers to the actual memory of the entry path. */
-				io_buffer_sequence<read_some_t> buffs;
+				io_buffer_sequence<read_some_t> buffs = {};
 				/** Directory enumeration filter passed to the native platform API.
 				 * @note If the platform does not provide directory filtering, it is preformed manually. */
-				fs::path_view filter;
-				/** When set to `true`, directory enumeration will resume from the position of the last directory entry. */
-				bool resume = {};
+				fs::path_view filter = {};
+				/** When set to `true`, directory enumeration will always start at the first entry, even if buffers are re-used. */
+				bool reset = {};
 			};
 
 		public:
@@ -305,6 +305,7 @@ namespace rod
 			friend io_result<Op> tag_invoke(Op, Hnd &&hnd, Req &&req, const fs::file_timeout &to) noexcept { return hnd.do_read_some(std::move(req), to); }
 
 		private:
+#ifdef ROD_WIN32
 			void unlock() noexcept
 			{
 				std::atomic_ref(_read_guard).store(false, std::memory_order_release);
@@ -316,14 +317,15 @@ namespace rod
 					std::atomic_ref(_read_guard).wait(true);
 			}
 
+			bool _read_guard = {};
+#endif
+
 			result<directory_handle> do_clone() const noexcept { return clone(base()).transform_value([&](fs::path_handle &&hnd) { return directory_handle(std::move(hnd), flags()); }); }
 
 			ROD_API_PUBLIC result<> do_relink(const fs::path_handle &base, fs::path_view path, bool replace, const fs::file_timeout &to) noexcept;
 			ROD_API_PUBLIC result<> do_unlink(const fs::file_timeout &to) noexcept;
 
 			ROD_API_PUBLIC io_result<read_some_t> do_read_some(io_request<read_some_t> &&req, const fs::file_timeout &to) noexcept;
-
-			bool _read_guard = {};
 		};
 
 		static_assert(std::convertible_to<const directory_handle &, const fs::path_handle &>);
@@ -369,7 +371,6 @@ namespace rod
 		{
 		public:
 			using value_type = directory_entry;
-			using difference_type = std::ptrdiff_t;
 			using pointer = const value_type *;
 			using reference = const value_type &;
 			using iterator_category = std::input_iterator_tag;

@@ -162,7 +162,7 @@ namespace rod
 			using clock = fs::file_clock;
 
 		private:
-			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a.to.absolute() <= b.to.absolute(); }};
+			struct timer_cmp { constexpr bool operator()(const timer_operation_base &a, const timer_operation_base &b) const noexcept { return a.to.absolute({}) <= b.to.absolute({}); }};
 			using timer_queue_t = _detail::priority_queue<timer_operation_base, timer_cmp, &timer_operation_base::timer_prev, &timer_operation_base::timer_next>;
 
 			using waitlist_queue_t = _detail::basic_queue<operation_base, &operation_base::next, &operation_base::prev>;
@@ -792,7 +792,7 @@ namespace rod
 		template<typename Vst, typename Rcv>
 		io_operation<Vst, Rcv>::type::type(scheduler sch, void *hnd, Vst &&vst, fs::file_timeout to, Rcv &&rcv) noexcept : io_operation_base(sch._ctx, hnd), vst_base(std::forward<Vst>(vst)), rcv_base(std::forward<Rcv>(rcv))
 		{
-			if (to == fs::file_timeout())
+			if (to.is_infinite())
 				io_stop_operation::to = fs::file_timeout();
 			else
 				io_stop_operation::to = to.absolute();

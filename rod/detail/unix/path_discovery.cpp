@@ -76,7 +76,7 @@ namespace rod
 					if (const auto env_path = std::string_view(::getenv(TMPDIR_ENV)); !env_path.empty()) [[likely]]
 						dirs.push_back({env_path, fs::discovery_source::environment});
 
-#ifndef __APPLE__
+#if !(defined(__APPLE__) && defined(__MACH__))
 					dirs.push_back({"/run/user/" + std::to_string(uid), fs::discovery_source::system});
 #endif
 					dirs.push_back({"/var/tmp", fs::discovery_source::system});
@@ -162,7 +162,7 @@ namespace rod
 		{
 			int capture_argv(int argc, char **argv, char **) noexcept;
 
-#if defined(__APPLE__) || defined(__MACH__)
+#if defined(__APPLE__) && defined(__MACH__)
 			__attribute__((used, section("__DATA,__mod_init_func"))) auto ctr = &capture_argv;
 #else
 			__attribute__((used, section(".init_array"))) auto ctr = &capture_argv;
@@ -258,7 +258,7 @@ namespace rod
 				if (uid != euid) [[unlikely]]
 					return "/tmp";
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__MACH__)
 				if (value.empty()) [[unlikely]]
 					return "/tmp";
 #else

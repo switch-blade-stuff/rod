@@ -138,7 +138,7 @@ namespace rod::_path
 			if (!is_separator(_string[result_len], format()))
 			{
 				const auto tail = string_view_type(_string.data() + result_len, _string.size() - result_len);
-				const auto comp = tail.substr(0, lfind_separator(tail, format()));
+				const auto comp = tail.substr(0, lfind_separator_start(tail, format()));
 				result_len += comp.size();
 				comps.emplace_back(comp);
 			}

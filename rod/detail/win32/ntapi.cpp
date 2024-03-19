@@ -505,16 +505,16 @@ namespace rod::_win32
 		auto timeout_ft = filetime();
 		auto timeout = &timeout_ft;
 
-		if (to.is_relative() && to.relative() != fs::file_clock::duration::max())
-			time_end = std::chrono::steady_clock::now() + to.relative();
-		else if (!to.is_relative())
-			timeout_ft = tp_to_filetime(to.absolute());
+		if (to.is_relative())
+			time_end = std::chrono::steady_clock::now() + to.relative({});
+		else if (to.is_absolute())
+			timeout_ft = tp_to_filetime(to.absolute({}));
 		else
 			timeout = nullptr;
 
 		while (iosb->status == STATUS_PENDING)
 		{
-			if (to.is_relative() && timeout)
+			if (to.is_relative())
 			{
 				if (auto time_left = time_end - std::chrono::steady_clock::now(); time_left.count() >= 0)
 					timeout_ft = tp_to_filetime(time_left.count() / -100);

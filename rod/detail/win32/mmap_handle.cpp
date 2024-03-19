@@ -181,7 +181,7 @@ namespace rod::_mmap
 		return mmap_source(hnd, flags);
 	}
 
-	auto mmap_source::do_endpos() const noexcept -> result<extent_type>
+	result<mmap_source::extent_type> mmap_source::do_endpos() const noexcept
 	{
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
@@ -193,7 +193,7 @@ namespace rod::_mmap
 		else
 			return status_error_code(status);
 	}
-	auto mmap_source::do_truncate(extent_type endp) noexcept -> result<extent_type>
+	result<mmap_source::extent_type> mmap_source::do_truncate(extent_type endp) noexcept
 	{
 		if (endp > extent_type(std::numeric_limits<LONGLONG>::max())) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);

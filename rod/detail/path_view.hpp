@@ -922,6 +922,20 @@ namespace rod
 					return *this;
 				});
 			}
+			/** Returns copy of the view with the trailing separators removed. */
+			[[nodiscard]] constexpr path_view remove_separator() const noexcept
+			{
+				return visit([&]<typename V>(V view) -> path_view
+				{
+					if constexpr (!std::same_as<V, std::span<const std::byte>>)
+					{
+						const auto pos = rfind_separator_end(view, format());
+						const auto term = is_null_terminated() && pos >= view.size();
+						return path_view(view.substr(0, pos - 1), term, format());
+					}
+					return *this;
+				});
+			}
 
 		public:
 			/** Lexicographically compares `this` with \a other. */
