@@ -7,6 +7,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#if __has_include("dirent.h")
+#include <dirent.h>
+#endif
+
 #ifdef __linux__
 #include <sys/sysmacros.h>
 #include <sys/statfs.h>
@@ -19,7 +23,7 @@
 #else
 #define HAS_STATX 0
 #endif
-#if HAS_STATX || defined(__APPLE__) || defined(__FreeBSD__)
+#if HAS_STATX || (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
 #define HAS_BTIME 1
 #else
 #define HAS_BTIME 0
@@ -32,7 +36,9 @@ namespace rod::_unix
 {
 	using namespace fs;
 
-	result<std::string> get_path(int fd) noexcept;
+	result<std::string> get_fd_path(int fd) noexcept;
+	result<path_handle> get_fd_base(int fd, std::string *out_leaf, bool check_stat, const file_timeout &to) noexcept;
+
 	result<stat::query> get_stat(stat &st, int base, const char *leaf, stat::query q, bool nofollow) noexcept;
 	result<stat::query> set_stat(const stat &st, int base, const char *leaf, stat::query q, bool nofollow) noexcept;
 	result<fs_stat::query> get_fs_stat(fs_stat &st, int base, const char *leaf, fs_stat::query q, bool nofollow) noexcept;
@@ -108,6 +114,37 @@ namespace rod::_unix
 		if (bool(perm & file_perm::other_exec))
 			mode |= S_IXOTH;
 		return mode;
+	}
+
+	constexpr file_type type_from_dirent_type(std::uint8_t type) noexcept
+	{
+#if __has_include("dirent.h")
+		switch (type)
+		{
+#ifdef DT_BLK
+		case DT_BLK: return file_type::block;
+#endif
+#ifdef DT_CHR
+		case DT_CHR: return file_type::character;
+#endif
+#ifdef DT_DIR
+		case DT_DIR: return file_type::directory;
+#endif
+#ifdef DT_REG
+		case DT_REG: return file_type::regular;
+#endif
+#ifdef DT_LNK
+		case DT_LNK: return file_type::symlink;
+#endif
+#ifdef DT_SOCK
+		case DT_SOCK: return file_type::socket;
+#endif
+#ifdef DT_FIFO
+		case DT_FIFO: return file_type::fifo;
+#endif
+		}
+#endif
+		return file_type::unknown;
 	}
 
 	constexpr file_time_point time_from_timespec(struct ::timespec ts) noexcept

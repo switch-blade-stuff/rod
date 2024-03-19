@@ -25,7 +25,8 @@ namespace rod
 			data_write = 0x4,
 			/** Allow writing of handle attributes. */
 			attr_write = 0x8,
-			/** Allow appending of handle contents. */
+			/** Allow appending of handle contents.
+			 * @note Corresponds to `FILE_APPEND_DATA` on WinNT and is otherwise equivalent to `data_write` on other systems. */
 			append = 0x10,
 			/** Allow writing and appending of handle data & attributes. */
 			write = data_write | attr_write | append,
@@ -41,9 +42,12 @@ namespace rod
 			/** File will be opened in non-blocking mode (`O_NONBLOCK` or `OVERLAPPED`).
 			 * @note This flag is implied for handles opened using an IO scheduler. */
 			non_blocking = 0x80,
-			/** Makes NTFS directories to preform case-sensitive path lookup as opposed to system default.
+			/** Makes NTFS directories preform case-sensitive path lookup as opposed to system default.
 			 * @note This flag will affect other code accessing the directory. */
 			case_sensitive = 0x100,
+
+			/** Preform additional validity checks during link/unlink process to avoid race conditions on certain filesystems. */
+			unlink_stat_check = 0x200,
 		};
 
 		[[nodiscard]] constexpr file_flags operator~(file_flags h) noexcept { return file_flags(~std::uint16_t(h)); }

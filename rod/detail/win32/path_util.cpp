@@ -306,7 +306,7 @@ namespace rod::fs
 
 		for (;;)
 		{
-			auto read_res = read_some(*hnd, {.buffs = std::move(seq), .resume = false}, to);
+			auto read_res = read_some(*hnd, {.buffs = std::move(seq),  .reset = true}, to);
 			if (read_res.has_error()) [[unlikely]]
 				return read_res.error();
 			else if (!read_res->first.empty())
@@ -348,7 +348,7 @@ namespace rod::fs
 			/* Mirror MSVC STL behavior and retry in the following cases:
 			 * STATUS_DIRECTORY_NOT_EMPTY: 0xc0000101 - directory entries might not be deleted yet.
 			 * STATUS_ACCESS_DENIED: 0xc0000022 - directory might be marked for deletion. */
-			if (file_clock::now() >= to.absolute()) [[unlikely]]
+			if (const auto now = file_clock::now(); now >= to.absolute(now)) [[unlikely]]
 				return std::make_error_code(std::errc::timed_out);
 			if (auto err = res.error(); err.category() != status_category() || (err.value() != 0xc0000101 && err.value() != 0xc0000022))
 				return err;
@@ -359,7 +359,7 @@ namespace rod::fs
 
 	result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -386,7 +386,7 @@ namespace rod::fs
 	}
 	result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();

@@ -175,7 +175,7 @@ namespace rod::_iocp
 		auto new_time = _next_timeout;
 		for (const auto now = clock::now(); !_timer_queue.empty();)
 		{
-			if (const auto abs = _timer_queue.front()->to.absolute(); abs > now)
+			if (const auto abs = _timer_queue.front()->to.absolute(now); abs > now)
 			{
 				new_time = abs;
 				break;

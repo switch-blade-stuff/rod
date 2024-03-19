@@ -176,7 +176,7 @@ namespace rod::_file
 		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -197,7 +197,7 @@ namespace rod::_file
 		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -218,7 +218,7 @@ namespace rod::_file
 		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -268,7 +268,7 @@ namespace rod::_file
 		if (!bool(flags() & file_flags::non_blocking) && to != file_timeout())
 			return std::make_error_code(std::errc::not_supported);
 
-		const file_timeout abs_timeout = to == file_timeout() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -404,7 +404,7 @@ namespace rod::_file
 		if (req.extent.first + req.extent.second < req.extent.first) [[unlikely]]
 			return std::make_error_code(std::errc::value_too_large);
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -456,7 +456,7 @@ namespace rod::_file
 		auto ol = OVERLAPPED{.Internal = ULONG_PTR(-1)};
 		DWORD written = 0;
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -492,7 +492,7 @@ namespace rod::_file
 		if ((req.dst.flags() & file_flags::write) != file_flags::write) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_seek);
 
-		const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
+		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
 		const auto block_size = get_block_size();
 		const auto page_size = get_page_size();
 		const auto &ntapi = ntapi::instance();

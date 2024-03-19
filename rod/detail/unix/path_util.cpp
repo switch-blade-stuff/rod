@@ -10,41 +10,45 @@ namespace rod
 	{
 		result<std::string> exec_cmd(std::string_view cmd) noexcept
 		{
-			auto buff = std::string();
-			auto pid = ::pid_t();
-			int link[2] = {};
-
-			if (::pipe(link) == -1) [[unlikely]]
-				return std::error_code(errno, std::system_category());
-			if ((pid = ::fork()) == -1) [[unlikely]]
-				return std::error_code(errno, std::system_category());
-
-			if (pid == ::pid_t(0))
+			try
 			{
-				if (::dup2(link[1], STDOUT_FILENO) == STDOUT_FILENO) [[likely]]
+				auto buff = std::string(4096, '\0');
+				auto pid = ::pid_t();
+				int link[2] = {};
+
+				if (::pipe(link) == -1) [[unlikely]]
+					return std::error_code(errno, std::system_category());
+				if ((pid = ::fork()) == -1) [[unlikely]]
+					return std::error_code(errno, std::system_category());
+
+				if (pid == ::pid_t(0))
 				{
-					::close(link[0]);
-					::close(link[1]);
-					::execl("/bin/sh", cmd.data(), static_cast<char *>(nullptr));
+					if (::dup2(link[1], STDOUT_FILENO) == STDOUT_FILENO) [[likely]]
+					{
+						::close(link[0]);
+						::close(link[1]);
+						::execl("/bin/sh", cmd.data(), static_cast<char *>(nullptr));
+					}
+					const auto err = errno;
+					int err_msg[2] = {};
+
+					std::memcpy(err_msg + 1, &err, 4);
+					::write(link[1], err_msg, 8);
+					std::_Exit(err);
 				}
-				const auto err = errno;
-				int err_msg[2] = {};
-
-				std::memcpy(err_msg + 1, &err, 4);
-				::write(link[1], err_msg, 8);
-				std::_Exit(err);
-			}
-			else
-			{
-				const auto g = defer_invoke([&] { ::close(link[0]); });
-				::close(link[1]);
-
-				if (::read(link[0], buff.data(), buff.size()) == 8 && buff[0] == '\0') [[unlikely]]
-					return std::error_code(reinterpret_cast<int *>(buff.data())[1], std::system_category());
 				else
-					buff.resize(::strlen(buff.data()));
+				{
+					const auto g = defer_invoke([&] { ::close(link[0]); });
+					::close(link[1]);
+
+					if (::read(link[0], buff.data(), buff.size()) == 8 && buff[0] == '\0') [[unlikely]]
+						return std::error_code(reinterpret_cast<int *>(buff.data())[1], std::system_category());
+					else
+						buff.resize(::strlen(buff.data()));
+				}
+				return buff;
 			}
-			return buff;
+			catch (...) { return _detail::current_error(); }
 		}
 		result<std::string> expand_path(std::string_view str) noexcept
 		{
@@ -201,7 +205,7 @@ namespace rod
 			catch (...) { return _detail::current_error(); }
 		}
 
-		inline static result<std::size_t> do_remove(const path_handle &base, path_view path, bool isdir, const file_timeout &) noexcept
+		inline static result<std::size_t> do_remove(const path_handle &base, path_view path, bool isdir, const file_timeout &)
 		{
 			const auto rpath = path.render_null_terminated();
 			if (!::unlinkat(base.native_handle(), rpath.c_str(), isdir ? AT_REMOVEDIR : 0)) [[likely]]
@@ -211,7 +215,7 @@ namespace rod
 			else
 				return 0;
 		}
-		inline static result<std::size_t> do_remove_directory(const path_handle &base, path_view path, const file_timeout &to) noexcept
+		inline static result<std::size_t> do_remove_directory(const path_handle &base, path_view path, const file_timeout &to)
 		{
 			std::size_t removed = 0;
 			{
@@ -229,7 +233,7 @@ namespace rod
 
 				for (;;)
 				{
-					auto read_res = read_some(*hnd, {.buffs = std::move(seq), .resume = false}, to);
+					auto read_res = read_some(*hnd, {.buffs = std::move(seq),  .reset = true}, to);
 					if (read_res.has_error()) [[unlikely]]
 						return read_res.error();
 					else if (!read_res->first.empty())
@@ -267,7 +271,7 @@ namespace rod
 					return removed + *res;
 
 				/* EBUSY - Directory is being used by something else. */
-				if (file_clock::now() >= to.absolute()) [[unlikely]]
+				if (const auto now = file_clock::now(); now >= to.absolute(now)) [[unlikely]]
 					return std::make_error_code(std::errc::timed_out);
 				if (auto err = res.error(); err.value() != EBUSY)
 					return err;
@@ -278,34 +282,42 @@ namespace rod
 
 		result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to) noexcept
 		{
-			const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
-
-			auto st = stat(nullptr);
-			if (auto res = get_stat(st, base, path, stat::query::type); res.has_error()) [[unlikely]]
+			try
 			{
-				if (auto err = res.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory))
-					return err;
-				else
-					return 0;
+				const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+				auto st = stat(nullptr);
+
+				if (auto res = get_stat(st, base, path, stat::query::type); res.has_error()) [[unlikely]]
+				{
+					if (auto err = res.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory))
+						return err;
+					else
+						return 0;
+				}
+				return do_remove(base, path, st.type == file_type::directory, abs_timeout);
 			}
-			return do_remove(base, path, st.type == file_type::directory, abs_timeout);
+			catch (...) { return _detail::current_error(); }
 		}
 		result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to) noexcept
 		{
-			const auto abs_timeout = to != file_timeout() ? to.absolute() : file_timeout();
-
-			auto st = stat(nullptr);
-			if (auto res = get_stat(st, base, path, stat::query::type); res.has_error()) [[unlikely]]
+			try
 			{
-				if (auto err = res.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory))
-					return err;
+				const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+				auto st = stat(nullptr);
+
+				if (auto res = get_stat(st, base, path, stat::query::type); res.has_error()) [[unlikely]]
+				{
+					if (auto err = res.error(); err != std::make_error_condition(std::errc::no_such_file_or_directory))
+						return err;
+					else
+						return 0;
+				}
+				if (auto res = do_remove(base, path, st.type == file_type::directory, abs_timeout); res.has_error() && st.type == file_type::directory)
+					return do_remove_directory(base, path, abs_timeout);
 				else
-					return 0;
+					return res;
 			}
-			if (auto res = do_remove(base, path, st.type == file_type::directory, abs_timeout); res.has_error() && st.type == file_type::directory)
-				return do_remove_directory(base, path, abs_timeout);
-			else
-				return res;
+			catch (...) { return _detail::current_error(); }
 		}
 	}
 }

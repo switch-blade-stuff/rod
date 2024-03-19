@@ -448,7 +448,7 @@ namespace rod
 
 			/** Returns the contained value or \a val if result does not contain a value. */
 			template<typename Val2 = Val> requires std::constructible_from<Val, Val &>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
+			[[nodiscard]] constexpr Val value_or(Val2 &&val) & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
 					return Val2(std::forward<Val2>(val));
@@ -456,8 +456,8 @@ namespace rod
 					return _storage.value;
 			}
 			/** @copydoc value_or */
-			template<typename Val2 = Val> requires std::constructible_from<Val, Val> &&std::constructible_from<Val, Val2>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
+			template<typename Val2 = Val> requires std::constructible_from<Val, Val> && std::constructible_from<Val, Val2>
+			[[nodiscard]] constexpr Val value_or(Val2 &&val) && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<Val>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
 					return Val2(std::forward<Val2>(val));
@@ -466,7 +466,7 @@ namespace rod
 			}
 			/** @copydoc value_or */
 			template<typename Val2 = Val> requires std::constructible_from<Val, std::add_const_t<Val> &> && std::constructible_from<Val, Val2>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) const & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
+			[[nodiscard]] constexpr Val value_or(Val2 &&val) const & noexcept(std::is_nothrow_constructible_v<Val, std::add_lvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
 					return Val2(std::forward<Val2>(val));
@@ -475,7 +475,7 @@ namespace rod
 			}
 			/** @copydoc value_or */
 			template<typename Val2 = Val> requires std::constructible_from<Val, std::add_const_t<Val>> && std::constructible_from<Val, Val2>
-			[[nodiscard]] constexpr std::enable_if_t<std::negation_v<std::is_void<Val>>, Val2> value_or(Val2 &&val) const && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
+			[[nodiscard]] constexpr Val value_or(Val2 &&val) const && noexcept(std::is_nothrow_constructible_v<Val, std::add_rvalue_reference_t<std::add_const_t<Val>>> && std::is_nothrow_constructible_v<Val, Val2>)
 			{
 				if (!has_value()) [[unlikely]]
 					return Val2(std::forward<Val2>(val));

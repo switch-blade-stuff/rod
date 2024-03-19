@@ -22,7 +22,7 @@
 #define PROC_SELF "/proc/self/path/a.out"
 #endif
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__MACH__)
 #define TMPDIR_ENV "TMPDIR"
 #else
 #define TMPDIR_ENV "XDG_RUNTIME_DIR"

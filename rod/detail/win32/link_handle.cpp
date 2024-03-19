@@ -132,7 +132,7 @@ namespace rod::_link
 		/* Reserve a buffer if there is not enough space in the fist user-provided buffer. */
 		const auto resize_buff = [&](std::size_t new_size) noexcept -> bool
 		{
-			if (new_size <= req.buffs._buff_max)
+			if (new_size <= req.buffs._buff_len)
 				return true;
 
 			void *old_mem = req.buffs._buff.release(), *new_mem;
@@ -144,7 +144,7 @@ namespace rod::_link
 				return (std::free(old_mem), false);
 
 			req.buffs._buff.reset(static_cast<wchar_t *>(new_mem));
-			req.buffs._buff_max = new_size / sizeof(wchar_t);
+			req.buffs._buff_len = new_size / sizeof(wchar_t);
 
 			buff_data = static_cast<reparse_data_buffer *>(new_mem);
 			buff_size = new_size;
@@ -233,7 +233,7 @@ namespace rod::_link
 		}
 
 		/* Reserve a buffer large enough for all path components and reparse_data_buffer. */
-		if (const auto bytes = sizeof(reparse_data_buffer) + (path_len + name_len + 2) * sizeof(wchar_t); req.buffs._buff_max < bytes)
+		if (const auto bytes = sizeof(reparse_data_buffer) + (path_len + name_len + 2) * sizeof(wchar_t); req.buffs._buff_len < bytes)
 		{
 			void *old_mem = req.buffs._buff.release(), *new_mem;
 			if (old_mem != nullptr)
@@ -244,10 +244,10 @@ namespace rod::_link
 				return (std::free(old_mem), std::make_error_code(std::errc::not_enough_memory));
 
 			req.buffs._buff.reset(static_cast<wchar_t *>(new_mem));
-			req.buffs._buff_max = bytes / sizeof(wchar_t);
+			req.buffs._buff_len = bytes / sizeof(wchar_t);
 		}
 		const auto buff_data = reinterpret_cast<reparse_data_buffer *>(req.buffs._buff.get());
-		const auto buff_size = req.buffs._buff_max * sizeof(wchar_t);
+		const auto buff_size = req.buffs._buff_len * sizeof(wchar_t);
 		*buff_data = reparse_data_buffer();
 
 		/* Select the correct reparse_data_buffer member. */

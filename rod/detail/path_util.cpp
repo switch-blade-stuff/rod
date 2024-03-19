@@ -262,7 +262,7 @@ namespace rod::fs
 
 		for (;;)
 		{
-			auto read_res = read_some(*src_hnd, {.buffs = std::move(seq), .resume = true}, to);
+			auto read_res = read_some(*src_hnd, {.buffs = std::move(seq),  .reset = false}, to);
 			if (read_res.has_error()) [[unlikely]]
 				return read_res.error();
 			else if (!read_res->first.empty())
@@ -347,10 +347,10 @@ namespace rod::fs
 
 	result<std::size_t> copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to) noexcept
 	{
-		return do_copy(src_base, src_path, dst_base, dst_path, mode, to != file_timeout() ? to.absolute() : file_timeout(), false);
+		return do_copy(src_base, src_path, dst_base, dst_path, mode, to.is_infinite() ? file_timeout() : to.absolute(), false);
 	}
 	result<std::size_t> copy_all(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to) noexcept
 	{
-		return do_copy(src_base, src_path, dst_base, dst_path, mode, to != file_timeout() ? to.absolute() : file_timeout(), true);
+		return do_copy(src_base, src_path, dst_base, dst_path, mode, to.is_infinite() ? file_timeout() : to.absolute(), true);
 	}
 }
