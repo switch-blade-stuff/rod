@@ -286,9 +286,13 @@ namespace rod
 			}
 
 #ifdef ROD_HAS_SYMLINK_HANDLE
-			auto do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), flags()); }); }
+			result<link_handle> do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), flags()); }); }
 #else
-			auto do_clone() const noexcept { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), _path, flags()); }); }
+			result<link_handle> do_clone() const noexcept
+			{
+				try { return clone(base()).transform_value([&](handle_base &&hnd) { return link_handle(std::move(hnd), _path, flags()); }); }
+				catch (...) { return _detail::current_error(); }
+			}
 #endif
 
 #ifdef ROD_HAS_SYMLINK_HANDLE
@@ -303,13 +307,13 @@ namespace rod
 
 #ifdef ROD_HAS_SYMLINK_HANDLE
 			result<path> do_to_object_path() const noexcept { return _path::do_to_object_path(native_handle()); }
-#if defined(ROD_POSIX)
+#ifdef ROD_POSIX
 			result<path> do_to_native_path(native_path_format fmt) const noexcept { return _path::do_to_native_path(native_handle(), fmt, 0, 0); }
 #endif
 			result<path> do_to_native_path(native_path_format fmt, dev_t dev, ino_t ino) const noexcept { return _path::do_to_native_path(native_handle(), fmt, dev, ino); }
 #else
-			result<path> do_to_object_path() const noexcept { return to_object_path(base()).transform_value([&](auto &&base_path) { return base_path /= _path; }); }
-			result<path> do_to_native_path(native_path_format fmt) const noexcept { return to_native_path(base(), fmt).transform_value([&](auto &&base_path) { return base_path /= _path; }); }
+			result<path> do_to_object_path() const noexcept { return to_object_path(base()).transform_value([&](path &&base_path) { return base_path /= _path; }); }
+			result<path> do_to_native_path(native_path_format fmt) const noexcept { return to_native_path(base(), fmt).transform_value([&](path &&base_path) { return base_path /= _path; }); }
 #endif
 
 			ROD_API_PUBLIC result<> do_link(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept;

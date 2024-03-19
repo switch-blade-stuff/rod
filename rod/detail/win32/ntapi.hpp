@@ -849,9 +849,9 @@ namespace rod::_win32
 		result<heapalloc_ptr<wchar_t>> dos_path_to_nt_path(unicode_string &upath, bool passthrough) const noexcept;
 		result<heapalloc_ptr<wchar_t>> canonize_win32_path(unicode_string &upath, bool passthrough) const noexcept;
 
-		result<void *> reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
-		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
-		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+		result<void *> reopen_file(void *handle, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept;
+		result<void *> open_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG share, ULONG opts, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept;
+		result<void *> create_file(const object_attributes &obj, io_status_block *iosb, ULONG access, ULONG attr, ULONG share, disposition disp, ULONG opts, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept;
 
 		template<typename F>
 		result<bool> query_directory(void *handle, std::span<std::byte> buff, unicode_string *filter, bool reset, const fs::file_timeout &to, F &&f) const noexcept
@@ -899,22 +899,22 @@ namespace rod::_win32
 		ntstatus relink_file(void *handle, io_status_block *iosb, void *base, unicode_string &upath, bool replace, const fs::file_timeout &to) const noexcept;
 		ntstatus unlink_file(void *handle, io_status_block *iosb, bool mark_for_delete, const fs::file_timeout &to) const noexcept;
 
-		ntstatus set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
-		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+		ntstatus set_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept;
+		ntstatus get_file_info(void *handle, io_status_block *iosb, void *data, std::size_t size, file_info_type type, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept;
 
 		template<typename T>
-		ntstatus set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept
+		ntstatus set_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept
 		{
 			return set_file_info(handle, iosb, data, sizeof(T), type, to);
 		}
 		template<typename T>
-		ntstatus get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const fs::file_timeout &to = fs::file_timeout()) const noexcept
+		ntstatus get_file_info(void *handle, io_status_block *iosb, T *data, file_info_type type, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept
 		{
 			return get_file_info(handle, iosb, data, sizeof(T), type, to);
 		}
 
 		ntstatus cancel_io(void *handle, io_status_block *iosb) const noexcept;
-		ntstatus wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to = fs::file_timeout()) const noexcept;
+		ntstatus wait_io(void *handle, io_status_block *iosb, const fs::file_timeout &to = fs::file_timeout::infinite) const noexcept;
 
 		template<typename F>
 		result<void> apply_virtual_pages(std::byte *addr, std::size_t size, ULONG mask, F &&f) const noexcept

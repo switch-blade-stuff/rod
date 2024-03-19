@@ -194,6 +194,8 @@ if (UNIX)
             rod/detail/unix/handle_stat.cpp
             rod/detail/unix/path_handle.hpp
             rod/detail/unix/path_handle.cpp
+            rod/detail/unix/link_handle.hpp
+            rod/detail/unix/link_handle.cpp
             rod/detail/unix/directory_handle.hpp
             rod/detail/unix/directory_handle.cpp)
 endif ()

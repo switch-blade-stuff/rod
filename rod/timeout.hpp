@@ -20,13 +20,24 @@ namespace rod
 		using absolute_type = typename Clock::time_point;
 		using relative_type = typename Clock::duration;
 
+	private:
+		using value_type = std::variant<std::monostate, relative_type, absolute_type>;
+
+		constexpr explicit basic_timeout(value_type &&v) noexcept(std::is_nothrow_move_constructible_v<value_type>) : _value(std::forward<value_type>(v)) {}
+
+	public:
+		inline static const basic_timeout infinite = basic_timeout(value_type(std::monostate()));
+		inline static const basic_timeout fallback = basic_timeout(std::chrono::seconds(60));
+		inline static const basic_timeout max = basic_timeout(relative_type::max());
+		inline static const basic_timeout min = basic_timeout(relative_type(0));
+
 	public:
 		/** Initializes a maximum relative timeout. */
-		constexpr basic_timeout() noexcept = default;
+		constexpr basic_timeout() noexcept : basic_timeout(min) {}
 		/** Initializes an absolute timeout. */
-		constexpr basic_timeout(const absolute_type &tp) noexcept(std::is_nothrow_copy_constructible_v<absolute_type>) : _value(tp) {}
+		constexpr basic_timeout(const absolute_type &tp) noexcept(std::is_nothrow_constructible_v<value_type, const absolute_type &>) : basic_timeout(value_type(tp)) {}
 		/** Initializes a relative timeout. */
-		constexpr basic_timeout(const relative_type &dur) noexcept(std::is_nothrow_copy_constructible_v<relative_type>) : _value(dur) {}
+		constexpr basic_timeout(const relative_type &dur) noexcept(std::is_nothrow_constructible_v<value_type, const relative_type &>) : basic_timeout(value_type(dur)) {}
 
 		/** Initializes an absolute timeout from a system clock time point. */
 		template<typename D = typename std::chrono::system_clock::duration> requires(!std::same_as<absolute_type, std::chrono::sys_time<D>> && std::constructible_from<absolute_type, std::chrono::sys_time<D>>)

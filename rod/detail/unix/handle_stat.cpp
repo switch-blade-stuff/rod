@@ -782,13 +782,37 @@ namespace rod
 	namespace _handle
 	{
 		result<stat::query> do_get_stat(stat &st, basic_handle::native_handle_type hnd, stat::query q) noexcept { return _unix::get_stat(st, hnd, nullptr, q, true); }
-		result<stat::query> do_get_stat(stat &st, const fs::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept { return _unix::get_stat(st, base.native_handle(), path.render_null_terminated().c_str(), q, nofollow); }
+		result<stat::query> do_get_stat(stat &st, const fs::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept
+		{
+			try
+			{
+				const auto rpath = path.render_null_terminated();
+				return _unix::get_stat(st, base.native_handle(), rpath.c_str(), q, nofollow);
+			}
+			catch (...) { return _detail::current_error(); }
+		}
 
 		result<stat::query> do_set_stat(const stat &st, basic_handle::native_handle_type hnd, stat::query q) noexcept { return _unix::set_stat(st, hnd, nullptr, q, true); }
-		result<stat::query> do_set_stat(const stat &st, const fs::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept { return _unix::set_stat(st, base.native_handle(), path.render_null_terminated().c_str(), q, nofollow); }
+		result<stat::query> do_set_stat(const stat &st, const fs::path_handle &base, fs::path_view path, stat::query q, bool nofollow) noexcept
+		{
+			try
+			{
+				const auto rpath = path.render_null_terminated();
+				return _unix::set_stat(st, base.native_handle(), rpath.c_str(), q, nofollow);
+			}
+			catch (...) { return _detail::current_error(); }
+		}
 
 		result<fs_stat::query> do_get_fs_stat(fs_stat &st, basic_handle::native_handle_type hnd, fs_stat::query q) noexcept { return _unix::get_fs_stat(st, hnd, nullptr, q, true); }
-		result<fs_stat::query> do_get_fs_stat(fs_stat &st, const fs::path_handle &base, fs::path_view path, fs_stat::query q, bool nofollow) noexcept { return _unix::get_fs_stat(st, base.native_handle(), path.render_null_terminated().c_str(), q, nofollow); }
+		result<fs_stat::query> do_get_fs_stat(fs_stat &st, const fs::path_handle &base, fs::path_view path, fs_stat::query q, bool nofollow) noexcept
+		{
+			try
+			{
+				const auto rpath = path.render_null_terminated();
+				return _unix::get_fs_stat(st, base.native_handle(), rpath.c_str(), q, nofollow);
+			}
+			catch (...) { return _detail::current_error(); }
+		}
 	}
 
 	namespace _path

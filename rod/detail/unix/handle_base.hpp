@@ -23,6 +23,10 @@ namespace rod::_unix
 	}
 	inline static auto tell_pos(int fd) noexcept { return seek_pos(fd, 0, SEEK_CUR); }
 
+	result<> link_file(native_handle_type old_base, const char *old_leaf, native_handle_type new_base, const char *new_leaf, bool replace) noexcept;
+	result<> relink_file(native_handle_type old_base, const char *old_leaf, native_handle_type new_base, const char *new_leaf, bool replace) noexcept;
+	result<> unlink_file(native_handle_type old_base, const char *old_leaf, bool rmdir) noexcept;
+
 	result<native_handle_type> link_file(native_handle_type hnd, const path_handle &base, path_view path, bool replace, bool check_stat, const file_timeout &to) noexcept;
 	result<native_handle_type> relink_file(native_handle_type hnd, const path_handle &base, path_view path, bool replace, bool check_stat, const file_timeout &to) noexcept;
 	result<native_handle_type> unlink_file(native_handle_type hnd, bool rmdir, bool check_stat, const file_timeout &to) noexcept;

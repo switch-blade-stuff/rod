@@ -51,7 +51,7 @@ namespace rod::_dir
 
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		if (const auto res = _unix::relink_file(native_handle(), base, path, replace, bool(flags() & file_flags::unlink_stat_check), abs_timeout); res.has_value()) [[likely]]
 			return release(*res), result<>();
 		else
@@ -59,7 +59,7 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		if (const auto res = _unix::unlink_file(native_handle(), true, bool(flags() & file_flags::unlink_stat_check), abs_timeout); res.has_value()) [[likely]]
 			return release(*res), result<>();
 		else
@@ -73,7 +73,7 @@ namespace rod::_dir
 
 		try
 		{
-			const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+			const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 			const auto buff_init = req.buffs.size() * (sizeof(_unix::dirent) + 256);
 
 			auto dir_offset = _unix::seek_pos(native_handle(), 0, req.reset ? SEEK_SET : SEEK_CUR);
@@ -192,7 +192,7 @@ namespace rod::_dir
 	{
 		try
 		{
-			const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+			const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 			auto dir_offset = _unix::seek_pos(_base_hnd.native_handle(), 0, SEEK_CUR);
 			if (dir_offset < 0) [[unlikely]]
 				return std::error_code(errno, std::system_category());

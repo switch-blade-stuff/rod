@@ -347,10 +347,10 @@ namespace rod::fs
 
 	result<std::size_t> copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to) noexcept
 	{
-		return do_copy(src_base, src_path, dst_base, dst_path, mode, to.is_infinite() ? file_timeout() : to.absolute(), false);
+		return do_copy(src_base, src_path, dst_base, dst_path, mode, to.is_infinite() ? to : to.absolute(), false);
 	}
 	result<std::size_t> copy_all(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to) noexcept
 	{
-		return do_copy(src_base, src_path, dst_base, dst_path, mode, to.is_infinite() ? file_timeout() : to.absolute(), true);
+		return do_copy(src_base, src_path, dst_base, dst_path, mode, to.is_infinite() ? to : to.absolute(), true);
 	}
 }

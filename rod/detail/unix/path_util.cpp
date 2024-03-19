@@ -284,7 +284,7 @@ namespace rod
 		{
 			try
 			{
-				const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+				const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 				auto st = stat(nullptr);
 
 				if (auto res = get_stat(st, base, path, stat::query::type); res.has_error()) [[unlikely]]
@@ -302,7 +302,7 @@ namespace rod
 		{
 			try
 			{
-				const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+				const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 				auto st = stat(nullptr);
 
 				if (auto res = get_stat(st, base, path, stat::query::type); res.has_error()) [[unlikely]]

@@ -359,7 +359,7 @@ namespace rod::fs
 
 	result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -386,7 +386,7 @@ namespace rod::fs
 	}
 	result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();

@@ -93,7 +93,7 @@ namespace rod::_iocp
 
 	void context::add_timer(timer_operation_base *node) noexcept
 	{
-		if (node->to == fs::file_timeout()) [[unlikely]]
+		if (node->to.is_infinite()) [[unlikely]]
 			return;
 
 		/* Process pending timers if the inserted timer is the new front. */
@@ -101,7 +101,7 @@ namespace rod::_iocp
 	}
 	void context::del_timer(timer_operation_base *node) noexcept
 	{
-		if (node->to == fs::file_timeout()) [[unlikely]]
+		if (node->to.is_infinite()) [[unlikely]]
 			return;
 
 		/* Process pending timers if we are erasing the front. */

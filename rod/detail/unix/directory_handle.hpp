@@ -55,7 +55,7 @@ namespace rod::_unix
 			off += ent->d_reclen;
 
 			result<int> accept = 0;
-			if (ent->d_name[0] != '.' || (ent->d_name[1] != 0 && ent->d_name[1] != '.'))
+			if (ent->d_name[0] != '.' && (ent->d_name[1] == '\0' || (ent->d_name[1] != '.' && ent->d_name[2] != '\0')))
 				accept = f(*ent);
 
 			if (const auto now = file_clock::now(); now >= to.absolute(now) && !last_err) [[unlikely]]

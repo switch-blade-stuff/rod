@@ -105,10 +105,10 @@ namespace rod::fs
 
 	/** TODO: Document usage.
 	 * @brief Copies the file, directory or symlink specified by \a src_base and \a src_path to location specified by \a dst_base and \a dst_path. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to = file_timeout()) noexcept;
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to = file_timeout::infinite) noexcept;
 	/** TODO: Document usage.
 	 * @brief Copies the file, directory or symlink specified by \a src_base and \a src_path to location specified by \a dst_base and \a dst_path. Unlike `copy`, directory contents are copied as well. */
-	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to = file_timeout()) noexcept;
+	[[nodiscard]] ROD_API_PUBLIC result<std::size_t> copy_all(const path_handle &src_base, path_view src_path, const path_handle &dst_base, path_view dst_path, copy_mode mode, const file_timeout &to = file_timeout::infinite) noexcept;
 
 	/** Removes the directory, file, or symlink specified by \a path relative to parent location \a base.
 	 * Equivalent to opening the target object handle with sufficient permissions and calling `unlink`.
@@ -122,7 +122,7 @@ namespace rod::fs
 	 * <li>`std::errc::not_enough_memory` on failure to allocate internal buffers.</li>
 	 * <li>Errors returned by `unlink` or `rmdir` on POSIX or `NtGetInformationFile` and `NtSetInformationFile` on Windows.</li>
 	 * </ul> */
-	ROD_API_PUBLIC result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
+	ROD_API_PUBLIC result<std::size_t> remove(const path_handle &base, path_view path, const file_timeout &to = file_timeout::infinite) noexcept;
 	/** Removes all directories, files and symlinks specified by \a path relative to parent location \a base.
 	 * @param base Handle to the parent location. If set to an invalid handle, \a path must be a fully-qualified path.
 	 * @param path Path to the target object relative to \a base if it is a valid handle, otherwise a fully-qualified path.
@@ -133,5 +133,5 @@ namespace rod::fs
 	 * <li>`std::errc::not_enough_memory` on failure to allocate internal buffers.</li>
 	 * <li>Errors returned by `unlink` or `rmdir` on POSIX or `NtQueryDirectoryFile`, `NtGetInformationFile`, and `NtSetInformationFile` on Windows.</li>
 	 * </ul> */
-	ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout()) noexcept;
+	ROD_API_PUBLIC result<std::size_t> remove_all(const path_handle &base, path_view path, const file_timeout &to = file_timeout::infinite) noexcept;
 }

@@ -94,7 +94,7 @@ namespace rod::_dir
 
 	result<> directory_handle::do_relink(const path_handle &base, path_view path, bool replace, const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -116,7 +116,7 @@ namespace rod::_dir
 	}
 	result<> directory_handle::do_unlink(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -137,7 +137,7 @@ namespace rod::_dir
 		if (req.buffs.empty()) [[unlikely]]
 			return std::make_pair(std::move(req.buffs), false);
 
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		const auto &ntapi = ntapi::instance();
 		if (ntapi.has_error()) [[unlikely]]
 			return ntapi.error();
@@ -260,7 +260,7 @@ namespace rod::_dir
 
 	result<> directory_iterator::next(const file_timeout &to) noexcept
 	{
-		const auto abs_timeout = to.is_infinite() ? file_timeout() : to.absolute();
+		const auto abs_timeout = to.is_infinite() ? to : to.absolute();
 		auto &&str = _entry.to_path_string();
 
 		const auto &ntapi = ntapi::instance();
