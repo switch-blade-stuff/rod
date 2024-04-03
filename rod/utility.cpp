@@ -63,18 +63,21 @@ namespace rod
 		}();
 		return value;
 #elif defined(ROD_POSIX)
-		static const auto value = getpagesize();
+		static const auto value = ::getpagesize();
 		return std::size_t(value);
 #endif
 	}
 	std::span<const std::size_t> get_page_sizes(bool avail) noexcept
 	{
+		static const auto fallback = std::array<std::size_t, 1>{get_page_size()};
 		static const auto [all, user] = []() noexcept -> std::pair<std::vector<std::size_t>, std::vector<std::size_t>>
 		{
-#if defined(ROD_WIN32)
-            try
+			try
 			{
-				std::pair<std::vector<std::size_t>, std::vector<std::size_t>> result = {{get_page_size()}, {get_page_size()}};
+				std::pair<std::vector<std::size_t>, std::vector<std::size_t>> result;
+
+#if defined(ROD_WIN32)
+				result.second = result.first = {get_page_size()}
 				if (const auto GetLargePageMinimum = reinterpret_cast<std::size_t (WINAPI *)()>(::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "GetLargePageMinimum")); GetLargePageMinimum != nullptr)
 				{
 					result.first.push_back(GetLargePageMinimum());
@@ -92,13 +95,76 @@ namespace rod
 						}
 					}
 				}
+#elif defined(__FreeBSD__)
+				result.first.resize(32);
+				if (const auto out = ::getpagesizes(pagesizes.data(), 32); out < 0) [[unlikely]]
+					result.first = {get_page_size()};
+				else
+					result.first.resize(out);
+				result.second = result.first;
+#elif defined(__APPLE__)
+				result.second = result.first = {get_page_size(), std::size_t(2 * 1024 * 1024)};
+#elif defined(__linux__)
+				result.second = result.first = {get_page_size()};
+
+				auto meminfo = fs::file_handle::open({}, "/proc/meminfo");
+				if (meminfo.has_error()) [[unlikely]]
+					return result;
+				auto buff = std::array<char, 4096>();
+				if (auto b = as_bytes(buff.begin(), buff.end()); read_some_at(*meminfo, {.buffs = {&b, 1}, .off = 0}).has_error()) [[unlikely]]
+					return result;
+
+				const auto meminfo_str = std::string_view(buff.begin(), buff.end());
+				auto hp_num_pos = meminfo_str.find("HugePages_Total:");
+				auto hp_len_pos = meminfo_str.find("Hugepagesize:");
+
+				if (hp_num_pos != std::string_view::npos && hp_len_pos != std::string_view::npos)
+				{
+					constexpr auto whitespace = " \t\r\n";
+					hp_num_pos = meminfo_str.find_first_not_of(whitespace, hp_num_pos);
+					hp_len_pos = meminfo_str.find_first_not_of(whitespace, hp_len_pos);
+
+					auto hp_num = std::size_t(), hp_len = std::size_t();
+					if (hp_num_pos != std::string_view::npos) [[likely]]
+						::sscanf(meminfo_str.data() + hp_num_pos, "%zu", &hp_num);
+					if (hp_len_pos != std::string_view::npos) [[likely]]
+						::sscanf(meminfo_str.data() + hp_len_pos, "%zu", &hp_len);
+
+					if (hp_len != 0)
+					{
+						result.first.push_back(hp_len * 1024);
+						if (hp_num != 0u)
+							result.second.push_back(hp_len * 1024);
+					}
+				}
+#else
+				result.second = result.first = {get_page_size()}
+#endif
 				return result;
 			}
 			catch (...) { return {}; }
-#else
-            return {};
-#endif
 		}();
-		return avail ? user : all;
+
+		auto result = std::span(avail ? user : all);
+		if (result.empty()) [[unlikely]]
+			result = fallback;
+
+		return result;
+	}
+
+	std::size_t get_file_buff_size() noexcept
+	{
+		static const auto result = []() noexcept
+		{
+			auto buff_size = get_page_size();
+			for (auto page_size : get_page_sizes(true))
+				if (page_size >= std::size_t(1024 * 1024))
+				{
+					buff_size = page_size;
+					break;
+				}
+			return buff_size;
+		}();
+		return result;
 	}
 }

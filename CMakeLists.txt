@@ -16,6 +16,11 @@ if (NOT ${ROD_TAG_INVOKE_NAMESPACE} STREQUAL "")
     add_compile_definitions(ROD_TAG_INVOKE_NAMESPACE ${ROD_TAG_INVOKE_NAMESPACE})
 endif ()
 
+option(ROD_ZFS_SEEK_DATA_FIX "Enable fix for https://github.com/openzfs/zfs/issues/11697" OFF)
+if (${ROD_ZFS_SEEK_DATA_FIX})
+    add_compile_definitions(ROD_ZFS_SEEK_DATA_FIX)
+endif ()
+
 if (${ROD_SYSTEM_NAME} MATCHES "linux|android")
     option(ROD_NO_LIBURING "Disables support for io_uring" OFF)
     find_package(liburing)
@@ -197,7 +202,11 @@ if (UNIX)
             rod/detail/unix/link_handle.hpp
             rod/detail/unix/link_handle.cpp
             rod/detail/unix/directory_handle.hpp
-            rod/detail/unix/directory_handle.cpp)
+            rod/detail/unix/directory_handle.cpp
+            rod/detail/unix/file_handle.hpp
+            rod/detail/unix/file_handle.cpp
+            rod/detail/unix/mmap_handle.hpp
+            rod/detail/unix/mmap_handle.cpp)
 endif ()
 
 # Linux implementation

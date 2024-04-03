@@ -17,11 +17,14 @@ namespace rod::_dir
 
 		try
 		{
-			const auto base_hnd = base.native_handle() ? base.native_handle() : native_handle_type(AT_FDCWD);
+			const auto base_hnd = base.is_open() ? base.native_handle() : native_handle_type(AT_FDCWD);
 			const auto rpath = (path.empty() && base.is_open() ? "." : path).render_null_terminated();
 			auto fd_flags = _unix::make_fd_flags(flags & ~file_flags::write, mode);
 #ifdef O_DIRECTORY
 			fd_flags |= O_DIRECTORY;
+#endif
+#ifdef O_SEARCH
+			attribs |= O_SEARCH;
 #endif
 
 			if (bool(fd_flags & O_CREAT) && ::mkdirat(base_hnd, rpath.c_str(), S_IRWXU | S_IRWXG) < 0) [[unlikely]]
@@ -30,6 +33,8 @@ namespace rod::_dir
 				if (err != EEXIST || bool(fd_flags & O_EXCL)) [[likely]]
 					return std::error_code(err, std::system_category());
 			}
+
+			fd_flags &= ~(O_CREAT | O_EXCL);
 			if (const auto hnd = ::openat(base_hnd, rpath.c_str(), fd_flags); hnd < 0) [[unlikely]]
 				return std::error_code(errno, std::system_category());
 			else
@@ -107,24 +112,20 @@ namespace rod::_dir
 				}
 
 				auto next_len = result_len;
-				const auto off = _unix::for_each_dir_entry(native_handle(), {buff_mem.get(), buff_len}, abs_timeout, [&](_unix::dirent entry_data) noexcept -> result<bool>
+				const auto off = _unix::for_each_dir_entry(native_handle(), {buff_mem.get(), buff_len}, abs_timeout, [&](_unix::dirent &entry_data) -> result<int>
 				{
 					if (next_len >= req.buffs.size())
-						return false;
+						return -1;
 
 					auto match_flags = FNM_PATHNAME;
 #ifdef FNM_EXTMATCH
 					match_flags |= FNM_EXTMATCH;
 #endif
 					if (!req.filter.empty() && ::fnmatch(rfilter.c_str(), entry_data.d_name, match_flags) != 0)
-						return false;
+						return 0;
 
-					auto &entry = (req.buffs._data[next_len] = io_buffer<read_some_t>());
-					if (entry._buff.data() != nullptr)
-						entry._buff = std::span<char>(entry_data.d_name, _detail::strlen(entry_data.d_name));
-					else
-						entry._buff = std::span(entry._buff.data(), entry_data.d_name - buff_mem.get());
-
+					auto &entry = req.buffs._data[next_len] = io_buffer<read_some_t>();
+					entry._buff = std::span(entry._buff.data(), entry_data.d_name - buff_mem.get());
 					entry._st.type = _unix::type_from_dirent_type(entry_data.d_type);
 					entry._st.ino = entry_data.d_ino;
 
@@ -133,9 +134,14 @@ namespace rod::_dir
 						entry._query |= stat::query::type;
 
 					next_len += 1;
-					return true;
+					return 1;
 				});
-				if (next_len >= req.buffs.size() || (off.has_value() && (result_eof = !(dir_offset = *off))))
+				if (off.has_value())
+				{
+					result_eof = *off == 0;
+					dir_offset = *off;
+				}
+				if (next_len >= req.buffs.size() || result_eof)
 					result_len = next_len;
 
 				/* Always seek to start to ensure atomicity. */
@@ -148,9 +154,6 @@ namespace rod::_dir
 
 			for (auto &entry : req.buffs)
 			{
-				if (entry._buff.data() == nullptr)
-					continue;
-
 				const auto str = buff_mem.get() + entry._buff.size();
 				entry._buff = std::span(str, _detail::strlen(str));
 			}
@@ -208,8 +211,11 @@ namespace rod::_dir
 				else if (result_buff.size() < new_len)
 					result_buff.resize(new_len);
 
-				const auto off = _unix::for_each_dir_entry(_base_hnd.native_handle(), result_buff, abs_timeout, [&](_unix::dirent entry_data) -> result<int>
+				const auto off = _unix::for_each_dir_entry(_base_hnd.native_handle(), result_buff, abs_timeout, [&](_unix::dirent &entry_data) -> result<int>
 				{
+					if (has_result)
+						return -1;
+
 					_entry._st.type = _unix::type_from_dirent_type(entry_data.d_type);
 					_entry._st.ino = entry_data.d_ino;
 
@@ -220,7 +226,7 @@ namespace rod::_dir
 					result_buff.erase(entry_data.d_name - result_buff.data());
 					result_buff.resize(_detail::strlen(entry_data.d_name));
 					has_result = true;
-					return -1;
+					return 1;
 				});
 				if (off.has_value() && (dir_offset = *off) == 0)
 					break;

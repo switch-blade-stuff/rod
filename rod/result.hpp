@@ -34,11 +34,10 @@ namespace rod
 		struct is_result_with_error<result<Val, Err>, Err> : std::true_type {};
 
 		/** Exception thrown when an invalid state was requested from `rod::result`. */
-		class bad_result_access : public std::runtime_error
+		class ROD_API_PUBLIC bad_result_access : public std::runtime_error
 		{
 			template<typename, typename>
-			friend
-			class result;
+			friend class result;
 
 			explicit bad_result_access(const char *msg) : std::runtime_error(msg) {}
 			explicit bad_result_access(const std::string &msg) : std::runtime_error(msg) {}

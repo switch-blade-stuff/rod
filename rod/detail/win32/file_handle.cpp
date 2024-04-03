@@ -489,7 +489,7 @@ namespace rod::_file
 
 		if (!bool((flags() | req.dst.flags()) & file_flags::non_blocking) && !to.is_infinite()) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
-		if ((req.dst.flags() & file_flags::write) != file_flags::write) [[unlikely]]
+		if (!bool(req.dst.flags() & file_flags::data_write) || !bool(flags() & file_flags::data_read)) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_seek);
 
 		const auto abs_timeout = to.is_infinite() ? to : to.absolute();

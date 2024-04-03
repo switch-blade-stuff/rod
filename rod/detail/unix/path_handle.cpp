@@ -10,7 +10,7 @@ namespace rod::_path
 	{
 		try
 		{
-			const auto base_hnd = base.native_handle() ? base.native_handle() : native_handle_type(AT_FDCWD);
+			const auto base_hnd = base.is_open() ? base.native_handle() : native_handle_type(AT_FDCWD);
 			const auto rpath = (path.empty() && base.is_open() ? "." : path).render_null_terminated();
 			auto fd_flags = O_CLOEXEC | O_RDONLY;
 #ifdef O_DIRECTORY

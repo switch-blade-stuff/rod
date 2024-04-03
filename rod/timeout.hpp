@@ -33,7 +33,7 @@ namespace rod
 
 	public:
 		/** Initializes a maximum relative timeout. */
-		constexpr basic_timeout() noexcept : basic_timeout(min) {}
+		constexpr basic_timeout() noexcept : basic_timeout(infinite) {}
 		/** Initializes an absolute timeout. */
 		constexpr basic_timeout(const absolute_type &tp) noexcept(std::is_nothrow_constructible_v<value_type, const absolute_type &>) : basic_timeout(value_type(tp)) {}
 		/** Initializes a relative timeout. */

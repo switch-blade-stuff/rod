@@ -68,7 +68,7 @@ namespace rod
 		{
 			try
 			{
-				const auto new_base = base.native_handle() ? base.native_handle() : basic_handle::native_handle_type(AT_FDCWD);
+				const auto new_base = base.is_open() ? base.native_handle() : basic_handle::native_handle_type(AT_FDCWD);
 				const auto new_leaf = path.render_null_terminated();
 				int last_err;
 
@@ -106,7 +106,7 @@ namespace rod
 		{
 			try
 			{
-				const auto new_base = base.native_handle() ? base.native_handle() : basic_handle::native_handle_type(AT_FDCWD);
+				const auto new_base = base.is_open() ? base.native_handle() : basic_handle::native_handle_type(AT_FDCWD);
 				const auto new_leaf = path.render_null_terminated();
 
 				auto old_leaf = std::string();

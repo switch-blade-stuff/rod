@@ -73,7 +73,8 @@ namespace rod
 			{
 				if (const auto uid = ::getuid(), euid = ::geteuid(); uid == euid) [[likely]]
 				{
-					if (const auto env_path = std::string_view(::getenv(TMPDIR_ENV)); !env_path.empty()) [[likely]]
+					const auto env_str = ::getenv(TMPDIR_ENV);
+					if (const auto env_path = std::string_view(env_str ? env_str : ""); !env_path.empty()) [[likely]]
 						dirs.push_back({env_path, fs::discovery_source::environment});
 
 #if !(defined(__APPLE__) && defined(__MACH__))
@@ -95,12 +96,14 @@ namespace rod
 			{
 				if (const auto uid = ::getuid(), euid = ::geteuid(); uid == euid) [[likely]]
 				{
-					_unix::for_each_in_env_list(::getenv("XDG_DATA_DIRS"), [&](auto value)
+					auto env_str = ::getenv("XDG_DATA_DIRS");
+					_unix::for_each_in_env_list(env_str ? env_str : "", [&](auto value)
 					{
 						dirs.push_back({value, fs::discovery_source::environment});
 						return true;
 					});
-					if (const auto value = std::string_view(::getenv("XDG_DATA_HOME")); !value.empty()) [[likely]]
+					env_str = ::getenv("XDG_DATA_HOME");
+					if (const auto value = std::string_view(env_str ? env_str : ""); !value.empty()) [[likely]]
 						dirs.push_back({value, fs::discovery_source::environment});
 				}
 
@@ -116,16 +119,20 @@ namespace rod
 			{
 				if (const auto uid = ::getuid(), euid = ::geteuid(); uid == euid) [[likely]]
 				{
-					_unix::for_each_in_env_list(::getenv("XDG_DATA_DIRS"), [&](auto value)
+					auto env_str = ::getenv("XDG_DATA_DIRS");
+					_unix::for_each_in_env_list(env_str ? env_str : "", [&](auto value)
 					{
 						dirs.push_back({value, fs::discovery_source::environment});
 						return true;
 					});
-					if (const auto value = std::string_view(::getenv("XDG_STATE_HOME")); !value.empty()) [[likely]]
+					env_str = ::getenv("XDG_STATE_HOME");
+					if (const auto value = std::string_view(env_str ? env_str : ""); !value.empty()) [[likely]]
 						dirs.push_back({value, fs::discovery_source::environment});
-					if (const auto value = std::string_view(::getenv("XDG_DATA_HOME")); !value.empty()) [[likely]]
+					env_str = ::getenv("XDG_DATA_HOME");
+					if (const auto value = std::string_view(env_str ? env_str : ""); !value.empty()) [[likely]]
 						dirs.push_back({value, fs::discovery_source::environment});
-					if (const auto value = std::string_view(::getenv("HOME")); !value.empty()) [[likely]]
+					env_str = ::getenv("HOME");
+					if (const auto value = std::string_view(env_str ? env_str : ""); !value.empty()) [[likely]]
 						dirs.push_back({fs::path(value) / ".local/state", fs::discovery_source::system});
 					else
 						dirs.push_back({"~/.local/state", fs::discovery_source::system});
@@ -143,12 +150,14 @@ namespace rod
 			{
 				if (const auto uid = ::getuid(), euid = ::geteuid(); uid == euid) [[likely]]
 				{
-					_unix::for_each_in_env_list(::getenv("XDG_CONFIG_DIRS"), [&](auto value)
+					auto env_str = ::getenv("XDG_CONFIG_DIRS");
+					_unix::for_each_in_env_list(env_str ? env_str : "", [&](auto value)
 					{
 						dirs.push_back({value, fs::discovery_source::environment});
 						return true;
 					});
-					if (const auto value = std::string_view(::getenv("XDG_CONFIG_HOME")); !value.empty()) [[likely]]
+					env_str = ::getenv("XDG_CONFIG_HOME");
+					if (const auto value = std::string_view(env_str ? env_str : ""); !value.empty()) [[likely]]
 						dirs.push_back({value, fs::discovery_source::environment});
 				}
 
@@ -238,7 +247,8 @@ namespace rod
 
 				/* Search $PATH for the executable in argv[0] */
 				auto target = fs::path();
-				_unix::for_each_in_env_list(::getenv("PATH"), [&](auto value)
+				const auto env_str = ::getenv("PATH");
+				_unix::for_each_in_env_list(env_str ? env_str : "", [&](auto value)
 				{
 					if ((target = value) /= argv0_captured; ::access(target.native().data(), X_OK))
 					{

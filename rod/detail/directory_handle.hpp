@@ -420,7 +420,7 @@ namespace rod
 			 * @throw std::bad_alloc On failure to copy the path buffer. */
 			directory_iterator &operator++() { return (next().value(), *this); }
 			/** Advances the iterator using an optional timeout and returns errors as `result`. */
-			ROD_API_PUBLIC result<> next(const typename directory_handle::timeout_type & = {}) noexcept;
+			ROD_API_PUBLIC result<> next(const fs::file_timeout & = fs::file_timeout::infinite) noexcept;
 
 			/** Advances the iterator with max timeout and returns a copy of the previous position.
 			 * @throw std::system_error On failure to clone or advance the internal handle.

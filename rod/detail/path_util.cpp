@@ -241,16 +241,19 @@ namespace rod::fs
 		const auto nofollow = !bool(mode & copy_mode::follow_links);
 		const auto overwrite = bool(mode & copy_mode::overwrite);
 		const auto recursive = bool(mode & copy_mode::recursive);
+		const auto exists = dst_st.type != file_type::none;
 
-		if (dst_st.type != file_type::none || (overwrite && dst_st.type != file_type::directory))
+		if (dst_st.type != (overwrite ? file_type::directory : file_type::none))
 			return std::make_error_code(std::errc::file_exists);
 
-		/* Create destination first, source is ignored unless we need to copy contents. */
-		auto dst_hnd = directory_handle::open(dst_base, dst_path, file_flags::write, overwrite ? open_mode::supersede : open_mode::create);
+		/* Attempt to create a new directory first. */
+		auto dst_hnd = directory_handle::open(dst_base, dst_path, file_flags::write, exists ? overwrite ? open_mode::supersede : open_mode::existing : open_mode::create);
 		if (dst_hnd.has_error()) [[unlikely]]
 			return dst_hnd.error();
-		else if (!enter)
-			return 1;
+
+		auto num = std::size_t(!exists || overwrite ? 1 : 0);
+		if (!enter)
+			return num;
 
 		auto src_hnd = directory_handle::open(src_base, src_path, file_flags::read, open_mode::existing);
 		if (src_hnd.has_error()) [[unlikely]]
@@ -258,11 +261,9 @@ namespace rod::fs
 
 		auto buff = directory_handle::io_buffer<read_some_t>(copy_stats_mask);
 		auto seq = directory_handle::io_buffer_sequence<read_some_t>(&buff, 1);
-		auto num = std::size_t(1);
-
 		for (;;)
 		{
-			auto read_res = read_some(*src_hnd, {.buffs = std::move(seq),  .reset = false}, to);
+			auto read_res = read_some(*src_hnd, {.buffs = std::move(seq), .reset = false}, to);
 			if (read_res.has_error()) [[unlikely]]
 				return read_res.error();
 			else if (!read_res->first.empty())

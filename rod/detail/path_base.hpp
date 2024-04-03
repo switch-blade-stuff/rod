@@ -1488,7 +1488,7 @@ namespace rod
 			/** Removes the trailing separators of the path. */
 			constexpr path &remove_separator() noexcept
 			{
-				if (const auto pos = rfind_separator_end<value_type>(_string, format()); pos < _string.size()) [[likely]]
+				if (const auto pos = rfind_separator_end<value_type>(_string, format()) + 1; pos < _string.size()) [[likely]]
 					_string.erase(pos);
 				return *this;
 			}

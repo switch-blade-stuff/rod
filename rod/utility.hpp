@@ -590,6 +590,9 @@ namespace rod
 	/** Returns a span of current system's page sizes. If \a avail is set to `true`, returns only the page sizes available to the user. */
 	[[nodiscard]] ROD_API_PUBLIC std::span<const std::size_t> get_page_sizes(bool avail = true) noexcept;
 
+	/** Returns the page size used for certain file operations. Selects the closest available large-page size to 1Mb and falls back to `get_page_size()`. */
+	[[nodiscard]] ROD_API_PUBLIC std::size_t get_file_buff_size() noexcept;
+
 	namespace _detail
 	{
 		struct free_deleter { void operator()(auto *p) const noexcept { std::free(p); } };

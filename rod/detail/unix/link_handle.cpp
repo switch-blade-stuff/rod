@@ -14,16 +14,15 @@ namespace rod::_link
 			if (name.has_error()) [[unlikely]]
 				return name.error();
 
-			if (const auto res = make_symlink(base, name->c_str(), tgt, false, to); res.has_error()) [[unlikely]]
+			if (::symlinkat(tgt, base, name->c_str()) < 0) [[unlikely]]
 			{
-				if (res.error().value() == EEXIST)
-				{
-					if (to.is_infinite())
-						continue;
-					if (const auto now = file_clock::now(); now >= to.absolute(now)) [[unlikely]]
-						return std::make_error_code(std::errc::timed_out);
-				}
-				return res.error();
+				if (const auto err = errno; err != EEXIST) [[unlikely]]
+					return std::error_code(err, std::system_category());
+
+				if (to.is_infinite())
+					continue;
+				if (const auto now = file_clock::now(); now >= to.absolute(now)) [[unlikely]]
+					return std::make_error_code(std::errc::timed_out);
 			}
 			if (::renameat(base, name->c_str(), base, path) < 0) [[unlikely]]
 				return std::error_code(errno, std::system_category());
@@ -347,7 +346,7 @@ namespace rod::_link
 		auto leaf_str = std::string();
 
 		auto base = _unix::get_fd_base(native_handle(), &leaf_str, bool(flags() & file_flags::unlink_stat_check), to);
-		if (base.has_error()) [[unlikely]]
+		if (base.has_value()) [[likely]]
 			base_hnd = base->native_handle();
 		else
 			return base.error();

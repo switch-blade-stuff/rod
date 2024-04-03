@@ -10,71 +10,9 @@ namespace rod::_mmap
 
 	constexpr auto prot_flags_mask = mmap_flags::read | mmap_flags::exec | mmap_flags::copy | mmap_flags::write;
 
-	inline constexpr std::pair<ULONG, ULONG> flags_to_prot_and_attr(mmap_flags flags) noexcept
-	{
-		ULONG prot = 0;
-		if (bool(flags & mmap_flags::exec))
-		{
-			if (bool(flags & mmap_flags::write))
-				prot = PAGE_EXECUTE_READWRITE;
-			else if (bool(flags & mmap_flags::copy))
-				prot = PAGE_EXECUTE_WRITECOPY;
-			else if (bool(flags & mmap_flags::read))
-				prot = PAGE_EXECUTE_READ;
-			else
-				prot = PAGE_EXECUTE;
-		}
-		else
-		{
-			if (bool(flags & (mmap_flags::write | mmap_flags::reserve | mmap_flags::system_image)))
-				prot = PAGE_READWRITE;
-			else if (bool(flags & mmap_flags::copy))
-				prot = PAGE_WRITECOPY;
-			else
-				prot = PAGE_READONLY;
-		}
-
-		ULONG attr = SEC_COMMIT;
-		if (bool(flags & mmap_flags::reserve))
-			attr = SEC_RESERVE;
-		if (bool(flags & mmap_flags::system_image))
-			attr = SEC_IMAGE;
-		if (bool(flags & mmap_flags::map_large_pages))
-			attr |= SEC_LARGE_PAGES;
-
-		return {prot, attr};
-	}
-	inline constexpr ULONG flags_to_prot(mmap_flags flags) noexcept
-	{
-		ULONG prot = 0;
-		if (bool(flags & mmap_flags::exec))
-		{
-			if (bool(flags & mmap_flags::write))
-				prot = PAGE_EXECUTE_READWRITE;
-			else if (bool(flags & mmap_flags::copy))
-				prot = PAGE_EXECUTE_WRITECOPY;
-			else if (bool(flags & mmap_flags::read))
-				prot = PAGE_EXECUTE_READ;
-			else
-				prot = PAGE_EXECUTE;
-		}
-		else
-		{
-			if (bool(flags & (mmap_flags::write)))
-				prot = PAGE_READWRITE;
-			else if (bool(flags & mmap_flags::copy))
-				prot = PAGE_WRITECOPY;
-			else if (bool(flags & mmap_flags::read))
-				prot = PAGE_READONLY;
-			else
-				prot = PAGE_NOACCESS;
-		}
-		return prot;
-	}
-
 	result<mmap_source> mmap_source::open(extent_type size, const fs::path_handle &base, mmap_flags flags) noexcept
 	{
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) [[unlikely]]
+		if ((bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write)) || (bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve))) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
@@ -102,7 +40,7 @@ namespace rod::_mmap
 	}
 	result<mmap_source> mmap_source::open(const fs::file_handle &file, extent_type size, mmap_flags flags) noexcept
 	{
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) [[unlikely]]
+		if ((bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write)) || (bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve))) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
@@ -211,7 +149,7 @@ namespace rod::_mmap
 
 	result<mmap_handle> mmap_handle::map(size_type size, mmap_flags flags) noexcept
 	{
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) [[unlikely]]
+		if ((bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write)) || (bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve))) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
@@ -252,7 +190,7 @@ namespace rod::_mmap
 	}
 	result<mmap_handle> mmap_handle::map(const mmap_source &src, extent_type offset, size_type size, mmap_flags flags) noexcept
 	{
-		if (bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write) || bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve) || !src.is_open()) [[unlikely]]
+		if ((bool(flags & mmap_flags::copy) && bool(flags & mmap_flags::write)) || (bool(flags & (mmap_flags::commit | mmap_flags::prefault)) && bool(flags & mmap_flags::reserve)) || !src.is_open()) [[unlikely]]
 			return std::make_error_code(std::errc::invalid_argument);
 		if (bool(flags & mmap_flags::reserve) && bool(flags & mmap_flags::map_large_pages)) [[unlikely]]
 			return std::make_error_code(std::errc::not_supported);
@@ -341,29 +279,6 @@ namespace rod::_mmap
 
 		operator=(mmap_handle());
 		return {};
-	}
-
-	inline constexpr extent_pair clamp_extent(extent_pair ext, _handle::extent_type max) noexcept
-	{
-		if (ext.second == 0)
-			ext.second = max;
-		if (ext.first >= max)
-			ext.first = 0;
-		return ext;
-	}
-	inline constexpr extent_pair over_align_extent(extent_pair ext, _handle::extent_type mul) noexcept
-	{
-		const auto mask = mul - 1;
-		ext.second = (ext.second + mask) & ~mask;
-		ext.first = ext.first & ~mask;
-		return ext;
-	}
-	inline constexpr extent_pair under_align_extent(extent_pair ext, _handle::extent_type mul) noexcept
-	{
-		const auto mask = mul - 1;
-		ext.first = (ext.first + mask) & ~mask;
-		ext.second = ext.second & ~mask;
-		return ext;
 	}
 
 	result<void> mmap_handle::flush(extent_pair ext) noexcept

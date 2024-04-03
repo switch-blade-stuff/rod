@@ -118,12 +118,12 @@ namespace rod
 					const auto leaf_ptr = visit([](auto sv) { return std::bit_cast<std::intptr_t>(sv.data()); }, leaf_path);
 					const auto leaf_off = std::size_t(leaf_ptr - std::bit_cast<std::intptr_t>(curr_path.data()));
 
-					curr_path.erase(0, std::min(leaf_off, base_path.native_size()));
+					curr_path.erase(0, leaf_off);
 					*out_leaf = std::move(curr_path);
 				}
 				return result;
 			}
-			catch(...) { return _detail::current_error(); }
+			catch (...) { return _detail::current_error(); }
 		}
 
 		result<stat::query> get_stat(stat &st, int base, const char *leaf, stat::query q, bool nofollow) noexcept

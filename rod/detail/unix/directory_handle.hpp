@@ -26,7 +26,7 @@ namespace rod::_unix
 	using diroff = ::off_t;
 #endif
 
-	inline static int getdents(int fd, std::span<char> buff) noexcept
+	inline static ::ssize_t getdents(int fd, std::span<char> buff) noexcept
 	{
 #if defined(__linux__)
 		return ::getdents64(fd, buff.data(), static_cast<unsigned int>(buff.size()));
@@ -39,20 +39,21 @@ namespace rod::_unix
 	}
 
 	template<typename F>
-	inline static result<diroff> for_each_dir_entry(int fd, std::span<char> buff, const file_timeout &to, F &&f) noexcept
+	inline static result<diroff> for_each_dir_entry(int fd, std::span<char> buff, const file_timeout &to, F &&f)
 	{
 		/* Fill the buffer and iterate over the entries. */
-		const auto ents = diroff(getdents(fd, buff));
+		auto ents = getdents(fd, buff);
 		if (ents < 0) [[unlikely]]
 			return std::error_code(errno, std::system_category());
 
 		auto last_err = std::error_code();
 		auto next_off = diroff();
+		auto pos = ::ssize_t();
 
-		for (std::size_t i = 0, off = 0; i < std::size_t(ents); ++i)
+		while (pos < ents)
 		{
-			const auto ent = reinterpret_cast<dirent *>(buff.data() + off);
-			off += ent->d_reclen;
+			const auto ent = reinterpret_cast<dirent *>(buff.data() + pos);
+			const auto next_pos = pos + ent->d_reclen;
 
 			result<int> accept = 0;
 			if (ent->d_name[0] != '.' && (ent->d_name[1] == '\0' || (ent->d_name[1] != '.' && ent->d_name[2] != '\0')))
@@ -63,16 +64,24 @@ namespace rod::_unix
 			if (accept.has_error() && !last_err) [[unlikely]]
 				last_err = accept.error();
 
-			if (last_err || (next_off = ent->d_off) == 0 || *accept == -1)
+			if (last_err || *accept == -1)
 				break;
-			if (*accept == 1) [[likely]]
-				continue;
 
-			std::memmove(ent, buff.data() + off, buff.size() - off);
+			next_off = ent->d_off;
+			pos = next_pos;
+			if (*accept == 1) [[likely]]
+			{
+				continue;
+			}
+
+//			std::memmove(ent, buff.data() + next_pos, buff.size() - next_pos);
+//			ents -= ent->d_reclen;
 		}
 		if (last_err) [[unlikely]]
 			return last_err;
-		else
+		if (pos < ents)
 			return next_off;
+		else
+			return 0;
 	}
 }

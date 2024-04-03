@@ -929,9 +929,9 @@ namespace rod
 				{
 					if constexpr (!std::same_as<V, std::span<const std::byte>>)
 					{
-						const auto pos = rfind_separator_end(view, format());
+						const auto pos = rfind_separator_end(view, format()) + 1;
 						const auto term = is_null_terminated() && pos >= view.size();
-						return path_view(view.substr(0, pos - 1), term, format());
+						return path_view(view.substr(0, pos), term, format());
 					}
 					return *this;
 				});

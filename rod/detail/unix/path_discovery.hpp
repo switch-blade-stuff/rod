@@ -59,7 +59,10 @@ namespace rod::_unix
 	inline static Res with_env_var(const char *env, F f) noexcept(std::is_nothrow_invocable_v<F, std::string_view, uid_t, uid_t>)
 	{
 		if (const auto uid = ::getuid(), euid = ::geteuid(); uid == euid) [[likely]]
-			return f(std::string_view(::getenv(env)), uid, euid);
+		{
+			const auto env_str = ::getenv(env);
+			return f(std::string_view(env_str ? env_str : ""), uid, euid);
+		}
 		else
 			return f(std::string_view(), uid, euid);
 	}

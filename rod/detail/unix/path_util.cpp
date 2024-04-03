@@ -233,7 +233,7 @@ namespace rod
 
 				for (;;)
 				{
-					auto read_res = read_some(*hnd, {.buffs = std::move(seq),  .reset = true}, to);
+					auto read_res = read_some(*hnd, {.buffs = std::move(seq), .reset = true}, to);
 					if (read_res.has_error()) [[unlikely]]
 						return read_res.error();
 					else if (!read_res->first.empty())
@@ -244,7 +244,6 @@ namespace rod
 					auto [leaf_st, mask] = seq.front().st();
 					if (!bool(mask & stat::query::type)) [[unlikely]]
 						continue; /* Should never happen. */
-
 
 					/* Recursively call remove on the subdirectory. */
 					result<std::size_t> remove_res;

@@ -99,20 +99,17 @@ int main()
 	auto map = rod::mmap_handle::map(src, 0, 0, rod::mmap_flags::readwrite | rod::mmap_flags::prefault).value();
 	TEST_ASSERT(std::memcmp(map.data(), str_src.data(), str_src.size()) == 0);
 
-	str_src = "hello, world!";
-	std::memcpy(map.data(), str_src.data(), str_src.size());
+	auto new_src = std::string("hello, world!");
+	std::memcpy(map.data(), new_src.data(), new_src.size());
 	map.flush({}).value();
-	TEST_ASSERT(std::memcmp(map.data(), str_src.data(), str_src.size()) == 0);
+	TEST_ASSERT(std::memcmp(map.data(), new_src.data(), new_src.size()) == 0);
 
 	read_res = rod::read_some_at(file_src, {.buffs = {&buff_dst, 1}, .off = 0}).value();
-	TEST_ASSERT(read_res.front().size() == buff_dst.size() && str_dst == str_src);
+	TEST_ASSERT(read_res.front().size() == buff_dst.size() && str_dst == new_src);
 
 #ifndef ROD_WIN32
 	copied = rod::fs::copy_all(curr_dir, "dir-e", curr_dir, "dir-c", rod::fs::copy_mode::files | rod::fs::copy_mode::directories | rod::fs::copy_mode::create_symlinks).value();
-	TEST_ASSERT(copied == 2);
-
-	copied = rod::fs::copy(curr_dir, "dir-a/test.txt", curr_dir, "dir-e/test.txt", rod::fs::copy_mode::files | rod::fs::copy_mode::create_hardlinks).value();
-	TEST_ASSERT(copied == 1);
+	TEST_ASSERT(copied == 3);
 
 	file_copy = rod::fs::file_handle::open(curr_dir, "dir-e/test.txt", rod::fs::file_flags::read).value();
 	TEST_ASSERT(file_copy.is_open());

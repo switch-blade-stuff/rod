@@ -16,9 +16,9 @@
 
 namespace rod::_unix
 {
-	inline constexpr auto make_fd_mode(fs::file_perm perm)
+	inline constexpr int make_fd_mode(fs::file_perm perm) noexcept
 	{
-		auto result = 0;
+		int result = 0;
 		if (bool(perm & fs::file_perm::owner_read))
 			result |= S_IRUSR;
 		if (bool(perm & fs::file_perm::owner_write))
@@ -52,9 +52,9 @@ namespace rod::_unix
 
 		return result;
 	}
-	inline constexpr auto make_fd_flags(fs::file_flags flags, fs::open_mode mode = fs::open_mode::existing, fs::file_caching caching = fs::file_caching::all)
+	inline constexpr int make_fd_flags(fs::file_flags flags, fs::open_mode mode = fs::open_mode::existing, fs::file_caching caching = fs::file_caching::all) noexcept
 	{
-		auto result = O_RDONLY;
+		int result = O_RDONLY;
 		if (bool(flags & fs::file_flags::write))
 		{
 			if (!bool(flags & fs::file_flags::read))
